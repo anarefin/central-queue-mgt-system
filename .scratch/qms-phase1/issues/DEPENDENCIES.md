@@ -25,7 +25,7 @@
 21-issuance-rules                          07              done     27m      28 files, +2089 −36 03c5cbb..8f43b29
 22-visitor-directory-and-registration      07              done     38m      33 files, +1454 −40 0763409..788f271
 23-visitor-csv-import                      22              done     23m      28 files, +1703 −7  fc6216f..02d6ae3
-24-device-pairing-and-fleet                05,11           todo     —        —                   —
+24-device-pairing-and-fleet                05,11           done     52m      68 files, +3390 −42 131ff44..26b1995
 25-kiosk-common-path                       24,21,02        todo     —        —                   —
 26-kiosk-identification-and-selection-tree 25,22           todo     —        —                   —
 27-branding-and-print-template             25              todo     —        —                   —

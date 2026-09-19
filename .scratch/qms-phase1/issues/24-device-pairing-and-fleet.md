@@ -4,7 +4,7 @@
 
 **Blocked by:** 05 — Site, Zone and Counter administration; 11 — Realtime hub
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [x] Short-lived pairing code exchanged once for a device JWT carrying device role and site/zone (FR-OPS-011, §20.2)
 - [x] Per-device credentials stored hashed, rotatable, individually revocable; revoke publishes `principal.changed` (NFR-SEC-005, FR-DSP-013)
