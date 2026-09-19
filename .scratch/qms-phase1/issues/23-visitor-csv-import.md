@@ -4,7 +4,7 @@
 
 **Blocked by:** 22 — Visitor directory and walk-in registration
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [x] Manual upload and scheduled folder pickup (FR-INT-011)
 - [x] Column mapping, validation report, upsert by external code (FR-INT-011)

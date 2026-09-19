@@ -24,7 +24,7 @@
 20-console-visitor-context-and-stats       10              done     16m      26 files, +1053 −15 a849a6d..03c5cbb
 21-issuance-rules                          07              done     27m      28 files, +2089 −36 03c5cbb..8f43b29
 22-visitor-directory-and-registration      07              done     38m      33 files, +1454 −40 0763409..788f271
-23-visitor-csv-import                      22              todo     —        —                   —
+23-visitor-csv-import                      22              done     23m      28 files, +1703 −7  fc6216f..02d6ae3
 24-device-pairing-and-fleet                05,11           todo     —        —                   —
 25-kiosk-common-path                       24,21,02        todo     —        —                   —
 26-kiosk-identification-and-selection-tree 25,22           todo     —        —                   —
