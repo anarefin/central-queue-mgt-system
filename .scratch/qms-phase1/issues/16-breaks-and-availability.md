@@ -4,7 +4,7 @@
 
 **Blocked by:** 10 — Counter session: call next, start service, complete
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [x] Configurable break types with localised names and optional max duration (FR-AGT-020)
 - [x] Starting a break requires the current Ticket resolved and stops new assignment immediately; session `on_break` (FR-AGT-021, §19.3)

@@ -4,7 +4,7 @@
 
 **Blocked by:** 10 — Counter session: call next, start service, complete
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [x] Hold keeps the Session binding and removes the Ticket from the general queue; resume only by the same session (FR-AGT-013, ADR-0008)
 - [x] Held count per session capped by a configurable hold limit (default 3)

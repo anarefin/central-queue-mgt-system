@@ -4,7 +4,7 @@
 
 **Blocked by:** 01 — Walking skeleton
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [ ] English and Bangla UI packs shipped complete; additional packs can be added without a code release (FR-I18N-001)
 - [ ] Language resolved from user/visitor preference → device setting → site default → system default (FR-I18N-003)

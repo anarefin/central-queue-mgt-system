@@ -4,7 +4,7 @@
 
 **Blocked by:** 05 — Site, Zone and Counter administration
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [x] Service groups per Site with per-language names, token prefix, display order, active flag
 - [x] Service carries per-language name, group, token prefix, expected handling minutes, SLA wait target, enabled channels, active flag (FR-CFG-010)

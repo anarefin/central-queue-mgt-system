@@ -4,7 +4,7 @@
 
 **Blocked by:** 12 — Re-announce and Miss
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [x] Configurable call timeout (default 90 s) prompts the Agent and may return the Ticket to waiting, position restored via Score adjustment (FR-QUE-032, ADR-0004)
 - [x] Call a specific waiting Ticket where permitted, with mandatory reason, audited as an out-of-order call (FR-AGT-012, FR-SEC-040)

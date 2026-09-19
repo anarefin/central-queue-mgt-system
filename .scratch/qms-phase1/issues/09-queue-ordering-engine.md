@@ -4,7 +4,7 @@
 
 **Blocked by:** 07 — Reception issues a walk-in Ticket
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [x] Priority classes with name, Head start minutes (normal = 0), optional max wait, optional prefix override (FR-QUE-010, ADR-0003)
 - [x] Score = effective wait + Head start + appointment bonus + Escalation bonus + Score adjustment; ties by creation time then id (FR-QUE-020)

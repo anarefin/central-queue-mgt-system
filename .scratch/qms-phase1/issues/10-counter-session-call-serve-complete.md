@@ -4,7 +4,7 @@
 
 **Blocked by:** 09 — Queue ordering engine
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [x] Open session on a permitted Counter; one open session per Counter enforced by a partial unique index (FR-AGT-001, §18.4)
 - [x] Choose which of the Counter's Services to serve this session, default all (FR-AGT-003)

@@ -4,7 +4,7 @@
 
 **Blocked by:** 06 — Service catalogue administration
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [x] `POST /tickets` requires an Idempotency-Key; replay within 24 h returns the original result (§20.1)
 - [x] Sequence allocation, Ticket row and queue insertion are atomic (FR-ISS-001)

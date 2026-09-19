@@ -4,7 +4,7 @@
 
 **Blocked by:** 02 — Language packs and i18n foundation; 04 — Roles, scopes, user administration and audit log
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [x] Create, rename and soft-deactivate Sites, Zones and Counters; historical references keep resolving (FR-CFG-001)
 - [x] Site carries timezone, address, default language and ordered enabled languages; timestamps stored UTC, rendered in site timezone (FR-CFG-002, FR-I18N-002)

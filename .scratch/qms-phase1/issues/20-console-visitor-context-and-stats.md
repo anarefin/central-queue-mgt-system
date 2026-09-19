@@ -4,7 +4,7 @@
 
 **Blocked by:** 10 — Counter session: call next, start service, complete
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [x] Called-ticket panel shows token, visitor name/code where available, category, Service, purpose note, wait so far, origin channel, appointment flag (FR-AGT-030)
 - [x] Completion records outcome and optional free-text note (FR-AGT-032)

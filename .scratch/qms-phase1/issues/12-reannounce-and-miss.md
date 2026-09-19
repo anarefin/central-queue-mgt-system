@@ -4,7 +4,7 @@
 
 **Blocked by:** 10 — Counter session: call next, start service, complete
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [x] Re-announce keeps the Ticket `called` and its Session binding, increments `announce_count`, capped by the configurable repeat limit, writes an event and publishes `ticket.reannounced` (ADR-0005, FR-DSP-028)
 - [x] Miss increments `miss_count`, returns to waiting and frees the Counter; past the limit (default 2) Miss yields `no_show` instead (FR-QUE-050)

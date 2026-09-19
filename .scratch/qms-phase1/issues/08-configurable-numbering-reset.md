@@ -4,7 +4,7 @@
 
 **Blocked by:** 07 — Reception issues a walk-in Ticket
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [x] Numbering rules per Service or Service group: prefix source (service, group, priority class, fixed), start, padding 0–6, reset boundary daily/weekly/monthly/never, reset time, separator (FR-CFG-018)
 - [x] Scheduled resets run once cluster-wide under a database lock at site-local reset time and are replayed if missed (FR-CFG-019, ADR-0010)

@@ -4,7 +4,7 @@
 
 **Blocked by:** 03 — Staff login with stateless JWT
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [ ] Fixed, code-defined roles matching §5.2; only display names localisable (FR-CFG-101)
 - [ ] Users created, edited and disabled; role assignments name the sites / service groups they cover, carried as token claims (§5)

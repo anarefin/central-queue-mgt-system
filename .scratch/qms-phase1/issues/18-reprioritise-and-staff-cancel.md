@@ -4,7 +4,7 @@
 
 **Blocked by:** 09 — Queue ordering engine; 04 — Roles, scopes, user administration and audit log
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [x] Class precedence at issue: manual staff assignment, appointment class, visitor category mapping, channel default, service default (FR-QUE-011)
 - [x] `POST /tickets/{id}/priority` with mandatory reason, audited (FR-QUE-012, FR-SEC-040)

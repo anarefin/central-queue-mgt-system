@@ -4,7 +4,7 @@
 
 **Blocked by:** 10 — Counter session: call next, start service, complete; 11 — Realtime hub
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [x] estimate = tickets ahead ÷ max(open counters, 1) × rolling average handling time (FR-QUE-040)
 - [x] Rolling average of trailing 20 completed Tickets for the Service at the Site, falling back to expected handling time below 5 samples (FR-QUE-041)

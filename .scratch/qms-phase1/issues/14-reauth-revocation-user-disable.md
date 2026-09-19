@@ -4,7 +4,7 @@
 
 **Blocked by:** 11 — Realtime hub; 13 — Hold, held-by-me and force-close
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [x] Hub closes a socket at token `exp` unless a `reauth` frame with a fresh token arrives first (ADR-0009, §21.1)
 - [x] Disabling a user, changing roles/scopes or revoking a device publishes `principal.changed`; the hub drops that subject's sockets immediately; resubscribe re-authorises topics within 30 s (FR-QUE-080) (device revocation: no device entity exists yet; it must call `PrincipalChangedPublisher.principalChanged` when it lands)

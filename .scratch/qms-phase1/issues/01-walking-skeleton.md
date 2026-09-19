@@ -4,7 +4,7 @@
 
 **Blocked by:** None — can start immediately.
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [ ] Backend on Java 25 / Spring Boot 4.1 / Gradle 9 with one package per bounded context (configuration, issuance, queue, appointment, session, notification, reporting, identity, audit) (ADR-0010, ADR-0012)
 - [ ] Architecture test enforces package boundaries and that the queue engine package has no web/transport dependency (ADR-0001 seam)

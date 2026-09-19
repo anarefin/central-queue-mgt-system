@@ -4,7 +4,7 @@
 
 **Blocked by:** 10 — Counter session: call next, start service, complete
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [x] Transfer with mandatory note to Service, Counter or Agent (FR-QUE-052)
 - [x] Predecessor closes `transferred` (terminal); Successor ticket created in the same transaction with same Visit and Token number, `predecessor_ticket_id` set, Priority class inherited (FR-QUE-053, ADR-0006, Invariant 4)

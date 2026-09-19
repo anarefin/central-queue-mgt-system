@@ -4,7 +4,7 @@
 
 **Blocked by:** 01 — Walking skeleton
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [ ] Local password provider behind a pluggable identity provider interface (FR-INT-001)
 - [ ] Stateless resource server with a locally configured JWT decoder; no HTTP session (API-010)
