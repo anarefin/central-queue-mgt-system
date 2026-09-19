@@ -48,6 +48,10 @@ Everything is an environment variable (or a Spring property). Secrets are never 
 | `QMS_I18N_PACK_DIR` | none | Extra or overriding language packs, see section 6 |
 | `QMS_AUDIT_EXPORT_MAX_ROWS` | `100000` | Cap on one CSV export |
 | `QMS_QUEUE_PRIMARY_TOLERANCE_MINUTES` | `5` | How many minutes of score a fallback counter link may trail the best ticket by and still lose to a primary link, section 12 |
+| `QMS_QUEUE_ANNOUNCE_REPEAT_LIMIT` | `3` | How many times an agent may Re-announce one ticket (F3); `0` switches it off, section 12 |
+| `QMS_QUEUE_MISS_LIMIT` | `2` | How many times a ticket may be missed (F6) and return to the queue; the next Miss closes it as `no_show`, section 12 |
+| `QMS_QUEUE_MISS_REENTRY_POSITION` | `after-n` | Where a missed ticket re-enters the queue: `front`, `after-n` or `back`, section 12 |
+| `QMS_QUEUE_MISS_REENTRY_AFTER` | `3` | With `after-n`: how many tickets stay ahead of the missed one (at least 1), section 12 |
 
 Two limits are enforced at startup and cannot be raised: access tokens last at most 15 minutes, and bcrypt cost is at
 least 12.
@@ -274,6 +278,24 @@ of them is given the next. **Start service** (F4) and **Complete** (F5) act on t
 records an outcome from the ticket's service (required when the service has outcome codes; section 8) and an optional
 note, and stores the ticket's `wait_seconds` (from joining the queue to being called) and `service_seconds`.
 
+**Re-announce and Miss.** A called ticket can be re-announced (F3) or missed (F6); the word "recall" is not used. Re-announce
+replays the call: the ticket stays `called` and bound to the session, `announce_count` goes up by one, and the event
+`ticket.reannounced` is written and published. It is refused with `reannounce_limit_reached` once `announce_count` reaches
+`QMS_QUEUE_ANNOUNCE_REPEAT_LIMIT`; the count belongs to the ticket and is not reset by a Miss, so that a display can tell each
+announcement of a ticket apart. Miss declares the visitor absent: `miss_count` goes up by one and the counter is free at
+once. While `miss_count` stays within `QMS_QUEUE_MISS_LIMIT` the ticket returns to `waiting`, its session binding is cleared
+and `ticket.missed` is written; the Miss that would take `miss_count` past the limit closes it as `no_show` instead
+(`ticket.no_show`). Agents never choose `no_show` themselves, and Re-announce does not count towards the miss limit. The
+console warns before the Miss that would close a ticket. A returning ticket re-enters at `QMS_QUEUE_MISS_REENTRY_POSITION`:
+at the `front`, `after-n` (behind that many waiting tickets, or at the back when fewer are waiting) or at the `back`. This is
+done with a Score adjustment on the ticket, in whole minutes (section 10); `queued_at` is never rewritten, so the ticket's
+original wait still counts and the waiting KPIs stay truthful. Every waiting score grows at the same rate, so the ticket
+keeps that place as time passes. A ticket past its class's maximum wait is still served before every ticket that is not, so a
+missed ticket cannot jump an escalated one. Each `ticket.missed` event records the adjustment applied
+(`score_adjustment_minutes`) and the position that produced it. Under the `fifo` and `strict_priority` strategies the score
+does not order the queue, so the position has no effect there (section 10). A ticket that is called again after a Miss stores
+a `wait_seconds` that adds up only the time it spent in `waiting`, not the time it was called.
+
 **Closing** (F10) needs the ticket in progress to be resolved. With a ticket called or serving the session becomes
 `closing`, takes no new calls and the request is refused with `ticket_in_progress`; completing the ticket then closes the
 session. Holding and transferring tickets, breaks and force-closing a stale session arrive with later tickets, so today
@@ -283,8 +305,9 @@ an admin cannot close another agent's session.
 a restart the console asks `GET /sessions/current` and shows the ticket the agent was serving.
 
 API, all under `/api/v1`: `GET /sessions/options`, `GET /sessions/current` (`not_found` when there is none),
-`POST /sessions` (`counter_id`, optional `service_ids`), `DELETE /sessions/{id}`, and `POST /sessions/{id}/next|serve|complete`.
-`serve` and `complete` take the ticket's `version` as `If-Match`; a stale version is a `conflict` with reason
+`POST /sessions` (`counter_id`, optional `service_ids`), `DELETE /sessions/{id}`, and `POST /sessions/{id}/next|reannounce|serve|complete|miss`.
+`reannounce`, `serve`, `complete` and `miss` take the ticket's `version` as `If-Match`; a stale version is a `conflict` with reason
 `version_mismatch`. Conflict reasons: `counter_occupied`, `agent_has_open_session`, `counter_inactive`, `session_not_open`,
-`ticket_in_progress`, `no_ticket_waiting`, `no_ticket_called`, `no_ticket_serving`, `version_mismatch`. Events written per
-transition: `ticket.called`, `ticket.serving`, `ticket.completed`; audit entries `session.opened` and `session.closed`.
+`ticket_in_progress`, `no_ticket_waiting`, `no_ticket_called`, `no_ticket_serving`, `reannounce_limit_reached`,
+`version_mismatch`. Events written per transition: `ticket.called`, `ticket.reannounced`, `ticket.missed`, `ticket.no_show`,
+`ticket.serving`, `ticket.completed`; audit entries `session.opened` and `session.closed`.

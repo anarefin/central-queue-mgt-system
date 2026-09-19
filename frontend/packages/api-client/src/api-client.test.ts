@@ -325,6 +325,9 @@ describe("ApiClient service catalogue", () => {
     await client.sessions.current();
     await client.sessions.open({ counter_id: "c1", service_ids: ["v1"] });
     await client.sessions.next("s1");
+    await client.sessions.reannounce("s1", 1);
+    await client.sessions.miss("s1", 1);
+    await client.sessions.miss("s1");
     await client.sessions.serve("s1", 1);
     await client.sessions.serve("s1");
     await client.sessions.complete("s1", { outcome_code_id: "o1", note: "done" }, 2);
@@ -336,6 +339,9 @@ describe("ApiClient service catalogue", () => {
       "GET /sessions/current",
       "POST /sessions",
       "POST /sessions/s1/next",
+      "POST /sessions/s1/reannounce",
+      "POST /sessions/s1/miss",
+      "POST /sessions/s1/miss",
       "POST /sessions/s1/serve",
       "POST /sessions/s1/serve",
       "POST /sessions/s1/complete",
@@ -344,9 +350,12 @@ describe("ApiClient service catalogue", () => {
     const headers = (index: number) => (fetchImpl.mock.calls[index]?.[1] as RequestInit).headers as Record<string, string>;
     expect(JSON.parse(String((fetchImpl.mock.calls[2]?.[1] as RequestInit).body))).toEqual({ counter_id: "c1", service_ids: ["v1"] });
     expect(headers(4)["If-Match"]).toBe('"1"');
-    expect(headers(5)["If-Match"]).toBeUndefined();
-    expect(headers(6)["If-Match"]).toBe('"2"');
-    expect(JSON.parse(String((fetchImpl.mock.calls[6]?.[1] as RequestInit).body))).toEqual({ outcome_code_id: "o1", note: "done" });
+    expect(headers(5)["If-Match"]).toBe('"1"');
+    expect(headers(6)["If-Match"]).toBeUndefined();
+    expect(headers(7)["If-Match"]).toBe('"1"');
+    expect(headers(8)["If-Match"]).toBeUndefined();
+    expect(headers(9)["If-Match"]).toBe('"2"');
+    expect(JSON.parse(String((fetchImpl.mock.calls[9]?.[1] as RequestInit).body))).toEqual({ outcome_code_id: "o1", note: "done" });
   });
 
   it("asks for a topic's snapshot on the polling path, the topic name escaped (FR-QUE-084)", async () => {

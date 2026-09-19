@@ -36,6 +36,10 @@ function ticket(over: Partial<SessionTicket> = {}): SessionTicket {
     called_at: STAMP,
     served_at: null,
     wait_seconds: 305,
+    announce_count: 0,
+    announce_limit: 3,
+    miss_count: 0,
+    miss_limit: 2,
     outcomes: OUTCOMES,
     ...over,
   };
@@ -258,6 +262,112 @@ describe("serving from the keyboard (FR-AGT-010, FR-AGT-032, NFR-USA-002)", () =
     expect(count(calls, "POST /sessions/s1/next")).toBe(1);
     release(json(200, session({ ticket: ticket() })));
     await screen.findByTestId("current-token");
+  });
+});
+
+describe("re-announce and miss (FR-DSP-028, FR-QUE-050, ADR-0005)", () => {
+  it("re-announces a called ticket with F3, keeping it called, and stops offering it at the limit", async () => {
+    let state = session({ ticket: ticket({ announce_limit: 2 }) });
+    const calls = stubApi({
+      ...AUTH,
+      "GET /sessions/current": () => json(200, state),
+      "POST /sessions/s1/reannounce": () => {
+        const held = state.ticket!;
+        return json(200, (state = session({ ticket: ticket({ version: held.version + 1, announce_count: held.announce_count + 1, announce_limit: 2 }) })));
+      },
+    });
+    const user = userEvent.setup();
+    renderApp(<Home />);
+    await screen.findByTestId("current-token");
+    expect(screen.queryByText(/Re-announced/)).not.toBeInTheDocument();
+
+    await user.keyboard("{F3}");
+    expect(await screen.findByText("Re-announced 1 of 2 times")).toBeInTheDocument();
+    expect(ifMatch(calls.find((c) => c.path === "/sessions/s1/reannounce"))).toBe('"1"');
+    expect(screen.getByText("Called, waiting for the visitor")).toBeInTheDocument();
+    expect(screen.getByTestId("current-token")).toHaveTextContent("S-042");
+
+    await user.keyboard("{F3}");
+    expect(await screen.findByText("Re-announced 2 of 2 times")).toBeInTheDocument();
+    expect(ifMatch(calls.filter((c) => c.path === "/sessions/s1/reannounce")[1])).toBe('"2"');
+    expect(screen.getByRole("button", { name: /Re-announce/ })).toBeDisabled();
+
+    await user.keyboard("{F3}"); // at the limit: nothing more is sent
+    expect(count(calls, "POST /sessions/s1/reannounce")).toBe(2);
+  });
+
+  it("does not offer Re-announce or Miss before a ticket is called or once it is in service", async () => {
+    stubApi({ ...AUTH, "GET /sessions/current": () => json(200, session({ ticket: ticket({ state: "serving", version: 2 }) })) });
+    const user = userEvent.setup();
+    renderApp(<Home />);
+    await screen.findByText("In service");
+
+    expect(screen.getByRole("button", { name: /Re-announce/ })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /^Miss/ })).toBeDisabled();
+    await user.keyboard("{F3}{F6}");
+    expect(screen.getByText("In service")).toBeInTheDocument();
+  });
+
+  it("misses the called ticket with F6 and shows the counter free to call the next one", async () => {
+    let state = session({ ticket: ticket() });
+    const calls = stubApi({
+      ...AUTH,
+      "GET /sessions/current": () => json(200, state),
+      "POST /sessions/s1/miss": () => json(200, (state = session())),
+    });
+    const user = userEvent.setup();
+    renderApp(<Home />);
+    await screen.findByTestId("current-token");
+    expect(screen.queryByText(/Another miss closes this ticket/)).not.toBeInTheDocument();
+
+    await user.keyboard("{F6}");
+
+    await waitFor(() => expect(screen.queryByTestId("current-token")).not.toBeInTheDocument());
+    expect(screen.getByText(/No ticket in progress/)).toBeInTheDocument();
+    expect(ifMatch(calls.find((c) => c.path === "/sessions/s1/miss"))).toBe('"1"');
+    expect(screen.getByRole("button", { name: /Call next/ })).toBeEnabled();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("warns before the Miss that would close the ticket as a no-show", async () => {
+    stubApi({ ...AUTH, "GET /sessions/current": () => json(200, session({ ticket: ticket({ miss_count: 2 }) })) });
+    renderApp(<Home />);
+
+    expect(await screen.findByText("Missed 2 of 2 times already. Another miss closes this ticket as a no-show.")).toBeInTheDocument();
+  });
+
+  it("returns to the counter list once missing the last ticket closes the session", async () => {
+    stubApi({
+      ...AUTH,
+      "GET /sessions/current": () => json(200, session({ state: "closing", ticket: ticket() })),
+      "POST /sessions/s1/miss": () => json(200, session({ state: "closed", closed_at: STAMP })),
+      "GET /sessions/options": () => json(200, { items: OPTIONS }),
+    });
+    const user = userEvent.setup();
+    renderApp(<Home />);
+    await screen.findByTestId("current-token");
+
+    await user.keyboard("{F6}");
+
+    expect(await screen.findByText("Open a counter session")).toBeInTheDocument();
+  });
+
+  it("says why the API refused a Re-announce, in the reader's language, and reads the session again", async () => {
+    const calls = stubApi({
+      ...AUTH,
+      "GET /sessions/current": () => json(200, session({ ticket: ticket() })),
+      "POST /sessions/s1/reannounce": () => refusal(409, "reannounce_limit_reached"),
+    });
+    const user = userEvent.setup();
+    renderApp(<Home />, ["bn-BD"]);
+    await screen.findByTestId("current-token");
+
+    await user.keyboard("{F3}");
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("এই টিকিটটি অনুমোদিত সর্বোচ্চ বার আবার ঘোষণা করা হয়েছে।");
+    expect(count(calls, "GET /sessions/current")).toBe(2);
+    expect(screen.getByRole("button", { name: /আবার ঘোষণা/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /অনুপস্থিত/ })).toBeInTheDocument();
   });
 });
 

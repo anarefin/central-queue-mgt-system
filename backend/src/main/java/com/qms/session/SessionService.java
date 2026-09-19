@@ -13,6 +13,7 @@ import com.qms.queue.QueueEngine;
 import com.qms.queue.QueueEngine.Contender;
 import com.qms.queue.QueueProperties;
 import com.qms.queue.QueueReads;
+import com.qms.queue.ReentryPosition;
 import com.qms.queue.TicketEvents;
 import com.qms.queue.TicketTimings;
 import com.qms.queue.TicketTransition;
@@ -26,6 +27,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -216,7 +218,8 @@ public class SessionService {
         OutcomeRow outcome = outcomeFor(ticket, request == null ? null : request.outcomeCodeId());
 
         Instant now = clock.instant();
-        TicketTimings timings = TicketTimings.atClosure(ticket.queuedAt(), ticket.calledAt(), ticket.servedAt(), now);
+        // A ticket that was missed and called again waited in stints; only time in waiting counts (Invariant 1).
+        TicketTimings timings = new TicketTimings(TicketTimings.accruedWait(ticket.queuedAt(), events.changes(ticket.id())), TicketTimings.seconds(ticket.servedAt(), now));
         if (!sessions.complete(ticket.id(), ticket.version(), session.id(), now, timings.waitSeconds(), timings.serviceSeconds(), outcome == null ? null : outcome.id(), note)) {
             throw refusal("version_mismatch");
         }
@@ -226,6 +229,61 @@ public class SessionService {
         payload.put("service_seconds", timings.serviceSeconds());
         if (outcome != null) payload.put("outcome_code", outcome.code());
         events.append(transition(ticket.id(), TicketTransition.COMPLETE, session, payload, now));
+
+        if ("closing".equals(session.state()) && sessions.unresolved(session.id()).isEmpty()) finish(session, now);
+        return view(sessions.session(session.id()).orElseThrow());
+    }
+
+    /**
+     * Replays the call of the ticket this session called (F3, FR-DSP-028, ADR-0005). The ticket stays {@code called} with its
+     * binding; it counts one more announcement, up to the repeat limit. It does not count towards the miss limit.
+     */
+    @PreAuthorize(SERVE)
+    @Transactional
+    public SessionResponse reannounce(UUID sessionId, Integer ifMatch) {
+        SessionRow session = lockOwn(sessionId);
+        BoundTicket ticket = boundIn(session, TicketTransition.REANNOUNCE, "no_ticket_called");
+        requireVersion(ticket, ifMatch);
+        if (!TicketTransition.mayReannounce(ticket.announceCount(), queueProperties.announceRepeatLimit())) throw refusal("reannounce_limit_reached");
+        if (!sessions.reannounce(ticket.id(), ticket.version(), session.id())) throw refusal("version_mismatch");
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("session_id", session.id().toString());
+        payload.put("announce", true);
+        payload.put("announce_count", ticket.announceCount() + 1);
+        events.append(transition(ticket.id(), TicketTransition.REANNOUNCE, session, payload, clock.instant()));
+        return view(sessions.session(session.id()).orElseThrow());
+    }
+
+    /**
+     * The visitor is absent (F6, FR-QUE-050, ADR-0005). The ticket returns to waiting at the configured re-entry position,
+     * applied as a Score adjustment with {@code queued_at} untouched (FR-QUE-051, ADR-0004), and its counter is free; when
+     * this Miss would take {@code miss_count} past the limit the ticket closes as {@code no_show} instead. Either way the
+     * binding is cleared (Invariant 2), and a closing session that this resolves closes now (§19.3).
+     */
+    @PreAuthorize(SERVE)
+    @Transactional
+    public SessionResponse miss(UUID sessionId, Integer ifMatch) {
+        SessionRow session = lockOwn(sessionId);
+        BoundTicket ticket = boundIn(session, TicketTransition.MISS, "no_ticket_called");
+        requireVersion(ticket, ifMatch);
+        Instant now = clock.instant();
+        TicketTransition result = TicketTransition.onMiss(ticket.missCount(), queueProperties.missLimit());
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("session_id", session.id().toString());
+        payload.put("miss_count", ticket.missCount() + 1);
+        if (result == TicketTransition.NO_SHOW) {
+            int waitSeconds = TicketTimings.accruedWait(ticket.queuedAt(), events.changes(ticket.id()));
+            if (!sessions.noShow(ticket.id(), ticket.version(), session.id(), now, waitSeconds)) throw refusal("version_mismatch");
+            payload.put("wait_seconds", waitSeconds);
+        } else {
+            ReentryPosition position = queueProperties.missReentryPosition();
+            int adjustment = queues.reentryAdjustment(ticket.id(), position, queueProperties.missReentryAfter());
+            if (!sessions.miss(ticket.id(), ticket.version(), session.id(), adjustment)) throw refusal("version_mismatch");
+            payload.put("reentry_position", position.name().toLowerCase(Locale.ROOT));
+            if (position == ReentryPosition.AFTER_N) payload.put("reentry_after", queueProperties.missReentryAfter());
+            payload.put("score_adjustment_minutes", adjustment);
+        }
+        events.append(transition(ticket.id(), result, session, payload, now));
 
         if ("closing".equals(session.state()) && sessions.unresolved(session.id()).isEmpty()) finish(session, now);
         return view(sessions.session(session.id()).orElseThrow());
@@ -333,7 +391,7 @@ public class SessionService {
         SessionResponse.SessionTicket ticket = sessions.unresolved(session.id()).stream()
                 .filter(t -> "called".equals(t.state()) || "serving".equals(t.state()))
                 .findFirst()
-                .map(t -> SessionViews.ticket(t, sessions.outcomes(t.serviceId())))
+                .map(t -> SessionViews.ticket(t, sessions.outcomes(t.serviceId()), queueProperties.announceRepeatLimit(), queueProperties.missLimit()))
                 .orElse(null);
         return new SessionResponse(session.id(), SessionViews.counter(counter), session.agentId(), session.state(), session.openedAt(), session.closedAt(), services, ticket);
     }

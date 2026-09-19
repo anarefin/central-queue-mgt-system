@@ -40,6 +40,12 @@ export interface SessionTicket {
   served_at: string | null;
   /** How long the ticket waited in the queue before it was called. */
   wait_seconds: number;
+  /** How many times this ticket has been re-announced, of the most an Agent may (FR-DSP-028). */
+  announce_count: number;
+  announce_limit: number;
+  /** How many times it has been missed, of the most it may be before the next Miss closes it as a no-show (FR-QUE-050). */
+  miss_count: number;
+  miss_limit: number;
   outcomes: SessionOutcome[];
 }
 

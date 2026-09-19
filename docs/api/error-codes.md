@@ -47,8 +47,9 @@ naming `Idempotency-Key` when it is missing); reusing a key for a different requ
 Counter sessions (`/sessions`, ticket 10) refuse with `conflict` and one `details.reason`: `counter_occupied`,
 `agent_has_open_session`, `counter_inactive` (opening); `session_not_open` (the session is closing, closed or on a break);
 `ticket_in_progress` (call next or close while a ticket is called or serving); `no_ticket_waiting` (nothing to call);
-`no_ticket_called` / `no_ticket_serving` (start or complete with nothing in that state); `version_mismatch` (a stale
-`If-Match`). A session that is not the caller's is `forbidden`, an unknown one `not_found`; a chosen service the counter
+`no_ticket_called` / `no_ticket_serving` (start, re-announce or miss with nothing called, or complete with nothing
+serving); `reannounce_limit_reached` (a ticket already re-announced as often as allowed, ticket 12); `version_mismatch` (a
+stale `If-Match`). A session that is not the caller's is `forbidden`, an unknown one `not_found`; a chosen service the counter
 does not offer, a missing or unknown outcome, or a malformed `If-Match` is `validation_failed` naming the field.
 
 The client library also synthesises two codes that never come from the server: `network_error` (no response) and

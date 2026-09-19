@@ -33,7 +33,9 @@ public record SessionResponse(
 
     /**
      * The ticket bound to the session, {@code called} or {@code serving}. {@code waitSeconds} is how long it waited in the
-     * queue before it was called.
+     * queue before it was called. {@code announceCount} of {@code announceLimit} is how many times this call has been
+     * re-announced (FR-DSP-028); {@code missCount} of {@code missLimit} how many times it has been missed, the Miss after the
+     * limit closing it as a no-show (FR-QUE-050).
      */
     public record SessionTicket(
             UUID id,
@@ -47,5 +49,9 @@ public record SessionResponse(
             @JsonProperty("called_at") Instant calledAt,
             @JsonProperty("served_at") Instant servedAt,
             @JsonProperty("wait_seconds") int waitSeconds,
+            @JsonProperty("announce_count") int announceCount,
+            @JsonProperty("announce_limit") int announceLimit,
+            @JsonProperty("miss_count") int missCount,
+            @JsonProperty("miss_limit") int missLimit,
             List<Outcome> outcomes) {}
 }

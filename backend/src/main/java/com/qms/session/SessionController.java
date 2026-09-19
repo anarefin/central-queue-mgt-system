@@ -65,6 +65,18 @@ public class SessionController {
     }
 
     @PreAuthorize(SessionService.SERVE)
+    @PostMapping("/sessions/{id}/reannounce")
+    public SessionResponse reannounce(@PathVariable UUID id, @RequestHeader(value = "If-Match", required = false) String ifMatch) {
+        return service.reannounce(id, version(ifMatch));
+    }
+
+    @PreAuthorize(SessionService.SERVE)
+    @PostMapping("/sessions/{id}/miss")
+    public SessionResponse miss(@PathVariable UUID id, @RequestHeader(value = "If-Match", required = false) String ifMatch) {
+        return service.miss(id, version(ifMatch));
+    }
+
+    @PreAuthorize(SessionService.SERVE)
     @PostMapping("/sessions/{id}/serve")
     public SessionResponse serve(@PathVariable UUID id, @RequestHeader(value = "If-Match", required = false) String ifMatch) {
         return service.startService(id, version(ifMatch));

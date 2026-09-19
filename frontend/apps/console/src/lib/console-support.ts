@@ -8,6 +8,7 @@ const REFUSALS = new Set([
   "ticket_in_progress",
   "no_ticket_called",
   "no_ticket_serving",
+  "reannounce_limit_reached",
   "version_mismatch",
   "session_not_open",
   "counter_occupied",
@@ -65,6 +66,11 @@ export function counterMovedOn(update: RealtimeUpdate, session: CounterSession):
   if (update.type === "session.closed") return update.data.session_id === session.id;
   const state = update.data.state;
   const ticketId = update.data.ticket_id;
+  if (state === "called" && shown && shown.id === ticketId && shown.state === "called") {
+    // A Re-announce made elsewhere leaves the ticket where it is but moves its announce count (FR-QUE-083).
+    const count = update.data.announce_count;
+    return typeof count === "number" && count !== shown.announce_count;
+  }
   if (state === "called" || state === "serving") return shown?.id !== ticketId || shown?.state !== state;
   return shown?.id === ticketId; // the ticket left service (completed, missed, transferred…) but the screen still holds it
 }

@@ -19,6 +19,10 @@ function ticket(over: Partial<SessionTicket> = {}): SessionTicket {
     called_at: STAMP,
     served_at: null,
     wait_seconds: 0,
+    announce_count: 0,
+    announce_limit: 3,
+    miss_count: 0,
+    miss_limit: 2,
     outcomes: [],
     ...over,
   };
@@ -88,6 +92,17 @@ describe("counterMovedOn: is the console behind the server?", () => {
     expect(counterMovedOn(event("ticket.called", { ticket_id: "t1", state: "called" }), session({ ticket: ticket() }))).toBe(false);
     expect(counterMovedOn(event("ticket.serving", { ticket_id: "t1", state: "serving" }), session({ ticket: ticket({ state: "serving" }) }))).toBe(false);
     expect(counterMovedOn(event("ticket.completed", { ticket_id: "t1", state: "completed" }), session())).toBe(false);
+  });
+
+  it("is behind when a Re-announce made elsewhere moved the announce count, and not when the screen already shows it", () => {
+    const shown = session({ ticket: ticket({ announce_count: 1 }) });
+    expect(counterMovedOn(event("ticket.reannounced", { ticket_id: "t1", state: "called", announce_count: 2 }), shown)).toBe(true);
+    expect(counterMovedOn(event("ticket.reannounced", { ticket_id: "t1", state: "called", announce_count: 1 }), shown)).toBe(false);
+  });
+
+  it("is behind when the ticket it shows was missed, since it has gone back to the queue", () => {
+    expect(counterMovedOn(event("ticket.missed", { ticket_id: "t1", state: "waiting" }), session({ ticket: ticket() }))).toBe(true);
+    expect(counterMovedOn(event("ticket.missed", { ticket_id: "t1", state: "waiting" }), session())).toBe(false);
   });
 
   it("is behind on an event the screen does not yet show", () => {

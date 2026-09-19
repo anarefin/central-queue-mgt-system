@@ -6,11 +6,11 @@
 
 **Status:** ready-for-agent
 
-- [ ] Re-announce keeps the Ticket `called` and its Session binding, increments `announce_count`, capped by the configurable repeat limit, writes an event and publishes `ticket.reannounced` (ADR-0005, FR-DSP-028)
-- [ ] Miss increments `miss_count`, returns to waiting and frees the Counter; past the limit (default 2) Miss yields `no_show` instead (FR-QUE-050)
-- [ ] Re-entry position configurable: front, after N (default 3), back — applied as a Score adjustment; `queued_at` never rewritten (FR-QUE-051, ADR-0004)
-- [ ] Each positional move writes a ticket_event carrying the adjustment applied (ADR-0004)
-- [ ] `ticket.missed` / `ticket.no_show` events; Session binding cleared on return to waiting (Invariant 2)
-- [ ] F3 and F6 shortcuts in the console
-- [ ] Engine suite covers called→called, called→waiting (miss) and called→no_show (NFR-MNT-004)
-- [ ] Definition of done (SRS §27.5): user-facing strings in both en and bn packs; every protected action permission-checked server-side; specified events and audit entries emitted; each requirement ID above mapped to a passing test in the traceability matrix
+- [x] Re-announce keeps the Ticket `called` and its Session binding, increments `announce_count`, capped by the configurable repeat limit, writes an event and publishes `ticket.reannounced` (ADR-0005, FR-DSP-028)
+- [x] Miss increments `miss_count`, returns to waiting and frees the Counter; past the limit (default 2) Miss yields `no_show` instead (FR-QUE-050)
+- [x] Re-entry position configurable: front, after N (default 3), back — applied as a Score adjustment; `queued_at` never rewritten (FR-QUE-051, ADR-0004)
+- [x] Each positional move writes a ticket_event carrying the adjustment applied (ADR-0004)
+- [x] `ticket.missed` / `ticket.no_show` events; Session binding cleared on return to waiting (Invariant 2)
+- [x] F3 and F6 shortcuts in the console
+- [x] Engine suite covers called→called, called→waiting (miss) and called→no_show (NFR-MNT-004)
+- [x] Definition of done (SRS §27.5): user-facing strings in both en and bn packs; every protected action permission-checked server-side; specified events and audit entries emitted; each requirement ID above mapped to a passing test in the traceability matrix

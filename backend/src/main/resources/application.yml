@@ -28,6 +28,13 @@ qms:
   queue:
     # FR-QUE-030: a fallback counter link may trail the best ticket by this many minutes of score and still lose to a primary one.
     primary-link-tolerance-minutes: ${QMS_QUEUE_PRIMARY_TOLERANCE_MINUTES:5}
+    # FR-DSP-028: how many times an Agent may Re-announce (F3) a ticket.
+    announce-repeat-limit: ${QMS_QUEUE_ANNOUNCE_REPEAT_LIMIT:3}
+    # FR-QUE-050: a ticket may be missed (F6) this many times and return to the queue; the next Miss closes it as no_show.
+    miss-limit: ${QMS_QUEUE_MISS_LIMIT:2}
+    # FR-QUE-051: where a missed ticket re-enters the queue: front, after-n or back; after-n keeps this many tickets ahead of it.
+    miss-reentry-position: ${QMS_QUEUE_MISS_REENTRY_POSITION:after-n}
+    miss-reentry-after: ${QMS_QUEUE_MISS_REENTRY_AFTER:3}
   i18n:
     system-default-language: en
     languages: en,bn

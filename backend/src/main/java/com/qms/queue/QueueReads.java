@@ -110,6 +110,33 @@ public class QueueReads {
         return ordered(serviceId, null).entries().stream().filter(e -> "waiting".equals(e.state())).findFirst();
     }
 
+    /**
+     * The Score adjustment that returns a missed ticket to the queue of its Service at {@code position} (FR-QUE-051,
+     * ADR-0004): its own terms without any adjustment, set against the tickets waiting now. The ticket itself is left out
+     * of the others, so this reads the same before and after it returns to {@code waiting}.
+     */
+    public int reentryAdjustment(UUID ticketId, ReentryPosition position, int after) {
+        record Own(UUID serviceId, Candidate candidate) {}
+        Own own = jdbc.query(
+                        "SELECT t.service_id, t.issued_at, t.queued_at, pc.headstart_minutes, pc.max_wait_minutes"
+                                + " FROM ticket t LEFT JOIN priority_class pc ON pc.id = coalesce(t.priority_class_id, (SELECT id FROM priority_class WHERE is_default))"
+                                + " WHERE t.id = ?",
+                        (rs, i) -> new Own(
+                                rs.getObject("service_id", UUID.class),
+                                new Candidate(
+                                        ticketId,
+                                        rs.getObject("issued_at", OffsetDateTime.class).toInstant(),
+                                        rs.getObject("queued_at", OffsetDateTime.class).toInstant(),
+                                        rs.getInt("headstart_minutes"),
+                                        rs.getObject("max_wait_minutes", Integer.class),
+                                        0,
+                                        0)),
+                        ticketId)
+                .stream().findFirst().orElseThrow();
+        List<Terms> others = ordered(own.serviceId(), null).entries().stream().filter(e -> !e.ticketId().equals(ticketId)).map(Entry::terms).toList();
+        return QueueEngine.reentryAdjustment(QueueEngine.terms(own.candidate(), clock.instant()), others, position, after);
+    }
+
     /** The place of a queued ticket, or null once it has left the queue. */
     public Integer positionOf(UUID ticketId) {
         List<UUID> service = jdbc.query("SELECT service_id FROM ticket WHERE id = ? AND " + WAITING, (rs, i) -> rs.getObject("service_id", UUID.class), ticketId);

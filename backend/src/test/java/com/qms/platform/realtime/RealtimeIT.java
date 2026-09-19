@@ -309,6 +309,33 @@ class RealtimeIT {
     }
 
     @Test
+    void reannouncingAndMissingAreAnnouncedOnTheQueueAndTheCounterDeduplicatedByAnnounceCount() throws Exception {
+        World w = world();
+        Person agent = person(Role.AGENT, w.site(), w.group());
+        issue(w.service());
+        Socket console = connect(agent);
+        console.subscribe("queue:" + w.service(), "counter:" + w.counter());
+        UUID session = openSession(agent, w.counter());
+        send("POST", "/sessions/" + session + "/next", agent.token(), null);
+        console.event("ticket.called");
+        console.event("ticket.called");
+
+        send("POST", "/sessions/" + session + "/reannounce", agent.token(), null);
+        Map<String, Object> onQueue = console.event("ticket.reannounced");
+        assertThat(onQueue).containsEntry("topic", "queue:" + w.service());
+        assertThat(data(onQueue)).containsEntry("state", "called").containsEntry("announce", true).containsEntry("announce_count", 1).containsEntry("counter_id", w.counter().toString());
+        Map<String, Object> onCounter = console.event("ticket.reannounced");
+        assertThat(onCounter).containsEntry("topic", "counter:" + w.counter());
+        assertThat(data(onCounter)).containsEntry("announce_count", 1);
+
+        send("POST", "/sessions/" + session + "/miss", agent.token(), null);
+        Map<String, Object> missed = console.event("ticket.missed");
+        assertThat(missed).containsEntry("topic", "queue:" + w.service());
+        assertThat(data(missed)).containsEntry("state", "waiting").containsEntry("waiting_count", 1);
+        assertThat(console.event("ticket.missed")).containsEntry("topic", "counter:" + w.counter());
+    }
+
+    @Test
     void aSnapshotShowsTheSessionAndTheTicketInProgress() throws Exception {
         World w = world();
         Person agent = person(Role.AGENT, w.site(), w.group());

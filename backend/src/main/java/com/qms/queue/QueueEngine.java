@@ -111,6 +111,40 @@ public final class QueueEngine {
         return heads.stream().filter(c -> c.score() >= best - toleranceMinutes).min(preference);
     }
 
+    /**
+     * The Score adjustment that puts a missed ticket where FR-QUE-051 says (ADR-0004). {@code self} is the terms of the
+     * missed ticket with no adjustment, as if it were waiting now with its own class and its original wait;
+     * {@code others} are the tickets already waiting, in the order they will be called. Whole minutes, because that is what
+     * a ticket stores: the adjustment lands the ticket just ahead of the front, just behind the {@code after}-th ticket, or
+     * just behind the last, and every waiting score grows at the same rate, so it keeps that place.
+     *
+     * <p>An escalated ticket stays ahead of every ticket that is not, whatever the adjustment (FR-QUE-022): the place is
+     * worked out among the tickets that are not escalated, a missed ticket that is escalated itself needs no adjustment,
+     * and "after N" that reaches into the escalated tickets means the front of the rest. Two tickets less than a minute of
+     * score apart cannot be separated by a whole-minute adjustment; then the earlier ticket goes first (FR-QUE-020).
+     */
+    public static int reentryAdjustment(Terms self, List<Terms> others, ReentryPosition position, int after) {
+        if (self.escalated()) return 0;
+        List<Terms> ordinary = others.stream().filter(t -> !t.escalated()).toList();
+        if (ordinary.isEmpty()) return 0;
+        ReentryPosition where = position;
+        if (where == ReentryPosition.AFTER_N) {
+            if (others.size() <= after) where = ReentryPosition.BACK;
+            else if (others.get(after - 1).escalated()) where = ReentryPosition.FRONT;
+        }
+        return switch (where) {
+            case FRONT -> {
+                double top = ordinary.stream().mapToDouble(Terms::score).max().orElseThrow();
+                yield Math.max(0, (int) Math.floor(top - self.score()) + 1);
+            }
+            case BACK -> {
+                double bottom = ordinary.stream().mapToDouble(Terms::score).min().orElseThrow();
+                yield Math.min(0, (int) Math.ceil(bottom - self.score()) - 1);
+            }
+            case AFTER_N -> (int) Math.ceil(others.get(after - 1).score() - self.score()) - 1;
+        };
+    }
+
     private static Comparator<Scored> comparator(QueueStrategy strategy) {
         Comparator<Scored> creation = Comparator.<Scored, Instant>comparing(s -> s.ticket().createdAt()).thenComparing(s -> s.ticket().id());
         return switch (strategy) {

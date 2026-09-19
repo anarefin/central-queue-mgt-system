@@ -193,7 +193,7 @@ export class ApiClient {
 
   /**
    * An agent's counter session (SRS §11): open one on a counter their team serves, call the next ticket, start service,
-   * complete with an outcome, close. The server holds all the state, so `current` rebuilds the console after a refresh
+   * complete with an outcome, close; or, for a called ticket, re-announce it or miss it. The server holds all the state, so `current` rebuilds the console after a refresh
    * (FR-AGT-004); `current` answers `not_found` when the caller has no live session. `serve` and `complete` send the
    * ticket's `version` as `If-Match` when given, and a stale one is a `conflict` (SRS §20.1).
    */
@@ -203,6 +203,12 @@ export class ApiClient {
     open: (input: OpenSessionInput) => this.request<CounterSession>("POST", "/sessions", input),
     close: (id: string) => this.request<CounterSession>("DELETE", `/sessions/${id}`),
     next: (id: string) => this.request<CounterSession>("POST", `/sessions/${id}/next`),
+    /** F3: replay the call of the called ticket; it stays called (FR-DSP-028). */
+    reannounce: (id: string, version?: number) =>
+      this.request<CounterSession>("POST", `/sessions/${id}/reannounce`, undefined, { headers: ifMatch(version) }),
+    /** F6: the visitor is absent; the ticket returns to the queue, or closes as a no-show past the limit (FR-QUE-050). */
+    miss: (id: string, version?: number) =>
+      this.request<CounterSession>("POST", `/sessions/${id}/miss`, undefined, { headers: ifMatch(version) }),
     serve: (id: string, version?: number) =>
       this.request<CounterSession>("POST", `/sessions/${id}/serve`, undefined, { headers: ifMatch(version) }),
     complete: (id: string, input: CompleteInput, version?: number) =>

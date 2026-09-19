@@ -12,6 +12,7 @@ import com.qms.issuance.Channels;
 import com.qms.issuance.IssuanceService;
 import com.qms.issuance.IssueCommand;
 import com.qms.platform.security.Role;
+import com.qms.queue.QueueReads;
 import com.qms.support.MutableClock;
 import com.qms.support.PostgresContainerConfig;
 import java.io.IOException;
@@ -53,9 +54,10 @@ import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 
 /**
- * Ticket 10 against real PostgreSQL with a clock the test moves: an Agent opens a counter session, calls the highest
+ * Tickets 10 and 12 against real PostgreSQL with a clock the test moves: an Agent opens a counter session, calls the highest
  * scoring ticket, starts service and completes it with an outcome, and closes the session. Covers FR-AGT-001, -003, -004,
- * -005, -010, -032, FR-QUE-002, -030, -031, FR-CFG-105, ADR-0008, §18.4, §18.5, §19.3, Invariants 1-3 and NFR-PERF-003.
+ * -005, -010, -032, FR-QUE-002, -030, -031, FR-CFG-105, ADR-0008, §18.4, §18.5, §19.3, Invariants 1-3 and NFR-PERF-003; and,
+ * from ticket 12, Re-announce and Miss: FR-DSP-028, FR-QUE-050, -051, ADR-0004 and ADR-0005.
  */
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -92,6 +94,7 @@ class SessionIT {
     @Autowired MockMvc mvc;
     @Autowired JdbcTemplate jdbc;
     @Autowired IssuanceService issuance;
+    @Autowired QueueReads queues;
     @Autowired MutableClock clock;
 
     @BeforeEach
@@ -225,6 +228,31 @@ class SessionIT {
         MockHttpServletRequestBuilder request = post("/api/v1/sessions/" + session + "/complete");
         if (version != null) request.header("If-Match", "\"" + version + "\"");
         return call(request, agent.token(), outcome == null ? null : "{\"outcome_code_id\":\"" + outcome + "\",\"note\":\"done\"}");
+    }
+
+    private MvcResult reannounce(Agent agent, UUID session, Integer version) throws Exception {
+        MockHttpServletRequestBuilder request = post("/api/v1/sessions/" + session + "/reannounce");
+        if (version != null) request.header("If-Match", "\"" + version + "\"");
+        return call(request, agent.token(), null);
+    }
+
+    private MvcResult miss(Agent agent, UUID session, Integer version) throws Exception {
+        MockHttpServletRequestBuilder request = post("/api/v1/sessions/" + session + "/miss");
+        if (version != null) request.header("If-Match", "\"" + version + "\"");
+        return call(request, agent.token(), null);
+    }
+
+    /** The token numbers of a service's waiting tickets in the order they will be called. */
+    private List<String> queueOrder(UUID service) {
+        return queues.ordered(service, null).entries().stream().map(QueueReads.Entry::tokenNumber).toList();
+    }
+
+    private List<Map<String, Object>> eventsOf(Map<String, Object> ticket) {
+        return jdbc.queryForList("SELECT seq, event_type, from_state, to_state, counter_id, payload::text AS payload FROM ticket_event WHERE ticket_id = ? ORDER BY seq", ticket.get("id"));
+    }
+
+    private static Object inPayload(Map<String, Object> event, String path) {
+        return JsonPath.read((String) event.get("payload"), path);
     }
 
     private MvcResult close(Agent agent, UUID session) throws Exception {
@@ -881,6 +909,233 @@ class SessionIT {
         assertThat((String) field(closed, "$.closed_at")).isNotNull();
         assertThat(status(close(agent, session))).isEqualTo(200);
         assertThat(jdbc.queryForObject("SELECT count(*) FROM audit_log WHERE action = 'session.closed' AND entity_id = ?", Integer.class, session)).as("audited once").isEqualTo(1);
+    }
+
+    // ---- FR-DSP-028, ADR-0005: Re-announce (F3) ---------------------------------------------------------------
+
+    @Test
+    void reannouncingKeepsTheTicketCalledAndBoundCountsEachRepeatAndStopsAtTheLimit() throws Exception {
+        World w = world();
+        UUID desk = counter(w, "Desk 1", w.a(), 1);
+        String token = issueAgo(w.a(), 10);
+        Agent agent = agent(w);
+        UUID session = opened(agent, desk);
+        calledToken(agent, session);
+
+        for (int repeat = 1; repeat <= 3; repeat++) {
+            MvcResult again = reannounce(agent, session, repeat); // the ticket is at version 1 after the call, then one more per repeat
+            assertThat(status(again)).as(body(again)).isEqualTo(200);
+            assertThat((String) field(again, "$.ticket.state")).isEqualTo("called");
+            assertThat((Integer) field(again, "$.ticket.announce_count")).isEqualTo(repeat);
+            assertThat((Integer) field(again, "$.ticket.announce_limit")).isEqualTo(3);
+            assertThat((Integer) field(again, "$.ticket.version")).isEqualTo(repeat + 1);
+            Map<String, Object> row = ticketRow(token, w.a());
+            assertThat(row.get("state")).isEqualTo("called");
+            assertThat(row.get("counter_session_id")).as("the Session binding is kept").isEqualTo(session);
+            assertThat(row.get("announce_count")).isEqualTo(repeat);
+            assertThat(row.get("miss_count")).as("a Re-announce is not a Miss").isEqualTo(0);
+        }
+
+        MvcResult capped = reannounce(agent, session, null);
+        assertThat(status(capped)).isEqualTo(409);
+        assertThat(reason(capped)).isEqualTo("reannounce_limit_reached");
+        Map<String, Object> row = ticketRow(token, w.a());
+        assertThat(row.get("announce_count")).isEqualTo(3);
+        assertThat(row.get("state")).isEqualTo("called");
+
+        List<Map<String, Object>> events = eventsOf(row);
+        assertThat(events.stream().map(e -> e.get("event_type"))).containsExactly("ticket.issued", "ticket.called", "ticket.reannounced", "ticket.reannounced", "ticket.reannounced");
+        assertThat(events.get(2).get("from_state")).isEqualTo("called");
+        assertThat(events.get(2).get("to_state")).isEqualTo("called");
+        assertThat(events.get(2).get("counter_id")).isEqualTo(desk);
+        assertThat(events.stream().skip(2).map(e -> inPayload(e, "$.announce_count"))).containsExactly(1, 2, 3);
+        assertThat(status(serve(agent, session, null))).as("the ticket is still the session's to serve").isEqualTo(200);
+    }
+
+    // ---- FR-QUE-050, FR-QUE-051, ADR-0004, ADR-0005: Miss (F6) ------------------------------------------------
+
+    @Test
+    void aMissReturnsTheTicketToWaitingAfterThreeOthersFreesTheCounterAndKeepsItsOriginalWait() throws Exception {
+        World w = world();
+        UUID desk = counter(w, "Desk 1", w.a(), 1);
+        String missed = issueAgo(w.a(), 60);
+        List<String> others = new ArrayList<>();
+        for (int ago : new int[] {50, 40, 30, 20, 10}) others.add(issueAgo(w.a(), ago));
+        Agent agent = agent(w);
+        UUID session = opened(agent, desk);
+        assertThat(calledToken(agent, session)).as("the longest waiting is called first").isEqualTo(missed);
+        Object queuedAt = ticketRow(missed, w.a()).get("queued_at");
+
+        MvcResult result = miss(agent, session, 1);
+
+        assertThat(status(result)).as(body(result)).isEqualTo(200);
+        assertThat((Object) field(result, "$.ticket")).as("the counter is free").isNull();
+        Map<String, Object> row = ticketRow(missed, w.a());
+        assertThat(row.get("state")).isEqualTo("waiting");
+        assertThat(row.get("counter_session_id")).as("the binding is cleared on the return to waiting (Invariant 2)").isNull();
+        assertThat(row.get("miss_count")).isEqualTo(1);
+        assertThat(row.get("queued_at")).as("queued_at is never rewritten (ADR-0004)").isEqualTo(queuedAt);
+        assertThat(row.get("wait_seconds")).as("stored at closure only").isNull();
+        assertThat(row.get("closed_at")).isNull();
+        // Its score was 60; the third ticket in line scores 30, so it lands just behind it: 30 - 1 = 29 = 60 - 31.
+        assertThat(row.get("score_adjustment_minutes")).isEqualTo(-31);
+        assertThat(queueOrder(w.a())).containsExactly(others.get(0), others.get(1), others.get(2), missed, others.get(3), others.get(4));
+
+        Map<String, Object> event = eventsOf(row).getLast();
+        assertThat(event.get("event_type")).isEqualTo("ticket.missed");
+        assertThat(event.get("from_state") + ">" + event.get("to_state")).isEqualTo("called>waiting");
+        assertThat(event.get("counter_id")).isEqualTo(desk);
+        assertThat(inPayload(event, "$.score_adjustment_minutes")).as("each positional move writes the adjustment applied").isEqualTo(-31);
+        assertThat(inPayload(event, "$.reentry_position")).isEqualTo("after_n");
+        assertThat(inPayload(event, "$.reentry_after")).isEqualTo(3);
+        assertThat(inPayload(event, "$.miss_count")).isEqualTo(1);
+
+        assertThat(calledToken(agent, session)).as("the counter calls the next ticket at once").isEqualTo(others.get(0));
+    }
+
+    @Test
+    void aMissPastTheLimitClosesTheTicketAsNoShowInsteadOfReturningIt() throws Exception {
+        World w = world();
+        UUID desk = counter(w, "Desk 1", w.a(), 1);
+        String token = issueAgo(w.a(), 10);
+        Agent agent = agent(w);
+        UUID session = opened(agent, desk);
+
+        for (int miss = 1; miss <= 2; miss++) {
+            calledToken(agent, session);
+            assertThat(status(miss(agent, session, null))).isEqualTo(200);
+            Map<String, Object> row = ticketRow(token, w.a());
+            assertThat(row.get("state")).as("miss " + miss).isEqualTo("waiting");
+            assertThat(row.get("miss_count")).isEqualTo(miss);
+        }
+        assertThat(calledToken(agent, session)).as("the same ticket is called a third time").isEqualTo(token);
+        clock.advance(Duration.ofMinutes(2));
+        MvcResult third = miss(agent, session, null);
+
+        assertThat(status(third)).as(body(third)).isEqualTo(200);
+        assertThat((Object) field(third, "$.ticket")).isNull();
+        Map<String, Object> row = ticketRow(token, w.a());
+        assertThat(row.get("state")).isEqualTo("no_show");
+        assertThat(row.get("miss_count")).isEqualTo(3);
+        assertThat(row.get("counter_session_id")).as("the binding is cleared on a terminal state (Invariant 2)").isNull();
+        assertThat(row.get("closed_at")).isNotNull();
+        assertThat(row.get("wait_seconds")).isNotNull();
+        assertThat(row.get("served_at")).isNull();
+        List<Map<String, Object>> events = eventsOf(row);
+        assertThat(events.stream().map(e -> e.get("event_type")))
+                .containsExactly("ticket.issued", "ticket.called", "ticket.missed", "ticket.called", "ticket.missed", "ticket.called", "ticket.no_show");
+        assertThat(events.getLast().get("from_state") + ">" + events.getLast().get("to_state")).isEqualTo("called>no_show");
+        assertThat(events.stream().filter(e -> "ticket.missed".equals(e.get("event_type"))).map(e -> inPayload(e, "$.score_adjustment_minutes")))
+                .as("each return to the queue carries its adjustment").hasSize(2).allMatch(Integer.class::isInstance);
+        assertThat(inPayload(events.getLast(), "$.miss_count")).isEqualTo(3);
+        MvcResult nothing = next(agent, session);
+        assertThat(reason(nothing)).as("a no-show is out of the queue").isEqualTo("no_ticket_waiting");
+    }
+
+    @Test
+    void aTicketCalledAgainAfterAMissWaitedOnlyWhileItWasWaiting() throws Exception {
+        World w = world();
+        UUID desk = counter(w, "Desk 1", w.a(), 1);
+        String token = issueAgo(w.a(), 5); // queued at BASE - 5 min
+        Agent agent = agent(w);
+        UUID session = opened(agent, desk);
+
+        calledToken(agent, session); // BASE: 300 s of waiting
+        clock.set(BASE.plusSeconds(120));
+        miss(agent, session, null); // 120 s being called are not wait
+        clock.set(BASE.plusSeconds(420));
+        calledToken(agent, session); // 300 s more of waiting
+        clock.set(BASE.plusSeconds(500));
+        serve(agent, session, null);
+        clock.set(BASE.plusSeconds(600));
+        complete(agent, session, null, null);
+
+        Map<String, Object> row = ticketRow(token, w.a());
+        assertThat(row.get("wait_seconds")).as("Invariant 1: 300 + 300, not queued_at to the last call").isEqualTo(600);
+        assertThat(row.get("service_seconds")).isEqualTo(100);
+    }
+
+    @Test
+    void missingTheTicketOfAClosingSessionResolvesItAndTheSessionCloses() throws Exception {
+        World w = world();
+        UUID desk = counter(w, "Desk 1", w.a(), 1);
+        String token = issueAgo(w.a(), 10);
+        Agent agent = agent(w);
+        UUID session = opened(agent, desk);
+        calledToken(agent, session);
+        assertThat(status(close(agent, session))).isEqualTo(409);
+
+        MvcResult missed = miss(agent, session, null);
+
+        assertThat(status(missed)).isEqualTo(200);
+        assertThat((String) field(missed, "$.state")).isEqualTo("closed");
+        assertThat(ticketRow(token, w.a()).get("state")).isEqualTo("waiting");
+        assertThat(status(current(agent))).isEqualTo(404);
+    }
+
+    @Test
+    void reannouncingAndMissingNeedACalledTicketInTheCallersOwnSession() throws Exception {
+        World w = world();
+        UUID desk = counter(w, "Desk 1", w.a(), 1);
+        issueAgo(w.a(), 10);
+        Agent agent = agent(w);
+        UUID session = opened(agent, desk);
+        assertThat(reason(reannounce(agent, session, null))).as("nothing called yet").isEqualTo("no_ticket_called");
+        assertThat(reason(miss(agent, session, null))).isEqualTo("no_ticket_called");
+
+        String token = calledToken(agent, session);
+        serve(agent, session, null);
+        assertThat(reason(reannounce(agent, session, null))).as("a ticket in service cannot be re-announced").isEqualTo("no_ticket_called");
+        assertThat(reason(miss(agent, session, null))).as("a ticket in service cannot be missed").isEqualTo("no_ticket_called");
+        assertThat(ticketRow(token, w.a()).get("state")).isEqualTo("serving");
+        assertThat(ticketRow(token, w.a()).get("miss_count")).isEqualTo(0);
+    }
+
+    @Test
+    void reannouncingAndMissingAreRefusedOnAStaleTicketVersionAndLeaveTheTicketAsItWas() throws Exception {
+        World w = world();
+        UUID desk = counter(w, "Desk 1", w.a(), 1);
+        String token = issueAgo(w.a(), 10);
+        Agent agent = agent(w);
+        UUID session = opened(agent, desk);
+        calledToken(agent, session); // version 1
+
+        assertThat(reason(reannounce(agent, session, 0))).isEqualTo("version_mismatch");
+        assertThat(reason(miss(agent, session, 0))).isEqualTo("version_mismatch");
+
+        Map<String, Object> row = ticketRow(token, w.a());
+        assertThat(row.get("state")).isEqualTo("called");
+        assertThat(row.get("version")).isEqualTo(1);
+        assertThat(row.get("announce_count")).isEqualTo(0);
+        assertThat(row.get("miss_count")).isEqualTo(0);
+    }
+
+    @Test
+    void reannouncingAndMissingAreCheckedOnTheServerForPermissionAndOwnership() throws Exception {
+        World w = world();
+        UUID desk1 = counter(w, "Desk 1", w.a(), 1);
+        UUID desk2 = counter(w, "Desk 2", w.a(), 1);
+        String token = issueAgo(w.a(), 10);
+        Agent owner = agent(w);
+        Agent other = agent(w);
+        UUID ownersSession = opened(owner, desk1);
+        opened(other, desk2);
+        calledToken(owner, ownersSession);
+        Agent admin = user(Role.ORG_ADMIN, w.site(), w.group());
+        Agent reception = user(Role.RECEPTION_OPERATOR, w.site(), w.group());
+
+        for (String action : List.of("reannounce", "miss")) {
+            String path = "/api/v1/sessions/" + ownersSession + "/" + action;
+            assertThat(status(call(post(path), other.token(), null))).as(action + " on another agent's session").isEqualTo(403);
+            assertThat(status(call(post(path), admin.token(), null))).as(action + " as org admin").isEqualTo(403);
+            assertThat(status(call(post(path), reception.token(), null))).as(action + " as reception").isEqualTo(403);
+            assertThat(status(call(post(path), null, null))).as(action + " unauthenticated").isEqualTo(401);
+            assertThat(status(call(post("/api/v1/sessions/" + UUID.randomUUID() + "/" + action), owner.token(), null))).as(action + " unknown session").isEqualTo(404);
+        }
+        Map<String, Object> row = ticketRow(token, w.a());
+        assertThat(row.get("state")).as("nothing changed").isEqualTo("called");
+        assertThat(row.get("announce_count")).isEqualTo(0);
+        assertThat(row.get("miss_count")).isEqualTo(0);
     }
 
     // ---- NFR-PERF-003: console actions acknowledge within 500 ms at P95 ----------------------------------------

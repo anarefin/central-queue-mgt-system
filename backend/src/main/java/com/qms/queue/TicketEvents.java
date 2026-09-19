@@ -7,6 +7,7 @@ import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.time.temporal.ChronoUnit;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -86,9 +87,20 @@ public class TicketEvents {
         data.put("state", transition.toState());
         if (transition.counterId() != null) data.put("counter_id", transition.counterId().toString());
         data.put("waiting_count", waiting == null ? 0 : waiting);
-        if (transition.payload() instanceof Map<?, ?> payload && payload.containsKey("announce")) data.put("announce", payload.get("announce"));
+        if (transition.payload() instanceof Map<?, ?> payload) {
+            // Displays deduplicate an announcement by ticket and announce_count (FR-QUE-083).
+            for (String key : List.of("announce", "announce_count")) if (payload.containsKey(key)) data.put(key, payload.get(key));
+        }
         realtime.publish(Topics.queue(serviceId), transition.eventType(), transition.deviceTime(), data);
         if (transition.counterId() != null) realtime.publish(Topics.counter(transition.counterId()), transition.eventType(), transition.deviceTime(), data);
+    }
+
+    /** The ticket's recorded changes of state, oldest first, for the durations that are worked out from them (Invariant 1). */
+    public List<TicketTimings.Change> changes(UUID ticketId) {
+        return jdbc.query(
+                "SELECT occurred_at, from_state, to_state FROM ticket_event WHERE ticket_id = ? ORDER BY seq",
+                (rs, i) -> new TicketTimings.Change(rs.getObject("occurred_at", OffsetDateTime.class).toInstant(), rs.getString("from_state"), rs.getString("to_state")),
+                ticketId);
     }
 
     private static OffsetDateTime ts(Instant instant) {

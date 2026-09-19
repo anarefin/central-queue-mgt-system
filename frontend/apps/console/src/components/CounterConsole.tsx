@@ -11,16 +11,18 @@ import { OpenSessionCard } from "./OpenSessionCard";
 import { ServingDesk, type DeskActions } from "./ServingDesk";
 
 /** The function keys of SRS §11.2 that this console answers. */
-const KEYS: Record<string, keyof Pick<DeskActions, "call" | "start" | "complete" | "close">> = {
+const KEYS: Record<string, keyof Pick<DeskActions, "call" | "reannounce" | "start" | "complete" | "miss" | "close">> = {
   F2: "call",
+  F3: "reannounce",
   F4: "start",
   F5: "complete",
+  F6: "miss",
   F10: "close",
 };
 
 /**
  * The agent's console (SRS §11): open a session, then call, serve and complete tickets, and close the session, all from the
- * keyboard (F2, F4, F5, F10; NFR-USA-002). The console keeps no state the server does not: on load, on coming back
+ * keyboard (F2, F3, F4, F5, F6, F10; NFR-USA-002). The console keeps no state the server does not: on load, on coming back
  * online and after any refused or lost action it asks the server for the session again, so a refresh, a short network loss
  * or a device restart puts the agent back at the ticket they were serving (FR-AGT-004). Whether an action is allowed is
  * shown here for convenience only; the API checks each one (FR-CFG-103, FR-CFG-105).
@@ -117,17 +119,33 @@ export function CounterConsole() {
 
   const ticket = session?.ticket ?? null;
   const canCall = session?.state === "open" && ticket === null;
+  const canReannounce = ticket?.state === "called" && ticket.announce_count < ticket.announce_limit;
   const canStart = ticket?.state === "called";
   const canComplete = ticket?.state === "serving";
+  const canMiss = ticket?.state === "called";
   const canClose = session?.state === "open" || session?.state === "closing";
   const actions: DeskActions = {
     canCall,
+    canReannounce,
     canStart,
     canComplete,
+    canMiss,
     canClose,
     call() {
       if (!client || !session || !canCall) return;
       void perform(async () => setSession(await client.sessions.next(session.id)));
+    },
+    reannounce() {
+      if (!client || !session || !ticket || !canReannounce) return;
+      void perform(async () => setSession(await client.sessions.reannounce(session.id, ticket.version)));
+    },
+    miss() {
+      if (!client || !session || !ticket || !canMiss) return;
+      void perform(async () => {
+        const next = await client.sessions.miss(session.id, ticket.version);
+        // Missing the ticket of a closing session resolves it, and the session closes (SRS §19.3).
+        setSession(next.state === "closed" ? null : next);
+      });
     },
     start() {
       if (!client || !session || !ticket || !canStart) return;

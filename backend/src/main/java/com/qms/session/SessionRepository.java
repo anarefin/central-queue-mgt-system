@@ -52,7 +52,9 @@ class SessionRepository {
             Map<String, String> priorityClassNames,
             Instant queuedAt,
             Instant calledAt,
-            Instant servedAt) {}
+            Instant servedAt,
+            int announceCount,
+            int missCount) {}
 
     /** The Service group and site a Service belongs to, which decide who may watch its queue. */
     record ServiceScope(UUID serviceId, UUID groupId, UUID siteId) {}
@@ -61,7 +63,8 @@ class SessionRepository {
 
     private static final String BOUND =
             "SELECT t.id, t.token_number, t.state, t.version, t.service_id, v.name_i18n AS service_names, t.origin_channel,"
-                    + " pc.id AS class_id, pc.name_i18n AS class_names, t.queued_at, t.called_at, t.served_at"
+                    + " pc.id AS class_id, pc.name_i18n AS class_names, t.queued_at, t.called_at, t.served_at,"
+                    + " t.announce_count, t.miss_count"
                     + " FROM ticket t JOIN service v ON v.id = t.service_id"
                     + " LEFT JOIN priority_class pc ON pc.id = coalesce(t.priority_class_id, (SELECT id FROM priority_class WHERE is_default))";
 
@@ -229,6 +232,33 @@ class SessionRepository {
                 TicketTransition.COMPLETE.from(), sessionId) == 1;
     }
 
+    /** Replays the call: the ticket stays called, keeps its binding and counts one more announcement (ADR-0005). */
+    boolean reannounce(UUID ticketId, int version, UUID sessionId) {
+        return jdbc.update(
+                "UPDATE ticket SET announce_count = announce_count + 1, version = version + 1 WHERE id = ? AND version = ? AND state = ? AND counter_session_id = ?",
+                ticketId, version, TicketTransition.REANNOUNCE.from(), sessionId) == 1;
+    }
+
+    /**
+     * Returns a called ticket to the queue: the binding is cleared (Invariant 2), the miss is counted and the Score
+     * adjustment is set to where the ticket re-enters. {@code queued_at} is left alone (ADR-0004); the counter and agent
+     * stay as history, and {@code announce_count} is never reset, so an announcement stays unique to its ticket (FR-QUE-083).
+     */
+    boolean miss(UUID ticketId, int version, UUID sessionId, int scoreAdjustmentMinutes) {
+        return jdbc.update(
+                "UPDATE ticket SET state = ?, counter_session_id = NULL, miss_count = miss_count + 1,"
+                        + " score_adjustment_minutes = ?, version = version + 1 WHERE id = ? AND version = ? AND state = ? AND counter_session_id = ?",
+                TicketTransition.MISS.to(), scoreAdjustmentMinutes, ticketId, version, TicketTransition.MISS.from(), sessionId) == 1;
+    }
+
+    /** Closes a called ticket whose Miss went past the limit; like any terminal state it clears the binding. */
+    boolean noShow(UUID ticketId, int version, UUID sessionId, Instant now, int waitSeconds) {
+        return jdbc.update(
+                "UPDATE ticket SET state = ?, counter_session_id = NULL, miss_count = miss_count + 1, closed_at = ?, wait_seconds = ?,"
+                        + " version = version + 1 WHERE id = ? AND version = ? AND state = ? AND counter_session_id = ?",
+                TicketTransition.NO_SHOW.to(), ts(now), waitSeconds, ticketId, version, TicketTransition.NO_SHOW.from(), sessionId) == 1;
+    }
+
     Integer versionOf(UUID ticketId) {
         return jdbc.query("SELECT version FROM ticket WHERE id = ?", (rs, i) -> rs.getInt("version"), ticketId).stream().findFirst().orElse(null);
     }
@@ -277,7 +307,9 @@ class SessionRepository {
                 rs.getString("class_names") == null ? Map.of() : names(rs.getString("class_names")),
                 instant(rs, "queued_at"),
                 instant(rs, "called_at"),
-                instant(rs, "served_at"));
+                instant(rs, "served_at"),
+                rs.getInt("announce_count"),
+                rs.getInt("miss_count"));
     }
 
     private static Instant instant(java.sql.ResultSet rs, String column) throws java.sql.SQLException {
