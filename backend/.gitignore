@@ -1,0 +1,6 @@
+build/
+.gradle/
+*.iml
+.idea/
+# Signing keys are per-installation and never committed (API-015, NFR-SEC-013)
+/keys/
