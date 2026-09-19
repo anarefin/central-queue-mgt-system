@@ -21,7 +21,8 @@ import tools.jackson.databind.json.JsonMapper;
  *
  * <p>The same transition is published to the realtime hub (SRS §21.4) on the queue of its Service and, when a counter took
  * part, on that counter's topic. The hub delivers it only once the transaction commits, so a subscriber never hears of a
- * transition that was rolled back.
+ * transition that was rolled back. A transition that moves the queue also publishes the recomputed wait estimate and the
+ * new places of the tickets it moved ({@link EstimateEvents}).
  */
 @Repository
 public class TicketEvents {
@@ -42,11 +43,13 @@ public class TicketEvents {
     private final JdbcTemplate jdbc;
     private final JsonMapper mapper;
     private final RealtimePublisher realtime;
+    private final EstimateEvents estimates;
 
-    TicketEvents(JdbcTemplate jdbc, JsonMapper mapper, RealtimePublisher realtime) {
+    TicketEvents(JdbcTemplate jdbc, JsonMapper mapper, RealtimePublisher realtime, EstimateEvents estimates) {
         this.jdbc = jdbc;
         this.mapper = mapper;
         this.realtime = realtime;
+        this.estimates = estimates;
     }
 
     /** Appends the event and returns its per-ticket sequence number, one more than the ticket's last. */
@@ -93,6 +96,8 @@ public class TicketEvents {
         }
         realtime.publish(Topics.queue(serviceId), transition.eventType(), transition.deviceTime(), data);
         if (transition.counterId() != null) realtime.publish(Topics.counter(transition.counterId()), transition.eventType(), transition.deviceTime(), data);
+        // A transition that moves the queue changes its estimate and the places of the tickets behind it (FR-QUE-042).
+        estimates.transitioned(serviceId, transition.fromState(), transition.toState(), transition.deviceTime());
     }
 
     /** The ticket's recorded changes of state, oldest first, for the durations that are worked out from them (Invariant 1). */

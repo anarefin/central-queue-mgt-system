@@ -59,6 +59,8 @@ interface Props {
   busy: boolean;
   /** Tickets waiting per Service id, as the queue topics last said; a Service with no entry has not been heard from yet. */
   waiting: Record<string, number>;
+  /** The rounded wait a ticket issued now would be given, per Service id, as the queue topics last said. */
+  estimates: Record<string, { low: number; high: number }>;
   outcome: string;
   onOutcome: (id: string) => void;
   note: string;
@@ -99,6 +101,7 @@ export function ServingDesk({
   actions,
   busy,
   waiting,
+  estimates,
   outcome,
   onOutcome,
   note,
@@ -146,9 +149,13 @@ export function ServingDesk({
         <ul className="qms-list" aria-label={t("console.waiting.title")}>
           {session.services.map((service) => {
             const count = waiting[service.id];
+            const estimate = estimates[service.id];
+            const values = { service: localisedName(service.name_i18n, language), count: count === undefined ? "–" : formatNumber(count) };
             return (
               <li key={service.id} data-testid={`waiting-${service.id}`}>
-                {t("console.waiting.row", { service: localisedName(service.name_i18n, language), count: count === undefined ? "–" : formatNumber(count) })}
+                {estimate
+                  ? t("console.waiting.rowEstimate", { ...values, low: formatNumber(estimate.low), high: formatNumber(estimate.high) })
+                  : t("console.waiting.row", values)}
               </li>
             );
           })}

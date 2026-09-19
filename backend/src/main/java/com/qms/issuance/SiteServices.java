@@ -1,6 +1,7 @@
 package com.qms.issuance;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.qms.queue.WaitEstimate;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -19,5 +20,5 @@ public record SiteServices(
             String icon,
             @JsonProperty("display_order") int displayOrder,
             @JsonProperty("waiting_count") int waitingCount,
-            @JsonProperty("estimated_wait_minutes") EstimatedWait estimatedWait) {}
+            @JsonProperty("estimated_wait_minutes") WaitEstimate estimatedWait) {}
 }

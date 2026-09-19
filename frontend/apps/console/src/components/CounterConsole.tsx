@@ -5,7 +5,7 @@ import { formatTokenNumber } from "@qms/i18n";
 import { useI18n } from "@qms/i18n/react";
 import { Button, ErrorAlert } from "@qms/ui";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { counterMovedOn, counterTopic, describeError, localisedName, queueTopic, reasonOf, waitingFrom } from "../lib/console-support";
+import { counterMovedOn, counterTopic, describeError, estimateFrom, localisedName, queueTopic, reasonOf, waitingFrom } from "../lib/console-support";
 import { useTopics } from "../lib/realtime";
 import { useApi } from "../lib/runtime";
 import { OpenSessionCard } from "./OpenSessionCard";
@@ -45,6 +45,8 @@ export function CounterConsole() {
   const [busy, setBusy] = useState(false);
   /** Waiting tickets per Service, from the queue topics; a Service is missing until its first snapshot arrives. */
   const [waiting, setWaiting] = useState<Record<string, number>>({});
+  /** The wait a ticket issued now would be given, per Service, as a rounded range (FR-QUE-042); missing until the topic says. */
+  const [estimates, setEstimates] = useState<Record<string, { low: number; high: number }>>({});
   const [outcome, setOutcome] = useState("");
   const [note, setNote] = useState("");
   /** Whether the transfer panel (F7) is open. */
@@ -146,6 +148,14 @@ export function CounterConsole() {
   useTopics(session ? session.services.map((service) => queueTopic(service.id)) : [], (update) => {
     const count = waitingFrom(update);
     if (count) setWaiting((counts) => (counts[count.serviceId] === count.count ? counts : { ...counts, [count.serviceId]: count.count }));
+    const estimate = estimateFrom(update);
+    if (estimate) {
+      const range = { low: estimate.low, high: estimate.high };
+      setEstimates((known) => {
+        const current = known[estimate.serviceId];
+        return current && current.low === range.low && current.high === range.high ? known : { ...known, [estimate.serviceId]: range };
+      });
+    }
   });
 
   const canCall = session?.state === "open" && session.can_call;
@@ -339,6 +349,7 @@ export function CounterConsole() {
           actions={actions}
           busy={busy}
           waiting={waiting}
+          estimates={estimates}
           outcome={outcome}
           onOutcome={setOutcome}
           note={note}

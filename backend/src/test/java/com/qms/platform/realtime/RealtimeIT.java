@@ -282,24 +282,26 @@ class RealtimeIT {
         assertThat((String) opened.get("occurred_at")).isNotBlank();
 
         issue(w.service());
+        // On the queue topic: issue (1), the estimate (2) and the place (3) of the first ticket; the estimate again for the opened
+        // session (4); then this ticket's issue (5). A move of the queue also publishes queue.estimate_changed and ticket.position_changed (ticket 19).
         Map<String, Object> issued = console.event("ticket.issued");
-        assertThat(issued).containsEntry("topic", "queue:" + w.service()).containsEntry("seq", 2);
+        assertThat(issued).containsEntry("topic", "queue:" + w.service()).containsEntry("seq", 5);
         assertThat(data(issued)).containsEntry("waiting_count", 2).containsEntry("state", "waiting");
 
         Map<String, Object> called = json(send("POST", "/sessions/" + session + "/next", agent.token(), null));
         Map<String, Object> ticket = ticket(called);
         Map<String, Object> onQueue = console.event("ticket.called");
-        assertThat(onQueue).containsEntry("topic", "queue:" + w.service()).containsEntry("seq", 3);
+        assertThat(onQueue).containsEntry("topic", "queue:" + w.service()).containsEntry("seq", 8); // after 6, 7: the estimate and the place of the second ticket
         assertThat(data(onQueue)).containsEntry("waiting_count", 1).containsEntry("token_number", ticket.get("token_number")).containsEntry("counter_id", w.counter().toString()).containsEntry("announce", true);
         Map<String, Object> onCounter = console.event("ticket.called");
         assertThat(onCounter).containsEntry("topic", "counter:" + w.counter()).containsEntry("seq", 2);
 
         send("POST", "/sessions/" + session + "/serve", agent.token(), null);
-        assertThat(console.event("ticket.serving")).containsEntry("seq", 4).containsEntry("topic", "queue:" + w.service());
+        assertThat(console.event("ticket.serving")).containsEntry("seq", 11).containsEntry("topic", "queue:" + w.service()); // after 9, 10: the estimate and the new place
         assertThat(console.event("ticket.serving")).containsEntry("seq", 3).containsEntry("topic", "counter:" + w.counter());
 
         send("POST", "/sessions/" + session + "/complete", agent.token(), "{}");
-        assertThat(console.event("ticket.completed")).containsEntry("seq", 5).containsEntry("topic", "queue:" + w.service());
+        assertThat(console.event("ticket.completed")).containsEntry("seq", 12).containsEntry("topic", "queue:" + w.service());
         assertThat(console.event("ticket.completed")).containsEntry("seq", 4).containsEntry("topic", "counter:" + w.counter());
 
         send("DELETE", "/sessions/" + session, agent.token(), null);
@@ -455,7 +457,8 @@ class RealtimeIT {
         assertThat(send("POST", "/sessions/" + session + "/serve", agent.token(), null).statusCode()).isEqualTo(409);
         issue(w.service());
 
-        assertThat(console.event("ticket.issued")).containsEntry("seq", 1);
+        // Seq 1 is the estimate republished when the session opened; the refused serve announced nothing, so the issue follows at 2.
+        assertThat(console.event("ticket.issued")).containsEntry("seq", 2);
     }
 
     // ---- FR-QUE-080 authorisation at subscribe time ------------------------------------------------------------
@@ -525,22 +528,23 @@ class RealtimeIT {
         Socket before = connect(agent);
         before.subscribe(queue);
         Map<String, Object> snapshot = before.next("snapshot");
-        assertThat(snapshot).containsEntry("seq", 1); // the ticket issued before subscribing is seq 1
+        // Each issue publishes three events on the queue topic: ticket.issued, queue.estimate_changed and ticket.position_changed (ticket 19).
+        assertThat(snapshot).containsEntry("seq", 3); // the ticket issued before subscribing is seq 1 to 3
         issue(w.service());
-        assertThat(before.event("ticket.issued")).containsEntry("seq", 2);
+        assertThat(before.event("ticket.issued")).containsEntry("seq", 4);
         before.hangUp();
 
         issue(w.service());
         issue(w.service());
 
         Socket after = connect(agent);
-        after.subscribe(Map.of("topic", queue, "last_seq", 2, "epoch", snapshot.get("epoch")));
-        assertThat(after.next("replay")).containsEntry("count", 2).containsEntry("seq", 4);
-        assertThat(after.event("ticket.issued")).containsEntry("seq", 3);
-        assertThat(after.event("ticket.issued")).containsEntry("seq", 4);
+        after.subscribe(Map.of("topic", queue, "last_seq", 4, "epoch", snapshot.get("epoch")));
+        assertThat(after.next("replay")).containsEntry("count", 8).containsEntry("seq", 12);
+        assertThat(after.event("ticket.issued")).containsEntry("seq", 7);
+        assertThat(after.event("ticket.issued")).containsEntry("seq", 10);
         issue(w.service());
         Map<String, Object> live = after.event("ticket.issued");
-        assertThat(live).containsEntry("seq", 5);
+        assertThat(live).containsEntry("seq", 13);
         assertThat(data(live)).containsEntry("waiting_count", 5);
     }
 
@@ -568,7 +572,7 @@ class RealtimeIT {
         issue(w.service());
 
         Map<String, Object> polled = json(send("GET", "/stream/snapshot?topic=queue:" + w.service(), agent.token(), null));
-        assertThat(polled).containsEntry("topic", "queue:" + w.service()).containsEntry("seq", 2);
+        assertThat(polled).containsEntry("topic", "queue:" + w.service()).containsEntry("seq", 6); // two issues, three events each
         assertThat(polled.get("epoch")).isNotNull();
         assertThat(data(polled)).containsEntry("waiting_count", 2);
 

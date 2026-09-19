@@ -22,7 +22,7 @@ const REFUSALS = new Set(["service_inactive", "channel_not_allowed", "appointmen
  * a waiting ticket's class with a reason (FR-QUE-012) or cancel a ticket (§5.2).
  */
 export function ReceptionDesk() {
-  const { t, language } = useI18n();
+  const { t, language, formatNumber } = useI18n();
   const { client } = useApi();
   const { user } = useAuth();
   const siteId = user?.sites[0] ?? null;
@@ -165,7 +165,15 @@ export function ReceptionDesk() {
                 <input type="radio" name="reception-service" value={s.id} checked={selected === s.id} onChange={() => setSelected(s.id)} /> {nameOf(s.name_i18n)}
                 <span className="qms-muted"> · {nameOf(s.service_group.name_i18n)}</span>
               </span>
-              <span className="qms-muted">{t("reception.services.waiting", { count: s.waiting_count })}</span>
+              <span className="qms-muted">
+                {s.estimated_wait_minutes
+                  ? t("reception.services.waitingEstimate", {
+                      count: s.waiting_count,
+                      low: formatNumber(s.estimated_wait_minutes.low),
+                      high: formatNumber(s.estimated_wait_minutes.high),
+                    })
+                  : t("reception.services.waiting", { count: s.waiting_count })}
+              </span>
             </label>
           ))}
         </fieldset>
@@ -201,6 +209,11 @@ export function ReceptionDesk() {
             {queue && (
               <>
                 <p className="qms-muted">{t("reception.queue.count", { count: queue.waiting_count })}</p>
+                {queue.estimated_wait_minutes && (
+                  <p className="qms-muted">
+                    {t("reception.queue.estimate", { low: formatNumber(queue.estimated_wait_minutes.low), high: formatNumber(queue.estimated_wait_minutes.high) })}
+                  </p>
+                )}
                 {queue.tickets.length === 0 && <p className="qms-muted">{t("reception.queue.empty")}</p>}
                 {queue.tickets.length > 0 && (
                   <ol className="qms-list" aria-label={t("reception.queue.title", { service: nameOf(selectedService.name_i18n) })}>
@@ -263,8 +276,9 @@ export function ReceptionDesk() {
 }
 
 function IssuedTicket({ ticket, nameOf }: { ticket: Ticket; nameOf: (names: Record<string, string>) => string }) {
-  const { t } = useI18n();
+  const { t, formatNumber } = useI18n();
   const zone = ticket.zone;
+  const estimate = ticket.estimated_wait_minutes;
   return (
     <Card>
       <h2 className="qms-heading">{t("reception.result.title")}</h2>
@@ -282,7 +296,9 @@ function IssuedTicket({ ticket, nameOf }: { ticket: Ticket; nameOf: (names: Reco
             : t("reception.result.zoneNoBuilding", { zone: zone.name, floor: zone.floor_label })}
       </p>
       {ticket.position !== null && <p>{t("reception.result.position", { position: ticket.position })}</p>}
-      <p className="qms-muted">{t("reception.result.estimate")}</p>
+      <p className="qms-muted">
+        {estimate ? t("reception.result.estimate", { low: formatNumber(estimate.low), high: formatNumber(estimate.high) }) : t("reception.result.estimateNone")}
+      </p>
       {ticket.secret && (
         <>
           <p>{t("reception.result.secret", { secret: ticket.secret })}</p>

@@ -1,7 +1,7 @@
 # Traceability matrix
 
 SRS §27.1: every requirement ID maps to at least one automated test or documented UAT step, and a requirement with no
-test is treated as not implemented. Covers tickets 01–18; later tickets append rows.
+test is treated as not implemented. Covers tickets 01–19; later tickets append rows.
 
 **Test types:** unit, integration (real PostgreSQL through Testcontainers, or a full Spring context), E2E, UAT, load,
 manual. **Status:** `passing` (the test ran green in the last full run), `partial` (only part of the requirement is
@@ -140,7 +140,7 @@ Paths: `B` = `backend/src/test/java/com/qms`, `F` = `frontend`.
 | ADR-0007 a Visit is created implicitly with the first ticket; `visit_id` NOT NULL | §18.3 | integration | `IT#everyTicketBelongsToAVisitCreatedWithItsFirstTicket` (row created, schema column is NOT NULL) | passing |
 | §18.5 a ticket denormalises service group, site and zone at issue | §18.5 | integration | `IT#aTicketCopiesItsGroupSiteAndZoneAtIssueAndLaterReconfigurationLeavesItAlone`, `IT#aServiceNoCounterServesYetStillIssuesWithoutAZone` | passing |
 | Invariant 3, FR-QUE-070, ADR-0001 exactly one `ticket_event` per transition with device time, server time and a per-ticket sequence number | §19.1, §21 | integration | `IT#issuingWritesExactlyOneEventWithDeviceAndServerTimeAndSequenceNumberOne`, `IT#ticketEventsAreAppendOnly`. Only the issue transition exists so far; later transitions extend the same writer (`TicketEvents`) | partial |
-| FR-ISS-002, §20.5 response carries token number, service, zone, building, floor, position, estimate placeholder and the ticket secret, hashed at rest | §8, §20.5 | integration, unit | `IT#theResponseCarriesEverythingTheVisitorNeedsAndTheSecretOnlyOnce` (the estimate is null until wait estimation, ticket 19; only the SHA-256 of the secret is stored and it cannot be read back); `UI` (`issues a walk-in ticket and shows token, service, waiting area, position, estimate and secret…`, `says where to wait without a building`, `says so when no counter serves the service yet…`) | passing |
+| FR-ISS-002, §20.5 response carries token number, service, zone, building, floor, position, estimate and the ticket secret, hashed at rest | §8, §20.5 | integration, unit | `IT#theResponseCarriesEverythingTheVisitorNeedsAndTheSecretOnlyOnce` (the estimate is worked out by ticket 19, see its section; only the SHA-256 of the secret is stored and it cannot be read back); `UI` (`issues a walk-in ticket and shows token, service, waiting area, position, estimate and secret…`, `says where to wait without a building`, `says so when no counter serves the service yet…`) | passing |
 | §8.5 `origin_channel` is recorded; the issuance service is channel-agnostic | §8.5 | integration | `IT#theIssuanceServiceIsChannelAgnosticAndRecordsTheChannelAndActor` (kiosk and reception through one path, one sequence), `IT#theHttpEndpointIssuesAtReceptionOnly`, `IT#anInactiveServiceOrOneNotIssuedAtReceptionCannotBeIssuedFor` (the refusal reasons of ticket 21 are not built; `conflict` names one) | passing |
 | §20.4 `GET /tickets/{id}` for staff and `GET /queues/{service_id}` snapshot; `GET /sites/{id}/services` | §20.4 | integration | `IT#theIssuedTicketAppearsInTheServicesQueueSnapshotInOrder`, `IT#theSiteServiceListShowsWhatReceptionCanIssueWithLiveQueueLengths`, `IT#theResponseCarriesEverythingTheVisitorNeedsAndTheSecretOnlyOnce` (`GET` has no secret) | passing |
 | Reception screen: choose service, issue, show the result, see the queue | §8.3 | unit | `UI` (`lists the services reception can issue…`, `issues a walk-in ticket…`, `explains a refusal in words…`, `tells a user with no site…`, `links to the desk from the home screen for a Reception Operator only…`) | passing |
@@ -392,6 +392,25 @@ with the requirements they extend (FR-QUE-080 here, FR-CFG-104 under ticket 04).
 | FR-I18N-001 the new strings are in both packs; Token numbers stay Western Arabic | §17 | unit | `F/packages/i18n/src/i18n.test.ts` (pack parity); `Desk#shows the actions in Bangla…`, `Priority#is in Bangla too` | passing |
 | §18.2, §18.3 the V14 migration is forward-only and re-runnable | §18, §26 | integration | `B/platform/MigrationIT#everyMigrationScriptCanBeReExecutedAgainstAnAlreadyMigratedDatabase` (V14) | passing |
 | Definition of done §27.5 item 6, administrator guide | §27.5 | manual | `docs/admin-guide.md` section 10 | passing |
+
+## Ticket 19, wait estimation
+
+`Est` = `B/queue/WaitEstimatorTest`, `IT` = `B/queue/WaitEstimationIT`, `Desk` = `F/apps/admin/src/components/ReceptionDesk.test.tsx`,
+`Console` = `F/apps/console/src/components/CounterConsole.test.tsx`.
+
+| Requirement ID | Section | Test type | Test reference | Status |
+|---|---|---|---|---|
+| FR-QUE-040 estimate = tickets ahead ÷ max(open counters, 1) × rolling average handling time | §10.5 | unit, integration | `Est#theEstimateIsTicketsAheadOverOpenCountersTimesTheHandlingTime`, `#withNoOpenCounterTheDivisorIsOneNotZero`, `#nobodyAheadMeansNothingToWaitFor`; `IT#theIssuanceResponseCarriesTheEstimateOfTheTicketsAheadAtTheExpectedHandlingTime`, `#theEstimateIsDividedByTheCountersOpenForTheService`, `#aCounterOnABreakOrChosenForAnotherServiceDoesNotCountAsOpen` (an open counter is a live `open` session that chose the service) | passing |
+| FR-QUE-041 the average is over the trailing 20 completed tickets of the service; below 5 samples the expected handling time is used | §10.5 | unit, integration | `Est#belowFiveSamplesTheExpectedHandlingTimeIsUsed`, `#fromFiveSamplesTheAverageOfThemIsUsed`, `#onlyTheNewestTwentyCountAndTheListIsNewestFirst`; `IT#fewerThanFiveCompletedTicketsLeaveTheExpectedHandlingTimeInForce`, `#fromFiveCompletedTicketsTheirAverageReplacesTheExpectedTime`, `#onlyTheLatestTwentyCompletedTicketsOfTheServiceAreAveraged` | passing |
+| FR-QUE-042 recomputed on every queue change and shown as a rounded range | §10.5 | unit, integration | `Est#theRangeIsFiveMinutesWideAndRoundedToFive`; `IT#theQueueSnapshotTheTicketReadAndTheSiteServicesShowTheEstimateAsARange`, `#theEstimateFollowsTheQueueAsTicketsAreCalled` (nothing is stored; every read recomputes) | passing |
+| FR-ISS-005 the estimate is never presented as an exact promise | §8.5 | unit, integration | `Est#theRangeAlwaysHoldsTheFigureItRoundsAndNeverPromisesIt`; `IT#theIssuanceResponseCarriesTheEstimateOfTheTicketsAheadAtTheExpectedHandlingTime` (`{low, high}`, never one figure); `Desk#issues a walk-in ticket and shows token…` ("about 15–20 minutes"), `#never turns the range into one figure…`, `#shows the estimate of the queue as a range…` | passing |
+| FR-ISS-002, §20.5 the issuance response carries the estimate | §20.5 | integration | `IT#theIssuanceResponseCarriesTheEstimateOfTheTicketsAheadAtTheExpectedHandlingTime` | passing |
+| §21.4 `queue.estimate_changed` is published on the queue topic when the queue moves (a ticket joins, leaves or completes) and when counters open, close or go on a break; a step that moves nothing publishes nothing | §21.2, §21.4 | integration, unit | `IT#issuingPublishesTheRecomputedEstimateAndTheNewTicketsPlace`, `#completingATicketAddsASampleAndAStepThatMovesNothingPublishesNothing`, `#openingAndClosingASessionRepublishesTheEstimateWithTheNewNumberOfOpenCounters`; `Console#shows the wait a new ticket would be given as a range and follows queue.estimate_changed` | passing |
+| §21.4 `ticket.position_changed` is published, with the new place and the ticket's own estimate, for each queued ticket whose place moved and only for those | §21.4 | integration | `IT#issuingPublishesTheRecomputedEstimateAndTheNewTicketsPlace`, `#callingTheHeadPublishesAPositionChangeForEveryTicketBehindIt`, `#aTicketThatReturnsToTheQueueIsToldItsPlaceAgain` | passing |
+| FR-I18N-001 the new strings are in both packs; Token numbers stay Western Arabic | §17 | unit | `F/packages/i18n/src/i18n.test.ts` (pack parity); `Desk#shows Bangla labels and keeps the token number in Western Arabic digits` (estimate in Bangla digits) | passing |
+| §5.2 every read of an estimate is permission- and scope-checked server-side (it rides on the ticket, queue and site-services reads, and on the topic subscription of FR-QUE-080) | §5.2 | integration | `IT#theQueueSnapshotTheTicketReadAndTheSiteServicesShowTheEstimateAsARange` (staff token); existing `IssuanceIT`, `PriorityIT` and `RealtimeIT` authorisation tests cover the same endpoints and topics | passing |
+| §18.2 the V15 migration is forward-only and re-runnable | §18, §26 | integration | `B/platform/MigrationIT#everyMigrationScriptCanBeReExecutedAgainstAnAlreadyMigratedDatabase` (V15) | passing |
+| Definition of done §27.5 item 6, administrator guide | §27.5 | manual | `docs/admin-guide.md` section 14 | passing |
 
 ## Notes
 

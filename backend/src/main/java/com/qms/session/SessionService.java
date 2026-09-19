@@ -12,6 +12,7 @@ import com.qms.platform.security.CurrentUser;
 import com.qms.platform.security.Permission;
 import com.qms.platform.security.ScopeGuard;
 import com.qms.queue.CallRules;
+import com.qms.queue.EstimateEvents;
 import com.qms.queue.QueueEngine;
 import com.qms.queue.QueueEngine.Contender;
 import com.qms.queue.QueueProperties;
@@ -98,6 +99,7 @@ public class SessionService {
     private final CurrentUser currentUser;
     private final QueueProperties queueProperties;
     private final RealtimePublisher realtime;
+    private final EstimateEvents estimates;
     private final Clock clock;
 
     SessionService(
@@ -110,6 +112,7 @@ public class SessionService {
             CurrentUser currentUser,
             QueueProperties queueProperties,
             RealtimePublisher realtime,
+            EstimateEvents estimates,
             Clock clock) {
         this.sessions = sessions;
         this.queues = queues;
@@ -120,6 +123,7 @@ public class SessionService {
         this.currentUser = currentUser;
         this.queueProperties = queueProperties;
         this.realtime = realtime;
+        this.estimates = estimates;
         this.clock = clock;
     }
 
@@ -165,6 +169,7 @@ public class SessionService {
             // Two opens raced past the checks above; the partial unique indexes are what decided.
             throw refusal(e.getMessage() != null && e.getMessage().contains(AGENT_INDEX) ? "agent_has_open_session" : "counter_occupied");
         }
+        estimates.capacityChanged(chosen, now);
         Map<String, Object> after = new LinkedHashMap<>();
         after.put("counter_id", counter.id().toString());
         after.put("site_id", counter.siteId().toString());
@@ -629,12 +634,12 @@ public class SessionService {
         if (BreakRules.ON_BREAK.equals(session.state())) {
             // Closing ends the break: the agent is back at the desk to clear what is left, and the time on break stops here.
             endBreakForClose(session, session.agentId(), "session_closed", clock.instant(), BreakRules.OPEN);
-            sessions.setState(session.id(), BreakRules.OPEN, null);
+            changeState(session, BreakRules.OPEN, null);
             session = sessions.session(session.id()).orElseThrow();
         }
         List<BoundTicket> unresolved = sessions.unresolved(session.id());
         if (!unresolved.isEmpty()) {
-            if (!"closing".equals(session.state())) sessions.setState(session.id(), "closing", null);
+            if (!"closing".equals(session.state())) changeState(session, "closing", null);
             // With only held tickets left the agent has nothing in progress, only a list to clear (FR-AGT-013).
             boolean inProgress = unresolved.stream().anyMatch(t -> "called".equals(t.state()) || "serving".equals(t.state()));
             throw refusal(inProgress ? "ticket_in_progress" : "held_tickets_remaining");
@@ -696,7 +701,7 @@ public class SessionService {
             returned.add(Map.of("ticket_id", ticket.id().toString(), "token_number", ticket.tokenNumber(), "from_state", ticket.state()));
         }
 
-        sessions.setState(session.id(), "force_closed", now);
+        changeState(session, "force_closed", now);
         Map<String, Object> before = new LinkedHashMap<>();
         before.put("counter_id", session.counterId().toString());
         before.put("agent_id", session.agentId().toString());
@@ -718,12 +723,21 @@ public class SessionService {
     }
 
     private void finish(SessionRow session, Instant now) {
-        sessions.setState(session.id(), "closed", now);
+        changeState(session, "closed", now);
         Map<String, Object> after = new LinkedHashMap<>();
         after.put("counter_id", session.counterId().toString());
         after.put("state", "closed");
         audit.record(AuditEvent.of("session.closed", "counter_session", session.id()).withAfter(after));
         announce("session.closed", session.id(), session.counterId(), session.agentId(), "closed", now);
+    }
+
+    /**
+     * Moves the session to {@code state}. A session that opens, goes on or off a break, starts closing or ends changes how many
+     * counters take tickets, so the wait estimate of each Service it serves is recomputed (FR-QUE-040, FR-QUE-042).
+     */
+    private void changeState(SessionRow session, String state, Instant closedAt) {
+        sessions.setState(session.id(), state, closedAt);
+        estimates.capacityChanged(session.services(), clock.instant());
     }
 
     /** Tells the counter's console its session changed (SRS §21.4); the hub delivers it once this transaction commits. */
@@ -805,7 +819,7 @@ public class SessionService {
 
         Instant now = clock.instant();
         sessions.insertBreak(UUID.randomUUID(), session.id(), type.id(), now, by);
-        sessions.setState(session.id(), BreakRules.ON_BREAK, null);
+        changeState(session, BreakRules.ON_BREAK, null);
 
         Map<String, Object> after = new LinkedHashMap<>();
         after.put("state", BreakRules.ON_BREAK);
@@ -832,7 +846,7 @@ public class SessionService {
         if (BreakRules.end(session.state()).isEmpty()) throw refusal("not_on_break");
         Instant now = clock.instant();
         OpenBreak ended = finishBreak(session, by, now, BreakRules.OPEN, forced);
-        sessions.setState(session.id(), BreakRules.OPEN, null);
+        changeState(session, BreakRules.OPEN, null);
         if (ended == null) return;
         int seconds = BreakRules.seconds(ended.startedAt(), now);
         if (forced) {

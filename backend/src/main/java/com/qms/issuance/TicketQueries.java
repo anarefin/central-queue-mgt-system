@@ -10,6 +10,7 @@ import com.qms.platform.security.ScopeGuard;
 import com.qms.queue.QueueEngine;
 import com.qms.queue.QueueReads;
 import com.qms.queue.QueueStrategy;
+import com.qms.queue.WaitEstimates;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -38,12 +39,14 @@ public class TicketQueries {
 
     private final TicketRepository tickets;
     private final QueueReads queues;
+    private final WaitEstimates estimates;
     private final TicketViews views;
     private final ScopeGuard scope;
 
-    TicketQueries(TicketRepository tickets, QueueReads queues, TicketViews views, ScopeGuard scope) {
+    TicketQueries(TicketRepository tickets, QueueReads queues, WaitEstimates estimates, TicketViews views, ScopeGuard scope) {
         this.tickets = tickets;
         this.queues = queues;
+        this.estimates = estimates;
         this.views = views;
         this.scope = scope;
     }
@@ -70,7 +73,9 @@ public class TicketQueries {
         List<QueueSnapshot.Entry> entries = queues.next(serviceId, take).stream()
                 .map(e -> new QueueSnapshot.Entry(e.ticketId(), e.tokenNumber(), e.state(), e.position(), e.originChannel(), e.queuedAt(), classOf(e), e.escalated()))
                 .toList();
-        return new QueueSnapshot(new NameRef(serviceId, service.names()), service.siteId(), queues.waitingCount(serviceId), null, entries);
+        // The estimate is what a visitor joining now would be told: everyone waiting is ahead of them (FR-QUE-040).
+        int waiting = queues.waitingCount(serviceId);
+        return new QueueSnapshot(new NameRef(serviceId, service.names()), service.siteId(), waiting, estimates.ahead(serviceId, waiting), entries);
     }
 
     /**
@@ -118,11 +123,12 @@ public class TicketQueries {
         if (channel != null && !Channels.ALL.contains(channel)) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, Map.of("fields", List.of(Map.of("field", "channel", "code", "invalid"))));
         }
-        List<SiteServices.Item> items = tickets.offeredServices(siteId, channel).stream().map(TicketQueries::item).toList();
+        List<SiteServices.Item> items = tickets.offeredServices(siteId, channel).stream().map(this::item).toList();
         return new SiteServices(siteId, site.defaultLanguage(), items);
     }
 
-    private static SiteServices.Item item(OfferedService s) {
-        return new SiteServices.Item(s.id(), s.names(), new NameRef(s.groupId(), s.groupNames()), s.tokenPrefix(), s.icon(), s.displayOrder(), s.waitingCount(), null);
+    private SiteServices.Item item(OfferedService s) {
+        return new SiteServices.Item(
+                s.id(), s.names(), new NameRef(s.groupId(), s.groupNames()), s.tokenPrefix(), s.icon(), s.displayOrder(), s.waitingCount(), estimates.ahead(s.id(), s.waitingCount()));
     }
 }

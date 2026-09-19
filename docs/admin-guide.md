@@ -459,3 +459,29 @@ admin, the before and after status and the reason, and publishes the same sessio
 ISO-8601 instants and the range is on when a break started). For each agent and break type it gives the count, total and average
 duration in seconds, and how many ran longer than the type's maximum. Only breaks that have ended count. The report is limited to
 the sites and Service groups in the caller's token.
+
+## 14. Wait estimates
+
+Every ticket the API returns, every queue view and every service list at reception shows an estimated wait (SRS §10.5,
+FR-QUE-040 to FR-QUE-042, FR-ISS-005). It is a **rounded range** in minutes, such as "about 15–20 minutes", and is never one
+figure or a promise: the range is five minutes wide and always holds the figure it rounds. It is worked out on every read
+from the live queue, so nothing is stored and nothing needs configuring:
+
+`estimate = tickets ahead ÷ max(open counters, 1) × average handling time`
+
+- **Tickets ahead** is the place in the queue minus one for a ticket, and everyone waiting for the queue views (what a ticket
+  issued now would be given). Paused tickets keep their place, so they count.
+- **Open counters** are counters whose session is `open` and has chosen the Service. A counter on a break, closing, or serving
+  only other Services does not count; with none open the divisor is 1.
+- **Average handling time** is the mean service time of the last 20 completed tickets of the Service. While fewer than 5 have
+  completed, the Service's **expected handling time** (section 8) is used instead, so set it to something honest.
+
+A ticket that has left the queue has no estimate (`estimated_wait_minutes` is null). The API field is
+`estimated_wait_minutes: {"low": 15, "high": 20}` on tickets, on `GET /queues/{service_id}` and on `GET /sites/{id}/services`.
+
+Consoles and dashboards hear of changes on the `queue:{service_id}` topic. `queue.estimate_changed` carries `waiting_count`,
+`open_counters` and the range a new ticket would get; it is published whenever a ticket joins, leaves or completes and whenever
+a session opens, closes, goes on a break or comes back. `ticket.position_changed` carries `ticket_id`, `position` and that
+ticket's own range, for each queued ticket whose place moved. The place last announced for each queued ticket is kept in
+`ticket_position`; it is a cache of what subscribers were told, and the live place is always computed from the queue. (The
+visitor's own `ticket:{ticket_id}` topic arrives with the visitor ticket page.)

@@ -435,7 +435,11 @@ class IssuanceIT {
         assertThat((String) field(first, "$.zone.floor_label")).isEqualTo("Ground");
         assertThat((Integer) field(first, "$.position")).isEqualTo(1);
         assertThat((Integer) field(second, "$.position")).isEqualTo(2);
-        assertThat(JsonPath.<Object>read(body(first), "$.estimated_wait_minutes")).as("a placeholder until estimation exists").isNull();
+        // A rounded range, never one figure (FR-QUE-042, FR-ISS-005): nobody ahead of the first, one ticket at the service's expected 10 minutes ahead of the second.
+        assertThat((Integer) field(first, "$.estimated_wait_minutes.low")).isEqualTo(0);
+        assertThat((Integer) field(first, "$.estimated_wait_minutes.high")).isEqualTo(5);
+        assertThat((Integer) field(second, "$.estimated_wait_minutes.low")).isEqualTo(10);
+        assertThat((Integer) field(second, "$.estimated_wait_minutes.high")).isEqualTo(15);
         assertThat((String) field(first, "$.origin_channel")).isEqualTo("reception");
         assertThat((String) field(first, "$.visit_id")).isNotBlank();
         assertThat((String) field(first, "$.issued_at")).isNotBlank();

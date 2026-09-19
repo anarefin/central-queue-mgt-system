@@ -33,7 +33,7 @@ const SERVICES: SiteServices = {
       icon: null,
       display_order: 1,
       waiting_count: 0,
-      estimated_wait_minutes: null,
+      estimated_wait_minutes: { low: 0, high: 5 },
     },
     {
       id: "v2",
@@ -43,7 +43,7 @@ const SERVICES: SiteServices = {
       icon: null,
       display_order: 2,
       waiting_count: 3,
-      estimated_wait_minutes: null,
+      estimated_wait_minutes: { low: 30, high: 35 },
     },
   ],
 };
@@ -82,7 +82,7 @@ function ticket(over: Partial<Ticket> = {}): Ticket {
     origin_channel: "reception",
     priority_class: { id: "c0", name_i18n: { bn: "সাধারণ", en: "Normal" } },
     position: 1,
-    estimated_wait_minutes: null,
+    estimated_wait_minutes: { low: 15, high: 20 },
     issued_at: STAMP,
     queued_at: STAMP,
     version: 0,
@@ -109,7 +109,8 @@ function fakeApi(desk: Desk, extra: Routes = {}): Recorded[] {
         service: { id: "v1", name_i18n: { bn: "পরামর্শ", en: "Consultation" } },
         site_id: "s1",
         waiting_count: desk.waiting.length,
-        estimated_wait_minutes: null,
+        // A ticket issued now would have everyone waiting in front of it, at about ten minutes each (FR-QUE-040).
+        estimated_wait_minutes: { low: desk.waiting.length * 10, high: desk.waiting.length * 10 + 5 },
         tickets: desk.waiting.map((w, i) => ({
           id: w.id,
           token_number: w.token_number,
@@ -160,9 +161,9 @@ describe("reception desk (SRS §8.3)", () => {
 
     const consultation = await screen.findByRole("radio", { name: /Consultation/ });
     expect(consultation.closest("label")).toHaveTextContent("Outpatient");
-    expect(consultation.closest("label")).toHaveTextContent("0 waiting");
+    expect(consultation.closest("label")).toHaveTextContent("0 waiting · about 0–5 min");
     // No English name for the second service: the site's default language stands in (FR-I18N-011).
-    expect(screen.getByRole("radio", { name: /ল্যাব/ }).closest("label")).toHaveTextContent("3 waiting");
+    expect(screen.getByRole("radio", { name: /ল্যাব/ }).closest("label")).toHaveTextContent("3 waiting · about 30–35 min");
     expect(screen.getByRole("button", { name: "Issue ticket" })).toBeDisabled();
     expect(screen.getByText("Choose a service to see its queue.")).toBeInTheDocument();
   });
@@ -180,7 +181,8 @@ describe("reception desk (SRS §8.3)", () => {
     expect(within(result).getByText("Service: Consultation")).toBeInTheDocument();
     expect(within(result).getByText("Waiting area: Ground waiting, Block A, floor 1st")).toBeInTheDocument();
     expect(within(result).getByText("Position in queue: 1")).toBeInTheDocument();
-    expect(within(result).getByText("Estimated wait: not available yet")).toBeInTheDocument();
+    // A rounded range, never one figure that reads as a promise (FR-QUE-042, FR-ISS-005).
+    expect(within(result).getByText("Estimated wait: about 15–20 minutes")).toBeInTheDocument();
     expect(within(result).getByText("Ticket secret: s3cr3t-value")).toBeInTheDocument();
     expect(within(result).getByText(/Give it to the visitor/)).toBeInTheDocument();
 
@@ -292,6 +294,28 @@ describe("reception desk (SRS §8.3)", () => {
     expect(await screen.findByText("Waiting area: Hall, floor 2nd")).toBeInTheDocument();
   });
 
+  it("shows the estimate of the queue as a range for a ticket issued now, and follows it when the queue is read again (FR-QUE-042)", async () => {
+    fakeApi(fresh());
+    renderApp(<ReceptionDesk />);
+    await chooseConsultation();
+    expect(await screen.findByText("A ticket issued now: about 0–5 minutes")).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Issue ticket" }));
+
+    expect(await screen.findByText("A ticket issued now: about 10–15 minutes")).toBeInTheDocument();
+  });
+
+  it("never turns the range into one figure, and says so when a ticket has no estimate because it left the queue", async () => {
+    fakeApi(fresh(), { "POST /tickets": () => json(201, ticket({ position: null, estimated_wait_minutes: null })) });
+    renderApp(<ReceptionDesk />);
+    await chooseConsultation();
+    await userEvent.click(screen.getByRole("button", { name: "Issue ticket" }));
+
+    const result = (await screen.findByText("Ticket issued")).closest("section")!;
+    expect(within(result).getByText("Estimated wait: not available")).toBeInTheDocument();
+    expect(within(result).queryByText(/about/)).not.toBeInTheDocument();
+  });
+
   it("says so when no counter serves the service yet, and leaves out a position the ticket does not have", async () => {
     fakeApi(fresh(), { "POST /tickets": () => json(201, ticket({ zone: null, position: null })) });
     renderApp(<ReceptionDesk />);
@@ -357,7 +381,7 @@ describe("reception desk (SRS §8.3)", () => {
     expect(within(result).getByTestId("issued-token")).toHaveTextContent("S-042");
     expect(within(result).getByText("সেবা: পরামর্শ")).toBeInTheDocument();
     expect(within(result).getByText("অপেক্ষার জায়গা: Ground waiting, Block A, 1st তলা")).toBeInTheDocument();
-    expect(within(result).getByText("আনুমানিক অপেক্ষা: এখনও পাওয়া যাচ্ছে না")).toBeInTheDocument();
+    expect(within(result).getByText("আনুমানিক অপেক্ষা: প্রায় ১৫–২০ মিনিট")).toBeInTheDocument();
   });
 
   it("tells a user with no site that there is nothing to issue for, and asks nothing of the API", async () => {

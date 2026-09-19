@@ -58,6 +58,18 @@ export function waitingFrom(update: RealtimeUpdate): { serviceId: string; count:
 }
 
 /**
+ * The wait estimate a queue topic reports, keyed by its Service: the rounded range a ticket issued now would be given
+ * (FR-QUE-042). Null when the update says nothing about it, such as an event that carries only a count.
+ */
+export function estimateFrom(update: RealtimeUpdate): { serviceId: string; low: number; high: number } | null {
+  if (update.kind === "denied" || !update.topic.startsWith(QUEUE_PREFIX)) return null;
+  const range = update.data.estimated_wait_minutes;
+  if (typeof range !== "object" || range === null) return null;
+  const { low, high } = range as { low?: unknown; high?: unknown };
+  return typeof low === "number" && typeof high === "number" ? { serviceId: update.topic.slice(QUEUE_PREFIX.length), low, high } : null;
+}
+
+/**
  * Whether a counter-topic update says the session on screen is behind the server (FR-AGT-004: the server is the truth).
  * A snapshot is compared with the session and the ticket shown; an event is the echo of what the screen already shows
  * when the agent's own action has been answered, so only the rest send the console back to ask. A resync always does.

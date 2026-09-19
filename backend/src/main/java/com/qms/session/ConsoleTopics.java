@@ -8,6 +8,7 @@ import com.qms.platform.security.CurrentUser;
 import com.qms.platform.security.Permission;
 import com.qms.platform.security.ScopeGuard;
 import com.qms.queue.QueueReads;
+import com.qms.queue.WaitEstimates;
 import com.qms.session.SessionRepository.BoundTicket;
 import com.qms.session.SessionRepository.CounterRow;
 import com.qms.session.SessionRepository.ServiceScope;
@@ -41,12 +42,14 @@ class ConsoleTopics implements TopicSource {
 
     private final SessionRepository sessions;
     private final QueueReads queues;
+    private final WaitEstimates estimates;
     private final CurrentUser currentUser;
     private final ScopeGuard scope;
 
-    ConsoleTopics(SessionRepository sessions, QueueReads queues, CurrentUser currentUser, ScopeGuard scope) {
+    ConsoleTopics(SessionRepository sessions, QueueReads queues, WaitEstimates estimates, CurrentUser currentUser, ScopeGuard scope) {
         this.sessions = sessions;
         this.queues = queues;
+        this.estimates = estimates;
         this.currentUser = currentUser;
         this.scope = scope;
     }
@@ -77,7 +80,7 @@ class ConsoleTopics implements TopicSource {
         if (reach == Reach.OWN && !sessions.onTeamOf(service.groupId(), currentUser.require().userId())) throw new ApiException(ErrorCode.FORBIDDEN);
     }
 
-    /** Waiting count, the next tickets in order and the estimate (§21.2); the estimate arrives with ticket 19. */
+    /** Waiting count, the next tickets in order and the estimate a visitor joining now would be given (§21.2, FR-QUE-040). */
     private Map<String, Object> queueSnapshot(UUID serviceId) {
         List<Map<String, Object>> next = queues.next(serviceId, NEXT).stream()
                 .map(entry -> {
@@ -91,9 +94,10 @@ class ConsoleTopics implements TopicSource {
                 .toList();
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("service_id", serviceId.toString());
-        data.put("waiting_count", queues.waitingCount(serviceId));
+        int waiting = queues.waitingCount(serviceId);
+        data.put("waiting_count", waiting);
         data.put("next", next);
-        data.put("estimated_wait_minutes", null);
+        data.put("estimated_wait_minutes", estimates.ahead(serviceId, waiting));
         return data;
     }
 

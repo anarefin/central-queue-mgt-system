@@ -1,6 +1,7 @@
 package com.qms.issuance;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.qms.queue.WaitEstimate;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
@@ -10,7 +11,7 @@ public record QueueSnapshot(
         NameRef service,
         @JsonProperty("site_id") UUID siteId,
         @JsonProperty("waiting_count") int waitingCount,
-        @JsonProperty("estimated_wait_minutes") EstimatedWait estimatedWait,
+        @JsonProperty("estimated_wait_minutes") WaitEstimate estimatedWait,
         List<Entry> tickets) {
 
     /** {@code escalated} flags a ticket past its class's maximum wait, for the dashboard (FR-QUE-022). */

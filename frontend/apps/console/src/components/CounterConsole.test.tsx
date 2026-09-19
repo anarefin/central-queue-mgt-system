@@ -1005,8 +1005,15 @@ describe("language (FR-I18N-001, FR-I18N-020)", () => {
 });
 
 /** The hub's snapshot of a queue topic. */
-function queueSnapshot(service: string, waiting: number, seq = 0) {
-  return { frame: "snapshot", topic: `queue:${service}`, seq, epoch: "e1", resync: false, data: { service_id: service, waiting_count: waiting, next: [] } };
+function queueSnapshot(service: string, waiting: number, seq = 0, estimate: { low: number; high: number } | null = null) {
+  return {
+    frame: "snapshot",
+    topic: `queue:${service}`,
+    seq,
+    epoch: "e1",
+    resync: false,
+    data: { service_id: service, waiting_count: waiting, next: [], estimated_wait_minutes: estimate },
+  };
 }
 
 function counterSnapshot(live: unknown, held: unknown, seq = 0) {
@@ -1046,6 +1053,22 @@ describe("live updates (SRS §21, FR-QUE-080, FR-QUE-082, FR-QUE-084)", () => {
     expect(screen.getByTestId("waiting-v1")).toHaveTextContent("Consultation: 3 waiting");
     socket.say(hubEvent("queue:v1", 1, "ticket.issued", { waiting_count: 4 })); // seen already: applying it again would go backwards
     expect(screen.getByTestId("waiting-v1")).toHaveTextContent("Consultation: 3 waiting");
+  });
+
+  it("shows the wait a new ticket would be given as a range and follows queue.estimate_changed (FR-QUE-042)", async () => {
+    stubApi({ ...AUTH, "GET /sessions/current": () => json(200, session()) });
+    renderApp(<Home />);
+    const socket = await connected();
+
+    socket.say(queueSnapshot("v1", 3, 0, { low: 20, high: 25 }));
+    expect(screen.getByTestId("waiting-v1")).toHaveTextContent("Consultation: 3 waiting, about 20–25 min for a new ticket");
+    // No estimate reported for this service: just the count.
+    socket.say(queueSnapshot("v2", 1));
+    expect(screen.getByTestId("waiting-v2")).toHaveTextContent("Laboratory: 1 waiting");
+    expect(screen.getByTestId("waiting-v2")).not.toHaveTextContent("about");
+
+    socket.say(hubEvent("queue:v1", 1, "queue.estimate_changed", { waiting_count: 2, open_counters: 1, estimated_wait_minutes: { low: 10, high: 15 } }));
+    expect(screen.getByTestId("waiting-v1")).toHaveTextContent("Consultation: 2 waiting, about 10–15 min for a new ticket");
   });
 
   it("shows the counts in Bangla digits and words in the Bangla console", async () => {

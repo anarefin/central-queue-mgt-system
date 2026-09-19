@@ -27,7 +27,7 @@ export interface TicketZone {
   floor_label: string;
 }
 
-/** A rounded range in minutes, never an exact promise. The API sends null until estimation exists. */
+/** A rounded range in minutes, never an exact promise ("about 15–20 minutes"); show it as a range, never as one figure. */
 export interface EstimatedWait {
   low: number;
   high: number;
@@ -48,6 +48,7 @@ export interface Ticket {
   priority_class: NameRef | null;
   /** Null once the ticket has left the queue. */
   position: number | null;
+  /** Null once the ticket has left the queue. */
   estimated_wait_minutes: EstimatedWait | null;
   issued_at: string;
   queued_at: string;
