@@ -5,6 +5,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 /**
@@ -85,6 +86,29 @@ public final class QueueEngine {
         List<Scored> ordered = new ArrayList<>(scored.size());
         for (int i = 0; i < scored.size(); i++) ordered.add(new Scored(scored.get(i).ticket(), scored.get(i).terms(), i + 1));
         return ordered;
+    }
+
+    /**
+     * The head of one Service's queue as a Counter sees it when it asks for its next ticket: the ticket, its score and
+     * the preference weight of the Counter's link to that Service (1 is primary, a higher weight is a fallback,
+     * FR-CFG-011).
+     */
+    public record Contender(UUID serviceId, int preferenceWeight, UUID ticketId, Instant queuedAt, double score) {}
+
+    /**
+     * FR-QUE-030: among the heads of every queue a Counter serves, the one with the highest score, except that a
+     * lower-weight (primary) link wins over a fallback link whose head is not better by more than {@code
+     * toleranceMinutes}. Among those within the tolerance of the best, the lowest weight wins, then the higher score, then
+     * the earlier arrival, then the lower id, so the choice is deterministic.
+     */
+    public static Optional<Contender> pick(List<Contender> heads, double toleranceMinutes) {
+        if (heads.isEmpty()) return Optional.empty();
+        double best = heads.stream().mapToDouble(Contender::score).max().orElseThrow();
+        Comparator<Contender> preference = Comparator.comparingInt(Contender::preferenceWeight)
+                .thenComparing(Comparator.comparingDouble(Contender::score).reversed())
+                .thenComparing(Contender::queuedAt)
+                .thenComparing(Contender::ticketId);
+        return heads.stream().filter(c -> c.score() >= best - toleranceMinutes).min(preference);
     }
 
     private static Comparator<Scored> comparator(QueueStrategy strategy) {

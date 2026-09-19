@@ -15,6 +15,7 @@ import type { Counter, CounterInput, Items, Site, SiteInput, Zone, ZoneInput } f
 import type { Channel } from "./catalogue";
 import type { PriorityClass, PriorityClassInput, QueueDryRun, QueueStrategy, RoutingStrategy } from "./priority";
 import type { NumberingPreview, NumberingRule, NumberingRuleChange, NumberingRuleInput, NumberingScope } from "./numbering";
+import type { CompleteInput, CounterSession, OpenSessionInput, SessionCounterOption } from "./sessions";
 import type { IssueTicketInput, QueueSnapshot, SiteServices, Ticket } from "./tickets";
 
 export const API_BASE_PATH = "/api/v1";
@@ -64,6 +65,10 @@ export type DependencyState = "up" | "down" | "not_configured";
 export interface DependencyHealth {
   status: "up" | "down";
   dependencies: Record<string, { status: DependencyState }>;
+}
+
+function ifMatch(version: number | undefined): Record<string, string> | undefined {
+  return version === undefined ? undefined : { "If-Match": `"${version}"` };
 }
 
 function numberingPath(scope: NumberingScope, id: string): string {
@@ -183,6 +188,24 @@ export class ApiClient {
     /** The queue in computed order with every term of every score (FR-QUE-023); `strategy` tries another one without saving it. */
     dryRun: (serviceId: string, strategy?: QueueStrategy) =>
       this.request<QueueDryRun>("GET", `/queues/${serviceId}/dry-run${strategy ? `?strategy=${strategy}` : ""}`),
+  };
+
+  /**
+   * An agent's counter session (SRS §11): open one on a counter their team serves, call the next ticket, start service,
+   * complete with an outcome, close. The server holds all the state, so `current` rebuilds the console after a refresh
+   * (FR-AGT-004); `current` answers `not_found` when the caller has no live session. `serve` and `complete` send the
+   * ticket's `version` as `If-Match` when given, and a stale one is a `conflict` (SRS §20.1).
+   */
+  readonly sessions = {
+    options: () => this.request<Items<SessionCounterOption>>("GET", "/sessions/options"),
+    current: () => this.request<CounterSession>("GET", "/sessions/current"),
+    open: (input: OpenSessionInput) => this.request<CounterSession>("POST", "/sessions", input),
+    close: (id: string) => this.request<CounterSession>("DELETE", `/sessions/${id}`),
+    next: (id: string) => this.request<CounterSession>("POST", `/sessions/${id}/next`),
+    serve: (id: string, version?: number) =>
+      this.request<CounterSession>("POST", `/sessions/${id}/serve`, undefined, { headers: ifMatch(version) }),
+    complete: (id: string, input: CompleteInput, version?: number) =>
+      this.request<CounterSession>("POST", `/sessions/${id}/complete`, input, { headers: ifMatch(version) }),
   };
 
   /**

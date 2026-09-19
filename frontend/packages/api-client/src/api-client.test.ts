@@ -317,6 +317,38 @@ describe("ApiClient service catalogue", () => {
     expect(body(7)).toEqual({ strategy: "strict_priority" });
   });
 
+  it("maps the counter session onto its paths and sends the ticket version as If-Match (FR-AGT-001, FR-QUE-031)", async () => {
+    const fetchImpl = vi.fn().mockImplementation(async () => json(200, { items: [] }));
+    const client = new ApiClient({ apiOrigin: "", fetch: fetchImpl as unknown as typeof fetch });
+
+    await client.sessions.options();
+    await client.sessions.current();
+    await client.sessions.open({ counter_id: "c1", service_ids: ["v1"] });
+    await client.sessions.next("s1");
+    await client.sessions.serve("s1", 1);
+    await client.sessions.serve("s1");
+    await client.sessions.complete("s1", { outcome_code_id: "o1", note: "done" }, 2);
+    await client.sessions.close("s1");
+
+    const calls = fetchImpl.mock.calls.map(([url, init]) => `${(init as RequestInit).method} ${String(url).replace("/api/v1", "")}`);
+    expect(calls).toEqual([
+      "GET /sessions/options",
+      "GET /sessions/current",
+      "POST /sessions",
+      "POST /sessions/s1/next",
+      "POST /sessions/s1/serve",
+      "POST /sessions/s1/serve",
+      "POST /sessions/s1/complete",
+      "DELETE /sessions/s1",
+    ]);
+    const headers = (index: number) => (fetchImpl.mock.calls[index]?.[1] as RequestInit).headers as Record<string, string>;
+    expect(JSON.parse(String((fetchImpl.mock.calls[2]?.[1] as RequestInit).body))).toEqual({ counter_id: "c1", service_ids: ["v1"] });
+    expect(headers(4)["If-Match"]).toBe('"1"');
+    expect(headers(5)["If-Match"]).toBeUndefined();
+    expect(headers(6)["If-Match"]).toBe('"2"');
+    expect(JSON.parse(String((fetchImpl.mock.calls[6]?.[1] as RequestInit).body))).toEqual({ outcome_code_id: "o1", note: "done" });
+  });
+
   it("makes a new idempotency key each time", () => {
     expect(newIdempotencyKey()).not.toBe(newIdempotencyKey());
   });

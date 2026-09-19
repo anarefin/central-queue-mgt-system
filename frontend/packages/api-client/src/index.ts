@@ -6,4 +6,5 @@ export * from "./hierarchy";
 export * from "./numbering";
 export * from "./priority";
 export * from "./session";
+export * from "./sessions";
 export * from "./tickets";

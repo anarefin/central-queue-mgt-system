@@ -9,6 +9,7 @@ import java.time.OffsetDateTime;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
@@ -99,6 +100,14 @@ public class QueueReads {
         List<Scored> order = QueueEngine.order(rows.stream().map(Row::candidate).toList(), used, now);
         List<Entry> entries = order.stream().map(s -> entry(byId.get(s.ticket().id()), s)).toList();
         return new Ordered(used, now, entries);
+    }
+
+    /**
+     * The ticket a counter would be given next from this service: the first in order that is {@code waiting}. A
+     * {@code paused} ticket keeps its place in the queue but cannot be called (§19.1).
+     */
+    public Optional<Entry> callableHead(UUID serviceId) {
+        return ordered(serviceId, null).entries().stream().filter(e -> "waiting".equals(e.state())).findFirst();
     }
 
     /** The place of a queued ticket, or null once it has left the queue. */

@@ -47,6 +47,7 @@ Everything is an environment variable (or a Spring property). Secrets are never 
 | `QMS_SECURITY_KEY_ROTATION_OVERLAP` | `P1D` | How long a retired key still validates tokens |
 | `QMS_I18N_PACK_DIR` | none | Extra or overriding language packs, see section 6 |
 | `QMS_AUDIT_EXPORT_MAX_ROWS` | `100000` | Cap on one CSV export |
+| `QMS_QUEUE_PRIMARY_TOLERANCE_MINUTES` | `5` | How many minutes of score a fallback counter link may trail the best ticket by and still lose to a primary link, section 12 |
 
 Two limits are enforced at startup and cannot be raised: access tokens last at most 15 minutes, and bcrypt cost is at
 least 12.
@@ -250,3 +251,40 @@ docker compose -f deploy/compose.yaml run --rm backend --spring.profiles.active=
 
 adds a new key and retires the old one. Tokens signed with the old key keep validating for
 `QMS_SECURITY_KEY_ROTATION_OVERLAP`; running backends pick up the new key within 30 seconds.
+
+## 12. Counter sessions: calling, serving and completing
+
+Agents work in the **console** (`/console/`). Nothing here is configured on a screen; it follows from the catalogue.
+
+**Who may occupy a counter.** An agent (or Team Admin) may open a session on a counter if their team serves at least one
+active service that is linked to it: the counter is linked to the service (section 8), the service's group has a team,
+and the user is a member of that team. The sites in the user's token limit the counters further. The services the agent
+may serve in a session are those links; they choose which of them to serve when they open it (all by default).
+
+**One session per counter, one per agent.** A counter has at most one live session (`open`, `on_break` or `closing`),
+enforced by the database as well as the API, and an agent sits at one counter at a time. Opening a counter that is
+taken is refused with `conflict` and reason `counter_occupied`.
+
+**Call next** (F2) picks, among the first waiting ticket of every queue the session serves, the highest score, so a
+priority class or an escalation counts across queues. A counter's links have a preference weight (1 is primary). When the
+best ticket on a fallback link beats the best on a primary link by no more than `QMS_QUEUE_PRIMARY_TOLERANCE_MINUTES`
+minutes of score, the primary link is served; set it to 0 to always take the highest score. The ticket is bound to the
+session in the same step, under a check on its version, so two counters calling at once never get the same ticket: one
+of them is given the next. **Start service** (F4) and **Complete** (F5) act on the ticket this session holds. Completing
+records an outcome from the ticket's service (required when the service has outcome codes; section 8) and an optional
+note, and stores the ticket's `wait_seconds` (from joining the queue to being called) and `service_seconds`.
+
+**Closing** (F10) needs the ticket in progress to be resolved. With a ticket called or serving the session becomes
+`closing`, takes no new calls and the request is refused with `ticket_in_progress`; completing the ticket then closes the
+session. Holding and transferring tickets, breaks and force-closing a stale session arrive with later tickets, so today
+an admin cannot close another agent's session.
+
+**Refresh and restart.** The session lives on the server and does not expire: after a browser refresh, a network loss or
+a restart the console asks `GET /sessions/current` and shows the ticket the agent was serving.
+
+API, all under `/api/v1`: `GET /sessions/options`, `GET /sessions/current` (`not_found` when there is none),
+`POST /sessions` (`counter_id`, optional `service_ids`), `DELETE /sessions/{id}`, and `POST /sessions/{id}/next|serve|complete`.
+`serve` and `complete` take the ticket's `version` as `If-Match`; a stale version is a `conflict` with reason
+`version_mismatch`. Conflict reasons: `counter_occupied`, `agent_has_open_session`, `counter_inactive`, `session_not_open`,
+`ticket_in_progress`, `no_ticket_waiting`, `no_ticket_called`, `no_ticket_serving`, `version_mismatch`. Events written per
+transition: `ticket.called`, `ticket.serving`, `ticket.completed`; audit entries `session.opened` and `session.closed`.
