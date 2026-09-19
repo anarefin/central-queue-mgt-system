@@ -7,6 +7,7 @@ import com.qms.platform.ErrorCode;
 import com.qms.platform.Profiles;
 import com.qms.platform.realtime.RealtimePublisher;
 import com.qms.platform.realtime.Topics;
+import com.qms.platform.security.AuthenticatedUser;
 import com.qms.platform.security.Authz;
 import com.qms.platform.security.CurrentUser;
 import com.qms.platform.security.Permission;
@@ -100,6 +101,7 @@ public class SessionService {
     private final QueueProperties queueProperties;
     private final RealtimePublisher realtime;
     private final EstimateEvents estimates;
+    private final VisitorFieldPolicy visitorFields;
     private final Clock clock;
 
     SessionService(
@@ -113,6 +115,7 @@ public class SessionService {
             QueueProperties queueProperties,
             RealtimePublisher realtime,
             EstimateEvents estimates,
+            VisitorFieldPolicy visitorFields,
             Clock clock) {
         this.sessions = sessions;
         this.queues = queues;
@@ -124,6 +127,7 @@ public class SessionService {
         this.queueProperties = queueProperties;
         this.realtime = realtime;
         this.estimates = estimates;
+        this.visitorFields = visitorFields;
         this.clock = clock;
     }
 
@@ -185,6 +189,20 @@ public class SessionService {
     public SessionResponse current() {
         UUID user = currentUser.require().userId();
         return view(sessions.liveSessionOfAgent(user).orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND)));
+    }
+
+    /**
+     * The caller's own day (FR-AGT-040): tickets completed, tickets waiting for the Services of their session, average service time and break time.
+     * It is read from the token's user alone, so it can only ever be the caller's own figures, and it ranks nobody.
+     */
+    @PreAuthorize(EITHER)
+    @Transactional(readOnly = true)
+    public AgentDay day() {
+        UUID user = currentUser.require().userId();
+        Instant now = clock.instant();
+        SessionRepository.DayFigures figures = sessions.dayFigures(user, now);
+        int inQueue = sessions.liveSessionOfAgent(user).map(s -> s.services().stream().mapToInt(queues::waitingCount).sum()).orElse(0);
+        return new AgentDay(figures.served(), inQueue, figures.averageServiceSeconds(), figures.breakSeconds(), now);
     }
 
     // ---- serving ----------------------------------------------------------------------------------------------
@@ -1013,7 +1031,9 @@ public class SessionService {
 
     private SessionResponse.SessionTicket ticketView(BoundTicket t) {
         boolean timedOut = "called".equals(t.state()) && CallRules.callTimedOut(t.calledAt(), clock.instant(), queueProperties.callTimeoutSeconds());
-        return SessionViews.ticket(t, sessions.outcomes(t.serviceId()), queueProperties.announceRepeatLimit(), queueProperties.missLimit(), timedOut);
+        // What the caller's role may see of the visitor is decided here, from the token, for every ticket the console is sent (FR-AGT-034).
+        var visible = visitorFields.visibleTo(currentUser.get().map(AuthenticatedUser::roles).orElse(Set.of()));
+        return SessionViews.ticket(t, sessions.outcomes(t.serviceId()), queueProperties.announceRepeatLimit(), queueProperties.missLimit(), timedOut, visible);
     }
 
     private TicketEvents.Transition transition(UUID ticketId, TicketTransition transition, SessionRow session, Object payload, Instant now) {

@@ -1,4 +1,4 @@
-import type { BreakType, CounterSession, SessionBreak, SessionCounterOption, SessionOutcome, SessionTicket, TransferResult, TransferTargets } from "@qms/api-client";
+import type { AgentDay, BreakType, CounterSession, SessionBreak, SessionCounterOption, SessionOutcome, SessionTicket, TransferResult, TransferTargets } from "@qms/api-client";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -31,6 +31,7 @@ function ticket(over: Partial<SessionTicket> = {}): SessionTicket {
     version: 1,
     service: { id: "v1", name_i18n: { en: "Consultation", bn: "পরামর্শ" } },
     origin_channel: "reception",
+    is_appointment: false,
     priority_class: null,
     queued_at: STAMP,
     called_at: STAMP,
@@ -988,7 +989,7 @@ describe("surviving a refresh, a stale screen and a lost connection (FR-AGT-004,
 
     await user.keyboard("{F2}{F4}{F5}{F10}");
 
-    expect(calls.filter((c) => c.path.startsWith("/sessions") && (c.method !== "GET" || c.path.startsWith("/sessions/s")))).toEqual([]);
+    expect(calls.filter((c) => c.path.startsWith("/sessions") && (c.method !== "GET" || c.path.startsWith("/sessions/s1")))).toEqual([]);
   });
 });
 
@@ -1445,5 +1446,174 @@ describe("parallel serving: several tickets in progress at one counter (FR-AGT-0
 
     expect(screen.getByRole("button", { name: "Resume S-030" }), "room for another").toBeEnabled();
     expect(screen.getByRole("button", { name: /Break/ }), "a ticket is in progress").toBeDisabled();
+  });
+});
+
+const DAY: AgentDay = { served: 12, in_queue: 7, average_service_seconds: 312, break_seconds: 1800, as_of: STAMP };
+
+describe("the visitor of a called ticket (FR-AGT-030, FR-AGT-034)", () => {
+  it("shows the token, the visitor's name, code and category, the service, the purpose note, the wait so far, the channel and the appointment", async () => {
+    stubApi({
+      ...AUTH,
+      "GET /sessions/current": () =>
+        json(
+          200,
+          session({
+            ticket: ticket({
+              origin_channel: "appointment_checkin",
+              is_appointment: true,
+              visitor: { code: "0062", name: "Asar Ali", category: "Children Tailoring" },
+              purpose_note: "Follow-up on the scan",
+              wait_seconds: 725,
+            }),
+          }),
+        ),
+      "GET /sessions/stats": () => json(200, DAY),
+    });
+    renderApp(<Home />);
+
+    expect(await screen.findByTestId("current-token")).toHaveTextContent("S-042");
+    const visitor = within(screen.getByTestId("visitor"));
+    expect(visitor.getByText("Name: Asar Ali")).toBeInTheDocument();
+    expect(visitor.getByText("Code: 0062")).toBeInTheDocument();
+    expect(visitor.getByText("Category: Children Tailoring")).toBeInTheDocument();
+    expect(screen.getByTestId("purpose-note")).toHaveTextContent("Purpose: Follow-up on the scan");
+    expect(screen.getByText("Service: Consultation")).toBeInTheDocument();
+    expect(screen.getByText(/Arrived via Appointment check-in/)).toBeInTheDocument();
+    expect(screen.getByText(/With an appointment/)).toBeInTheDocument();
+    expect(screen.getByText(/waited 12 min 5 s/)).toBeInTheDocument();
+  });
+
+  it("shows only the fields the API sends and nothing where a walk-in has no visitor record", async () => {
+    stubApi({
+      ...AUTH,
+      "GET /sessions/current": () => json(200, session({ ticket: ticket({ visitor: { code: "0062", category: "Children Tailoring" } }) })),
+      "GET /sessions/stats": () => json(200, DAY),
+    });
+    renderApp(<Home />);
+
+    const visitor = within(await screen.findByTestId("visitor"));
+    expect(visitor.getByText("Code: 0062")).toBeInTheDocument();
+    expect(visitor.queryByText(/^Name:/), "the role may not see the name").not.toBeInTheDocument();
+    expect(screen.queryByTestId("purpose-note")).not.toBeInTheDocument();
+    expect(screen.getByText(/No appointment/)).toBeInTheDocument();
+  });
+
+  it("has no visitor section for a walk-in with no record and no note", async () => {
+    stubApi({ ...AUTH, "GET /sessions/current": () => json(200, session({ ticket: ticket() })), "GET /sessions/stats": () => json(200, DAY) });
+    renderApp(<Home />);
+
+    await screen.findByTestId("current-token");
+    expect(screen.queryByTestId("visitor")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("purpose-note")).not.toBeInTheDocument();
+  });
+
+  it("shows the visitor of a ticket while it is in service too, beside the outcome and note the agent records", async () => {
+    stubApi({
+      ...AUTH,
+      "GET /sessions/current": () => json(200, session({ ticket: ticket({ state: "serving", version: 2, visitor: { name: "Asar Ali" }, purpose_note: "Certificate" }) })),
+      "GET /sessions/stats": () => json(200, DAY),
+    });
+    renderApp(<Home />);
+
+    expect(await screen.findByText("Name: Asar Ali")).toBeInTheDocument();
+    expect(screen.getByText("Purpose: Certificate")).toBeInTheDocument();
+    expect(screen.getByLabelText("Outcome")).toBeInTheDocument();
+    expect(screen.getByLabelText("Note (optional)")).toBeInTheDocument();
+  });
+
+  it("shows the visitor in Bangla and keeps the token number and the visitor's own words as they are", async () => {
+    stubApi({
+      ...AUTH,
+      "GET /sessions/current": () => json(200, session({ ticket: ticket({ is_appointment: true, visitor: { code: "0062", name: "আসার আলী" } }) })),
+      "GET /sessions/stats": () => json(200, DAY),
+    });
+    renderApp(<Home />, ["bn-BD"]);
+
+    expect(await screen.findByText("নাম: আসার আলী")).toBeInTheDocument();
+    expect(screen.getByText("কোড: 0062")).toBeInTheDocument();
+    expect(screen.getByTestId("current-token")).toHaveTextContent("S-042");
+    expect(screen.getByText(/অ্যাপয়েন্টমেন্ট আছে/)).toBeInTheDocument();
+  });
+});
+
+describe("the agent's own day (FR-AGT-040)", () => {
+  it("shows served, waiting for their services, the average service time and the break time, and ranks nobody", async () => {
+    stubApi({ ...AUTH, "GET /sessions/current": () => json(200, session()), "GET /sessions/stats": () => json(200, DAY) });
+    renderApp(<Home />);
+
+    const day = within(await screen.findByTestId("day"));
+    expect(day.getByText("Served: 12")).toBeInTheDocument();
+    expect(day.getByText("Waiting for your services: 7")).toBeInTheDocument();
+    expect(day.getByText("Average service time: 5 min 12 s")).toBeInTheDocument();
+    expect(day.getByText("Break time: 30 min 0 s")).toBeInTheDocument();
+    expect(screen.queryByText(/rank|leaderboard|colleague|position/i)).not.toBeInTheDocument();
+  });
+
+  it("says there is no average yet before the first ticket is served", async () => {
+    stubApi({
+      ...AUTH,
+      "GET /sessions/current": () => json(200, session()),
+      "GET /sessions/stats": () => json(200, { ...DAY, served: 0, average_service_seconds: null, break_seconds: 0 }),
+    });
+    renderApp(<Home />);
+
+    expect(await screen.findByText("Average service time: none yet")).toBeInTheDocument();
+    expect(screen.getByText("Served: 0")).toBeInTheDocument();
+  });
+
+  it("is there before a session is opened, and again after it is", async () => {
+    stubApi({
+      ...AUTH,
+      "GET /sessions/current": () => json(404, NOT_FOUND),
+      "GET /sessions/options": () => json(200, { items: OPTIONS }),
+      "GET /sessions/stats": () => json(200, DAY),
+    });
+    renderApp(<Home />);
+
+    expect(await within(await screen.findByTestId("day")).findByText("Served: 12")).toBeInTheDocument();
+  });
+
+  it("reads the day again after a ticket is completed", async () => {
+    let served = 12;
+    const calls = stubApi({
+      ...AUTH,
+      "GET /sessions/current": () => json(200, session({ ticket: ticket({ state: "serving", version: 2, outcomes: [] }) })),
+      "GET /sessions/stats": () => json(200, { ...DAY, served }),
+      "POST /sessions/s1/complete": () => {
+        served = 13;
+        return json(200, session());
+      },
+    });
+    const user = userEvent.setup();
+    renderApp(<Home />);
+    expect(await screen.findByText("Served: 12")).toBeInTheDocument();
+
+    await user.keyboard("{F5}");
+
+    expect(await screen.findByText("Served: 13")).toBeInTheDocument();
+    expect(count(calls, "GET /sessions/stats")).toBe(2);
+  });
+
+  it("says quietly that the counts are not available and leaves the desk working", async () => {
+    stubApi({
+      ...AUTH,
+      "GET /sessions/current": () => json(200, session({ ticket: ticket() })),
+      "GET /sessions/stats": () => json(500, { error: { code: "internal_error", message: "x", trace_id: "t" } }),
+    });
+    renderApp(<Home />);
+
+    expect(await screen.findByText("Your day's counts are not available right now.")).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(screen.getByTestId("current-token")).toHaveTextContent("S-042");
+  });
+
+  it("shows the day in Bangla with Bangla digits", async () => {
+    stubApi({ ...AUTH, "GET /sessions/current": () => json(200, session()), "GET /sessions/stats": () => json(200, DAY) });
+    renderApp(<Home />, ["bn-BD"]);
+
+    const day = within(await screen.findByTestId("day"));
+    expect(day.getByText("সেবা দেওয়া হয়েছে: ১২")).toBeInTheDocument();
+    expect(day.getByText("গড় সেবার সময়: ৫ মিনিট ১২ সেকেন্ড")).toBeInTheDocument();
   });
 });

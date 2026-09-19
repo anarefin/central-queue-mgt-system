@@ -1,5 +1,6 @@
 package com.qms.session;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import java.time.Instant;
 import java.util.List;
@@ -51,7 +52,9 @@ public record SessionResponse(
      * {@code waitSeconds} is how long it waited in the queue before it was called. {@code announceCount} of {@code announceLimit} is how many times this call has been
      * re-announced (FR-DSP-028); {@code missCount} of {@code missLimit} how many times it has been missed, the Miss after the
      * limit closing it as a no-show (FR-QUE-050). {@code callTimedOut} is set once a called ticket has waited for its Agent longer than the
-     * call timeout, which is when the Agent may return it to the queue (FR-QUE-032).
+     * call timeout, which is when the Agent may return it to the queue (FR-QUE-032). {@code isAppointment} says the visitor came in with an
+     * appointment (FR-AGT-030). {@code visitor} and {@code purposeNote} carry only the visitor fields the caller's role is configured to
+     * see, and only those the ticket has: a field outside the set is left out of the response, not sent for the screen to hide (FR-AGT-034).
      */
     public record SessionTicket(
             UUID id,
@@ -60,6 +63,9 @@ public record SessionResponse(
             int version,
             Named service,
             @JsonProperty("origin_channel") String originChannel,
+            @JsonProperty("is_appointment") boolean isAppointment,
+            @JsonInclude(JsonInclude.Include.NON_NULL) VisitorView visitor,
+            @JsonInclude(JsonInclude.Include.NON_NULL) @JsonProperty("purpose_note") String purposeNote,
             @JsonProperty("priority_class") Named priorityClass,
             @JsonProperty("queued_at") Instant queuedAt,
             @JsonProperty("called_at") Instant calledAt,
@@ -71,4 +77,8 @@ public record SessionResponse(
             @JsonProperty("miss_limit") int missLimit,
             @JsonProperty("call_timed_out") boolean callTimedOut,
             List<Outcome> outcomes) {}
+
+    /** The visitor of a ticket as the console may see them (FR-AGT-030); a field the role may not see, or the ticket does not have, is absent. */
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    public record VisitorView(String code, String name, String category) {}
 }

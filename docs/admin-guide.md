@@ -485,3 +485,33 @@ a session opens, closes, goes on a break or comes back. `ticket.position_changed
 ticket's own range, for each queued ticket whose place moved. The place last announced for each queued ticket is kept in
 `ticket_position`; it is a cache of what subscribers were told, and the live place is always computed from the queue. (The
 visitor's own `ticket:{ticket_id}` topic arrives with the visitor ticket page.)
+
+## 15. What the console shows of the visitor, and the agent's own day
+
+When an Agent's ticket is called, the console shows the token, the visitor's **name, code and category** where the ticket has a
+visitor record, the Service, the **purpose note**, how long the visitor waited, the channel they came through, and whether they
+came with an appointment (SRS §11.5, FR-AGT-030). A walk-in with no visitor record simply has no visitor lines. The same fields
+ride on the tickets the Agent holds. (Nothing in this release writes a visitor record or a purpose note: the visitor
+directory, walk-in registration and appointment booking, in later tickets, fill them. The `visitor` table and
+`ticket.purpose_note` are where they go.)
+
+**Which fields a role sees** is set in the backend configuration, per role, and is enforced on the server: a field outside the
+role's set is left out of the API response, not hidden by the screen (FR-AGT-034, FR-SEC-020). A role with no entry sees the
+full set, which is the Agent console default of §25.3. The fields are `code`, `name`, `category` and `purpose_note`; an entry
+with no fields shows none. A caller with several roles sees what any one of them may.
+
+```
+qms.console.visitor-fields.agent=code,category,purpose_note     # this role never sees the name
+qms.console.visitor-fields.team_admin=code,name,category,purpose_note
+```
+
+The backend refuses to start on an unknown role or field. A screen to change this without a restart arrives with the privacy
+controls (ticket 54).
+
+Completing a ticket records an **outcome** from the Service's list and an optional free-text **note** (FR-AGT-032). The note
+is the Agent's; it is stored on the ticket next to, not over, the visitor's purpose note.
+
+**The Agent's own day** (FR-AGT-040) sits on the console: tickets served today, tickets waiting for the Services of their open
+session, their average service time and their break time. `GET /sessions/stats` answers with the caller's figures only
+(`served`, `in_queue`, `average_service_seconds`, `break_seconds`, `as_of`): no other Agent's number, and nothing to rank by.
+"Today" is the day at the Site, in the Site's time zone; a break in progress counts up to now.

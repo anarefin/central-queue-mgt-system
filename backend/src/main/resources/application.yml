@@ -41,6 +41,9 @@ qms:
     call-timeout-seconds: ${QMS_QUEUE_CALL_TIMEOUT_SECONDS:90}
     # FR-QUE-053: the Head start, in minutes, of a Successor ticket made by a transfer (F7); empty means the predecessor's accrued wait.
     transfer-headstart-minutes: ${QMS_QUEUE_TRANSFER_HEADSTART_MINUTES:}
+  # FR-AGT-034: which visitor fields the console shows a role, by role wire name, e.g.
+  #   qms.console.visitor-fields.agent=code,category,purpose_note   (fields: code, name, category, purpose_note)
+  # A role with no entry sees all of them; an entry with no fields shows none. Set it with properties or environment.
   i18n:
     system-default-language: en
     languages: en,bn

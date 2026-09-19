@@ -14,6 +14,7 @@ function ticket(over: Partial<SessionTicket> = {}): SessionTicket {
     version: 1,
     service: { id: "v1", name_i18n: NAME },
     origin_channel: "reception",
+    is_appointment: false,
     priority_class: null,
     queued_at: STAMP,
     called_at: STAMP,

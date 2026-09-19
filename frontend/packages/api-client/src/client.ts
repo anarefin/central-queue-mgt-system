@@ -16,7 +16,7 @@ import type { Channel } from "./catalogue";
 import type { AgentAvailability, AvailabilityInput, BreakReport, BreakReportQuery, BreakType, BreakTypeInput } from "./breaks";
 import type { PriorityClass, PriorityClassInput, PriorityDefaults, QueueDryRun, QueueStrategy, RoutingStrategy } from "./priority";
 import type { NumberingPreview, NumberingRule, NumberingRuleChange, NumberingRuleInput, NumberingScope } from "./numbering";
-import type { CompleteInput, CounterSession, OpenSessionInput, SessionCounterOption, TransferInput, TransferResult, TransferTargets } from "./sessions";
+import type { AgentDay, CompleteInput, CounterSession, OpenSessionInput, SessionCounterOption, TransferInput, TransferResult, TransferTargets } from "./sessions";
 import type { TopicSnapshot } from "./stream";
 import type { IssueTicketInput, QueueSnapshot, ReprioritiseInput, SiteServices, Ticket, TicketChange } from "./tickets";
 
@@ -223,6 +223,8 @@ export class ApiClient {
   readonly sessions = {
     options: () => this.request<Items<SessionCounterOption>>("GET", "/sessions/options"),
     current: () => this.request<CounterSession>("GET", "/sessions/current"),
+    /** The caller's own current-day counts (FR-AGT-040). */
+    day: () => this.request<AgentDay>("GET", "/sessions/stats"),
     open: (input: OpenSessionInput) => this.request<CounterSession>("POST", "/sessions", input),
     close: (id: string) => this.request<CounterSession>("DELETE", `/sessions/${id}`),
     next: (id: string) => this.request<CounterSession>("POST", `/sessions/${id}/next`),

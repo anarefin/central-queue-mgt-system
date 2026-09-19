@@ -47,6 +47,13 @@ public class SessionController {
         return service.current();
     }
 
+    /** The caller's own current-day counts (FR-AGT-040); never another Agent's, and never a ranking. */
+    @PreAuthorize(SessionService.EITHER)
+    @GetMapping("/sessions/stats")
+    public AgentDay day() {
+        return service.day();
+    }
+
     @PreAuthorize(SessionService.OPEN_CLOSE)
     @PostMapping("/sessions")
     @ResponseStatus(HttpStatus.CREATED)

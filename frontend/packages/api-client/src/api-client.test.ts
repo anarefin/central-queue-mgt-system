@@ -408,6 +408,16 @@ describe("ApiClient service catalogue", () => {
     expect((fetchImpl.mock.calls[15]?.[1] as RequestInit).body).toBeUndefined();
   });
 
+  it("reads the agent's own day from /sessions/stats (FR-AGT-040)", async () => {
+    const day = { served: 4, in_queue: 7, average_service_seconds: 312, break_seconds: 600, as_of: "2026-09-19T10:00:00Z" };
+    const fetchImpl = vi.fn().mockImplementation(async () => json(200, day));
+    const client = new ApiClient({ apiOrigin: "", fetch: fetchImpl as unknown as typeof fetch });
+
+    expect(await client.sessions.day()).toEqual(day);
+    const [url, init] = fetchImpl.mock.calls[0] as [string, RequestInit];
+    expect(`${init.method} ${url.replace("/api/v1", "")}`).toBe("GET /sessions/stats");
+  });
+
   it("maps breaks, availability and the break report onto their paths (FR-AGT-020, FR-AGT-021, FR-AGT-022, FR-AGT-024, §20.4)", async () => {
     const fetchImpl = vi.fn().mockImplementation(async () => json(200, { items: [] }));
     const client = new ApiClient({ apiOrigin: "", fetch: fetchImpl as unknown as typeof fetch });

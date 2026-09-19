@@ -55,7 +55,11 @@ class SessionRepository {
             Instant servedAt,
             int announceCount,
             int missCount,
-            int scoreAdjustmentMinutes) {}
+            int scoreAdjustmentMinutes,
+            String visitorCode,
+            String visitorName,
+            String visitorCategory,
+            String purposeNote) {}
 
     /** A ticket named for an out-of-order call (FR-AGT-012): where it is, whether it is free to be called, and who it is meant for. */
     record WaitingTicket(UUID id, String tokenNumber, String state, int version, UUID serviceId, UUID groupId, UUID siteId, UUID sessionId, UUID targetCounterId, UUID targetAgentId) {}
@@ -97,8 +101,9 @@ class SessionRepository {
     private static final String BOUND =
             "SELECT t.id, t.token_number, t.state, t.version, t.service_id, v.name_i18n AS service_names, t.origin_channel,"
                     + " pc.id AS class_id, pc.name_i18n AS class_names, t.queued_at, t.called_at, t.served_at,"
-                    + " t.announce_count, t.miss_count, t.score_adjustment_minutes"
-                    + " FROM ticket t JOIN service v ON v.id = t.service_id"
+                    + " t.announce_count, t.miss_count, t.score_adjustment_minutes,"
+                    + " vi.external_code AS visitor_code, vi.name AS visitor_name, vi.category AS visitor_category, t.purpose_note"
+                    + " FROM ticket t JOIN service v ON v.id = t.service_id LEFT JOIN visitor vi ON vi.id = t.visitor_id"
                     + " LEFT JOIN priority_class pc ON pc.id = coalesce(t.priority_class_id, (SELECT id FROM priority_class WHERE is_default))";
 
     private final JdbcTemplate jdbc;
@@ -325,6 +330,28 @@ class SessionRepository {
                         rs.getObject("site_id", UUID.class),
                         List.of((UUID[]) rs.getArray("group_ids").getArray())),
                 arguments.toArray());
+    }
+
+    /** The tickets an Agent completed today, their average service time in whole seconds (null when none), and their break time in seconds. */
+    record DayFigures(int served, Integer averageServiceSeconds, long breakSeconds) {}
+
+    /**
+     * The Agent's own day (FR-AGT-040). A ticket or break belongs to the day, in its Site's time zone, that {@code now} falls in there. Tickets count
+     * once completed; a break counts from its start to its end, or to {@code now} while it runs.
+     */
+    DayFigures dayFigures(UUID agentId, Instant now) {
+        OffsetDateTime at = ts(now);
+        return jdbc.queryForObject(
+                "SELECT (SELECT count(*) FROM ticket t JOIN site s ON s.id = t.site_id"
+                        + "   WHERE t.agent_id = ? AND t.state = 'completed' AND (t.closed_at AT TIME ZONE s.timezone)::date = (?::timestamptz AT TIME ZONE s.timezone)::date) AS served,"
+                        + " (SELECT round(avg(t.service_seconds))::integer FROM ticket t JOIN site s ON s.id = t.site_id"
+                        + "   WHERE t.agent_id = ? AND t.state = 'completed' AND (t.closed_at AT TIME ZONE s.timezone)::date = (?::timestamptz AT TIME ZONE s.timezone)::date) AS average,"
+                        + " (SELECT coalesce(round(sum(extract(epoch FROM (coalesce(r.ended_at, ?::timestamptz) - r.started_at)))), 0)::bigint"
+                        + "   FROM break_record r JOIN counter_session cs ON cs.id = r.counter_session_id JOIN counter c ON c.id = cs.counter_id"
+                        + "   JOIN zone z ON z.id = c.zone_id JOIN site s ON s.id = z.site_id"
+                        + "   WHERE cs.agent_id = ? AND (r.started_at AT TIME ZONE s.timezone)::date = (?::timestamptz AT TIME ZONE s.timezone)::date) AS break_seconds",
+                (rs, i) -> new DayFigures(rs.getInt("served"), rs.getObject("average", Integer.class), rs.getLong("break_seconds")),
+                agentId, at, agentId, at, at, agentId, at);
     }
 
     // ---- the tickets a session drives -------------------------------------------------------------------------
@@ -734,7 +761,11 @@ class SessionRepository {
                 instant(rs, "served_at"),
                 rs.getInt("announce_count"),
                 rs.getInt("miss_count"),
-                rs.getInt("score_adjustment_minutes"));
+                rs.getInt("score_adjustment_minutes"),
+                rs.getString("visitor_code"),
+                rs.getString("visitor_name"),
+                rs.getString("visitor_category"),
+                rs.getString("purpose_note"));
     }
 
     private static Instant instant(java.sql.ResultSet rs, String column) throws java.sql.SQLException {

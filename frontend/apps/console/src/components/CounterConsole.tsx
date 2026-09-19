@@ -8,6 +8,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { counterMovedOn, counterTopic, describeError, estimateFrom, localisedName, queueTopic, reasonOf, waitingFrom } from "../lib/console-support";
 import { useTopics } from "../lib/realtime";
 import { useApi } from "../lib/runtime";
+import { DayCard } from "./DayCard";
 import { OpenSessionCard } from "./OpenSessionCard";
 import { ServingDesk, type DeskActions } from "./ServingDesk";
 
@@ -325,6 +326,11 @@ export function CounterConsole() {
 
   if (session === undefined && error === null) return <p className="qms-muted">{t("common.loading")}</p>;
 
+  // The day is read again whenever something the agent did may have moved it: a ticket completed or a break started or ended (FR-AGT-040).
+  const dayKey = session
+    ? [session.id, session.state, session.break?.id ?? "", ...session.tickets.map((t) => `${t.id}:${t.state}`), ...session.held.map((t) => `${t.id}:held`)].join("|")
+    : "none";
+
   return (
     <div className="qms-stack">
       {error !== null && (
@@ -365,6 +371,7 @@ export function CounterConsole() {
           onCancelCallSpecific={() => setCallingSpecific(false)}
         />
       )}
+      {session !== undefined && <DayCard refreshKey={dayKey} />}
     </div>
   );
 }

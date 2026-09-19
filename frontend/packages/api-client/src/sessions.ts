@@ -37,6 +37,15 @@ export interface SessionTicket {
   version: number;
   service: { id: string; name_i18n: LocalisedText };
   origin_channel: Channel;
+  /** The visitor came in with an appointment (FR-AGT-030). */
+  is_appointment: boolean;
+  /**
+   * The visitor, as far as the ticket has one and the caller's role may see it (FR-AGT-030, FR-AGT-034): a field outside the role's
+   * configured set, or one the ticket does not have, is absent, and so is `visitor` itself when none is left.
+   */
+  visitor?: { code?: string; name?: string; category?: string };
+  /** What the visit is for, in the visitor's or reception's words; absent when there is none or the role may not see it. */
+  purpose_note?: string;
   priority_class: { id: string; name_i18n: LocalisedText } | null;
   queued_at: string;
   called_at: string;
@@ -143,4 +152,16 @@ export interface TransferTargets {
   services: Array<{ id: string; name_i18n: LocalisedText }>;
   counters: Array<{ id: string; label: string; zone_name: string; service_ids: string[] }>;
   agents: Array<{ id: string; name: string; service_ids: string[] }>;
+}
+
+/**
+ * The caller's own current day (FR-AGT-040): tickets completed, tickets waiting for the Services of their session, the average service time
+ * (null until one has been served) and the break time so far. It is only ever the caller's own figures; there is nothing to rank Agents by.
+ */
+export interface AgentDay {
+  served: number;
+  in_queue: number;
+  average_service_seconds: number | null;
+  break_seconds: number;
+  as_of: string;
 }

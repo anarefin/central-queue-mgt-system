@@ -201,8 +201,17 @@ export function ServingDesk({
             <p>{t("console.ticket.service", { service: localisedName(ticket.service.name_i18n, language) })}</p>
             <p className="qms-muted">
               {t("console.ticket.channel", { channel: t(`catalogue.channel.${ticket.origin_channel}`) })} ·{" "}
+              {t(ticket.is_appointment ? "console.ticket.appointment.yes" : "console.ticket.appointment.no")} ·{" "}
               {t("console.ticket.waited", { minutes: formatNumber(Math.floor(waited / 60)), seconds: formatNumber(waited % 60) })}
             </p>
+            {ticket.visitor && (
+              <div data-testid="visitor" aria-label={t("console.visitor.title")}>
+                {ticket.visitor.name !== undefined && <p>{t("console.visitor.name", { name: ticket.visitor.name })}</p>}
+                {ticket.visitor.code !== undefined && <p>{t("console.visitor.code", { code: ticket.visitor.code })}</p>}
+                {ticket.visitor.category !== undefined && <p>{t("console.visitor.category", { category: ticket.visitor.category })}</p>}
+              </div>
+            )}
+            {ticket.purpose_note !== undefined && <p data-testid="purpose-note">{t("console.ticket.purpose", { note: ticket.purpose_note })}</p>}
             {ticket.state === "called" && ticket.announce_count > 0 && (
               <p className="qms-muted">
                 {t("console.ticket.announced", { count: formatNumber(ticket.announce_count), limit: formatNumber(ticket.announce_limit) })}
