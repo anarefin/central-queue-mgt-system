@@ -6,6 +6,8 @@ import { useI18n } from "@qms/i18n/react";
 import { Button, Card, SelectField } from "@qms/ui";
 import { useEffect } from "react";
 import { localisedName } from "../lib/console-support";
+import { BreakCard } from "./BreakCard";
+import { BreakPanel } from "./BreakPanel";
 import { TransferPanel } from "./TransferPanel";
 
 /** What the desk lets the agent do right now; the server checks every one of these again (FR-CFG-103). */
@@ -19,6 +21,10 @@ export interface DeskActions {
   canHold: boolean;
   canResume: boolean;
   canClose: boolean;
+  /** F9 with the session open and nothing in progress: offers the break types. */
+  canBreak: boolean;
+  /** F9 while on a break: ends it. */
+  canEndBreak: boolean;
   call: () => void;
   reannounce: () => void;
   start: () => void;
@@ -27,6 +33,8 @@ export interface DeskActions {
   /** F7: opens the transfer panel, or closes it when it is already open. */
   transfer: () => void;
   hold: () => void;
+  /** F9: ends the break when on one, otherwise opens or closes the break panel. */
+  takeBreak: () => void;
   resume: (held: SessionTicket) => void;
   close: () => void;
 }
@@ -45,6 +53,10 @@ interface Props {
   transferring: boolean;
   onTransfer: (input: TransferInput) => void;
   onCancelTransfer: () => void;
+  /** Whether the break panel (F9) is open, and what it sends. */
+  breaking: boolean;
+  onStartBreak: (breakTypeId: string) => void;
+  onCancelBreak: () => void;
 }
 
 /**
@@ -54,10 +66,11 @@ interface Props {
  * no-show, since that cannot be undone (FR-QUE-050). A ticket in service can be transferred (F7) to another Service, counter or agent
  * with a note (FR-QUE-052), or held (F8) so the counter can call the next one;
  * the held tickets are listed here and each is resumed from the list, and they must all be cleared before the session can close
- * (FR-AGT-013). The outcome
+ * (FR-AGT-013). F9 takes a break of a chosen type when nothing is in progress: while it runs no ticket is assigned and the desk shows its
+ * clock (FR-AGT-021, FR-AGT-022); F9 again ends it. The outcome
  * takes focus when service starts, so the keys, an arrow and F5 are all it takes to finish a ticket.
  */
-export function ServingDesk({ session, actions, busy, waiting, outcome, onOutcome, note, onNote, transferring, onTransfer, onCancelTransfer }: Props) {
+export function ServingDesk({ session, actions, busy, waiting, outcome, onOutcome, note, onNote, transferring, onTransfer, onCancelTransfer, breaking, onStartBreak, onCancelBreak }: Props) {
   const { t, language, formatNumber } = useI18n();
   const ticket = session.ticket;
   const serving = ticket?.state === "serving";
@@ -148,6 +161,9 @@ export function ServingDesk({ session, actions, busy, waiting, outcome, onOutcom
         )}
       </Card>
 
+      <BreakCard session={session} busy={busy} canEnd={actions.canEndBreak} onEnd={actions.takeBreak} />
+      {breaking && session.state === "open" && <BreakPanel busy={busy} onSubmit={onStartBreak} onCancel={onCancelBreak} />}
+
       {transferring && ticket && serving && <TransferPanel sessionId={session.id} ticket={ticket} busy={busy} onSubmit={onTransfer} onCancel={onCancelTransfer} />}
 
       {held.length > 0 && (
@@ -185,6 +201,7 @@ export function ServingDesk({ session, actions, busy, waiting, outcome, onOutcom
           {button(t("console.action.miss"), "F6", actions.canMiss, actions.miss, "secondary")}
           {button(t("console.action.transfer"), "F7", actions.canTransfer, actions.transfer, "secondary")}
           {button(t("console.action.hold"), "F8", actions.canHold, actions.hold, "secondary")}
+          {button(session.state === "on_break" ? t("console.action.endBreak") : t("console.action.break"), "F9", actions.canBreak || actions.canEndBreak, actions.takeBreak, "secondary")}
           {button(t("console.action.close"), "F10", actions.canClose, actions.close, "secondary")}
         </div>
         <p className="qms-muted">{t("console.shortcuts")}</p>

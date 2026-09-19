@@ -21,7 +21,9 @@ import com.qms.queue.TicketTimings;
 import com.qms.queue.TicketTransition;
 import com.qms.queue.TransferRules;
 import com.qms.session.SessionRepository.BoundTicket;
+import com.qms.session.SessionRepository.BreakTypeRow;
 import com.qms.session.SessionRepository.CounterRow;
+import com.qms.session.SessionRepository.OpenBreak;
 import com.qms.session.SessionRepository.OutcomeRow;
 import com.qms.session.SessionRepository.ServiceLink;
 import com.qms.session.SessionRepository.ServiceScope;
@@ -38,6 +40,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import org.springframework.context.annotation.Profile;
 import org.springframework.dao.DuplicateKeyException;
@@ -73,6 +76,9 @@ public class SessionService {
     /** Agents transfer the ticket they are serving (own records only); Org and Team Admins, within their scope, any ticket in service (§5.2). */
     static final String TRANSFER = "hasAnyAuthority(T(com.qms.platform.security.Authorities).TICKET_TRANSFER,"
             + " T(com.qms.platform.security.Authorities).TICKET_TRANSFER + ':own')";
+
+    /** Team and Org Admins (and System Admins) set any agent's availability within their scope; agents cannot (§5.2). */
+    static final String FORCE_SET = "hasAuthority(T(com.qms.platform.security.Authorities).AGENT_AVAILABILITY_FORCE_SET)";
 
     private static final String STAFF = "staff";
     private static final String AGENT_INDEX = "counter_session_live_agent_uq";
@@ -503,6 +509,12 @@ public class SessionService {
     public SessionResponse close(UUID sessionId) {
         SessionRow session = lockOwn(sessionId);
         if (!session.live()) return view(session);
+        if (BreakRules.ON_BREAK.equals(session.state())) {
+            // Closing ends the break: the agent is back at the desk to clear what is left, and the time on break stops here.
+            endBreakForClose(session, session.agentId(), "session_closed", clock.instant(), BreakRules.OPEN);
+            sessions.setState(session.id(), BreakRules.OPEN, null);
+            session = sessions.session(session.id()).orElseThrow();
+        }
         List<BoundTicket> unresolved = sessions.unresolved(session.id());
         if (!unresolved.isEmpty()) {
             if (!"closing".equals(session.state())) sessions.setState(session.id(), "closing", null);
@@ -532,7 +544,7 @@ public class SessionService {
         String reason = request == null || request.reason() == null || request.reason().isBlank() ? null : request.reason().strip();
         if (reason != null && reason.length() > MAX_NOTE_LENGTH) throw invalid("reason", "too_long");
 
-        returnTicketsAndClose(session, "session_force_closed", reason);
+        returnTicketsAndClose(session, "session_force_closed", reason, currentUser.require().userId());
         return view(sessions.session(session.id()).orElseThrow());
     }
 
@@ -544,11 +556,12 @@ public class SessionService {
      */
     @Transactional
     public void closeForDisabledUser(UUID userId) {
-        sessions.liveSessionOfAgent(userId).flatMap(live -> sessions.lock(live.id())).filter(SessionRow::live).ifPresent(session -> returnTicketsAndClose(session, "user_disabled", "user_disabled"));
+        sessions.liveSessionOfAgent(userId).flatMap(live -> sessions.lock(live.id())).filter(SessionRow::live).ifPresent(session -> returnTicketsAndClose(session, "user_disabled", "user_disabled", null));
     }
 
-    private void returnTicketsAndClose(SessionRow session, String cause, String reason) {
+    private void returnTicketsAndClose(SessionRow session, String cause, String reason, UUID closedBy) {
         Instant now = clock.instant();
+        if (BreakRules.ON_BREAK.equals(session.state())) endBreakForClose(session, closedBy, cause, now, "force_closed");
         // Each ticket goes to the front in turn, so the one that joined the queue first is returned last and ends up first.
         List<BoundTicket> returning = new ArrayList<>(sessions.unresolved(session.id()));
         returning.sort(Comparator.comparing(BoundTicket::queuedAt).reversed().thenComparing(BoundTicket::id));
@@ -590,12 +603,179 @@ public class SessionService {
 
     /** Tells the counter's console its session changed (SRS §21.4); the hub delivers it once this transaction commits. */
     private void announce(String type, UUID sessionId, UUID counterId, UUID agentId, String state, Instant now) {
+        announce(type, sessionId, counterId, agentId, state, now, Map.of());
+    }
+
+    private void announce(String type, UUID sessionId, UUID counterId, UUID agentId, String state, Instant now, Map<String, Object> more) {
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("session_id", sessionId.toString());
         data.put("counter_id", counterId.toString());
         data.put("agent_id", agentId.toString());
         data.put("state", state);
+        data.putAll(more);
         realtime.publish(Topics.counter(counterId), type, now, data);
+    }
+
+    // ---- breaks and availability ------------------------------------------------------------------------------
+
+    /**
+     * F9 (SRS §11.2, §19.3). With a {@code break_type_id} the agent starts that break: the session goes {@code on_break}, which
+     * stops new assignments at once because a call needs an {@code open} session (FR-AGT-021), and a break record starts its
+     * clock (FR-AGT-022). The ticket in progress must be resolved first; a held ticket is parked, not in progress. With none, the
+     * break they are on ends and the session is {@code open} again. Both are events on the counter's topic and audit entries.
+     */
+    @PreAuthorize(OPEN_CLOSE)
+    @Transactional
+    public SessionResponse takeBreak(UUID sessionId, BreakRequest request) {
+        SessionRow session = lockOwn(sessionId);
+        UUID user = currentUser.require().userId();
+        if (request != null && request.breakTypeId() != null) startBreak(session, request.breakTypeId(), user, false, null);
+        else endBreak(session, user, false, null);
+        return view(sessions.session(session.id()).orElseThrow());
+    }
+
+    /**
+     * A Team or Org Admin sets an agent's availability directly (FR-AGT-024): {@code on_break}, with a break type, starts a break
+     * the agent did not ask for, and {@code available} ends the one they are on. It acts on the agent's live session, within the
+     * admin's site and Service group scope (FR-CFG-106), under the same rules as the agent's own F9: the ticket in progress
+     * must be resolved first. One audit entry, {@code agent.availability_changed}, names the admin, the change and the reason.
+     */
+    @PreAuthorize(FORCE_SET)
+    @Transactional
+    public AvailabilityView setAvailability(UUID agentId, AvailabilityRequest request) {
+        if (request == null || request.status() == null) throw invalid("status", "required");
+        boolean toBreak = BreakRules.ON_BREAK.equals(request.status());
+        if (!toBreak && !"available".equals(request.status())) throw invalid("status", "invalid");
+        String reason = request.reason() == null || request.reason().isBlank() ? null : request.reason().strip();
+        if (reason != null && reason.length() > MAX_NOTE_LENGTH) throw invalid("reason", "too_long");
+        if (!sessions.userExists(agentId)) throw new ApiException(ErrorCode.NOT_FOUND);
+        SessionRow live = sessions.liveSessionOfAgent(agentId).orElseThrow(() -> refusal("no_live_session"));
+        SessionRow session = sessions.lock(live.id()).filter(SessionRow::live).orElseThrow(() -> refusal("no_live_session"));
+        requireReach(session);
+        UUID admin = currentUser.require().userId();
+        if (toBreak) startBreak(session, request.breakTypeId(), admin, true, reason);
+        else if (BreakRules.ON_BREAK.equals(session.state())) endBreak(session, admin, true, reason);
+        else if (!BreakRules.OPEN.equals(session.state())) throw refusal("session_not_open");
+        return availability(sessions.session(session.id()).orElseThrow());
+    }
+
+    /** The agents with a live session inside the caller's site and Service group scope, and whether each is available (FR-AGT-024). */
+    @PreAuthorize(FORCE_SET)
+    @Transactional(readOnly = true)
+    public AvailabilityView.Items availability() {
+        return new AvailabilityView.Items(sessions.liveSessions().stream().filter(this::reaches).map(this::availability).toList());
+    }
+
+    private AvailabilityView availability(SessionRow session) {
+        CounterRow counter = sessions.counter(session.counterId()).orElseThrow();
+        return new AvailabilityView(
+                session.agentId(), sessions.userName(session.agentId()), BreakRules.availability(session.state()), session.id(), SessionViews.counter(counter), breakOf(session));
+    }
+
+    private void startBreak(SessionRow session, UUID typeId, UUID by, boolean forced, String reason) {
+        if (BreakRules.start(session.state()).isEmpty()) throw refusal(BreakRules.ON_BREAK.equals(session.state()) ? "already_on_break" : "session_not_open");
+        if (sessions.unresolved(session.id()).stream().anyMatch(t -> BreakRules.blocksBreak(t.state()))) throw refusal("ticket_in_progress");
+        if (typeId == null) throw invalid("break_type_id", "required");
+        BreakTypeRow type = sessions.breakType(typeId).filter(BreakTypeRow::active).orElseThrow(() -> invalid("break_type_id", "invalid"));
+
+        Instant now = clock.instant();
+        sessions.insertBreak(UUID.randomUUID(), session.id(), type.id(), now, by);
+        sessions.setState(session.id(), BreakRules.ON_BREAK, null);
+
+        Map<String, Object> after = new LinkedHashMap<>();
+        after.put("state", BreakRules.ON_BREAK);
+        after.put("break_type_id", type.id().toString());
+        after.put("max_minutes", type.maxMinutes());
+        Map<String, Object> before = Map.of("state", session.state());
+        AuditEvent event = forced
+                ? AuditEvent.of("agent.availability_changed", "counter_session", session.id())
+                        .withBefore(Map.of("status", BreakRules.availability(session.state()), "agent_id", session.agentId().toString()))
+                        .withAfter(Map.of("status", "on_break", "agent_id", session.agentId().toString(), "break_type_id", type.id().toString()))
+                : AuditEvent.of("session.break_started", "counter_session", session.id()).withBefore(before).withAfter(after);
+        audit.record(reason == null ? event : event.withReason(reason));
+
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("break_type_id", type.id().toString());
+        data.put("name_i18n", type.names());
+        data.put("max_minutes", type.maxMinutes());
+        data.put("started_at", now.toString());
+        data.put("forced", forced);
+        announce("session.break_started", session.id(), session.counterId(), session.agentId(), BreakRules.ON_BREAK, now, data);
+    }
+
+    private void endBreak(SessionRow session, UUID by, boolean forced, String reason) {
+        if (BreakRules.end(session.state()).isEmpty()) throw refusal("not_on_break");
+        Instant now = clock.instant();
+        OpenBreak ended = finishBreak(session, by, now, BreakRules.OPEN, forced);
+        sessions.setState(session.id(), BreakRules.OPEN, null);
+        if (ended == null) return;
+        int seconds = BreakRules.seconds(ended.startedAt(), now);
+        if (forced) {
+            audit.record(AuditEvent.of("agent.availability_changed", "counter_session", session.id())
+                    .withBefore(Map.of("status", "on_break", "agent_id", session.agentId().toString(), "break_type_id", ended.typeId().toString()))
+                    .withAfter(Map.of("status", "available", "agent_id", session.agentId().toString(), "duration_seconds", seconds))
+                    .withReason(reason));
+        } else {
+            auditBreakEnded(session, ended, BreakRules.OPEN, now, null);
+        }
+    }
+
+    /**
+     * Ends the break the session is on because the session is closing (FR-AGT-005, FR-AGT-002): the record gets its end, and the
+     * event and the audit entry say why. Does nothing when there is no break to end.
+     */
+    private void endBreakForClose(SessionRow session, UUID by, String cause, Instant now, String newState) {
+        OpenBreak ended = finishBreak(session, by, now, newState, false);
+        if (ended != null) auditBreakEnded(session, ended, newState, now, cause);
+    }
+
+    /** Puts an end to the open break record and publishes {@code session.break_ended}; returns the break, or null when there was none. */
+    private OpenBreak finishBreak(SessionRow session, UUID by, Instant now, String newState, boolean forced) {
+        OpenBreak open = sessions.openBreak(session.id()).orElse(null);
+        if (open == null) return null;
+        sessions.endBreak(open.id(), now, by);
+        int seconds = BreakRules.seconds(open.startedAt(), now);
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("break_type_id", open.typeId().toString());
+        data.put("started_at", open.startedAt().toString());
+        data.put("duration_seconds", seconds);
+        data.put("overran", BreakRules.overran(seconds, open.maxMinutes()));
+        data.put("forced", forced);
+        announce("session.break_ended", session.id(), session.counterId(), session.agentId(), newState, now, data);
+        return open;
+    }
+
+    private void auditBreakEnded(SessionRow session, OpenBreak ended, String newState, Instant now, String cause) {
+        int seconds = BreakRules.seconds(ended.startedAt(), now);
+        Map<String, Object> after = new LinkedHashMap<>();
+        after.put("state", newState);
+        after.put("break_type_id", ended.typeId().toString());
+        after.put("duration_seconds", seconds);
+        after.put("overran", BreakRules.overran(seconds, ended.maxMinutes()));
+        AuditEvent event = AuditEvent.of("session.break_ended", "counter_session", session.id()).withBefore(Map.of("state", session.state())).withAfter(after);
+        audit.record(cause == null ? event : event.withReason(cause));
+    }
+
+    /** The session is in the caller's site and Service group scope; the same reach a force-close has (FR-CFG-106). */
+    private void requireReach(SessionRow session) {
+        if (!reaches(session)) throw new ApiException(ErrorCode.FORBIDDEN);
+    }
+
+    private boolean reaches(SessionRow session) {
+        CounterRow counter = sessions.counter(session.counterId()).orElseThrow();
+        Set<UUID> sites = scope.sites(List.of());
+        if (!sites.isEmpty() && !sites.contains(counter.siteId())) return false;
+        Set<UUID> claimed = scope.groups(List.of());
+        if (claimed.isEmpty()) return true;
+        List<UUID> groups = session.services().stream().map(sessions::serviceScope).flatMap(Optional::stream).map(ServiceScope::groupId).distinct().toList();
+        return groups.isEmpty() || groups.stream().anyMatch(claimed::contains);
+    }
+
+    private SessionResponse.Break breakOf(SessionRow session) {
+        if (!BreakRules.ON_BREAK.equals(session.state())) return null;
+        return sessions.openBreak(session.id())
+                .map(open -> new SessionResponse.Break(open.id(), new SessionResponse.BreakType(open.typeId(), open.typeNames(), open.maxMinutes()), open.startedAt()))
+                .orElse(null);
     }
 
     // ---- helpers ----------------------------------------------------------------------------------------------
@@ -667,7 +847,7 @@ public class SessionService {
         List<SessionResponse.SessionTicket> held = unresolved.stream().filter(t -> "held".equals(t.state())).map(this::ticketView).toList();
         return new SessionResponse(
                 session.id(), SessionViews.counter(counter), session.agentId(), session.state(), session.openedAt(), session.closedAt(), services, ticket, held,
-                queueProperties.holdLimit());
+                queueProperties.holdLimit(), breakOf(session));
     }
 
     private SessionResponse.SessionTicket ticketView(BoundTicket t) {

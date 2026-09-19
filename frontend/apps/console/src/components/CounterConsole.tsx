@@ -11,8 +11,8 @@ import { useApi } from "../lib/runtime";
 import { OpenSessionCard } from "./OpenSessionCard";
 import { ServingDesk, type DeskActions } from "./ServingDesk";
 
-/** The function keys of SRS §11.2 that this console answers (F9 break arrives with a later ticket). */
-const KEYS: Record<string, keyof Pick<DeskActions, "call" | "reannounce" | "start" | "complete" | "miss" | "transfer" | "hold" | "close">> = {
+/** The function keys of SRS §11.2 that this console answers . */
+const KEYS: Record<string, keyof Pick<DeskActions, "call" | "reannounce" | "start" | "complete" | "miss" | "transfer" | "hold" | "takeBreak" | "close">> = {
   F2: "call",
   F3: "reannounce",
   F4: "start",
@@ -20,12 +20,13 @@ const KEYS: Record<string, keyof Pick<DeskActions, "call" | "reannounce" | "star
   F6: "miss",
   F7: "transfer",
   F8: "hold",
+  F9: "takeBreak",
   F10: "close",
 };
 
 /**
  * The agent's console (SRS §11): open a session, then call, serve and complete tickets, and close the session, all from the
- * keyboard (F2, F3, F4, F5, F6, F7, F8, F10; NFR-USA-002). The console keeps no state the server does not: on load, on coming back
+ * keyboard (F2, F3, F4, F5, F6, F7, F8, F9, F10; NFR-USA-002). The console keeps no state the server does not: on load, on coming back
  * online and after any refused or lost action it asks the server for the session again, so a refresh, a short network loss
  * or a device restart puts the agent back at the ticket they were serving (FR-AGT-004). Whether an action is allowed is
  * shown here for convenience only; the API checks each one (FR-CFG-103, FR-CFG-105).
@@ -48,6 +49,8 @@ export function CounterConsole() {
   const [note, setNote] = useState("");
   /** Whether the transfer panel (F7) is open. */
   const [transferring, setTransferring] = useState(false);
+  /** Whether the break panel (F9) is open. */
+  const [breaking, setBreaking] = useState(false);
   const working = useRef(false);
   /** Counts the actions begun, so a read of the session that an action overtook is thrown away rather than shown. */
   const generation = useRef(0);
@@ -79,6 +82,12 @@ export function CounterConsole() {
     window.addEventListener("online", restore);
     return () => window.removeEventListener("online", restore);
   }, [restore]);
+
+  const sessionState = session?.state;
+  useEffect(() => {
+    // The panel is for choosing a break while the session is open; once the state moves, it has nothing to offer.
+    setBreaking(false);
+  }, [sessionState]);
 
   const ticketId = session?.ticket?.id;
   const ticketState = session?.ticket?.state;
@@ -135,7 +144,10 @@ export function CounterConsole() {
   const canHold = session?.state === "open" && ticket?.state === "serving" && heldTickets.length < (session?.hold_limit ?? 0);
   /** A held ticket comes back only when the desk has nothing else in progress (FR-AGT-010). */
   const canResume = session !== null && session !== undefined && session.state !== "closed" && ticket === null;
-  const canClose = session?.state === "open" || session?.state === "closing";
+  const canClose = session?.state === "open" || session?.state === "on_break" || session?.state === "closing";
+  /** A break needs the ticket in progress resolved first (FR-AGT-021); a held ticket is parked, not in progress. */
+  const canBreak = session?.state === "open" && ticket === null;
+  const canEndBreak = session?.state === "on_break";
   const actions: DeskActions = {
     canCall,
     canReannounce,
@@ -146,6 +158,8 @@ export function CounterConsole() {
     canHold,
     canResume,
     canClose,
+    canBreak,
+    canEndBreak,
     call() {
       if (!client || !session || !canCall) return;
       void perform(async () => setSession(await client.sessions.next(session.id)));
@@ -169,6 +183,14 @@ export function CounterConsole() {
     hold() {
       if (!client || !session || !ticket || !canHold) return;
       void perform(async () => setSession(await client.sessions.hold(session.id, ticket.version)));
+    },
+    takeBreak() {
+      if (!client || !session) return;
+      if (canEndBreak) {
+        void perform(async () => setSession(await client.sessions.endBreak(session.id)));
+      } else if (canBreak) {
+        setBreaking((open) => !open);
+      }
     },
     resume(held) {
       if (!client || !session || !canResume) return;
@@ -204,6 +226,15 @@ export function CounterConsole() {
     },
   };
 
+  /** Starts the break of the chosen type (FR-AGT-021); the answer is the session on break. */
+  function startBreak(breakTypeId: string) {
+    if (!client || !session || !canBreak) return;
+    void perform(async () => {
+      setSession(await client.sessions.startBreak(session.id, breakTypeId));
+      setBreaking(false);
+    });
+  }
+
   /** Sends the ticket in service to its target (FR-QUE-052); the answer carries the session as it stands, and the successor's place. */
   function transfer(input: TransferInput) {
     if (!client || !session || !ticket || !canTransfer) return;
@@ -221,7 +252,7 @@ export function CounterConsole() {
   const latest = useRef(actions);
   latest.current = actions;
   const openPanel = useRef(false);
-  openPanel.current = transferring;
+  openPanel.current = transferring || breaking;
   const active = Boolean(session);
   useEffect(() => {
     if (!active) return;
@@ -231,8 +262,8 @@ export function CounterConsole() {
       // F5 reloads the page and F10 opens a menu in some browsers; here they are the agent's actions.
       event.preventDefault();
       if (event.repeat) return;
-      // While the transfer panel is open the keys are the panel's: typing a note must not complete the ticket. F7 closes it again.
-      if (openPanel.current && action !== "transfer") return;
+      // While a panel is open the keys are the panel's: typing a note must not complete the ticket. F7 and F9 close their own panel again.
+      if (openPanel.current && action !== "transfer" && action !== "takeBreak") return;
       latest.current[action]();
     }
     window.addEventListener("keydown", onKeyDown);
@@ -268,6 +299,9 @@ export function CounterConsole() {
           transferring={transferring}
           onTransfer={transfer}
           onCancelTransfer={() => setTransferring(false)}
+          breaking={breaking}
+          onStartBreak={startBreak}
+          onCancelBreak={() => setBreaking(false)}
         />
       )}
     </div>

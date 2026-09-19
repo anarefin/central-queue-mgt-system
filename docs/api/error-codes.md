@@ -45,7 +45,7 @@ naming `Idempotency-Key` when it is missing); reusing a key for a different requ
 `details.reason` `idempotency_key_reused`.
 
 Counter sessions (`/sessions`, ticket 10) refuse with `conflict` and one `details.reason`: `counter_occupied`,
-`agent_has_open_session`, `counter_inactive` (opening); `session_not_open` (the session is closing, closed or on a break);
+`agent_has_open_session`, `counter_inactive` (opening); `session_not_open` (the session is closing, closed or on a break; a call while on a break is refused with it);
 `ticket_in_progress` (call next or close while a ticket is called or serving, or resume while one is); `held_tickets_remaining` (close
 with only held tickets left, ticket 13); `no_ticket_waiting` (nothing to call);
 `no_ticket_called` / `no_ticket_serving` (start, re-announce or miss with nothing called, or complete with nothing
@@ -57,7 +57,11 @@ service), `transfer_target_inactive` (the Service, its group or site, the counte
 (a Service or counter of another site; transfers are intra-site, ADR-0002) or `transfer_target_mismatch` (the counter does not serve the
 Service, or the agent is not on its team or does not work at the site). A missing or blank `note`, no target, the ticket's own Service
 without a counter or agent, a counter and an agent together, an unknown target, or a note over 1000 characters is `validation_failed`
-naming the field; another agent's ticket, or a role without the permission, is `forbidden`. A session that is not the caller's is `forbidden`, an unknown one `not_found`; a chosen service the counter
+naming the field; another agent's ticket, or a role without the permission, is `forbidden`. A break (`POST /sessions/{id}/break`, and `PUT /agents/{id}/availability`, ticket 16) refuses with `conflict` and `already_on_break` (a break is running), `not_on_break` (ending
+one when there is none), `ticket_in_progress` (a ticket is called or serving; a held ticket does not block a break), `session_not_open` (the session is closing, or a call is made
+while on a break) or, for an admin setting availability, `no_live_session` (the agent has no session open); a missing or unknown, or deactivated, `break_type_id`, an unknown `status`, or a
+break type with no name in the default language or a `max_minutes` outside 1 to 1440 is `validation_failed` naming the field; an agent is `forbidden` from another agent's session and
+from setting availability, and an admin outside the agent's site or Service groups is `forbidden`. A session that is not the caller's is `forbidden`, an unknown one `not_found`; a chosen service the counter
 does not offer, a missing or unknown outcome, or a malformed `If-Match` is `validation_failed` naming the field.
 
 The client library also synthesises two codes that never come from the server: `network_error` (no response) and

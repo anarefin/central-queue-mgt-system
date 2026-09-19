@@ -308,7 +308,7 @@ Hold off); one more is refused with `hold_limit_reached`. Hold is only offered o
 **Closing** (F10) needs everything in progress to be resolved: the ticket called or serving, and every held ticket. With any
 of them left the session becomes `closing`, takes no new calls and the request is refused with `ticket_in_progress` (a ticket
 called or serving) or `held_tickets_remaining` (only held tickets left); the agent resumes and completes each one, and the
-last completion closes the session. Breaks arrive with a later ticket.
+last completion closes the session. A session on a break (section 13) closes too: the break ends first and its time is kept.
 
 **Transfer (F7).** An agent sends the visitor being served to another Service, to one of that Service's counters, or to one of
 its agents, with a note the next agent reads; the note is mandatory (`validation_failed` naming `note`). The panel offers the
@@ -350,12 +350,49 @@ API, all under `/api/v1`: `GET /sessions/options`, `GET /sessions/current` (`not
 `POST /sessions` (`counter_id`, optional `service_ids`), `DELETE /sessions/{id}`, and `POST /sessions/{id}/next|reannounce|serve|complete|miss|hold|force-close`,
 `GET /sessions/{id}/transfer-targets` (where the ticket in service may go) and `POST /tickets/{id}/transfer` (`service_id`, optional
 `counter_id` or `agent_id`, and the mandatory `note`; it answers with the predecessor, the successor and the session).
-`hold` holds the serving ticket, or resumes a held one when given `{"ticket_id": ...}`. The session response carries `ticket`
-(in progress), `held` (the held-by-me list) and `hold_limit`.
+`POST /sessions/{id}/break` starts a break (`{"break_type_id": ...}`) or, with no body, ends the one the session is on (section 13). `hold` holds the serving ticket, or resumes a held one when given `{"ticket_id": ...}`. The session response carries `ticket`
+(in progress), `held` (the held-by-me list), `hold_limit` and `break` (the break being taken, or null).
 `reannounce`, `serve`, `complete`, `miss`, `hold` and `transfer` take the ticket's `version` as `If-Match`; a stale version is a `conflict` with reason
 `version_mismatch`. Conflict reasons: `counter_occupied`, `agent_has_open_session`, `counter_inactive`, `session_not_open`,
 `ticket_in_progress`, `held_tickets_remaining`, `no_ticket_waiting`, `no_ticket_called`, `no_ticket_serving`, `no_ticket_held`,
 `reannounce_limit_reached`, `hold_limit_reached`, `transfer_target_inactive`, `transfer_cross_site`, `transfer_target_mismatch`,
-`version_mismatch`. Events written per transition: `ticket.called`,
+`already_on_break`, `not_on_break`, `no_live_session`, `version_mismatch`. Events written per transition: `ticket.called`,
 `ticket.reannounced`, `ticket.missed`, `ticket.no_show`, `ticket.serving`, `ticket.held`, `ticket.position_changed`,
-`ticket.completed`, `ticket.transferred` (and `ticket.issued` for the successor); audit entries `session.opened`, `session.closed`, `session.force_closed` and `ticket.transferred`.
+`ticket.completed`, `ticket.transferred` (and `ticket.issued` for the successor); audit entries `session.opened`, `session.closed`, `session.force_closed`, `ticket.transferred`, `session.break_started`, `session.break_ended` and `agent.availability_changed`.
+The counter's topic also carries `session.break_started` and `session.break_ended`.
+
+## 13. Breaks and agent availability
+
+**Break types** (`/admin/breaks/`, Org Admin and System Admin; `GET/POST /break-types`, `PUT /break-types/{id}`,
+`POST /break-types/{id}/deactivate|activate`). A break type is what an agent picks when they press F9: a name in each language
+(the default language, English, is required; a missing translation falls back to it) and an optional maximum duration in minutes
+(1 to 1440; blank means no limit). Types are organisation-wide. They are deactivated, never deleted, so a break already taken keeps
+its type; a deactivated type is no longer offered. Nothing is set up on a new install, so add at least one (lunch, prayer, meeting
+and system issue are typical) before agents can take a break. Every change is audited (`break_type.created`, `.updated`,
+`.deactivated`, `.activated`). Changing break types is organisation configuration, so it needs the same permission as sites and
+zones; every role that runs a counter session may read the list.
+
+**Taking a break (F9).** With the session open and no ticket called or serving, the agent presses F9, picks a type and starts the
+break. The session becomes `on_break`: no new ticket is assigned from that moment (a call is refused with `session_not_open`),
+the counter stays occupied, and the console shows the break, how long it has run and, once it passes its type's maximum, a
+warning. A ticket held earlier stays held; it does not block a break. F9 again ends the break and the session is `open`. A
+break is refused with `ticket_in_progress` while a ticket is called or serving, `already_on_break` if one is running, and
+`session_not_open` on a session that is closing. Closing or force-closing a session on a break ends the break first. Every break
+is recorded (`break_record`: session, type, start, end, and who started and ended it) and audited as `session.break_started` and
+`session.break_ended` (the latter with the duration and whether it overran); the events `session.break_started` and
+`session.break_ended` go to the counter's topic, so the console and any dashboard see them at once. The alert to the Team Admin for
+a break that exceeds its maximum (FR-AGT-023) arrives with the dashboard; the report below already counts overruns.
+
+**Setting an agent's availability** (`/admin/availability/`; Team Admin, Org Admin and System Admin, within their sites and Service
+groups). `GET /agents/availability` lists the agents with a live session and their status: `available` (open), `on_break`,
+`closing`. `PUT /agents/{agent_id}/availability` with `{"status": "on_break", "break_type_id": ..., "reason": ...}` starts a break
+for the agent, and `{"status": "available"}` ends the one they are on (setting `available` on an agent who is already available
+changes nothing). It acts on the agent's live session under the agent's own rules: a ticket in progress must be resolved first
+(`ticket_in_progress`), and an agent with no session cannot be set (`no_live_session`, an unknown agent is `not_found`). An agent
+cannot set anyone's availability, not even their own. Each change writes one audit entry, `agent.availability_changed`, with the
+admin, the before and after status and the reason, and publishes the same session events, so the agent's console updates by itself.
+
+**Break report** (`GET /break-report?from=&to=&agent_id=&break_type_id=`, Org Admin, Team Admin and System Admin; times are
+ISO-8601 instants and the range is on when a break started). For each agent and break type it gives the count, total and average
+duration in seconds, and how many ran longer than the type's maximum. Only breaks that have ended count. The report is limited to
+the sites and Service groups in the caller's token.

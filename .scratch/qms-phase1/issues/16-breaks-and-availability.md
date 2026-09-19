@@ -6,9 +6,9 @@
 
 **Status:** ready-for-agent
 
-- [ ] Configurable break types with localised names and optional max duration (FR-AGT-020)
-- [ ] Starting a break requires the current Ticket resolved and stops new assignment immediately; session `on_break` (FR-AGT-021, §19.3)
-- [ ] Break records with start/end, reportable per Agent and break type (FR-AGT-022)
-- [ ] Team/Org Admin can change an Agent's availability status (FR-AGT-024)
-- [ ] `POST /sessions/{id}/break`; F9; `session.break_started` / `session.break_ended` events
-- [ ] Definition of done (SRS §27.5): user-facing strings in both en and bn packs; every protected action permission-checked server-side; specified events and audit entries emitted; each requirement ID above mapped to a passing test in the traceability matrix
+- [x] Configurable break types with localised names and optional max duration (FR-AGT-020)
+- [x] Starting a break requires the current Ticket resolved and stops new assignment immediately; session `on_break` (FR-AGT-021, §19.3)
+- [x] Break records with start/end, reportable per Agent and break type (FR-AGT-022)
+- [x] Team/Org Admin can change an Agent's availability status (FR-AGT-024)
+- [x] `POST /sessions/{id}/break`; F9; `session.break_started` / `session.break_ended` events
+- [x] Definition of done (SRS §27.5): user-facing strings in both en and bn packs; every protected action permission-checked server-side; specified events and audit entries emitted; each requirement ID above mapped to a passing test in the traceability matrix

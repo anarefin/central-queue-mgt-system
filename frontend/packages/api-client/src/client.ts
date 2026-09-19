@@ -13,6 +13,7 @@ import type {
 } from "./catalogue";
 import type { Counter, CounterInput, Items, Site, SiteInput, Zone, ZoneInput } from "./hierarchy";
 import type { Channel } from "./catalogue";
+import type { AgentAvailability, AvailabilityInput, BreakReport, BreakReportQuery, BreakType, BreakTypeInput } from "./breaks";
 import type { PriorityClass, PriorityClassInput, QueueDryRun, QueueStrategy, RoutingStrategy } from "./priority";
 import type { NumberingPreview, NumberingRule, NumberingRuleChange, NumberingRuleInput, NumberingScope } from "./numbering";
 import type { CompleteInput, CounterSession, OpenSessionInput, SessionCounterOption, TransferInput, TransferResult, TransferTargets } from "./sessions";
@@ -224,6 +225,10 @@ export class ApiClient {
     /** Put a held ticket back in service; only the session that holds it can. */
     resume: (id: string, ticketId: string, version?: number) =>
       this.request<CounterSession>("POST", `/sessions/${id}/hold`, { ticket_id: ticketId }, { headers: ifMatch(version) }),
+    /** F9: start a break of this type; the ticket in progress must be resolved first and no new ticket is assigned meanwhile (FR-AGT-021). */
+    startBreak: (id: string, breakTypeId: string) => this.request<CounterSession>("POST", `/sessions/${id}/break`, { break_type_id: breakTypeId }),
+    /** F9 again: end the break the session is on. */
+    endBreak: (id: string) => this.request<CounterSession>("POST", `/sessions/${id}/break`),
     /** An Org or Team Admin closes a stale session; its tickets return to the front of their queues, with an audit entry (FR-AGT-002). */
     forceClose: (id: string, reason?: string) =>
       this.request<CounterSession>("POST", `/sessions/${id}/force-close`, reason ? { reason } : undefined),
@@ -231,6 +236,27 @@ export class ApiClient {
       this.request<CounterSession>("POST", `/sessions/${id}/serve`, undefined, { headers: ifMatch(version) }),
     complete: (id: string, input: CompleteInput, version?: number) =>
       this.request<CounterSession>("POST", `/sessions/${id}/complete`, input, { headers: ifMatch(version) }),
+  };
+
+  /**
+   * Break types (FR-AGT-020), agent availability (FR-AGT-024) and the break report (FR-AGT-022). Types are replaced as a whole and
+   * deactivated, never deleted; an agent may only read them. `setAvailability` acts on the agent's live session, under the same
+   * rules as their own F9.
+   */
+  readonly breaks = {
+    types: () => this.request<Items<BreakType>>("GET", "/break-types"),
+    createType: (input: BreakTypeInput) => this.request<BreakType>("POST", "/break-types", input),
+    updateType: (id: string, input: BreakTypeInput) => this.request<BreakType>("PUT", `/break-types/${id}`, input),
+    deactivateType: (id: string, reason?: string) => this.request<BreakType>("POST", `/break-types/${id}/deactivate`, reason ? { reason } : undefined),
+    activateType: (id: string) => this.request<BreakType>("POST", `/break-types/${id}/activate`),
+    availability: () => this.request<Items<AgentAvailability>>("GET", "/agents/availability"),
+    setAvailability: (agentId: string, input: AvailabilityInput) => this.request<AgentAvailability>("PUT", `/agents/${agentId}/availability`, input),
+    report: (query: BreakReportQuery = {}) => {
+      const params = new URLSearchParams();
+      for (const [key, value] of Object.entries(query)) if (value) params.set(key, value);
+      const text = params.toString();
+      return this.request<BreakReport>("GET", `/break-report${text ? `?${text}` : ""}`);
+    },
   };
 
   /** The polling fallback of the realtime stream (FR-QUE-084): a topic's snapshot, under the same authorisation as a subscription. */

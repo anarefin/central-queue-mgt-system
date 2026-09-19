@@ -225,6 +225,101 @@ class SessionRepository {
         jdbc.update("UPDATE counter_session SET state = ?, closed_at = coalesce(?, closed_at) WHERE id = ?", state, closedAt == null ? null : ts(closedAt), id);
     }
 
+    // ---- breaks -----------------------------------------------------------------------------------------------
+
+    /** A break type as a session sees it: its names and longest duration, and whether it may still be picked. */
+    record BreakTypeRow(UUID id, Map<String, String> names, Integer maxMinutes, boolean active) {}
+
+    /** The break a session is on now. */
+    record OpenBreak(UUID id, UUID typeId, Map<String, String> typeNames, Integer maxMinutes, Instant startedAt) {}
+
+    Optional<BreakTypeRow> breakType(UUID id) {
+        return jdbc.query(
+                        "SELECT id, name_i18n, max_minutes, active FROM break_type WHERE id = ?",
+                        (rs, i) -> new BreakTypeRow(rs.getObject("id", UUID.class), names(rs.getString("name_i18n")), rs.getObject("max_minutes", Integer.class), rs.getBoolean("active")),
+                        id)
+                .stream().findFirst();
+    }
+
+    /** The break the session is on: the record with no end. There is at most one (a unique index says so). */
+    Optional<OpenBreak> openBreak(UUID sessionId) {
+        return jdbc.query(
+                        "SELECT r.id, r.break_type_id, t.name_i18n, t.max_minutes, r.started_at FROM break_record r JOIN break_type t ON t.id = r.break_type_id"
+                                + " WHERE r.counter_session_id = ? AND r.ended_at IS NULL",
+                        (rs, i) -> new OpenBreak(
+                                rs.getObject("id", UUID.class), rs.getObject("break_type_id", UUID.class), names(rs.getString("name_i18n")), rs.getObject("max_minutes", Integer.class), instant(rs, "started_at")),
+                        sessionId)
+                .stream().findFirst();
+    }
+
+    void insertBreak(UUID id, UUID sessionId, UUID typeId, Instant startedAt, UUID startedBy) {
+        jdbc.update(
+                "INSERT INTO break_record (id, counter_session_id, break_type_id, started_at, started_by) VALUES (?, ?, ?, ?, ?)", id, sessionId, typeId, ts(startedAt), startedBy);
+    }
+
+    void endBreak(UUID id, Instant endedAt, UUID endedBy) {
+        jdbc.update("UPDATE break_record SET ended_at = ?, ended_by = ? WHERE id = ?", ts(endedAt), endedBy, id);
+    }
+
+    /** Every session that still occupies its counter, oldest first. */
+    List<SessionRow> liveSessions() {
+        return jdbc.query("SELECT * FROM counter_session WHERE state IN (" + LIVE + ") ORDER BY opened_at, id", (rs, i) -> session(rs));
+    }
+
+    /** What a person is called on screen: their display name, else their username. */
+    String userName(UUID userId) {
+        return jdbc.query("SELECT coalesce(nullif(display_name, ''), username) AS name FROM users WHERE id = ?", (rs, i) -> rs.getString("name"), userId).stream().findFirst().orElse(null);
+    }
+
+    boolean userExists(UUID userId) {
+        return Boolean.TRUE.equals(jdbc.queryForObject("SELECT EXISTS (SELECT 1 FROM users WHERE id = ?)", Boolean.class, userId));
+    }
+
+    /** An ended break with the site and Service groups of its session, which decide who may report on it. */
+    record EndedBreak(BreakReport.Taken taken, UUID siteId, List<UUID> groupIds) {}
+
+    /** The breaks that ended, started within [from, to) when given, for one agent and one type when given. */
+    List<EndedBreak> endedBreaks(Instant from, Instant to, UUID agentId, UUID typeId) {
+        StringBuilder sql = new StringBuilder(
+                "SELECT s.agent_id, coalesce(nullif(u.display_name, ''), u.username) AS agent_name, t.id AS type_id, t.name_i18n, t.max_minutes, r.started_at, r.ended_at, z.site_id,"
+                        + " coalesce((SELECT array_agg(DISTINCT v.service_group_id) FROM service v WHERE v.id = ANY (s.services)), '{}') AS group_ids"
+                        + " FROM break_record r JOIN counter_session s ON s.id = r.counter_session_id JOIN users u ON u.id = s.agent_id"
+                        + " JOIN break_type t ON t.id = r.break_type_id JOIN counter c ON c.id = s.counter_id JOIN zone z ON z.id = c.zone_id"
+                        + " WHERE r.ended_at IS NOT NULL");
+        List<Object> arguments = new ArrayList<>();
+        if (from != null) {
+            sql.append(" AND r.started_at >= ?");
+            arguments.add(ts(from));
+        }
+        if (to != null) {
+            sql.append(" AND r.started_at < ?");
+            arguments.add(ts(to));
+        }
+        if (agentId != null) {
+            sql.append(" AND s.agent_id = ?");
+            arguments.add(agentId);
+        }
+        if (typeId != null) {
+            sql.append(" AND r.break_type_id = ?");
+            arguments.add(typeId);
+        }
+        sql.append(" ORDER BY r.started_at, r.id");
+        return jdbc.query(
+                sql.toString(),
+                (rs, i) -> new EndedBreak(
+                        new BreakReport.Taken(
+                                rs.getObject("agent_id", UUID.class),
+                                rs.getString("agent_name"),
+                                rs.getObject("type_id", UUID.class),
+                                names(rs.getString("name_i18n")),
+                                rs.getObject("max_minutes", Integer.class),
+                                instant(rs, "started_at"),
+                                instant(rs, "ended_at")),
+                        rs.getObject("site_id", UUID.class),
+                        List.of((UUID[]) rs.getArray("group_ids").getArray())),
+                arguments.toArray());
+    }
+
     // ---- the tickets a session drives -------------------------------------------------------------------------
 
     /** The tickets bound to the session that are not finished: called, serving or held (ADR-0008). */

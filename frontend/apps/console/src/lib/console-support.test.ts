@@ -40,6 +40,7 @@ function session(over: Partial<CounterSession> = {}): CounterSession {
     ticket: null,
     held: [],
     hold_limit: 3,
+    break: null,
     ...over,
   };
 }
@@ -133,6 +134,14 @@ describe("counterMovedOn: is the console behind the server?", () => {
     expect(counterMovedOn(event("session.closed", { session_id: "older" }), session())).toBe(false);
     expect(counterMovedOn(event("session.opened", { session_id: "s1" }), session())).toBe(false);
     expect(counterMovedOn(event("session.opened", { session_id: "s2" }), session())).toBe(true);
+  });
+
+  it("is behind when a break started or ended elsewhere changed the session's state, and not for the echo of its own action (FR-AGT-024)", () => {
+    expect(counterMovedOn(event("session.break_started", { session_id: "s1", state: "on_break" }), session())).toBe(true);
+    expect(counterMovedOn(event("session.break_started", { session_id: "s1", state: "on_break" }), session({ state: "on_break" }))).toBe(false);
+    expect(counterMovedOn(event("session.break_ended", { session_id: "s1", state: "open" }), session({ state: "on_break" }))).toBe(true);
+    expect(counterMovedOn(event("session.break_ended", { session_id: "s1", state: "open" }), session())).toBe(false);
+    expect(counterMovedOn(event("session.break_started", { session_id: "older", state: "on_break" }), session())).toBe(false);
   });
 
   it("is not moved by a refusal", () => {

@@ -35,6 +35,8 @@ const CATALOGUE_FIELDS = new Set([
   "token_prefix_override",
   "strategy",
   "priority_class_id",
+  "max_minutes",
+  "break_type_id",
 ]);
 
 /** A localised sentence for a failed call; a validation failure also names the fields to check (SRS §20.3). */

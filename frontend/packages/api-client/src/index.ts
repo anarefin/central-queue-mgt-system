@@ -1,3 +1,4 @@
+export * from "./breaks";
 export * from "./catalogue";
 export * from "./client";
 export * from "./config";

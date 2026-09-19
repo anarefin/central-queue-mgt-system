@@ -397,6 +397,35 @@ class RealtimeIT {
     }
 
     @Test
+    void aBreakStartingAndEndingIsAnnouncedOnTheCounterWithItsTypeAndDurationWhetherTheAgentOrAnAdminAskedForIt() throws Exception {
+        World w = world();
+        Person agent = person(Role.AGENT, w.site(), w.group());
+        Person admin = person(Role.TEAM_ADMIN, w.site(), w.group());
+        Person orgAdmin = person(Role.ORG_ADMIN, w.site(), null);
+        Socket console = connect(agent);
+        console.subscribe("counter:" + w.counter());
+        UUID session = openSession(agent, w.counter());
+        console.event("session.opened");
+        String lunch = (String) json(send("POST", "/break-types", orgAdmin.token(), "{\"name_i18n\":{\"en\":\"Lunch\"},\"max_minutes\":30}")).get("id");
+
+        send("POST", "/sessions/" + session + "/break", agent.token(), "{\"break_type_id\":\"" + lunch + "\"}");
+        Map<String, Object> started = console.event("session.break_started");
+        assertThat(started).containsEntry("topic", "counter:" + w.counter());
+        assertThat(data(started)).containsEntry("state", "on_break").containsEntry("session_id", session.toString()).containsEntry("break_type_id", lunch)
+                .containsEntry("max_minutes", 30).containsEntry("forced", false);
+
+        send("POST", "/sessions/" + session + "/break", agent.token(), null);
+        Map<String, Object> ended = console.event("session.break_ended");
+        assertThat(data(ended)).containsEntry("state", "open").containsEntry("break_type_id", lunch).containsEntry("forced", false);
+        assertThat(data(ended)).containsKey("duration_seconds").containsEntry("overran", false);
+
+        send("PUT", "/agents/" + agent.id() + "/availability", admin.token(), "{\"status\":\"on_break\",\"break_type_id\":\"" + lunch + "\"}");
+        assertThat(data(console.event("session.break_started"))).containsEntry("forced", true);
+        send("PUT", "/agents/" + agent.id() + "/availability", admin.token(), "{\"status\":\"available\"}");
+        assertThat(data(console.event("session.break_ended"))).containsEntry("forced", true).containsEntry("state", "open");
+    }
+
+    @Test
     void aSnapshotShowsTheSessionAndTheTicketInProgress() throws Exception {
         World w = world();
         Person agent = person(Role.AGENT, w.site(), w.group());

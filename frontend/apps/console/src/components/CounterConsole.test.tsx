@@ -1,4 +1,4 @@
-import type { CounterSession, SessionCounterOption, SessionOutcome, SessionTicket, TransferResult, TransferTargets } from "@qms/api-client";
+import type { BreakType, CounterSession, SessionBreak, SessionCounterOption, SessionOutcome, SessionTicket, TransferResult, TransferTargets } from "@qms/api-client";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -46,7 +46,7 @@ function ticket(over: Partial<SessionTicket> = {}): SessionTicket {
 }
 
 function session(over: Partial<CounterSession> = {}): CounterSession {
-  return { id: "s1", counter: COUNTER, agent_id: "u1", state: "open", opened_at: STAMP, closed_at: null, services: SERVICES, ticket: null, held: [], hold_limit: 3, ...over };
+  return { id: "s1", counter: COUNTER, agent_id: "u1", state: "open", opened_at: STAMP, closed_at: null, services: SERVICES, ticket: null, held: [], hold_limit: 3, break: null, ...over };
 }
 
 const OPTIONS: SessionCounterOption[] = [
@@ -679,6 +679,202 @@ describe("transfer to a successor ticket (FR-QUE-052, FR-QUE-053, ADR-0006, UAT 
     await user.click(screen.getByRole("button", { name: "Transfer" }));
 
     expect(await screen.findByText("Open a counter session")).toBeInTheDocument();
+  });
+});
+
+describe("breaks (F9, FR-AGT-020, FR-AGT-021, FR-AGT-022, SRS §19.3)", () => {
+  const TYPES: BreakType[] = [
+    { id: "b1", name_i18n: { en: "Lunch", bn: "দুপুরের খাবার" }, max_minutes: 30, active: true, created_at: STAMP, updated_at: STAMP },
+    { id: "b2", name_i18n: { en: "Meeting" }, max_minutes: null, active: true, created_at: STAMP, updated_at: STAMP },
+    { id: "b3", name_i18n: { en: "Retired" }, max_minutes: 10, active: false, created_at: STAMP, updated_at: STAMP },
+  ];
+
+  const parked = (id: string, token: string) => ticket({ id, token_number: token, state: "held", version: 3, served_at: STAMP });
+
+  function onBreak(over: Partial<SessionBreak> = {}, startedAt = new Date().toISOString()): SessionBreak {
+    return { id: "r1", type: { id: "b1", name_i18n: TYPES[0]!.name_i18n, max_minutes: 30 }, started_at: startedAt, ...over };
+  }
+
+  it("offers the active break types with F9, starts the chosen one and shows the break, its clock and that nothing is assigned", async () => {
+    let state = session();
+    const calls = stubApi({
+      ...AUTH,
+      "GET /sessions/current": () => json(200, state),
+      "GET /break-types": () => json(200, { items: TYPES }),
+      "POST /sessions/s1/break": () => json(200, (state = session({ state: "on_break", break: onBreak() }))),
+    });
+    const user = userEvent.setup();
+    renderApp(<Home />);
+    await screen.findByText("No ticket in progress. Press F2 to call the next ticket.");
+
+    await user.keyboard("{F9}");
+
+    const choose = await screen.findByLabelText("Break type");
+    expect(within(choose).getAllByRole("option").map((o) => o.textContent)).toEqual(["Choose a break type", "Lunch (up to 30 min)", "Meeting"]);
+    expect(screen.getByRole("button", { name: "Start break" })).toBeDisabled();
+    await user.selectOptions(choose, "b1");
+    await user.click(screen.getByRole("button", { name: "Start break" }));
+
+    expect(await screen.findByText("On break: Lunch")).toBeInTheDocument();
+    expect(body(calls.find((c) => c.method === "POST" && c.path === "/sessions/s1/break"))).toEqual({ break_type_id: "b1" });
+    expect(screen.getByRole("timer")).toHaveTextContent(/On break for 0 min \d+ s · Maximum 30 min/);
+    expect(screen.getByText(/no new tickets are assigned/)).toBeInTheDocument();
+    expect(screen.getAllByText("On break").length).toBeGreaterThan(0);
+    expect(screen.getByRole("button", { name: /Call next/ })).toBeDisabled();
+    expect(screen.queryByLabelText("Break type")).not.toBeInTheDocument();
+  });
+
+  it("ends the break with F9 and the desk takes calls again", async () => {
+    let state = session({ state: "on_break", break: onBreak() });
+    const calls = stubApi({
+      ...AUTH,
+      "GET /sessions/current": () => json(200, state),
+      "POST /sessions/s1/break": () => json(200, (state = session())),
+    });
+    const user = userEvent.setup();
+    renderApp(<Home />);
+    await screen.findByText("On break: Lunch");
+    await user.keyboard("{F2}");
+    expect(count(calls, "POST /sessions/s1/next"), "no call while on a break").toBe(0);
+
+    await user.keyboard("{F9}");
+
+    await screen.findByText("No ticket in progress. Press F2 to call the next ticket.");
+    const end = calls.find((c) => c.method === "POST" && c.path === "/sessions/s1/break");
+    expect(end?.init.body, "no type: ends the break").toBeUndefined();
+    expect(screen.queryByText("On break: Lunch")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Call next/ })).toBeEnabled();
+  });
+
+  it("restores a break after a refresh and warns once it has run past its maximum", async () => {
+    const started = new Date(Date.now() - 45 * 60_000).toISOString();
+    stubApi({ ...AUTH, "GET /sessions/current": () => json(200, session({ state: "on_break", break: onBreak({}, started) })) });
+    renderApp(<Home />);
+
+    expect(await screen.findByText("On break: Lunch")).toBeInTheDocument();
+    expect(screen.getByRole("timer")).toHaveTextContent(/On break for 45 min/);
+    expect(screen.getByText("This break has run past its maximum of 30 min. Please return to your desk.")).toBeInTheDocument();
+  });
+
+  it("does not warn while a break is within its maximum or its type has none", async () => {
+    stubApi({
+      ...AUTH,
+      "GET /sessions/current": () => json(200, session({ state: "on_break", break: onBreak({ type: { id: "b2", name_i18n: { en: "Meeting" }, max_minutes: null } }, new Date(Date.now() - 600 * 60_000).toISOString()) })),
+    });
+    renderApp(<Home />);
+
+    expect(await screen.findByText("On break: Meeting")).toBeInTheDocument();
+    expect(screen.queryByText(/has run past its maximum/)).not.toBeInTheDocument();
+  });
+
+  it("is not offered while a ticket is in progress, and F9 then sends nothing", async () => {
+    const calls = stubApi({ ...AUTH, "GET /sessions/current": () => json(200, session({ ticket: ticket() })) });
+    const user = userEvent.setup();
+    renderApp(<Home />);
+    await screen.findByText("Called, waiting for the visitor");
+    expect(screen.getByRole("button", { name: /^Break F9/ })).toBeDisabled();
+
+    await user.keyboard("{F9}");
+
+    expect(screen.queryByLabelText("Break type")).not.toBeInTheDocument();
+    expect(calls.filter((c) => c.method !== "GET" && c.path !== "/auth/refresh")).toEqual([]);
+    expect(count(calls, "GET /break-types")).toBe(0);
+  });
+
+  it("is offered with a ticket held, since a held ticket is parked and not in progress", async () => {
+    stubApi({
+      ...AUTH,
+      "GET /sessions/current": () => json(200, session({ held: [parked("t1", "S-042")] })),
+      "GET /break-types": () => json(200, { items: TYPES }),
+    });
+    const user = userEvent.setup();
+    renderApp(<Home />);
+    await screen.findByTestId("held-t1");
+    expect(screen.getByRole("button", { name: /^Break F9/ })).toBeEnabled();
+
+    await user.keyboard("{F9}");
+
+    expect(await screen.findByLabelText("Break type")).toBeInTheDocument();
+  });
+
+  it("while the panel is open the other keys do not act, F9 and Esc close it, and it says so when no break type exists", async () => {
+    const calls = stubApi({ ...AUTH, "GET /sessions/current": () => json(200, session()), "GET /break-types": () => json(200, { items: [TYPES[2]!] }) });
+    const user = userEvent.setup();
+    renderApp(<Home />);
+    await screen.findByText("No ticket in progress. Press F2 to call the next ticket.");
+    await user.keyboard("{F9}");
+    expect(await screen.findByText("No break types are set up yet. Ask an admin to add one.")).toBeInTheDocument();
+
+    await user.keyboard("{F2}{F10}");
+    expect(calls.filter((c) => c.method !== "GET" && c.path !== "/auth/refresh"), "nothing was sent").toEqual([]);
+    await user.keyboard("{F9}");
+    expect(screen.queryByText("Start a break")).not.toBeInTheDocument();
+    await user.keyboard("{F9}");
+    await screen.findByText("Start a break");
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(screen.queryByText("Start a break")).not.toBeInTheDocument();
+  });
+
+  it("says why the API refused a break, in the reader's language, and reads the session again", async () => {
+    let state = session();
+    const calls = stubApi({
+      ...AUTH,
+      "GET /sessions/current": () => json(200, state),
+      "GET /break-types": () => json(200, { items: TYPES }),
+      "POST /sessions/s1/break": () => {
+        state = session({ ticket: ticket() });
+        return refusal(409, "ticket_in_progress");
+      },
+    });
+    const user = userEvent.setup();
+    renderApp(<Home />, ["bn-BD"]);
+    await screen.findByText("কাউন্টার কনসোল");
+    await user.keyboard("{F9}");
+    await user.selectOptions(await screen.findByLabelText("বিরতির ধরন"), "b2");
+    await user.click(screen.getByRole("button", { name: "বিরতি শুরু" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("আগে চলমান টিকিটটি শেষ করুন।");
+    expect(await screen.findByTestId("current-token")).toHaveTextContent("S-042");
+    expect(count(calls, "GET /sessions/current")).toBe(2);
+  });
+
+  it("reads the session again when an admin put the agent on a break or back, and not for its own echo", async () => {
+    let state = session();
+    const calls = stubApi({ ...AUTH, "GET /sessions/current": () => json(200, state) });
+    renderApp(<Home />);
+    const socket = await connected();
+    await screen.findByText("No ticket in progress. Press F2 to call the next ticket.");
+    socket.say(counterSnapshot({ id: "s1", state: "open" }, null));
+
+    socket.say(hubEvent("counter:c1", 1, "session.break_ended", { session_id: "s1", state: "open" }));
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    expect(count(calls, "GET /sessions/current"), "the screen already shows an open session").toBe(1);
+
+    state = session({ state: "on_break", break: onBreak() });
+    socket.say(hubEvent("counter:c1", 2, "session.break_started", { session_id: "s1", state: "on_break", forced: true }));
+
+    expect(await screen.findByText("On break: Lunch")).toBeInTheDocument();
+    expect(count(calls, "GET /sessions/current")).toBe(2);
+    state = session();
+    socket.say(hubEvent("counter:c1", 3, "session.break_ended", { session_id: "s1", state: "open", forced: true }));
+    await waitFor(() => expect(screen.queryByText("On break: Lunch")).not.toBeInTheDocument());
+  });
+
+  it("lets the agent close the session from a break with F10", async () => {
+    const calls = stubApi({
+      ...AUTH,
+      "GET /sessions/current": () => json(200, session({ state: "on_break", break: onBreak() })),
+      "DELETE /sessions/s1": () => json(200, session({ state: "closed", closed_at: STAMP })),
+      "GET /sessions/options": () => json(200, { items: OPTIONS }),
+    });
+    const user = userEvent.setup();
+    renderApp(<Home />);
+    await screen.findByText("On break: Lunch");
+
+    await user.keyboard("{F10}");
+
+    expect(await screen.findByText("Open a counter session")).toBeInTheDocument();
+    expect(count(calls, "DELETE /sessions/s1")).toBe(1);
   });
 });
 

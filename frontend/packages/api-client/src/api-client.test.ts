@@ -377,6 +377,48 @@ describe("ApiClient service catalogue", () => {
     expect((fetchImpl.mock.calls[15]?.[1] as RequestInit).body).toBeUndefined();
   });
 
+  it("maps breaks, availability and the break report onto their paths (FR-AGT-020, FR-AGT-021, FR-AGT-022, FR-AGT-024, §20.4)", async () => {
+    const fetchImpl = vi.fn().mockImplementation(async () => json(200, { items: [] }));
+    const client = new ApiClient({ apiOrigin: "", fetch: fetchImpl as unknown as typeof fetch });
+
+    await client.sessions.startBreak("s1", "b1");
+    await client.sessions.endBreak("s1");
+    await client.breaks.types();
+    await client.breaks.createType({ name_i18n: { en: "Lunch" }, max_minutes: 30 });
+    await client.breaks.updateType("b1", { name_i18n: { en: "Lunch break" }, max_minutes: null });
+    await client.breaks.deactivateType("b1", "retired");
+    await client.breaks.deactivateType("b1");
+    await client.breaks.activateType("b1");
+    await client.breaks.availability();
+    await client.breaks.setAvailability("u1", { status: "on_break", break_type_id: "b1", reason: "outage" });
+    await client.breaks.report({ from: "2026-09-19T00:00:00Z", agent_id: "u1", break_type_id: "" });
+    await client.breaks.report();
+
+    const calls = fetchImpl.mock.calls.map(([url, init]) => `${(init as RequestInit).method} ${String(url).replace("/api/v1", "")}`);
+    expect(calls).toEqual([
+      "POST /sessions/s1/break",
+      "POST /sessions/s1/break",
+      "GET /break-types",
+      "POST /break-types",
+      "PUT /break-types/b1",
+      "POST /break-types/b1/deactivate",
+      "POST /break-types/b1/deactivate",
+      "POST /break-types/b1/activate",
+      "GET /agents/availability",
+      "PUT /agents/u1/availability",
+      "GET /break-report?from=2026-09-19T00%3A00%3A00Z&agent_id=u1",
+      "GET /break-report",
+    ]);
+    const body = (index: number) => JSON.parse(String((fetchImpl.mock.calls[index]?.[1] as RequestInit).body));
+    expect(body(0)).toEqual({ break_type_id: "b1" });
+    expect((fetchImpl.mock.calls[1]?.[1] as RequestInit).body).toBeUndefined();
+    expect(body(3)).toEqual({ name_i18n: { en: "Lunch" }, max_minutes: 30 });
+    expect(body(4)).toEqual({ name_i18n: { en: "Lunch break" }, max_minutes: null });
+    expect(body(5)).toEqual({ reason: "retired" });
+    expect((fetchImpl.mock.calls[6]?.[1] as RequestInit).body).toBeUndefined();
+    expect(body(9)).toEqual({ status: "on_break", break_type_id: "b1", reason: "outage" });
+  });
+
   it("maps a transfer onto POST /tickets/{id}/transfer with the note, the target and the ticket version as If-Match (FR-QUE-052)", async () => {
     const fetchImpl = vi.fn().mockImplementation(async () => json(200, { predecessor: {}, successor: {}, session: {} }));
     const client = new ApiClient({ apiOrigin: "", fetch: fetchImpl as unknown as typeof fetch });

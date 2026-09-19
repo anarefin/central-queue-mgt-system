@@ -84,6 +84,13 @@ public class SessionController {
         return service.hold(id, request, version(ifMatch));
     }
 
+    /** F9: starts the break named by {@code break_type_id}, or, with none, ends the break the session is on (FR-AGT-020, FR-AGT-021). */
+    @PreAuthorize(SessionService.OPEN_CLOSE)
+    @PostMapping("/sessions/{id}/break")
+    public SessionResponse takeBreak(@PathVariable UUID id, @RequestBody(required = false) BreakRequest request) {
+        return service.takeBreak(id, request);
+    }
+
     /** An Org or Team Admin closes a stale session; its tickets return to the front of their queues (FR-AGT-002). */
     @PreAuthorize(SessionService.FORCE_CLOSE)
     @PostMapping("/sessions/{id}/force-close")

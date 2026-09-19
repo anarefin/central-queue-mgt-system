@@ -20,6 +20,8 @@ const REFUSALS = new Set([
   "transfer_target_inactive",
   "transfer_cross_site",
   "transfer_target_mismatch",
+  "already_on_break",
+  "not_on_break",
 ]);
 
 /** A localised sentence for a failed call; the code and reason, never the server's text, choose it (SRS §20.3). */
@@ -70,6 +72,8 @@ export function counterMovedOn(update: RealtimeUpdate, session: CounterSession):
   }
   if (update.type === "session.opened") return update.data.session_id !== session.id;
   if (update.type === "session.closed") return update.data.session_id === session.id;
+  // A break started or ended by someone else (an admin sets availability, FR-AGT-024) leaves the screen behind the server.
+  if (update.type === "session.break_started" || update.type === "session.break_ended") return update.data.session_id === session.id && update.data.state !== session.state;
   const state = update.data.state;
   const ticketId = update.data.ticket_id;
   if (state === "called" && shown && shown.id === ticketId && shown.state === "called") {

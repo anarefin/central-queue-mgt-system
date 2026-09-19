@@ -38,6 +38,12 @@ export default function Home() {
             <Link href="/catalogue/">{t("admin.home.catalogue")}</Link>
             <Link href="/numbering/">{t("admin.home.numbering")}</Link>
             <Link href="/priority/">{t("admin.home.priority")}</Link>
+            <Link href="/breaks/">{t("admin.home.breaks")}</Link>
+          </div>
+        )}
+        {user?.roles.some((role) => role === "system_admin" || role === "org_admin" || role === "team_admin") && (
+          <div className="qms-row">
+            <Link href="/availability/">{t("admin.home.availability")}</Link>
           </div>
         )}
         {user?.roles.includes("reception_operator") && (

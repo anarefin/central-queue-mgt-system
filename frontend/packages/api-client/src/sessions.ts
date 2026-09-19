@@ -52,6 +52,13 @@ export interface SessionTicket {
   outcomes: SessionOutcome[];
 }
 
+/** The break a session is on while its state is `on_break` (FR-AGT-021): its type and when it started, so the console can show its clock. */
+export interface SessionBreak {
+  id: string;
+  type: { id: string; name_i18n: LocalisedText; max_minutes: number | null };
+  started_at: string;
+}
+
 export interface CounterSession {
   id: string;
   counter: SessionCounter;
@@ -66,6 +73,8 @@ export interface CounterSession {
   held: SessionTicket[];
   /** The most tickets this session may hold at once. */
   hold_limit: number;
+  /** The break the session is on, or null. */
+  break: SessionBreak | null;
 }
 
 /** A counter the caller may occupy, with the Services it would let them serve (FR-AGT-001, FR-AGT-003). */

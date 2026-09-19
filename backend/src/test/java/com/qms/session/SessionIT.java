@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 
 import com.jayway.jsonpath.JsonPath;
 import com.qms.issuance.ActorType;
@@ -57,7 +58,8 @@ import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilde
  * Tickets 10 and 12 against real PostgreSQL with a clock the test moves: an Agent opens a counter session, calls the highest
  * scoring ticket, starts service and completes it with an outcome, and closes the session. Covers FR-AGT-001, -003, -004,
  * -005, -010, -032, FR-QUE-002, -030, -031, FR-CFG-105, ADR-0008, §18.4, §18.5, §19.3, Invariants 1-3 and NFR-PERF-003; and,
- * from ticket 12, Re-announce and Miss: FR-DSP-028, FR-QUE-050, -051, ADR-0004 and ADR-0005.
+ * from ticket 12, Re-announce and Miss: FR-DSP-028, FR-QUE-050, -051, ADR-0004 and ADR-0005; and, from ticket 16, breaks and
+ * availability: FR-AGT-020, -021, -022, -024 and §19.3.
  */
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -1929,6 +1931,391 @@ class SessionIT {
         assertThat(status(call(get("/api/v1/sessions/" + UUID.randomUUID() + "/transfer-targets"), me.token(), null))).isEqualTo(404);
         assertThat(status(call(get("/api/v1/sessions/" + session + "/transfer-targets"), user(Role.RECEPTION_OPERATOR, w.site(), w.group()).token(), null))).isEqualTo(403);
         assertThat(status(call(get("/api/v1/sessions/" + session + "/transfer-targets"), user(Role.TEAM_ADMIN, w.site(), w.group()).token(), null))).isEqualTo(200);
+    }
+
+    // ---- ticket 16: breaks and agent availability (FR-AGT-020..022, FR-AGT-024, §19.3) ------------------------------
+
+    private UUID newBreakType(String name, Integer maxMinutes) {
+        UUID id = UUID.randomUUID();
+        jdbc.update(
+                "INSERT INTO break_type (id, name_i18n, max_minutes, active, created_at, updated_at) VALUES (?, ?::jsonb, ?, true, now(), now())",
+                id, "{\"en\":\"" + name + "\"}", maxMinutes);
+        return id;
+    }
+
+    /** F9: starts the break of {@code type}, or ends the current one when {@code type} is null. */
+    private MvcResult takeBreak(Agent agent, UUID session, UUID type) throws Exception {
+        return call(post("/api/v1/sessions/" + session + "/break"), agent.token(), type == null ? null : "{\"break_type_id\":\"" + type + "\"}");
+    }
+
+    private MvcResult setAvailability(Agent admin, UUID agentId, String status, UUID type, String reason) throws Exception {
+        StringBuilder json = new StringBuilder("{\"status\":\"" + status + "\"");
+        if (type != null) json.append(",\"break_type_id\":\"").append(type).append("\"");
+        if (reason != null) json.append(",\"reason\":\"").append(reason).append("\"");
+        return call(put("/api/v1/agents/" + agentId + "/availability"), admin.token(), json.append("}").toString());
+    }
+
+    private List<String> auditActions(UUID session) {
+        return jdbc.queryForList("SELECT action FROM audit_log WHERE entity = 'counter_session' AND entity_id = ? ORDER BY occurred_at, id", String.class, session);
+    }
+
+    @Test
+    void anAgentStartsATypedBreakAndStopsReceivingTicketsAtOnceAndEndingItPutsThemBackInService() throws Exception {
+        World w = world();
+        UUID desk = counter(w, "Desk 1", w.a(), 1);
+        String waiting = issueAgo(w.a(), 10);
+        UUID lunch = newBreakType("Lunch", 30);
+        Agent agent = agent(w);
+        UUID session = opened(agent, desk);
+
+        MvcResult started = takeBreak(agent, session, lunch);
+
+        assertThat(status(started)).as(body(started)).isEqualTo(200);
+        assertThat((String) field(started, "$.state")).isEqualTo("on_break");
+        assertThat((String) field(started, "$.break.type.name_i18n.en")).isEqualTo("Lunch");
+        assertThat((Integer) field(started, "$.break.type.max_minutes")).isEqualTo(30);
+        assertThat((String) field(started, "$.break.started_at")).isEqualTo(BASE.toString());
+        assertThat(jdbc.queryForObject("SELECT state FROM counter_session WHERE id = ?", String.class, session)).isEqualTo("on_break");
+        MvcResult refused = next(agent, session);
+        assertThat(status(refused)).as("no new assignment while on a break").isEqualTo(409);
+        assertThat(reason(refused)).isEqualTo("session_not_open");
+        assertThat(ticketRow(waiting, w.a()).get("state")).as("the ticket stays in the queue").isEqualTo("waiting");
+        assertThat((String) field(current(agent), "$.break.type.name_i18n.en")).as("a refresh restores the break").isEqualTo("Lunch");
+        assertThat(status(open(agent(w), desk))).as("the counter is still occupied on a break").isEqualTo(409);
+
+        clock.advance(Duration.ofMinutes(12));
+        MvcResult ended = takeBreak(agent, session, null);
+
+        assertThat(status(ended)).as(body(ended)).isEqualTo(200);
+        assertThat((String) field(ended, "$.state")).isEqualTo("open");
+        assertThat((Object) field(ended, "$.break")).isNull();
+        assertThat(calledToken(agent, session)).as("back in service").isEqualTo(waiting);
+    }
+
+    @Test
+    void aBreakIsRecordedWithItsStartEndAndTypeAndIsAuditedBothWays() throws Exception {
+        World w = world();
+        UUID desk = counter(w, "Desk 1", w.a(), 1);
+        UUID prayer = newBreakType("Prayer", 20);
+        Agent agent = agent(w);
+        UUID session = opened(agent, desk);
+        clock.advance(Duration.ofSeconds(1));
+
+        takeBreak(agent, session, prayer);
+        clock.advance(Duration.ofMinutes(25));
+        takeBreak(agent, session, null);
+
+        Map<String, Object> record = jdbc.queryForMap("SELECT * FROM break_record WHERE counter_session_id = ?", session);
+        assertThat(record.get("break_type_id")).isEqualTo(prayer);
+        assertThat(((java.sql.Timestamp) record.get("started_at")).toInstant()).isEqualTo(BASE.plusSeconds(1));
+        assertThat(((java.sql.Timestamp) record.get("ended_at")).toInstant()).isEqualTo(BASE.plusSeconds(1).plus(Duration.ofMinutes(25)));
+        assertThat(record.get("started_by")).isEqualTo(agent.id());
+        assertThat(record.get("ended_by")).isEqualTo(agent.id());
+        assertThat(auditActions(session)).containsExactly("session.opened", "session.break_started", "session.break_ended");
+        Map<String, Object> ended = jdbc.queryForMap("SELECT actor_id, after::text AS after FROM audit_log WHERE action = 'session.break_ended' AND entity_id = ?", session);
+        assertThat(ended.get("actor_id")).isEqualTo(agent.id());
+        assertThat((Integer) JsonPath.read((String) ended.get("after"), "$.duration_seconds")).isEqualTo(25 * 60);
+        assertThat((Boolean) JsonPath.read((String) ended.get("after"), "$.overran")).isTrue();
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM break_record WHERE counter_session_id = ? AND ended_at IS NULL", Integer.class, session)).isZero();
+    }
+
+    @Test
+    void aBreakNeedsTheTicketInProgressResolvedFirstAndAHeldTicketDoesNotBlockIt() throws Exception {
+        World w = world();
+        UUID desk = counter(w, "Desk 1", w.a(), 1);
+        issueAgo(w.a(), 30);
+        issueAgo(w.a(), 20);
+        UUID meeting = newBreakType("Meeting", null);
+        Agent agent = agent(w);
+        UUID session = opened(agent, desk);
+        calledToken(agent, session);
+
+        MvcResult whileCalled = takeBreak(agent, session, meeting);
+        assertThat(status(whileCalled)).isEqualTo(409);
+        assertThat(reason(whileCalled)).as("a called ticket").isEqualTo("ticket_in_progress");
+        serve(agent, session, null);
+        assertThat(reason(takeBreak(agent, session, meeting))).as("a ticket in service").isEqualTo("ticket_in_progress");
+        assertThat(jdbc.queryForObject("SELECT state FROM counter_session WHERE id = ?", String.class, session)).as("nothing changed").isEqualTo("open");
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM break_record WHERE counter_session_id = ?", Integer.class, session)).isZero();
+
+        assertThat(status(hold(agent, session, null, null))).isEqualTo(200);
+        MvcResult whileHeld = takeBreak(agent, session, meeting);
+        assertThat(status(whileHeld)).as(body(whileHeld)).isEqualTo(200);
+        assertThat((List<Object>) field(whileHeld, "$.held")).as("the held ticket stays held").hasSize(1);
+        assertThat((Object) field(whileHeld, "$.break.type.max_minutes")).as("no maximum").isNull();
+    }
+
+    @Test
+    void aBreakIsRefusedForAnUnknownOrSwitchedOffTypeOrOneAlreadyRunningOrAnOpenSessionThatIsNotOnOne() throws Exception {
+        World w = world();
+        UUID desk = counter(w, "Desk 1", w.a(), 1);
+        UUID lunch = newBreakType("Lunch", 30);
+        UUID retired = newBreakType("Retired", 30);
+        jdbc.update("UPDATE break_type SET active = false WHERE id = ?", retired);
+        Agent agent = agent(w);
+        UUID session = opened(agent, desk);
+
+        MvcResult unknown = takeBreak(agent, session, UUID.randomUUID());
+        assertThat(status(unknown)).isEqualTo(400);
+        assertThat((String) field(unknown, "$.error.details.fields[0].field")).isEqualTo("break_type_id");
+        assertThat(status(takeBreak(agent, session, retired))).as("a switched-off type").isEqualTo(400);
+        MvcResult notOnBreak = takeBreak(agent, session, null);
+        assertThat(status(notOnBreak)).isEqualTo(409);
+        assertThat(reason(notOnBreak)).isEqualTo("not_on_break");
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM break_record WHERE counter_session_id = ?", Integer.class, session)).isZero();
+
+        assertThat(status(takeBreak(agent, session, lunch))).isEqualTo(200);
+        MvcResult twice = takeBreak(agent, session, lunch);
+        assertThat(status(twice)).isEqualTo(409);
+        assertThat(reason(twice)).isEqualTo("already_on_break");
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM break_record WHERE counter_session_id = ?", Integer.class, session)).as("one break at a time").isEqualTo(1);
+        assertThat(status(call(post("/api/v1/sessions/" + UUID.randomUUID() + "/break"), agent.token(), null))).isEqualTo(404);
+    }
+
+    @Test
+    void aSessionThatIsClosingTakesNoBreak() throws Exception {
+        World w = world();
+        UUID desk = counter(w, "Desk 1", w.a(), 1);
+        issueAgo(w.a(), 10);
+        UUID lunch = newBreakType("Lunch", 30);
+        Agent agent = agent(w);
+        UUID session = opened(agent, desk);
+        calledToken(agent, session);
+        assertThat(status(close(agent, session))).isEqualTo(409);
+
+        MvcResult refused = takeBreak(agent, session, lunch);
+
+        assertThat(status(refused)).isEqualTo(409);
+        assertThat(reason(refused)).isEqualTo("session_not_open");
+    }
+
+    @Test
+    void closingOrForceClosingASessionOnABreakEndsTheBreakAndKeepsItsTime() throws Exception {
+        World w = world();
+        UUID desk1 = counter(w, "Desk 1", w.a(), 1);
+        UUID desk2 = counter(w, "Desk 2", w.a(), 1);
+        UUID lunch = newBreakType("Lunch", 30);
+        Agent closer = agent(w);
+        Agent stale = agent(w);
+        UUID closing = opened(closer, desk1);
+        UUID forced = opened(stale, desk2);
+        takeBreak(closer, closing, lunch);
+        takeBreak(stale, forced, lunch);
+        clock.advance(Duration.ofMinutes(5));
+
+        MvcResult closed = close(closer, closing);
+        MvcResult forceClosed = forceClose(user(Role.TEAM_ADMIN, w.site(), w.group()), forced, "walked away");
+
+        assertThat((String) field(closed, "$.state")).isEqualTo("closed");
+        assertThat((String) field(forceClosed, "$.state")).isEqualTo("force_closed");
+        for (UUID session : List.of(closing, forced)) {
+            assertThat(jdbc.queryForObject("SELECT ended_at IS NOT NULL FROM break_record WHERE counter_session_id = ?", Boolean.class, session)).isTrue();
+            assertThat(auditActions(session)).contains("session.break_ended");
+        }
+        assertThat(status(open(agent(w), desk1))).as("the counter is free").isEqualTo(201);
+    }
+
+    @Test
+    void breakTypesAreConfiguredWithNamesInEveryLanguageAndAnOptionalMaximumAndAgentsMayReadThem() throws Exception {
+        World w = world();
+        Agent orgAdmin = user(Role.ORG_ADMIN, w.site(), null);
+        Agent agent = agent(w);
+
+        MvcResult created = call(post("/api/v1/break-types"), orgAdmin.token(), "{\"name_i18n\":{\"en\":\"Lunch\",\"bn\":\"দুপুরের খাবার\"},\"max_minutes\":45}");
+        assertThat(status(created)).as(body(created)).isEqualTo(201);
+        String id = field(created, "$.id");
+        assertThat((String) field(created, "$.name_i18n.bn")).isEqualTo("দুপুরের খাবার");
+        assertThat((Integer) field(created, "$.max_minutes")).isEqualTo(45);
+        assertThat((Boolean) field(created, "$.active")).isTrue();
+
+        MvcResult noMax = call(post("/api/v1/break-types"), orgAdmin.token(), "{\"name_i18n\":{\"en\":\"System issue\"}}");
+        assertThat(status(noMax)).as(body(noMax)).isEqualTo(201);
+        assertThat((Object) field(noMax, "$.max_minutes")).isNull();
+
+        clock.advance(Duration.ofSeconds(1));
+        MvcResult replaced = call(put("/api/v1/break-types/" + id), orgAdmin.token(), "{\"name_i18n\":{\"en\":\"Lunch break\",\"bn\":\"দুপুরের বিরতি\"},\"max_minutes\":60}");
+        assertThat(status(replaced)).as(body(replaced)).isEqualTo(200);
+        assertThat((Integer) field(replaced, "$.max_minutes")).isEqualTo(60);
+
+        assertThat((List<String>) field(call(get("/api/v1/break-types"), agent.token(), null), "$.items[*].id")).as("an agent reads them to choose one").contains(id);
+        clock.advance(Duration.ofSeconds(1));
+        assertThat(status(call(post("/api/v1/break-types/" + id + "/deactivate"), orgAdmin.token(), "{\"reason\":\"no longer offered\"}"))).isEqualTo(200);
+        assertThat(jdbc.queryForObject("SELECT active FROM break_type WHERE id = ?::uuid", Boolean.class, id)).isFalse();
+        clock.advance(Duration.ofSeconds(1));
+        assertThat(status(call(post("/api/v1/break-types/" + id + "/activate"), orgAdmin.token(), null))).isEqualTo(200);
+        assertThat(jdbc.queryForList("SELECT action FROM audit_log WHERE entity = 'break_type' AND entity_id = ?::uuid ORDER BY occurred_at, id", String.class, id))
+                .containsExactly("break_type.created", "break_type.updated", "break_type.deactivated", "break_type.activated");
+    }
+
+    @Test
+    void aBreakTypeNeedsANameInTheDefaultLanguageAndAMaximumInRangeAndOnlyOrgAdminsChangeThem() throws Exception {
+        World w = world();
+        Agent orgAdmin = user(Role.ORG_ADMIN, w.site(), null);
+        Agent agent = agent(w);
+        Agent teamAdmin = user(Role.TEAM_ADMIN, w.site(), w.group());
+        Agent reception = user(Role.RECEPTION_OPERATOR, w.site(), w.group());
+        String valid = "{\"name_i18n\":{\"en\":\"Lunch\"},\"max_minutes\":30}";
+
+        assertThat(status(call(post("/api/v1/break-types"), orgAdmin.token(), "{\"name_i18n\":{\"bn\":\"দুপুর\"}}"))).as("no default-language name").isEqualTo(400);
+        assertThat(status(call(post("/api/v1/break-types"), orgAdmin.token(), "{\"name_i18n\":{\"en\":\"Lunch\"},\"max_minutes\":0}"))).isEqualTo(400);
+        assertThat(status(call(post("/api/v1/break-types"), orgAdmin.token(), "{\"name_i18n\":{\"en\":\"Lunch\"},\"max_minutes\":5000}"))).isEqualTo(400);
+        assertThat(status(call(post("/api/v1/break-types"), orgAdmin.token(), "{\"name_i18n\":{\"xx\":\"Lunch\",\"en\":\"Lunch\"}}"))).as("a language that is not installed").isEqualTo(400);
+        for (Agent denied : List.of(agent, teamAdmin, reception)) {
+            assertThat(status(call(post("/api/v1/break-types"), denied.token(), valid))).as("create").isEqualTo(403);
+        }
+        assertThat(status(call(get("/api/v1/break-types"), reception.token(), null))).isEqualTo(403);
+        assertThat(status(call(post("/api/v1/break-types"), null, valid))).isEqualTo(401);
+        assertThat(status(call(put("/api/v1/break-types/" + UUID.randomUUID()), orgAdmin.token(), valid))).isEqualTo(404);
+    }
+
+    @Test
+    void theBreakReportCountsTimeAndOverrunsPerAgentAndBreakTypeForTheAdminsScope() throws Exception {
+        World w = world();
+        UUID desk1 = counter(w, "Desk 1", w.a(), 1);
+        UUID desk2 = counter(w, "Desk 2", w.a(), 1);
+        UUID lunch = newBreakType("Lunch", 30);
+        UUID prayer = newBreakType("Prayer", null);
+        Agent first = agent(w);
+        Agent second = agent(w);
+        UUID s1 = opened(first, desk1);
+        UUID s2 = opened(second, desk2);
+        for (int minutes : new int[] {20, 40}) {
+            takeBreak(first, s1, lunch);
+            clock.advance(Duration.ofMinutes(minutes));
+            takeBreak(first, s1, null);
+        }
+        takeBreak(first, s1, prayer);
+        clock.advance(Duration.ofMinutes(10));
+        takeBreak(first, s1, null);
+        takeBreak(second, s2, lunch);
+        clock.advance(Duration.ofMinutes(35));
+        takeBreak(second, s2, null);
+        takeBreak(second, s2, prayer); // still running: no duration yet, so not in the report
+        Agent admin = user(Role.TEAM_ADMIN, w.site(), w.group());
+
+        MvcResult report = call(get("/api/v1/break-report?agent_id=" + first.id() + "&from=" + BASE.minusSeconds(60)), admin.token(), null);
+
+        assertThat(status(report)).as(body(report)).isEqualTo(200);
+        assertThat((List<Integer>) field(report, "$.rows[*].count")).containsExactlyInAnyOrder(2, 1);
+        Map<String, Object> lunchRow = ((List<Map<String, Object>>) field(report, "$.rows[?(@.break_type.id == '" + lunch + "')]")).getFirst();
+        assertThat(lunchRow).containsEntry("count", 2).containsEntry("total_seconds", 3600).containsEntry("average_seconds", 1800).containsEntry("overruns", 1);
+        assertThat(lunchRow).containsEntry("agent_id", first.id().toString());
+        Map<String, Object> prayerRow = ((List<Map<String, Object>>) field(report, "$.rows[?(@.break_type.id == '" + prayer + "')]")).getFirst();
+        assertThat(prayerRow).containsEntry("count", 1).containsEntry("total_seconds", 600).containsEntry("overruns", 0);
+
+        MvcResult everyone = call(get("/api/v1/break-report?break_type_id=" + lunch), admin.token(), null);
+        assertThat((List<String>) field(everyone, "$.rows[*].agent_id")).contains(first.id().toString(), second.id().toString());
+        assertThat((List<Integer>) field(call(get("/api/v1/break-report?break_type_id=" + lunch + "&agent_id=" + second.id()), admin.token(), null), "$.rows[*].overruns")).containsExactly(1);
+        assertThat((List<Object>) field(call(get("/api/v1/break-report?agent_id=" + first.id() + "&to=" + BASE.minusSeconds(60)), admin.token(), null), "$.rows")).as("outside the range").isEmpty();
+
+        World elsewhere = world();
+        Agent outside = user(Role.TEAM_ADMIN, elsewhere.site(), elsewhere.group(), new UUID[] {elsewhere.group()});
+        assertThat((List<Object>) field(call(get("/api/v1/break-report?agent_id=" + first.id()), outside.token(), null), "$.rows")).as("another site's breaks are not theirs to see").isEmpty();
+        assertThat(status(call(get("/api/v1/break-report"), first.token(), null))).as("an agent runs no reports").isEqualTo(403);
+        assertThat(status(call(get("/api/v1/break-report"), null, null))).isEqualTo(401);
+        assertThat(status(call(get("/api/v1/break-report?from=" + BASE + "&to=" + BASE.minusSeconds(1)), admin.token(), null))).isEqualTo(400);
+    }
+
+    @Test
+    void anAdminSetsAnAgentsAvailabilityDirectlyAndItStopsAndRestoresTheirAssignments() throws Exception {
+        World w = world();
+        UUID desk = counter(w, "Desk 1", w.a(), 1);
+        String waiting = issueAgo(w.a(), 10);
+        UUID system = newBreakType("System issue", 15);
+        Agent agent = agent(w);
+        UUID session = opened(agent, desk);
+        Agent admin = user(Role.TEAM_ADMIN, w.site(), w.group());
+        clock.advance(Duration.ofSeconds(1));
+
+        MvcResult listed = call(get("/api/v1/agents/availability"), admin.token(), null);
+        assertThat(status(listed)).as(body(listed)).isEqualTo(200);
+        assertThat((List<String>) field(listed, "$.items[?(@.agent_id == '" + agent.id() + "')].status")).containsExactly("available");
+
+        MvcResult forced = setAvailability(admin, agent.id(), "on_break", system, "Network outage at desk");
+
+        assertThat(status(forced)).as(body(forced)).isEqualTo(200);
+        assertThat((String) field(forced, "$.status")).isEqualTo("on_break");
+        assertThat((String) field(forced, "$.session_id")).isEqualTo(session.toString());
+        assertThat((String) field(forced, "$.break.type.name_i18n.en")).isEqualTo("System issue");
+        assertThat(reason(next(agent, session))).as("the agent receives nothing").isEqualTo("session_not_open");
+        assertThat((String) field(current(agent), "$.state")).as("their console learns of it").isEqualTo("on_break");
+        assertThat(jdbc.queryForObject("SELECT started_by FROM break_record WHERE counter_session_id = ?", UUID.class, session)).as("the admin started it").isEqualTo(admin.id());
+
+        clock.advance(Duration.ofMinutes(3));
+        MvcResult restored = setAvailability(admin, agent.id(), "available", null, null);
+
+        assertThat((String) field(restored, "$.status")).isEqualTo("available");
+        assertThat(calledToken(agent, session)).isEqualTo(waiting);
+        assertThat(jdbc.queryForObject("SELECT ended_by FROM break_record WHERE counter_session_id = ?", UUID.class, session)).isEqualTo(admin.id());
+        List<Map<String, Object>> audits = jdbc.queryForList("SELECT actor_id, reason, before::text AS before, after::text AS after FROM audit_log WHERE action = 'agent.availability_changed' AND entity_id = ? ORDER BY occurred_at, id", session);
+        assertThat(audits).hasSize(2);
+        assertThat(audits.get(0).get("actor_id")).isEqualTo(admin.id());
+        assertThat(audits.get(0).get("reason")).isEqualTo("Network outage at desk");
+        assertThat((String) JsonPath.read((String) audits.get(0).get("before"), "$.status")).isEqualTo("available");
+        assertThat((String) JsonPath.read((String) audits.get(0).get("after"), "$.status")).isEqualTo("on_break");
+        assertThat((String) JsonPath.read((String) audits.get(1).get("after"), "$.status")).isEqualTo("available");
+        assertThat(auditActions(session)).as("one audit entry per forced change, not two").containsExactly("session.opened", "agent.availability_changed", "agent.availability_changed");
+    }
+
+    @Test
+    void anAdminMayNotForceABreakOnAgentsWithATicketInProgressNorOnOneWithNoSessionAndInvalidRequestsAreRefused() throws Exception {
+        World w = world();
+        UUID desk = counter(w, "Desk 1", w.a(), 1);
+        issueAgo(w.a(), 10);
+        UUID lunch = newBreakType("Lunch", 30);
+        Agent agent = agent(w);
+        Agent idle = agent(w);
+        UUID session = opened(agent, desk);
+        calledToken(agent, session);
+        Agent admin = user(Role.ORG_ADMIN, w.site(), w.group());
+
+        assertThat(reason(setAvailability(admin, agent.id(), "on_break", lunch, null))).isEqualTo("ticket_in_progress");
+        MvcResult none = setAvailability(admin, idle.id(), "on_break", lunch, null);
+        assertThat(status(none)).isEqualTo(409);
+        assertThat(reason(none)).isEqualTo("no_live_session");
+        assertThat(status(setAvailability(admin, UUID.randomUUID(), "on_break", lunch, null))).isEqualTo(404);
+        assertThat(status(setAvailability(admin, agent.id(), "asleep", null, null))).isEqualTo(400);
+        assertThat(status(call(put("/api/v1/agents/" + agent.id() + "/availability"), admin.token(), "{}"))).isEqualTo(400);
+        assertThat(jdbc.queryForObject("SELECT state FROM counter_session WHERE id = ?", String.class, session)).isEqualTo("open");
+
+        serve(agent, session, null);
+        complete(agent, session, null, null);
+        assertThat(status(setAvailability(admin, agent.id(), "on_break", null, null))).as("no type").isEqualTo(400);
+        assertThat(status(setAvailability(admin, agent.id(), "on_break", lunch, null))).isEqualTo(200);
+        MvcResult again = setAvailability(admin, agent.id(), "on_break", lunch, null);
+        assertThat(reason(again)).isEqualTo("already_on_break");
+        assertThat(status(setAvailability(admin, agent.id(), "available", null, null))).isEqualTo(200);
+        assertThat(status(setAvailability(admin, agent.id(), "available", null, null))).as("already available: nothing to change").isEqualTo(200);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM audit_log WHERE action = 'agent.availability_changed' AND entity_id = ?", Integer.class, session)).as("audited when it changes").isEqualTo(2);
+    }
+
+    @Test
+    void onlyAdminsWithinTheirScopeSetAvailabilityAndEveryBreakActionIsCheckedOnTheServer() throws Exception {
+        World w = world();
+        UUID desk = counter(w, "Desk 1", w.a(), 1);
+        UUID lunch = newBreakType("Lunch", 30);
+        Agent agent = agent(w);
+        Agent other = agent(w);
+        UUID session = opened(agent, desk);
+        World elsewhere = world();
+        UUID otherGroup = otherGroup(w);
+
+        for (Agent denied : List.of(agent, other, user(Role.RECEPTION_OPERATOR, w.site(), w.group()))) {
+            assertThat(status(setAvailability(denied, agent.id(), "on_break", lunch, null))).as("force-set by " + denied.id()).isEqualTo(403);
+            assertThat(status(call(get("/api/v1/agents/availability"), denied.token(), null))).isEqualTo(403);
+        }
+        assertThat(status(setAvailability(user(Role.TEAM_ADMIN, elsewhere.site(), elsewhere.group()), agent.id(), "on_break", lunch, null))).as("another site").isEqualTo(403);
+        assertThat(status(setAvailability(user(Role.TEAM_ADMIN, w.site(), otherGroup, new UUID[] {otherGroup}), agent.id(), "on_break", lunch, null))).as("another service group").isEqualTo(403);
+        assertThat((List<Object>) field(call(get("/api/v1/agents/availability"), user(Role.TEAM_ADMIN, elsewhere.site(), elsewhere.group()).token(), null), "$.items[?(@.agent_id == '" + agent.id() + "')]"))
+                .as("the list holds only agents in scope").isEmpty();
+        assertThat(status(call(put("/api/v1/agents/" + agent.id() + "/availability"), null, "{\"status\":\"available\"}"))).isEqualTo(401);
+        assertThat(jdbc.queryForObject("SELECT state FROM counter_session WHERE id = ?", String.class, session)).as("nothing changed").isEqualTo("open");
+
+        // F9 is the agent's own: nobody else's session, and not reception.
+        assertThat(status(takeBreak(other, session, lunch))).as("another agent's session").isEqualTo(403);
+        assertThat(status(takeBreak(user(Role.RECEPTION_OPERATOR, w.site(), w.group()), session, lunch))).isEqualTo(403);
+        assertThat(status(call(post("/api/v1/sessions/" + session + "/break"), null, null))).isEqualTo(401);
+        assertThat(status(takeBreak(agent, session, lunch))).isEqualTo(200);
     }
 
     // ---- NFR-PERF-003: console actions acknowledge within 500 ms at P95 ----------------------------------------

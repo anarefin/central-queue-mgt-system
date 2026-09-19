@@ -8,7 +8,8 @@ import java.util.UUID;
 
 /**
  * A counter session as the console shows it (SRS §11, §19.3): who sits where, which Services they serve, the ticket
- * in progress and the tickets the agent holds ({@code held}, at most {@code hold_limit}; FR-AGT-013). Everything the
+ * in progress and the tickets the agent holds ({@code held}, at most {@code hold_limit}; FR-AGT-013), and the {@code break} they are on while the session is
+ * {@code on_break} (FR-AGT-021). Everything the
  * console needs to restore itself after a refresh is here (FR-AGT-004): the console holds no state the server does not, and {@code ticket.version} is what it sends back as {@code If-Match} (§20.1).
  */
 public record SessionResponse(
@@ -21,7 +22,14 @@ public record SessionResponse(
         List<ServiceRef> services,
         SessionTicket ticket,
         List<SessionTicket> held,
-        @JsonProperty("hold_limit") int holdLimit) {
+        @JsonProperty("hold_limit") int holdLimit,
+        @JsonProperty("break") Break onBreak) {
+
+    /** The break type a break is of, with the longest it may run (FR-AGT-020). */
+    public record BreakType(UUID id, @JsonProperty("name_i18n") Map<String, String> nameI18n, @JsonProperty("max_minutes") Integer maxMinutes) {}
+
+    /** The break a session is on, so the console can show it and its clock after a refresh (FR-AGT-021, FR-AGT-022). */
+    public record Break(UUID id, BreakType type, @JsonProperty("started_at") Instant startedAt) {}
 
     public record CounterRef(UUID id, String label, @JsonProperty("zone_id") UUID zoneId, @JsonProperty("zone_name") String zoneName, @JsonProperty("site_id") UUID siteId) {}
 
