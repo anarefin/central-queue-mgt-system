@@ -18,6 +18,7 @@ public enum ErrorCode {
     METHOD_NOT_ALLOWED("method_not_allowed", HttpStatus.METHOD_NOT_ALLOWED),
     UNSUPPORTED_MEDIA_TYPE("unsupported_media_type", HttpStatus.UNSUPPORTED_MEDIA_TYPE),
     CONFLICT("conflict", HttpStatus.CONFLICT),
+    SERVICE_CLOSED("service_closed", HttpStatus.CONFLICT),
     RATE_LIMITED("rate_limited", HttpStatus.TOO_MANY_REQUESTS),
     INTERNAL_ERROR("internal_error", HttpStatus.INTERNAL_SERVER_ERROR),
     UNAVAILABLE("unavailable", HttpStatus.SERVICE_UNAVAILABLE);

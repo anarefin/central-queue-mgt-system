@@ -23,6 +23,7 @@
   "errors.method_not_allowed": "This request method is not allowed here.",
   "errors.unsupported_media_type": "This request format is not supported.",
   "errors.conflict": "The request conflicts with the current state.",
+  "errors.service_closed": "Token issuance for this service has closed for today.",
   "errors.rate_limited": "Too many requests. Please try again shortly.",
   "errors.internal_error": "An internal error occurred.",
   "errors.unavailable": "The service is currently unavailable.",

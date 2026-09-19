@@ -56,6 +56,7 @@ public class IssuanceService {
     private final NumberingResets resets;
     private final TicketEvents events;
     private final TicketViews views;
+    private final IssuanceGate gate;
     private final AuditWriter audit;
     private final ScopeGuard scope;
     private final Clock clock;
@@ -67,6 +68,7 @@ public class IssuanceService {
             NumberingResets resets,
             TicketEvents events,
             TicketViews views,
+            IssuanceGate gate,
             AuditWriter audit,
             ScopeGuard scope,
             Clock clock) {
@@ -76,6 +78,7 @@ public class IssuanceService {
         this.resets = resets;
         this.events = events;
         this.views = views;
+        this.gate = gate;
         this.audit = audit;
         this.scope = scope;
         this.clock = clock;
@@ -85,7 +88,10 @@ public class IssuanceService {
     public TicketResponse issue(IssueCommand command) {
         ServiceTarget target = tickets.serviceTarget(command.serviceId()).orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND));
         if (command.actorType() == ActorType.STAFF) scope.requireSite(target.siteId());
+        Instant now = clock.instant();
+        gate.beforeService(command, now);
         requireIssuable(target, command.originChannel());
+        gate.forService(target, command, now);
         if (command.priorityClassId() != null) requireIssuableClass(command.priorityClassId());
         // The class is decided once, here, and stored on the ticket, so a change to a default later cannot move it (FR-CFG-041).
         // Appointments and visitor categories do not exist yet; their sources are passed as none until they do.
@@ -98,7 +104,6 @@ public class IssuanceService {
         UUID priorityClassId = choice.classId();
         PriorityClassRef priority = priorityClassId == null ? null : tickets.priorityClass(priorityClassId).orElseThrow();
 
-        Instant now = clock.instant();
         NumberingSpec rule = numbering.effective(target.serviceId(), target.groupId());
         String prefix = rule.prefix(target.tokenPrefix(), target.groupPrefix(), priority == null ? null : priority.prefixOverride());
         Period period = TokenNumbering.period(now, ZoneId.of(target.timezone()), rule.boundary(), rule.resetTime());
@@ -112,7 +117,7 @@ public class IssuanceService {
         tickets.insertVisit(visitId, target.siteId(), now);
         UUID ticketId = UUID.randomUUID();
         tickets.insertTicket(new NewTicket(
-                ticketId, tokenNumber, sequence, resetKey, target, tickets.waitingZone(target.serviceId()), visitId, command.originChannel(), now, hash(secret), priorityClassId));
+                ticketId, tokenNumber, sequence, resetKey, target, tickets.waitingZone(target.serviceId()), visitId, command.originChannel(), now, hash(secret), priorityClassId, command.visitorId()));
         events.append(new TicketEvents.Transition(
                 ticketId,
                 ISSUED,
@@ -150,15 +155,10 @@ public class IssuanceService {
     }
 
     private static void requireIssuable(ServiceTarget target, String originChannel) {
-        if (!target.active()) throw refusal("service_inactive");
-        if (!target.channels().contains(originChannel)) throw refusal("channel_not_allowed");
+        if (!target.active()) throw IssuanceGate.conflict("service_inactive", Map.of());
+        if (!target.channels().contains(originChannel)) throw IssuanceGate.conflict("channel_not_allowed", Map.of());
         boolean walkIn = !Channels.APPOINTMENT_CHECKIN.equals(originChannel);
-        if (walkIn && "appointment_only".equals(target.bookingMode())) throw refusal("appointment_only");
-    }
-
-    /** The specific reasons issuance can be refused for arrive with the issuance-rules ticket; until then {@code conflict} names one. */
-    private static ApiException refusal(String reason) {
-        return new ApiException(ErrorCode.CONFLICT, Map.of("reason", reason));
+        if (walkIn && "appointment_only".equals(target.bookingMode())) throw IssuanceGate.conflict("appointment_only", Map.of());
     }
 
     private static Map<String, Object> snapshot(UUID ticketId, String tokenNumber, ServiceTarget target, String originChannel, UUID visitId, UUID priorityClassId) {

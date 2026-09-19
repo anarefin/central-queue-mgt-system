@@ -10,6 +10,7 @@ export const API_ERROR_CODES = [
   "method_not_allowed",
   "unsupported_media_type",
   "conflict",
+  "service_closed",
   "rate_limited",
   "internal_error",
   "unavailable",

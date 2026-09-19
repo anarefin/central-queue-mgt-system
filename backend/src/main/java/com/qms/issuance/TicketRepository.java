@@ -45,7 +45,8 @@ class TicketRepository {
             String originChannel,
             Instant issuedAt,
             String secretHash,
-            UUID priorityClassId) {}
+            UUID priorityClassId,
+            UUID visitorId) {}
 
     /** A Priority class as issuance needs it: whether it can be given to a new ticket and the prefix it may impose. */
     record PriorityClassRef(UUID id, Map<String, String> names, boolean active, String prefixOverride) {}
@@ -158,9 +159,10 @@ class TicketRepository {
     void insertTicket(NewTicket t) {
         jdbc.update(
                 "INSERT INTO ticket (id, token_number, sequence_no, reset_key, service_id, service_group_id, site_id, zone_id, visit_id,"
-                        + " origin_channel, state, issued_at, queued_at, secret_hash, priority_class_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'waiting', ?, ?, ?, ?)",
+                        + " origin_channel, state, issued_at, queued_at, secret_hash, priority_class_id, visitor_id)"
+                        + " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'waiting', ?, ?, ?, ?, ?)",
                 t.id(), t.tokenNumber(), t.sequenceNo(), t.resetKey(), t.target().serviceId(), t.target().groupId(), t.target().siteId(), t.zoneId(),
-                t.visitId(), t.originChannel(), ts(t.issuedAt()), ts(t.issuedAt()), t.secretHash(), t.priorityClassId());
+                t.visitId(), t.originChannel(), ts(t.issuedAt()), ts(t.issuedAt()), t.secretHash(), t.priorityClassId(), t.visitorId());
     }
 
     // ---- reads ------------------------------------------------------------------------------------------------

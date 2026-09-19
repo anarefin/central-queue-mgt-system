@@ -36,7 +36,12 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 
     @ExceptionHandler(ApiException.class)
     ResponseEntity<ApiError> handleApi(ApiException ex, HttpServletRequest request) {
-        return respond(ex.code(), envelopes.create(request, ex));
+        var response = ResponseEntity.status(ex.code().status()).contentType(MediaType.APPLICATION_JSON);
+        // A 429 says when to try again (API-090).
+        if (ex.code() == ErrorCode.RATE_LIMITED && ex.details().get("retry_after_seconds") instanceof Number seconds) {
+            response.header(HttpHeaders.RETRY_AFTER, String.valueOf(seconds.longValue()));
+        }
+        return response.body(envelopes.create(request, ex));
     }
 
     /** Method security at the service layer throws this from inside a controller call (API-016). */

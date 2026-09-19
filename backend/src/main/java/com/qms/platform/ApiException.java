@@ -9,6 +9,7 @@ public class ApiException extends RuntimeException {
     private final String messageKey;
     private final transient Object[] messageArgs;
     private final Map<String, Object> details;
+    private final Map<String, String> literalMessages;
 
     public ApiException(ErrorCode code) {
         this(code, code.messageKey(), new Object[0], Map.of());
@@ -19,11 +20,20 @@ public class ApiException extends RuntimeException {
     }
 
     public ApiException(ErrorCode code, String messageKey, Object[] messageArgs, Map<String, Object> details) {
+        this(code, messageKey, messageArgs, details, Map.of());
+    }
+
+    /**
+     * {@code literalMessages} holds text an administrator wrote per language (a cap or maintenance message); it wins over the
+     * language pack for the languages it covers, and the pack's text under {@code messageKey} fills the rest.
+     */
+    public ApiException(ErrorCode code, String messageKey, Object[] messageArgs, Map<String, Object> details, Map<String, String> literalMessages) {
         super(code.wire());
         this.code = code;
         this.messageKey = messageKey;
         this.messageArgs = messageArgs;
         this.details = details;
+        this.literalMessages = literalMessages == null ? Map.of() : literalMessages;
     }
 
     public ErrorCode code() {
@@ -40,5 +50,9 @@ public class ApiException extends RuntimeException {
 
     public Map<String, Object> details() {
         return details;
+    }
+
+    public Map<String, String> literalMessages() {
+        return literalMessages;
     }
 }

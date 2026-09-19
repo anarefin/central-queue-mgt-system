@@ -34,15 +34,39 @@ and a message under `error.<code>` / `errors.<code>` in both language packs (tes
 | `method_not_allowed` | 405 | The route exists but not for this HTTP method. |
 | `unsupported_media_type` | 415 | The request `Content-Type` or `Accept` cannot be served. |
 | `conflict` | 409 | The request conflicts with current state (duplicate username, already-decided approval, …). |
+| `service_closed` | 409 | The Service is not taking tickets right now: outside hours, a holiday, past the channel's cut-off, or its daily cap is reached (`details.reason`). |
 | `rate_limited` | 429 | Too many requests; honour `Retry-After`. |
 | `internal_error` | 500 | Unexpected failure. The message never contains internal detail; use `trace_id` to find it in the logs. |
 | `unavailable` | 503 | A dependency is down; `details.dependency` names it. |
 
-The SRS names one further code, `service_closed` (§20.3 example, FR-ISS-003), which belongs to the issuance rules
-(ticket 21). Until then `POST /tickets` refuses with `conflict` and `details.reason` set to `service_inactive`,
-`channel_not_allowed` or `appointment_only`. `POST /tickets` also requires an `Idempotency-Key` header (`validation_failed`
-naming `Idempotency-Key` when it is missing); reusing a key for a different request is a `conflict` with
-`details.reason` `idempotency_key_reused`.
+`POST /tickets` (issuance rules, ticket 21, FR-CFG-020..023, FR-ISS-003, FR-ISS-004, API-090, FR-OPS-043) refuses with
+`service_closed` and `details.reason` `outside_hours`, `holiday` (`details.holiday` names it), `past_cutoff`
+(`details.cutoff_at`) or `cap_reached` (`details.daily_cap`; an administrator's own cap message, per language, replaces
+the built-in text where they set one). It refuses with `unavailable` and `details.reason` `maintenance` while
+maintenance mode is on (an administrator's own message, per language, replaces the built-in text where set); queued
+tickets keep being served. It refuses with `conflict` and `details.reason` `service_inactive`, `channel_not_allowed` or
+`appointment_only` (the Service, its group or site is inactive, does not offer the channel, or takes appointments
+only), `no_agent_rostered` (the Service requires a rostered Agent and has none) or `duplicate_ticket`
+(`details.policy`; the visitor already holds an active ticket for the Service under a `warn` or `block` duplicate
+policy — `warn` is passed by resubmitting with `confirm_duplicate: true`). An unknown `visitor_id` is
+`validation_failed` naming `visitor_id`. It refuses with `rate_limited` and `details.reason` `rate_limited`
+(`details.limit`, `details.window_seconds`) once the actor's device (30/minute) or visitor (5/hour) rate limit is hit,
+honouring `Retry-After`; staff and system actors are not rate-limited. `POST /tickets` also requires an
+`Idempotency-Key` header (`validation_failed` naming `Idempotency-Key` when it is missing); reusing a key for a
+different request is a `conflict` with `details.reason` `idempotency_key_reused`.
+
+The issuance rules themselves (`GET`/`PUT /sites/{id}/hours`, `/services/{id}/hours`, `GET`/`POST`/`DELETE
+/sites/{id}/holidays[/…]`, `GET`/`PUT /sites/{id}/issuance-cutoffs`, `GET`/`PUT /services/{id}/issuance-rule`, `GET`/`PUT
+/issuance-settings`) need `config:org_sites_zones` for a Site's hours, holidays, cut-offs and the deployment-wide
+settings, and `config:service_catalogue` for a Service's hours and rule; a caller without it, or whose sites do not
+include the target (the deployment-wide settings need an organisation-wide caller with no site restriction at all), is
+`forbidden`. An unknown Site, holiday or Service is `not_found`. `validation_failed` covers: `days` (an out-of-range or
+repeated weekday, a missing open/close time, or open not before close); `date`, `name` or `close_time` on a holiday
+(bad format, blank name over 100 characters, a close time only for a half-day); `minutes_before_close` (an unknown
+channel, or outside 0 to 1440); `daily_cap` (outside 1 to 1,000,000); `duplicate_policy` (not `allow`, `warn` or
+`block`); `device_limit_per_minute` / `visitor_limit_per_hour` (outside 1 to 100,000); and `cap_message_i18n` /
+`maintenance_message_i18n` (a language not installed, or text over 500 characters). Adding a holiday on a date the Site
+already has one is `conflict` with `details.reason` `holiday_exists`.
 
 Counter sessions (`/sessions`, ticket 10) refuse with `conflict` and one `details.reason`: `counter_occupied`,
 `agent_has_open_session`, `counter_inactive` (opening); `session_not_open` (the session is closing, closed or on a break; a call while on a break is refused with it);

@@ -40,6 +40,21 @@ class ErrorEnvelopeTest {
             throw new ApiException(ErrorCode.CONFLICT, Map.of("k", "v"));
         }
 
+        @GetMapping("/probe/rate-limited")
+        void rateLimited() {
+            throw new ApiException(ErrorCode.RATE_LIMITED, Map.of("reason", "rate_limited", "retry_after_seconds", 42L));
+        }
+
+        @GetMapping("/probe/written-message")
+        void writtenMessage() {
+            throw new ApiException(
+                    ErrorCode.SERVICE_CLOSED,
+                    "issuance.refused.cap_reached",
+                    new Object[0],
+                    Map.of("reason", "cap_reached"),
+                    Map.of("bn", "আজকের টোকেন শেষ"));
+        }
+
         @PostMapping("/probe/validate")
         void validate(@Valid @RequestBody Body body) {}
 
@@ -75,6 +90,29 @@ class ErrorEnvelopeTest {
         String traceId = JsonPath.read(result.getResponse().getContentAsString(), "$.error.trace_id");
         assertThat(traceId).isNotBlank();
         assertThat(result.getResponse().getHeader("X-Trace-Id")).isEqualTo(traceId);
+    }
+
+    @Test
+    void aRateLimitedAnswerSaysWhenToTryAgainInRetryAfter() throws Exception {
+        // API-090: 429 with Retry-After.
+        mvc.perform(get("/api/v1/probe/rate-limited"))
+                .andExpect(status().isTooManyRequests())
+                .andExpect(header().string("Retry-After", "42"))
+                .andExpect(jsonPath("$.error.code").value("rate_limited"))
+                .andExpect(jsonPath("$.error.details.retry_after_seconds").value(42));
+    }
+
+    @Test
+    void aMessageAnAdministratorWroteReplacesTheBuiltInTextOnlyForItsLanguage() throws Exception {
+        // FR-CFG-023: the cap message is configurable; a language without one gets the built-in sentence (FR-I18N-011).
+        mvc.perform(get("/api/v1/probe/written-message").header("Accept-Language", "bn"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error.code").value("service_closed"))
+                .andExpect(jsonPath("$.error.message").value("আজকের টোকেন শেষ"))
+                .andExpect(jsonPath("$.error.message_i18n.bn").value("আজকের টোকেন শেষ"))
+                .andExpect(jsonPath("$.error.message_i18n.en").value("The limit of tickets for this service today has been reached."));
+        mvc.perform(get("/api/v1/probe/written-message").header("Accept-Language", "en"))
+                .andExpect(jsonPath("$.error.message").value("The limit of tickets for this service today has been reached."));
     }
 
     @Test
