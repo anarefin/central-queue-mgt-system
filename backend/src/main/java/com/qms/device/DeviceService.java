@@ -192,13 +192,20 @@ public class DeviceService {
                     counters.stream().filter(Counter::active).map(c -> new CounterLayout(c.id(), c.label())).toList()));
         }
 
+        // A kiosk only ever walks the visitor to a Service it can actually issue through (ticket 25, SRS §8.2); a
+        // display shows the whole tree, since it never issues anything itself.
+        boolean kiosk = device.kind() == Role.KIOSK;
         List<ServiceGroup> groups = catalogue.serviceTreeForDevice(device.siteId());
         List<ServiceTreeGroup> tree = groups.stream()
                 .map(group -> {
                     List<ServiceEntry> services = catalogue.servicesForDevice(group.id());
-                    List<ServiceTreeEntry> entries = services.stream().map(s -> new ServiceTreeEntry(s.id(), s.nameI18n())).toList();
+                    List<ServiceTreeEntry> entries = services.stream()
+                            .filter(s -> !kiosk || s.channels().contains("kiosk"))
+                            .map(s -> new ServiceTreeEntry(s.id(), s.nameI18n()))
+                            .toList();
                     return new ServiceTreeGroup(group.id(), group.nameI18n(), entries);
                 })
+                .filter(g -> !kiosk || !g.services().isEmpty())
                 .toList();
 
         return new BootstrapResponse(new Branding(site.name(), site.defaultLanguage()), site.enabledLanguages(), layout, tree);

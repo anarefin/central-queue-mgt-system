@@ -130,3 +130,8 @@ export interface SiteServices {
 export function newIdempotencyKey(): string {
   return globalThis.crypto.randomUUID();
 }
+
+/** The body of {@code POST /kiosk/tickets} (ticket 25): the visitor's chosen Service is the only input the kiosk gives. */
+export interface KioskIssueTicketInput {
+  service_id: string;
+}

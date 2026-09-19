@@ -284,6 +284,43 @@ class DeviceFleetIT {
         assertThat(status(call(get("/api/v1/config/bootstrap"), admin, null))).isEqualTo(403);
     }
 
+    // ---- kiosk-scoped service tree (ticket 25, SRS §8.2) -----------------------------------------------------------
+
+    private UUID newGroup(UUID site, String prefix) {
+        UUID id = UUID.randomUUID();
+        jdbc.update("INSERT INTO service_group (id, site_id, name_i18n, token_prefix) VALUES (?, ?, '{\"en\":\"Outpatient\",\"bn\":\"বহির্বিভাগ\"}'::jsonb, ?)", id, site, prefix);
+        return id;
+    }
+
+    private UUID newService(UUID group, String prefix, String channelsJson) {
+        UUID id = UUID.randomUUID();
+        jdbc.update(
+                "INSERT INTO service (id, service_group_id, name_i18n, token_prefix, expected_minutes, sla_wait_minutes, channels, booking_mode, active)"
+                        + " VALUES (?, ?, '{\"en\":\"Consultation\",\"bn\":\"পরামর্শ\"}'::jsonb, ?, 10, 30, ?::jsonb, 'both', true)",
+                id, group, prefix, channelsJson);
+        return id;
+    }
+
+    @Test
+    void aKiosksBootstrapOnlyOffersServicesItCanIssueAndDropsAGroupLeftEmpty() throws Exception {
+        String admin = tokenFor(Role.ORG_ADMIN);
+        UUID site = createSite(admin);
+        UUID mixedGroup = newGroup(site, "GM");
+        UUID kioskService = newService(mixedGroup, "KM", "[\"kiosk\",\"reception\"]");
+        newService(mixedGroup, "RM", "[\"reception\"]");
+        UUID receptionOnlyGroup = newGroup(site, "GR");
+        newService(receptionOnlyGroup, "RR", "[\"reception\"]");
+        MvcResult kioskPaired = pair(pairingCode(admin, "kiosk", site, null));
+
+        MvcResult bootstrap = call(get("/api/v1/config/bootstrap"), field(kioskPaired, "$.access_token"), null);
+
+        assertThat(status(bootstrap)).as(body(bootstrap)).isEqualTo(200);
+        List<Map<String, Object>> tree = field(bootstrap, "$.service_tree");
+        assertThat(tree).as("the reception-only group has nothing left to offer at the kiosk").hasSize(1);
+        assertThat((String) field(bootstrap, "$.service_tree[0].id")).isEqualTo(mixedGroup.toString());
+        assertThat((List<String>) field(bootstrap, "$.service_tree[0].services[*].id")).containsExactly(kioskService.toString());
+    }
+
     // ---- fleet administration: list, get, revoke, permissions -----------------------------------------------------
 
     @Test

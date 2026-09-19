@@ -26,7 +26,7 @@ import type { PriorityClass, PriorityClassInput, PriorityDefaults, QueueDryRun, 
 import type { NumberingPreview, NumberingRule, NumberingRuleChange, NumberingRuleInput, NumberingScope } from "./numbering";
 import type { AgentDay, CompleteInput, CounterSession, OpenSessionInput, SessionCounterOption, TransferInput, TransferResult, TransferTargets } from "./sessions";
 import type { TopicSnapshot } from "./stream";
-import type { IssueTicketInput, QueueSnapshot, ReprioritiseInput, SiteServices, Ticket, TicketChange } from "./tickets";
+import type { IssueTicketInput, KioskIssueTicketInput, QueueSnapshot, ReprioritiseInput, SiteServices, Ticket, TicketChange } from "./tickets";
 import type {
   RegisterVisitorInput,
   VisitorImportMapping,
@@ -218,6 +218,12 @@ export class ApiClient {
     /** Cancel an active ticket (§19.1). The reason is optional; an agent may cancel only their own ticket (§5.2). */
     cancel: (id: string, reason?: string, version?: number) =>
       this.request<TicketChange>("POST", `/tickets/${id}/cancel`, reason ? { reason } : undefined, { headers: ifMatch(version) }),
+    /**
+     * A paired kiosk issues for itself (ticket 25, §8.2): the device's own access token names the actor and the
+     * channel is always `kiosk`, scoped to the device's own site server-side. Same idempotency guarantee as `issue`.
+     */
+    issueKiosk: (input: KioskIssueTicketInput, idempotencyKey: string) =>
+      this.request<Ticket>("POST", "/kiosk/tickets", input, { headers: { "Idempotency-Key": idempotencyKey } }),
   };
 
   /**

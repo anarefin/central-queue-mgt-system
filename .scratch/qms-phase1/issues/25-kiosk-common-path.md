@@ -6,13 +6,13 @@
 
 **Status:** ready-for-agent
 
-- [ ] Idle screen with language choice when more than one language is enabled; choice lasts only for the session (FR-I18N-004)
-- [ ] Group → Service selection with single-option steps skipped (§8.2)
-- [ ] Confirm and print through a single `TokenPrinter` interface, browser/OS print implementation (FR-INT-050 seam)
-- [ ] Printer failure still creates the Ticket and shows the Token number large with a QR linking to the visitor ticket page (FR-ISS-016)
-- [ ] Inactivity timeout (default 45 s) returns to idle and discards partial selection (FR-ISS-015)
-- [ ] Touch-only, 48×48 px targets, high-contrast/larger-text mode, WCAG 2.1 AA contrast (FR-ISS-017, NFR-USA-003)
-- [ ] Common path ≤ 30 s and ≤ 4 taps; idle-to-first-touch < 300 ms (NFR-USA-001, NFR-PERF-007)
-- [ ] Issuance P95 < 2 s to print payload (NFR-PERF-001)
-- [ ] Recovers after power loss with no staff action (§2.4, NFR-AVL-006)
-- [ ] Definition of done (SRS §27.5): user-facing strings in both en and bn packs; every protected action permission-checked server-side; specified events and audit entries emitted; each requirement ID above mapped to a passing test in the traceability matrix
+- [x] Idle screen with language choice when more than one language is enabled; choice lasts only for the session (FR-I18N-004)
+- [x] Group → Service selection with single-option steps skipped (§8.2)
+- [x] Confirm and print through a single `TokenPrinter` interface, browser/OS print implementation (FR-INT-050 seam)
+- [x] Printer failure still creates the Ticket and shows the Token number large with a QR linking to the visitor ticket page (FR-ISS-016)
+- [x] Inactivity timeout (default 45 s) returns to idle and discards partial selection (FR-ISS-015)
+- [x] Touch-only, 48×48 px targets, high-contrast/larger-text mode, WCAG 2.1 AA contrast (FR-ISS-017, NFR-USA-003)
+- [x] Common path ≤ 30 s and ≤ 4 taps; idle-to-first-touch < 300 ms (NFR-USA-001, NFR-PERF-007)
+- [x] Issuance P95 < 2 s to print payload (NFR-PERF-001)
+- [x] Recovers after power loss with no staff action (§2.4, NFR-AVL-006)
+- [x] Definition of done (SRS §27.5): user-facing strings in both en and bn packs; every protected action permission-checked server-side; specified events and audit entries emitted; each requirement ID above mapped to a passing test in the traceability matrix

@@ -258,6 +258,19 @@ describe("ApiClient service catalogue", () => {
     expect(JSON.parse(String((fetchImpl.mock.calls[0]?.[1] as RequestInit).body))).toEqual({ service_id: "v1", origin_channel: "reception" });
   });
 
+  it("issues a ticket through the kiosk endpoint with its own Idempotency-Key (ticket 25)", async () => {
+    const fetchImpl = vi.fn().mockImplementation(async () => json(201, { id: "t2", origin_channel: "kiosk" }));
+    const client = new ApiClient({ apiOrigin: "", fetch: fetchImpl as unknown as typeof fetch, getAccessToken: () => "kiosk-token" });
+
+    await client.tickets.issueKiosk({ service_id: "v1" }, "key-2");
+
+    const [url, init] = fetchImpl.mock.calls[0] as [string, RequestInit];
+    expect(`${init.method} ${url.replace("/api/v1", "")}`).toBe("POST /kiosk/tickets");
+    expect((init.headers as Record<string, string>)["Idempotency-Key"]).toBe("key-2");
+    expect((init.headers as Record<string, string>).Authorization).toBe("Bearer kiosk-token");
+    expect(JSON.parse(String(init.body))).toEqual({ service_id: "v1" });
+  });
+
   it("issues a ticket on a visitor's behalf with a note, and maps the visitor directory search and registration onto their paths (FR-ISS-020, FR-ISS-021)", async () => {
     const fetchImpl = vi.fn().mockImplementation(async () => json(201, {}));
     const client = new ApiClient({ apiOrigin: "", fetch: fetchImpl as unknown as typeof fetch });

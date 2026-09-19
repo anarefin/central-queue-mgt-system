@@ -540,6 +540,56 @@ the `DeviceCredentialStore` interface that call sites use, with a browser-only d
 approximation until a native kiosk/display shell — a separate, larger piece of work — can supply a real OS-file-backed
 implementation behind the same interface.
 
+## Ticket 25, kiosk common path
+
+`Kiosk` = `B/issuance/KioskTicketIT`, `Fleet` = `B/device/DeviceFleetIT`, `Flow` = `F/apps/kiosk/src/components/KioskFlow.test.tsx`,
+`QR` = `F/packages/ui/src/qrcode.test.ts`, `Client` = `F/packages/api-client/src/api-client.test.ts`.
+
+| Requirement ID | Section | Test type | Test reference | Status |
+|---|---|---|---|---|
+| FR-I18N-004 language choice on the idle screen when more than one language is enabled; persists only for the session | §17.2 | unit | `Flow#offers a language choice on the idle screen when more than one language is enabled, and the pick carries into later screens`, `#a fresh mount always starts at idle, with no partial ticket-flow state to recover` | passing |
+| §8.2 Group → Service selection tree with single-option steps skipped automatically | §8.2 | unit | `Flow#fully skips the language, group and service steps when each resolves to one option…`, `#walks Group → Service → Confirm within 4 taps when both have more than one option`, `#shows nothing to pick, with a way back to idle, when the kiosk has no eligible services` | passing |
+| §20.4 a kiosk's service tree is scoped to the Services it may actually issue through | §20.4, §8.2 | integration | `Fleet#aKiosksBootstrapOnlyOffersServicesItCanIssueAndDropsAGroupLeftEmpty` | passing |
+| POST /kiosk/tickets: the kiosk's own channel adapter of the channel-agnostic issuance service, scoped to its own site | §8.5, §20.1, §20.4 | integration | `Kiosk#aPairedKioskIssuesAWalkInTicketForItsOwnSiteWithASecretAndAQueuePosition` (`origin_channel: kiosk`, `actor_type: device`, audited as `ticket.issued` with `actor_role: kiosk`), `#replayingAnIdempotencyKeyReturnsTheOriginalTicketAndIssuesNothingMore`, `#anIdempotencyKeyIsRequired`, `#onlyAKioskDeviceMayCallTheEndpointAndNeverForAnotherSitesService` (403 for another site's Service, a staff token, or no token), `#aDisplayDeviceCannotIssueTickets`, `#anInactiveOrNonKioskServiceRefusesWithAReason` (ticket 21's rules still apply through this channel) | passing |
+| FR-INT-050 (Phase 1 consequence) every print goes through a single `TokenPrinter` interface; browser/OS print is the one implementation | §28.2 | unit | `F/apps/kiosk/src/lib/token-printer.ts` (`TokenPrinter`, `BrowserTokenPrinter`); `Flow` exercises the seam with a fake `TokenPrinter` in every confirm-and-print test | passing |
+| FR-ISS-016 printer failure still creates the Ticket and shows the token large with a QR to the visitor's ticket status page | §8.2 | unit, integration | `Flow#still creates the Ticket and shows the token large with a scannable QR when printing fails` (API call still made, `<svg role="img">` rendered); `Kiosk#aPairedKioskIssuesAWalkInTicketForItsOwnSiteWithASecretAndAQueuePosition` (the Ticket and its secret exist independently of any print outcome) | passing |
+| The QR itself: a dependency-free encoder producing a scannable, standard-conformant code | §28.2 | unit | `QR#matches a known-good version-1/4/6 QR…` (byte-mode, error-correction level L, checked module-for-module against reference output), `#rejects data too long to fit the supported version range` | passing |
+| FR-ISS-015 returns to idle after an inactivity timeout (default 45 s) and discards the partial selection | §8.2 | unit | `Flow#returns to idle and discards the partial selection after the inactivity timeout`, `#never times out on the idle screen itself` | passing |
+| FR-ISS-017 / NFR-USA-003 touch-only, 48×48 px targets, configurable high-contrast and larger-text mode | §8.2, §24 | unit | `Flow#every idle and confirm tile is at least a 48x48 px touch target`, `#toggles high-contrast and larger-text mode, and remembers the choice across a remount…`; `F/apps/kiosk/src/app/kiosk.css` (`.qms-kiosk-tile` sized in rem ≥ 48 px, `[data-contrast="high"]`) | passing |
+| NFR-USA-001 common path ≤ 30 s and ≤ 4 taps | §24 | unit | `Flow#walks Group → Service → Confirm within 4 taps when both have more than one option` (asserts the tap count directly); the fully-skipped path (`#fully skips…`) needs only 2 | passing |
+| NFR-PERF-007 idle-to-first-touch under 300 ms | §24 | unit | `Flow#mounts with the idle screen's tap target already interactive, before anything async settles` (structural: the idle tile is interactive on the first synchronous render, nothing async gates it) | partial (no real-device timing harness exists in this build; the structural guarantee is what unit tests can cover) |
+| NFR-PERF-001 token issuance completes in under 2 s at P95, from request to print payload | §24 | integration | `Kiosk#issuingThroughTheKioskCompletesWithinTwoSecondsAtP95` (40 kiosk issuances across 5 devices, server-side timing) | passing |
+| NFR-AVL-006 a crashed kiosk recovers to correct state with no manual data entry | §2.4 | unit | `Flow#a fresh mount always starts at idle, with no partial ticket-flow state to recover` (no ticket-flow state is ever persisted; only the accessibility preference survives a remount, by design) | passing |
+| FR-I18N-001 the new `kiosk.*` strings are in both packs | §17 | unit | `F/packages/i18n/src/i18n.test.ts` (pack parity, unchanged, now covers the added keys) | passing |
+| Definition of done §27.5: every protected action permission-checked server-side | §5.2, §27.5 | integration | `Kiosk#onlyAKioskDeviceMayCallTheEndpointAndNeverForAnotherSitesService`, `#aDisplayDeviceCannotIssueTickets` (`hasRole('KIOSK')`, plus the kiosk's own site-scope check since `IssuanceService.issue` deliberately leaves a device actor unscoped so each channel adapter decides its own authorisation, ticket 21 precedent) | passing |
+
+**Notes on this ticket's interpretation.** FR-ISS-013 (identification by code/QR/phone) and FR-ISS-010's team/individual
+levels are ticket 26's scope, not this one's; the common path here is Language → Group → Service → Confirm only, matching
+this ticket's acceptance criteria. `POST /kiosk/tickets` is a new endpoint (`KioskTicketController`, issuance package)
+rather than widening `POST /tickets`: `TicketController`'s own Javadoc already anticipated this ("Kiosks and the mobile
+app arrive with their own principals and adapters"). `IssuanceService.issue` does not scope-check a `DEVICE` actor
+itself (only `STAFF`); changing that would have broken `IssuanceIT#theIssuanceServiceIsChannelAgnosticAndRecordsTheChannelAndActor`,
+an existing passing test from ticket 21 that calls it directly with an arbitrary device id, so the site-scope check for
+a kiosk is enforced one layer up, in `KioskTicketController`, the same way each channel adapter is expected to decide
+its own authorisation. `DeviceService.bootstrap()`/`CatalogueService` filtered its service tree by `active` only, not by
+channel; a kiosk's `service_tree` is now additionally filtered to Services whose `channels` include `kiosk` (a display's
+is untouched), since the frontend has no other way to know which of the tree's Services it may actually offer at the
+kiosk — `ServiceTreeEntry` carries only an id and a name. The QR's URL scheme (`/visitor/?t=<id>&s=<secret>`, same
+origin per ADR-0012) is this build's own choice, since ticket 37 (the visitor ticket status page it opens) has not been
+built yet; the query-parameter shape is chosen so that page can read the ticket id and secret from the URL and send the
+secret as `X-Ticket-Secret` per that ticket's own acceptance criteria. The QR encoder is hand-written (ISO/IEC 18004,
+byte mode, error-correction level L) rather than an npm dependency, checked module-for-module against a trusted
+reference implementation's output for three inputs of different QR versions (1, 4, 6) — deliberate, not an oversight:
+network access to add a package is not guaranteed in every environment this build runs in, and the kiosk's
+printer-failure fallback must render on-device every time regardless. High-contrast and larger-text are a device
+setting the kiosk itself remembers (`localStorage`, keyed `qms-kiosk-accessibility`); this does not conflict with
+API-017's "never `localStorage`" rule, which is specifically about the device's refresh credential, not arbitrary UI
+preferences. NFR-PERF-007 (idle-to-first-touch < 300 ms) and the 30-second half of NFR-USA-001 are real-device timing
+requirements no unit test running under jsdom can measure directly; what is tested is the structural guarantee that
+makes them achievable (idle renders synchronously, no chunk of blocking work sits between mount and the first tap
+handler) — a load/device test is the gap, matching how NFR-PERF-003 in ticket 17 needed a real integration test rather
+than a unit one for its own timing claim.
+
 ## Notes
 
 - **Compose.** Verified by hand on 2026-09-19 with OrbStack Docker, from a clean build: `migrate` exited 0, then Postgres,

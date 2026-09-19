@@ -72,6 +72,15 @@ body {
   letter-spacing: 0.04em;
 }
 
+.qms-qr {
+  display: block;
+  margin-inline: auto;
+  background: #fff;
+  border: 1px solid var(--qms-color-border);
+  border-radius: var(--qms-radius);
+  padding: 0.5rem;
+}
+
 .qms-muted {
   color: var(--qms-color-muted);
 }

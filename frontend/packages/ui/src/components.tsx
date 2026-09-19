@@ -1,4 +1,5 @@
-import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode, SelectHTMLAttributes } from "react";
+import { useMemo, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes } from "react";
+import { encodeQrMatrix } from "./qrcode";
 
 export function Page({ children }: { children: ReactNode }) {
   return <main className="qms-page qms-stack">{children}</main>;
@@ -38,6 +39,34 @@ export function ErrorAlert({ children }: { children: ReactNode }) {
     <div className="qms-alert" role="alert">
       {children}
     </div>
+  );
+}
+
+/**
+ * A QR code rendered as inline SVG from {@link encodeQrMatrix} (no image, no network, no third-party package):
+ * the kiosk's printer-failure fallback (FR-ISS-016) must render on-device every time. `label` is the accessible
+ * name for screen readers, since the code itself conveys nothing to someone who cannot see or scan it.
+ */
+export function QrCode({ value, size = 200, label }: { value: string; size?: number; label: string }) {
+  const matrix = useMemo(() => encodeQrMatrix(value), [value]);
+  const modules = matrix.length;
+  const quietZone = 4; // ISO/IEC 18004 §6.3.8: at least 4 modules of light margin so scanners can find the finders.
+  const viewSize = modules + quietZone * 2;
+  return (
+    <svg
+      viewBox={`0 0 ${viewSize} ${viewSize}`}
+      width={size}
+      height={size}
+      role="img"
+      aria-label={label}
+      className="qms-qr"
+      shapeRendering="crispEdges"
+    >
+      <rect x={0} y={0} width={viewSize} height={viewSize} fill="#fff" />
+      {matrix.map((row, r) =>
+        row.map((dark, c) => (dark ? <rect key={`${r}-${c}`} x={c + quietZone} y={r + quietZone} width={1} height={1} fill="#000" /> : null)),
+      )}
+    </svg>
   );
 }
 

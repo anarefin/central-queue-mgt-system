@@ -1,9 +1,10 @@
 "use client";
 
-import { ApiRequestError, type DeviceBootstrap } from "@qms/api-client";
+import { ApiRequestError, type ApiClient, type DeviceBootstrap } from "@qms/api-client";
 import { useI18n } from "@qms/i18n/react";
 import { Button, Card, ErrorAlert, Page, TextField } from "@qms/ui";
 import { useEffect, useId, useState, type FormEvent } from "react";
+import { KioskFlow } from "./KioskFlow";
 import { useApi } from "../lib/runtime";
 
 /** How often a paired device reports in (FR-OPS-041); the SRS gives no number, this build's own choice. */
@@ -68,7 +69,7 @@ export function DevicePairing() {
   if (configError) return <ErrorAlert>{t("errors.network_error")}</ErrorAlert>;
   if (!session || status === "unknown") return <p className="qms-muted">{t("common.loading")}</p>;
   if (status === "unpaired") return <PairingForm />;
-  return <PairedView bootstrap={bootstrap} bootstrapError={bootstrapError} />;
+  return <PairedView bootstrap={bootstrap} bootstrapError={bootstrapError} client={client} />;
 }
 
 function PairingForm() {
@@ -114,15 +115,40 @@ function PairingForm() {
   );
 }
 
-function PairedView({ bootstrap, bootstrapError }: { bootstrap: DeviceBootstrap | null; bootstrapError: boolean }) {
+function PairedView({
+  bootstrap,
+  bootstrapError,
+  client,
+}: {
+  bootstrap: DeviceBootstrap | null;
+  bootstrapError: boolean;
+  client: ApiClient | null;
+}) {
   const { t } = useI18n();
+  if (bootstrapError) {
+    return (
+      <Page>
+        <Card>
+          <ErrorAlert>{t("devicePairing.configError")}</ErrorAlert>
+        </Card>
+      </Page>
+    );
+  }
+  if (!bootstrap || !client) {
+    return (
+      <Page>
+        <Card>
+          <p className="qms-muted">{t("devicePairing.loadingConfig")}</p>
+        </Card>
+      </Page>
+    );
+  }
+  // h1 here (the site name) doubles as the loaded-bootstrap marker the pairing test looks for; the kiosk's own
+  // common-path flow (ticket 25) takes the rest of the screen, full-bleed rather than boxed in the pairing card.
   return (
-    <Page>
-      <Card>
-        {bootstrapError && <ErrorAlert>{t("devicePairing.configError")}</ErrorAlert>}
-        {!bootstrap && !bootstrapError && <p className="qms-muted">{t("devicePairing.loadingConfig")}</p>}
-        {bootstrap && <h1 className="qms-heading">{bootstrap.branding.site_name}</h1>}
-      </Card>
-    </Page>
+    <>
+      <h1 className="qms-heading qms-kiosk-site-name">{bootstrap.branding.site_name}</h1>
+      <KioskFlow bootstrap={bootstrap} client={client} />
+    </>
   );
 }
