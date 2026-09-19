@@ -4,7 +4,7 @@
 
 **Blocked by:** 07 — Reception issues a walk-in Ticket
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [x] Lookup goes through a `VisitorDirectory` interface; local implementation in v1 (FR-INT-010, FR-INT-012)
 - [x] `lookup(code | phone | qr)` returns external code, name, category, phone, flags with a hard timeout (default 1.5 s) and fallback to local data (FR-INT-012)
