@@ -1,0 +1,26 @@
+# SRS §5.2, transcribed independently of PermissionMatrix.java. Y = allowed within scope, S = own records only, - = denied.
+# The Visitor column is omitted: visitors are not staff roles and arrive with their own ticket.
+# permission                        | system_admin | org_admin | team_admin | agent | reception_operator
+config:org_sites_zones              | Y | Y | - | - | -
+config:service_catalogue            | Y | Y | - | - | -
+config:priority_routing             | Y | Y | - | - | -
+user:manage                         | Y | Y | - | - | -
+role:assign                         | Y | Y | - | - | -
+team_member:request                 | Y | Y | Y | - | -
+team_member:approve                 | Y | Y | - | - | -
+counter_allocation:request          | Y | Y | Y | - | -
+counter_allocation:approve          | Y | Y | - | - | -
+counter_session:open_close          | Y | Y | Y | S | -
+ticket:call_serve_complete          | - | - | Y | S | -
+ticket:transfer                     | - | Y | Y | S | -
+ticket:reprioritise                 | Y | Y | Y | - | Y
+ticket:issue                        | - | - | - | - | Y
+ticket:cancel                       | Y | Y | Y | S | Y
+agent_availability:force_set        | Y | Y | Y | - | -
+dashboard:view_all                  | Y | Y | - | - | -
+dashboard:view_own_groups           | Y | Y | Y | S | Y
+reports:run_export                  | Y | Y | Y | - | -
+visitor_pii:view                    | Y | Y | Y | S | Y
+notice_board:manage                 | Y | Y | Y | - | -
+audit:read                          | Y | Y | - | - | -
+appointment:book                    | Y | Y | Y | - | Y

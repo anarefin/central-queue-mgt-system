@@ -1,0 +1,40 @@
+spring:
+  application:
+    name: qms-backend
+  datasource:
+    # NFR-SEC-013: credentials come from the environment, never from source control.
+    url: ${QMS_DB_URL:jdbc:postgresql://localhost:5432/qms}
+    username: ${QMS_DB_USER:qms}
+    password: ${QMS_DB_PASSWORD:}
+  flyway:
+    # FR-OPS-020: in production the `migrate` profile runs migrations as a separate step and the app starts with
+    # QMS_MIGRATE_ON_START=false. Development and tests migrate on start.
+    enabled: ${QMS_MIGRATE_ON_START:true}
+    locations: classpath:db/migration
+
+server:
+  error:
+    whitelabel:
+      enabled: false
+
+logging:
+  structured:
+    format:
+      console: logstash # NFR-MNT-001: JSON logs; MDC (trace_id) is included as a top-level member
+    json:
+      customizer: com.qms.platform.LogRedactionCustomizer # API-018: tokens, OTPs and ticket secrets never reach the log
+
+qms:
+  i18n:
+    system-default-language: en
+    languages: en,bn
+    site-default-language: ${QMS_SITE_DEFAULT_LANGUAGE:}
+    pack-dir: ${QMS_I18N_PACK_DIR:}
+  security:
+    issuer: ${QMS_ISSUER:https://qms.local}
+    key-dir: ${QMS_KEY_DIR:./keys}
+    refresh-cookie:
+      secure: ${QMS_REFRESH_COOKIE_SECURE:true}
+    bootstrap:
+      username: ${QMS_BOOTSTRAP_ADMIN_USERNAME:}
+      password: ${QMS_BOOTSTRAP_ADMIN_PASSWORD:}

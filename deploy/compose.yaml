@@ -1,0 +1,88 @@
+# Single-node stack: PostgreSQL, backend, reverse proxy serving all apps and the API on one origin.
+# Usage:  QMS_DB_PASSWORD=... docker compose -f deploy/compose.yaml up --build
+name: qms
+
+services:
+  postgres:
+    image: postgres:14-alpine
+    environment:
+      POSTGRES_DB: qms
+      POSTGRES_USER: qms
+      POSTGRES_PASSWORD: ${QMS_DB_PASSWORD:?set QMS_DB_PASSWORD}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U qms -d qms"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  # FR-OPS-020: migrations run as a separate step before the new backend version starts.
+  migrate:
+    build:
+      context: ..
+      dockerfile: deploy/backend.Dockerfile
+    command: ["--spring.profiles.active=migrate"]
+    environment:
+      QMS_DB_URL: jdbc:postgresql://postgres:5432/qms
+      QMS_DB_USER: qms
+      QMS_DB_PASSWORD: ${QMS_DB_PASSWORD}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  backend:
+    build:
+      context: ..
+      dockerfile: deploy/backend.Dockerfile
+    environment:
+      QMS_DB_URL: jdbc:postgresql://postgres:5432/qms
+      QMS_DB_USER: qms
+      QMS_DB_PASSWORD: ${QMS_DB_PASSWORD}
+      QMS_MIGRATE_ON_START: "false"
+      QMS_I18N_PACK_DIR: /etc/qms/i18n
+      # Signing keys are generated per installation on first start and never leave this volume (API-015).
+      QMS_KEY_DIR: /var/lib/qms/keys
+      QMS_ISSUER: ${QMS_ISSUER:-https://qms.local}
+      # The refresh cookie is Secure by default; set false only for plain-HTTP evaluation on a non-localhost host.
+      QMS_REFRESH_COOKIE_SECURE: ${QMS_REFRESH_COOKIE_SECURE:-true}
+      # Only the reverse proxy reaches the backend, so its X-Forwarded-For is trusted for audit source addresses.
+      SERVER_FORWARD_HEADERS_STRATEGY: framework
+      # First run only: creates the initial System Administrator while there are no users (NFR-SEC-013).
+      QMS_BOOTSTRAP_ADMIN_USERNAME: ${QMS_BOOTSTRAP_ADMIN_USERNAME:-}
+      QMS_BOOTSTRAP_ADMIN_PASSWORD: ${QMS_BOOTSTRAP_ADMIN_PASSWORD:-}
+    volumes:
+      - ./i18n/backend:/etc/qms/i18n:ro
+      - keys:/var/lib/qms/keys
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/api/v1/health/ready"]
+      interval: 10s
+      timeout: 3s
+      retries: 12
+      start_period: 20s
+
+  proxy:
+    build:
+      context: ..
+      dockerfile: deploy/proxy/Dockerfile
+    ports:
+      - "${QMS_HTTP_PORT:-8080}:80"
+    volumes:
+      # Each app reads its API origin from its own config.json at boot (ADR-0012).
+      - ./config/config.json:/usr/share/nginx/html/admin/config.json:ro
+      - ./config/config.json:/usr/share/nginx/html/console/config.json:ro
+      - ./config/config.json:/usr/share/nginx/html/kiosk/config.json:ro
+      - ./config/config.json:/usr/share/nginx/html/display/config.json:ro
+      - ./config/config.json:/usr/share/nginx/html/visitor/config.json:ro
+      - ./i18n/web:/etc/qms/i18n:ro
+    depends_on:
+      backend:
+        condition: service_healthy
+
+volumes:
+  pgdata:
+  keys:

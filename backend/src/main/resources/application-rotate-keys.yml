@@ -1,0 +1,6 @@
+# `java -jar app.jar --spring.profiles.active=rotate-keys` rotates the signing key and exits (API-015).
+spring:
+  main:
+    web-application-type: none
+  flyway:
+    enabled: false

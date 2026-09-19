@@ -1,0 +1,5 @@
+/* FR-I18N-023: Bengali script including conjuncts, plus Latin for Western Arabic digits and Token numbers. */
+@import url("@fontsource/noto-sans-bengali/bengali-400.css");
+@import url("@fontsource/noto-sans-bengali/bengali-600.css");
+@import url("@fontsource/noto-sans-bengali/latin-400.css");
+@import url("@fontsource/noto-sans-bengali/latin-600.css");

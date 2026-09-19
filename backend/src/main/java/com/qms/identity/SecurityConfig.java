@@ -1,0 +1,88 @@
+package com.qms.identity;
+
+import com.qms.platform.Profiles;
+import com.qms.platform.security.AuthenticatedUser;
+import com.qms.platform.security.PermissionMatrix;
+import java.util.Collection;
+import java.util.HashSet;
+import java.util.Set;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Profile;
+import org.springframework.core.convert.converter.Converter;
+import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
+import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
+import org.springframework.security.config.http.SessionCreationPolicy;
+import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.oauth2.jwt.BadJwtException;
+import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.security.oauth2.jwt.JwtDecoder;
+import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
+import org.springframework.security.web.SecurityFilterChain;
+
+/**
+ * Stateless resource server (API-010): no HTTP session, no per-request lookup, every request authenticated from the
+ * signed JWT alone. Permissions are derived from the {@code roles} claim by the code-defined matrix and enforced with
+ * method security at the service layer (API-016), so a second entry point cannot bypass them.
+ */
+@Configuration
+@EnableMethodSecurity
+@Profile(Profiles.SERVING)
+class SecurityConfig {
+
+    /** Paths reachable without a token. A build-time test checks these agree with the {@code @PublicEndpoint} markers. */
+    static final String[] PUBLIC_PATHS = {
+        "/api/v1/health/**", "/api/v1/auth/login", "/api/v1/auth/refresh", "/api/v1/auth/logout"
+    };
+
+    @Bean
+    JwtDecoder jwtDecoder(SecurityProperties properties, SigningKeyStore keys) {
+        return JwtDecoderFactory.create(properties, keys);
+    }
+
+    @Bean
+    JwtAuthenticationConverter jwtAuthenticationConverter() {
+        JwtAuthenticationConverter converter = new JwtAuthenticationConverter();
+        converter.setJwtGrantedAuthoritiesConverter(authorities());
+        return converter;
+    }
+
+    private static Converter<Jwt, Collection<GrantedAuthority>> authorities() {
+        return jwt -> {
+            AuthenticatedUser user;
+            try {
+                user = AuthenticatedUser.from(jwt);
+            } catch (IllegalArgumentException malformed) {
+                throw new BadJwtException("Malformed subject, scope or role claim", malformed);
+            }
+            Set<GrantedAuthority> granted = new HashSet<>();
+            user.roles().forEach(role -> granted.add(new SimpleGrantedAuthority("ROLE_" + role.wire().toUpperCase())));
+            PermissionMatrix.authoritiesFor(user.roles()).forEach(a -> granted.add(new SimpleGrantedAuthority(a)));
+            return granted;
+        };
+    }
+
+    @Bean
+    SecurityFilterChain apiSecurity(
+            HttpSecurity http,
+            JwtDecoder decoder,
+            JwtAuthenticationConverter converter,
+            ApiAuthenticationEntryPoint entryPoint,
+            ApiAccessDeniedHandler accessDenied)
+            throws Exception {
+        http.csrf(AbstractHttpConfigurer::disable) // bearer tokens in a header; the refresh cookie is SameSite=Strict
+                .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                .httpBasic(AbstractHttpConfigurer::disable)
+                .formLogin(AbstractHttpConfigurer::disable)
+                .logout(AbstractHttpConfigurer::disable)
+                .authorizeHttpRequests(requests -> requests.requestMatchers(PUBLIC_PATHS).permitAll().anyRequest().authenticated())
+                .oauth2ResourceServer(oauth -> oauth
+                        .jwt(jwt -> jwt.decoder(decoder).jwtAuthenticationConverter(converter))
+                        .authenticationEntryPoint(entryPoint)
+                        .accessDeniedHandler(accessDenied))
+                .exceptionHandling(errors -> errors.authenticationEntryPoint(entryPoint).accessDeniedHandler(accessDenied));
+        return http.build();
+    }
+}

@@ -1,0 +1,23 @@
+# Dependencies and build output
+node_modules/
+.next/
+out/
+build/
+.gradle/
+*.tsbuildinfo
+next-env.d.ts
+coverage/
+
+# Per-installation secrets never belong in source control (API-015, NFR-SEC-013)
+keys/
+.env
+.env.*
+!.env.example
+
+# Editor, OS and local agent state
+.idea/
+*.iml
+.DS_Store
+.claude/
+graphify-out/
+.pnpm-store/

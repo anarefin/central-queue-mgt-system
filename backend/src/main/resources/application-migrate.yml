@@ -1,0 +1,6 @@
+# `java -jar app.jar --spring.profiles.active=migrate` applies pending migrations and exits (FR-OPS-020).
+spring:
+  main:
+    web-application-type: none
+  flyway:
+    enabled: true

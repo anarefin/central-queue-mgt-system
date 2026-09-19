@@ -1,0 +1,29 @@
+{
+  "extends": ["stylelint-config-standard"],
+  "rules": {
+    "selector-class-pattern": "^[a-z][a-z0-9_]*(-[a-z0-9_]+)*(__[a-z0-9-]+)?(--[a-z0-9_-]+)?$",
+    "property-disallowed-list": [
+      [
+        "left", "right",
+        "margin-left", "margin-right", "padding-left", "padding-right",
+        "border-left", "border-right", "border-left-width", "border-right-width",
+        "border-left-color", "border-right-color", "border-left-style", "border-right-style",
+        "border-top-left-radius", "border-top-right-radius", "border-bottom-left-radius", "border-bottom-right-radius",
+        "text-overflow"
+      ],
+      { "message": "Use logical properties (inline-start/inline-end) and never truncate text (FR-I18N-030, FR-I18N-031)." }
+    ],
+    "declaration-property-value-disallowed-list": {
+      "float": ["left", "right"],
+      "clear": ["left", "right"],
+      "text-align": ["left", "right"],
+      "white-space": ["nowrap"]
+    },
+    "declaration-property-unit-disallowed-list": {
+      "width": ["px"], "min-width": ["px"], "max-width": ["px"],
+      "height": ["px"], "min-height": ["px"], "max-height": ["px"],
+      "inline-size": ["px"], "min-inline-size": ["px"], "max-inline-size": ["px"],
+      "block-size": ["px"], "min-block-size": ["px"], "max-block-size": ["px"]
+    }
+  }
+}

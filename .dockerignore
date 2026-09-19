@@ -1,0 +1,11 @@
+**/node_modules
+**/.next
+**/out
+**/build
+**/.gradle
+**/keys
+.git
+.scratch
+.claude
+_skills-to-install
+graphify-out
