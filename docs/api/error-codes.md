@@ -46,9 +46,12 @@ naming `Idempotency-Key` when it is missing); reusing a key for a different requ
 
 Counter sessions (`/sessions`, ticket 10) refuse with `conflict` and one `details.reason`: `counter_occupied`,
 `agent_has_open_session`, `counter_inactive` (opening); `session_not_open` (the session is closing, closed or on a break);
-`ticket_in_progress` (call next or close while a ticket is called or serving); `no_ticket_waiting` (nothing to call);
+`ticket_in_progress` (call next or close while a ticket is called or serving, or resume while one is); `held_tickets_remaining` (close
+with only held tickets left, ticket 13); `no_ticket_waiting` (nothing to call);
 `no_ticket_called` / `no_ticket_serving` (start, re-announce or miss with nothing called, or complete with nothing
-serving); `reannounce_limit_reached` (a ticket already re-announced as often as allowed, ticket 12); `version_mismatch` (a
+serving); `reannounce_limit_reached` (a ticket already re-announced as often as allowed, ticket 12); `hold_limit_reached` (the session holds as
+many tickets as allowed) and `no_ticket_held` (resume a ticket this session does not hold), ticket 13; `session_not_open` also refuses
+a force-close of a session that is already closed; `version_mismatch` (a
 stale `If-Match`). A session that is not the caller's is `forbidden`, an unknown one `not_found`; a chosen service the counter
 does not offer, a missing or unknown outcome, or a malformed `If-Match` is `validation_failed` naming the field.
 

@@ -52,6 +52,7 @@ Everything is an environment variable (or a Spring property). Secrets are never 
 | `QMS_QUEUE_MISS_LIMIT` | `2` | How many times a ticket may be missed (F6) and return to the queue; the next Miss closes it as `no_show`, section 12 |
 | `QMS_QUEUE_MISS_REENTRY_POSITION` | `after-n` | Where a missed ticket re-enters the queue: `front`, `after-n` or `back`, section 12 |
 | `QMS_QUEUE_MISS_REENTRY_AFTER` | `3` | With `after-n`: how many tickets stay ahead of the missed one (at least 1), section 12 |
+| `QMS_QUEUE_HOLD_LIMIT` | `3` | How many tickets one session may hold (F8) at once; `0` switches Hold off, section 12 |
 
 Two limits are enforced at startup and cannot be raised: access tokens last at most 15 minutes, and bcrypt cost is at
 least 12.
@@ -296,18 +297,39 @@ missed ticket cannot jump an escalated one. Each `ticket.missed` event records t
 does not order the queue, so the position has no effect there (section 10). A ticket that is called again after a Miss stores
 a `wait_seconds` that adds up only the time it spent in `waiting`, not the time it was called.
 
-**Closing** (F10) needs the ticket in progress to be resolved. With a ticket called or serving the session becomes
-`closing`, takes no new calls and the request is refused with `ticket_in_progress`; completing the ticket then closes the
-session. Holding and transferring tickets, breaks and force-closing a stale session arrive with later tickets, so today
-an admin cannot close another agent's session.
+**Hold and held by me.** An agent can Hold (F8) the ticket in service to call the next visitor and come back to it later. The
+ticket moves `serving` to `held`, stays bound to the session (so only that session can resume it), leaves the general queue,
+and `ticket.held` is written and published; the counter is free to call next. Held tickets show in the console under "Held by
+me", each with a Resume button; a resume is refused while another ticket is called or serving at the desk, and puts the ticket
+back to `serving` (`ticket.serving`). A session may hold at most `QMS_QUEUE_HOLD_LIMIT` tickets at once (default 3, 0 switches
+Hold off); one more is refused with `hold_limit_reached`. Hold is only offered on an `open` session.
+
+**Closing** (F10) needs everything in progress to be resolved: the ticket called or serving, and every held ticket. With any
+of them left the session becomes `closing`, takes no new calls and the request is refused with `ticket_in_progress` (a ticket
+called or serving) or `held_tickets_remaining` (only held tickets left); the agent resumes and completes each one, and the
+last completion closes the session. Transferring tickets and breaks arrive with later tickets.
+
+**Force-close.** When a device is stale (an agent walked away, a tablet died) an Org Admin or Team Admin, or a System Admin,
+who holds the "open/close a counter session" permission for everyone's sessions, can force-close the session with
+`POST /sessions/{id}/force-close` and an optional `reason`. Their token's sites and Service groups limit which sessions they
+can reach; agents cannot, not even their own. The session becomes `force_closed` and its counter is free at once. Every ticket
+it was calling, serving or holding returns to `waiting` at the front of its queue: the ticket's Score adjustment is set so it
+lands ahead of every ticket that is not escalated (the ticket that joined the queue first ends up first), its binding is
+cleared, `queued_at` and `miss_count` are untouched, and each ticket gets one `ticket.position_changed` event naming the
+adjustment and `reason: session_force_closed`. The action is audited as `session.force_closed` (before, after with the tickets
+returned, and the reason), and `session.closed` with state `force_closed` is published so the agent's console drops out of the
+session. The time a ticket spent held or called never counts as wait (Invariant 1).
 
 **Refresh and restart.** The session lives on the server and does not expire: after a browser refresh, a network loss or
 a restart the console asks `GET /sessions/current` and shows the ticket the agent was serving.
 
 API, all under `/api/v1`: `GET /sessions/options`, `GET /sessions/current` (`not_found` when there is none),
-`POST /sessions` (`counter_id`, optional `service_ids`), `DELETE /sessions/{id}`, and `POST /sessions/{id}/next|reannounce|serve|complete|miss`.
-`reannounce`, `serve`, `complete` and `miss` take the ticket's `version` as `If-Match`; a stale version is a `conflict` with reason
+`POST /sessions` (`counter_id`, optional `service_ids`), `DELETE /sessions/{id}`, and `POST /sessions/{id}/next|reannounce|serve|complete|miss|hold|force-close`.
+`hold` holds the serving ticket, or resumes a held one when given `{"ticket_id": ...}`. The session response carries `ticket`
+(in progress), `held` (the held-by-me list) and `hold_limit`.
+`reannounce`, `serve`, `complete`, `miss` and `hold` take the ticket's `version` as `If-Match`; a stale version is a `conflict` with reason
 `version_mismatch`. Conflict reasons: `counter_occupied`, `agent_has_open_session`, `counter_inactive`, `session_not_open`,
-`ticket_in_progress`, `no_ticket_waiting`, `no_ticket_called`, `no_ticket_serving`, `reannounce_limit_reached`,
-`version_mismatch`. Events written per transition: `ticket.called`, `ticket.reannounced`, `ticket.missed`, `ticket.no_show`,
-`ticket.serving`, `ticket.completed`; audit entries `session.opened` and `session.closed`.
+`ticket_in_progress`, `held_tickets_remaining`, `no_ticket_waiting`, `no_ticket_called`, `no_ticket_serving`, `no_ticket_held`,
+`reannounce_limit_reached`, `hold_limit_reached`, `version_mismatch`. Events written per transition: `ticket.called`,
+`ticket.reannounced`, `ticket.missed`, `ticket.no_show`, `ticket.serving`, `ticket.held`, `ticket.position_changed`,
+`ticket.completed`; audit entries `session.opened`, `session.closed` and `session.force_closed`.

@@ -1,5 +1,5 @@
 import type { CounterSession, SessionCounterOption, SessionOutcome, SessionTicket } from "@qms/api-client";
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import Home from "../app/page";
@@ -46,7 +46,7 @@ function ticket(over: Partial<SessionTicket> = {}): SessionTicket {
 }
 
 function session(over: Partial<CounterSession> = {}): CounterSession {
-  return { id: "s1", counter: COUNTER, agent_id: "u1", state: "open", opened_at: STAMP, closed_at: null, services: SERVICES, ticket: null, ...over };
+  return { id: "s1", counter: COUNTER, agent_id: "u1", state: "open", opened_at: STAMP, closed_at: null, services: SERVICES, ticket: null, held: [], hold_limit: 3, ...over };
 }
 
 const OPTIONS: SessionCounterOption[] = [
@@ -368,6 +368,120 @@ describe("re-announce and miss (FR-DSP-028, FR-QUE-050, ADR-0005)", () => {
     expect(count(calls, "GET /sessions/current")).toBe(2);
     expect(screen.getByRole("button", { name: /আবার ঘোষণা/ })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /অনুপস্থিত/ })).toBeInTheDocument();
+  });
+});
+
+describe("hold and held by me (FR-AGT-013, ADR-0008, §19.3)", () => {
+  const serving = (over: Partial<SessionTicket> = {}) => ticket({ state: "serving", version: 2, served_at: STAMP, ...over });
+  const parked = (id: string, token: string, version = 3) => ticket({ id, token_number: token, state: "held", version, served_at: STAMP });
+
+  it("holds the ticket in service with F8, lists it under held by me and leaves the counter free to call next", async () => {
+    let state = session({ ticket: serving() });
+    const calls = stubApi({
+      ...AUTH,
+      "GET /sessions/current": () => json(200, state),
+      "POST /sessions/s1/hold": () => json(200, (state = session({ held: [parked("t1", "S-042")] }))),
+    });
+    const user = userEvent.setup();
+    renderApp(<Home />);
+    await screen.findByText("In service");
+    expect(screen.queryByText(/Held by me/)).not.toBeInTheDocument();
+
+    await user.keyboard("{F8}");
+
+    await waitFor(() => expect(screen.queryByTestId("current-token")).not.toBeInTheDocument());
+    expect(ifMatch(calls.find((c) => c.path === "/sessions/s1/hold"))).toBe('"2"');
+    expect(calls.find((c) => c.path === "/sessions/s1/hold")?.init.body).toBeUndefined();
+    expect(screen.getByText("Held by me (1 of 3)")).toBeInTheDocument();
+    expect(within(screen.getByTestId("held-t1")).getByText("S-042")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Call next/ })).toBeEnabled();
+    expect(screen.getByRole("button", { name: /^Hold/ })).toBeDisabled();
+  });
+
+  it("offers Hold only for a ticket in service, in an open session, below the hold limit", async () => {
+    stubApi({ ...AUTH, "GET /sessions/current": () => json(200, session({ ticket: ticket() })) });
+    const user = userEvent.setup();
+    const first = renderApp(<Home />);
+    await screen.findByText("Called, waiting for the visitor");
+    expect(screen.getByRole("button", { name: /^Hold/ })).toBeDisabled();
+    await user.keyboard("{F8}");
+    expect(screen.getByText("Called, waiting for the visitor")).toBeInTheDocument();
+    first.unmount();
+
+    const held = [parked("h1", "S-001"), parked("h2", "S-002"), parked("h3", "S-003")];
+    const calls = stubApi({ ...AUTH, "GET /sessions/current": () => json(200, session({ ticket: serving(), held })) });
+    renderApp(<Home />);
+    await screen.findByText("In service");
+    expect(screen.getByText("Held by me (3 of 3)")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^Hold/ })).toBeDisabled();
+    await user.keyboard("{F8}");
+    expect(count(calls, "POST /sessions/s1/hold")).toBe(0);
+  });
+
+  it("resumes a held ticket from the list, only while nothing else is in progress", async () => {
+    stubApi({
+      ...AUTH,
+      "GET /sessions/current": () => json(200, session({ ticket: serving({ id: "t2", token_number: "S-043", version: 4 }), held: [parked("t1", "S-042")] })),
+    });
+    const busy = renderApp(<Home />);
+    await screen.findByText("In service");
+    expect(screen.getByRole("button", { name: "Resume S-042" })).toBeDisabled();
+    busy.unmount();
+
+    let state = session({ held: [parked("t1", "S-042")] });
+    const calls = stubApi({
+      ...AUTH,
+      "GET /sessions/current": () => json(200, state),
+      "POST /sessions/s1/hold": () => json(200, (state = session({ ticket: serving({ version: 4 }) }))),
+    });
+    const user = userEvent.setup();
+    renderApp(<Home />);
+    await user.click(await screen.findByRole("button", { name: "Resume S-042" }));
+
+    expect(await screen.findByTestId("current-token")).toHaveTextContent("S-042");
+    const resume = calls.find((c) => c.path === "/sessions/s1/hold");
+    expect(body(resume)).toEqual({ ticket_id: "t1" });
+    expect(ifMatch(resume)).toBe('"3"');
+    expect(screen.getByText("In service")).toBeInTheDocument();
+    expect(screen.queryByText(/Held by me/)).not.toBeInTheDocument();
+  });
+
+  it("names the held tickets when a close is refused and says how to finish closing", async () => {
+    let state = session({ held: [parked("t1", "S-042")] });
+    const calls = stubApi({
+      ...AUTH,
+      "GET /sessions/current": () => json(200, state),
+      "DELETE /sessions/s1": () => {
+        state = { ...state, state: "closing" };
+        return refusal(409, "held_tickets_remaining");
+      },
+    });
+    const user = userEvent.setup();
+    renderApp(<Home />);
+    await screen.findByTestId("held-t1");
+
+    await user.keyboard("{F10}");
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Resume and complete your held tickets before closing.");
+    expect(await screen.findByText("Resume and complete each held ticket to finish closing.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Resume S-042" })).toBeEnabled();
+    expect(count(calls, "GET /sessions/current")).toBe(2);
+  });
+
+  it("says why the API refused a Hold, in the reader's language, and reads the session again", async () => {
+    const calls = stubApi({
+      ...AUTH,
+      "GET /sessions/current": () => json(200, session({ ticket: serving() })),
+      "POST /sessions/s1/hold": () => refusal(409, "hold_limit_reached"),
+    });
+    const user = userEvent.setup();
+    renderApp(<Home />, ["bn-BD"]);
+    await screen.findByTestId("current-token");
+
+    await user.keyboard("{F8}");
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("এই সেশনে অনুমোদিত সর্বোচ্চ সংখ্যক টিকিট ইতিমধ্যে ধরে রাখা আছে।");
+    expect(count(calls, "GET /sessions/current")).toBe(2);
   });
 });
 

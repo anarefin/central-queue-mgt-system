@@ -10,19 +10,20 @@ import { useApi } from "../lib/runtime";
 import { OpenSessionCard } from "./OpenSessionCard";
 import { ServingDesk, type DeskActions } from "./ServingDesk";
 
-/** The function keys of SRS §11.2 that this console answers. */
-const KEYS: Record<string, keyof Pick<DeskActions, "call" | "reannounce" | "start" | "complete" | "miss" | "close">> = {
+/** The function keys of SRS §11.2 that this console answers (F7 transfer and F9 break arrive with later tickets). */
+const KEYS: Record<string, keyof Pick<DeskActions, "call" | "reannounce" | "start" | "complete" | "miss" | "hold" | "close">> = {
   F2: "call",
   F3: "reannounce",
   F4: "start",
   F5: "complete",
   F6: "miss",
+  F8: "hold",
   F10: "close",
 };
 
 /**
  * The agent's console (SRS §11): open a session, then call, serve and complete tickets, and close the session, all from the
- * keyboard (F2, F3, F4, F5, F6, F10; NFR-USA-002). The console keeps no state the server does not: on load, on coming back
+ * keyboard (F2, F3, F4, F5, F6, F8, F10; NFR-USA-002). The console keeps no state the server does not: on load, on coming back
  * online and after any refused or lost action it asks the server for the session again, so a refresh, a short network loss
  * or a device restart puts the agent back at the ticket they were serving (FR-AGT-004). Whether an action is allowed is
  * shown here for convenience only; the API checks each one (FR-CFG-103, FR-CFG-105).
@@ -123,6 +124,10 @@ export function CounterConsole() {
   const canStart = ticket?.state === "called";
   const canComplete = ticket?.state === "serving";
   const canMiss = ticket?.state === "called";
+  const heldTickets = session?.held ?? [];
+  const canHold = session?.state === "open" && ticket?.state === "serving" && heldTickets.length < (session?.hold_limit ?? 0);
+  /** A held ticket comes back only when the desk has nothing else in progress (FR-AGT-010). */
+  const canResume = session !== null && session !== undefined && session.state !== "closed" && ticket === null;
   const canClose = session?.state === "open" || session?.state === "closing";
   const actions: DeskActions = {
     canCall,
@@ -130,6 +135,8 @@ export function CounterConsole() {
     canStart,
     canComplete,
     canMiss,
+    canHold,
+    canResume,
     canClose,
     call() {
       if (!client || !session || !canCall) return;
@@ -146,6 +153,14 @@ export function CounterConsole() {
         // Missing the ticket of a closing session resolves it, and the session closes (SRS §19.3).
         setSession(next.state === "closed" ? null : next);
       });
+    },
+    hold() {
+      if (!client || !session || !ticket || !canHold) return;
+      void perform(async () => setSession(await client.sessions.hold(session.id, ticket.version)));
+    },
+    resume(held) {
+      if (!client || !session || !canResume) return;
+      void perform(async () => setSession(await client.sessions.resume(session.id, held.id, held.version)));
     },
     start() {
       if (!client || !session || !ticket || !canStart) return;

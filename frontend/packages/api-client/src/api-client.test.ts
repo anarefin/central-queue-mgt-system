@@ -332,6 +332,11 @@ describe("ApiClient service catalogue", () => {
     await client.sessions.serve("s1");
     await client.sessions.complete("s1", { outcome_code_id: "o1", note: "done" }, 2);
     await client.sessions.close("s1");
+    await client.sessions.hold("s1", 2);
+    await client.sessions.hold("s1");
+    await client.sessions.resume("s1", "t1", 3);
+    await client.sessions.forceClose("s1", "stale tablet");
+    await client.sessions.forceClose("s1");
 
     const calls = fetchImpl.mock.calls.map(([url, init]) => `${(init as RequestInit).method} ${String(url).replace("/api/v1", "")}`);
     expect(calls).toEqual([
@@ -346,6 +351,11 @@ describe("ApiClient service catalogue", () => {
       "POST /sessions/s1/serve",
       "POST /sessions/s1/complete",
       "DELETE /sessions/s1",
+      "POST /sessions/s1/hold",
+      "POST /sessions/s1/hold",
+      "POST /sessions/s1/hold",
+      "POST /sessions/s1/force-close",
+      "POST /sessions/s1/force-close",
     ]);
     const headers = (index: number) => (fetchImpl.mock.calls[index]?.[1] as RequestInit).headers as Record<string, string>;
     expect(JSON.parse(String((fetchImpl.mock.calls[2]?.[1] as RequestInit).body))).toEqual({ counter_id: "c1", service_ids: ["v1"] });
@@ -356,6 +366,13 @@ describe("ApiClient service catalogue", () => {
     expect(headers(8)["If-Match"]).toBeUndefined();
     expect(headers(9)["If-Match"]).toBe('"2"');
     expect(JSON.parse(String((fetchImpl.mock.calls[9]?.[1] as RequestInit).body))).toEqual({ outcome_code_id: "o1", note: "done" });
+    expect(headers(11)["If-Match"]).toBe('"2"');
+    expect(headers(12)["If-Match"]).toBeUndefined();
+    expect((fetchImpl.mock.calls[12]?.[1] as RequestInit).body).toBeUndefined();
+    expect(headers(13)["If-Match"]).toBe('"3"');
+    expect(JSON.parse(String((fetchImpl.mock.calls[13]?.[1] as RequestInit).body))).toEqual({ ticket_id: "t1" });
+    expect(JSON.parse(String((fetchImpl.mock.calls[14]?.[1] as RequestInit).body))).toEqual({ reason: "stale tablet" });
+    expect((fetchImpl.mock.calls[15]?.[1] as RequestInit).body).toBeUndefined();
   });
 
   it("asks for a topic's snapshot on the polling path, the topic name escaped (FR-QUE-084)", async () => {

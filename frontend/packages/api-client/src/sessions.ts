@@ -25,12 +25,15 @@ export interface SessionOutcome {
   label_i18n: LocalisedText;
 }
 
-/** The ticket bound to the session, `called` or `serving`. `version` is what goes back as `If-Match` (SRS §20.1). */
+/**
+ * A ticket bound to the session: the one in progress (`called` or `serving`) or one of those the agent holds (`held`, FR-AGT-013).
+ * `version` is what goes back as `If-Match` (SRS §20.1).
+ */
 export interface SessionTicket {
   id: string;
   /** Always Western Arabic digits (FR-I18N-020); show it as is. */
   token_number: string;
-  state: "called" | "serving";
+  state: "called" | "serving" | "held";
   version: number;
   service: { id: string; name_i18n: LocalisedText };
   origin_channel: Channel;
@@ -57,7 +60,12 @@ export interface CounterSession {
   opened_at: string;
   closed_at: string | null;
   services: SessionService[];
+  /** The ticket in progress. */
   ticket: SessionTicket | null;
+  /** The agent's "held by me" list, to be cleared before the session can close (FR-AGT-013). */
+  held: SessionTicket[];
+  /** The most tickets this session may hold at once. */
+  hold_limit: number;
 }
 
 /** A counter the caller may occupy, with the Services it would let them serve (FR-AGT-001, FR-AGT-003). */

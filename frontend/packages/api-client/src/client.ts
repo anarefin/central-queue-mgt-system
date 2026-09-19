@@ -193,7 +193,8 @@ export class ApiClient {
 
   /**
    * An agent's counter session (SRS §11): open one on a counter their team serves, call the next ticket, start service,
-   * complete with an outcome, close; or, for a called ticket, re-announce it or miss it. The server holds all the state, so `current` rebuilds the console after a refresh
+   * complete with an outcome, close; or, for a called ticket, re-announce it or miss it; or hold the ticket in service and resume it
+   * later. The server holds all the state, so `current` rebuilds the console after a refresh
    * (FR-AGT-004); `current` answers `not_found` when the caller has no live session. `serve` and `complete` send the
    * ticket's `version` as `If-Match` when given, and a stale one is a `conflict` (SRS §20.1).
    */
@@ -209,6 +210,15 @@ export class ApiClient {
     /** F6: the visitor is absent; the ticket returns to the queue, or closes as a no-show past the limit (FR-QUE-050). */
     miss: (id: string, version?: number) =>
       this.request<CounterSession>("POST", `/sessions/${id}/miss`, undefined, { headers: ifMatch(version) }),
+    /** F8: park the ticket in service; it stays bound to the session and the counter is free to call next (FR-AGT-013). */
+    hold: (id: string, version?: number) =>
+      this.request<CounterSession>("POST", `/sessions/${id}/hold`, undefined, { headers: ifMatch(version) }),
+    /** Put a held ticket back in service; only the session that holds it can. */
+    resume: (id: string, ticketId: string, version?: number) =>
+      this.request<CounterSession>("POST", `/sessions/${id}/hold`, { ticket_id: ticketId }, { headers: ifMatch(version) }),
+    /** An Org or Team Admin closes a stale session; its tickets return to the front of their queues, with an audit entry (FR-AGT-002). */
+    forceClose: (id: string, reason?: string) =>
+      this.request<CounterSession>("POST", `/sessions/${id}/force-close`, reason ? { reason } : undefined),
     serve: (id: string, version?: number) =>
       this.request<CounterSession>("POST", `/sessions/${id}/serve`, undefined, { headers: ifMatch(version) }),
     complete: (id: string, input: CompleteInput, version?: number) =>

@@ -268,6 +268,28 @@ Paths: `B` = `backend/src/test/java/com/qms`, `F` = `frontend`.
 | FR-OPS-020 the V10 migration is forward-only and re-runnable | §26 | integration | `B/platform/MigrationIT#everyMigrationScriptCanBeReExecutedAgainstAnAlreadyMigratedDatabase` (V10) | passing |
 | Definition of done §27.5 item 6, administrator guide | §27.5 | manual | `docs/admin-guide.md` sections 2 and 12 | passing |
 
+## Ticket 13, hold, held by me and force-close
+
+`Hold` = `B/queue/HoldAndForceCloseTest`, `IT` = `B/session/SessionIT`, `RT` = `B/platform/realtime/RealtimeIT`,
+`Console` = `F/apps/console/src/components/CounterConsole.test.tsx` (describe "hold and held by me"),
+`Support` = `F/apps/console/src/lib/console-support.test.ts`, `Client` = `F/packages/api-client/src/api-client.test.ts`.
+
+| Requirement ID | Section | Test type | Test reference | Status |
+|---|---|---|---|---|
+| FR-AGT-013, ADR-0008 Hold keeps the Session binding and takes the ticket out of the general queue; only the same session resumes it | §11.2, §19.1 | integration | `IT#holdingKeepsTheBindingTakesTheTicketOutOfTheQueueFreesTheCounterAndOnlyTheSameSessionResumesIt`, `IT#holdNeedsATicketInServiceAndAnOpenSessionAndTheRightVersion` | passing |
+| FR-AGT-013 the held count per session is capped by a configurable hold limit (default 3) | §11.2, §19.1 | unit, integration | `Hold#theHeldCountIsCappedByTheHoldLimit`, `Hold#theHoldLimitDefaultsToThreeAndIsConfigurable`; `IT#aSessionMayHoldOnlyUpToTheHoldLimit`, `IT#theHoldLimitIsPerSessionSoAnotherCounterHoldsItsOwn` | passing |
+| FR-AGT-013, FR-AGT-005, §19.3 a "held by me" list, cleared before the session closes (`closing`) | §11.2, §19.3 | integration, unit | `IT#aSessionWithHeldTicketsCannotCloseCleanlyUntilTheyAreResumedAndCompleted`, `IT#closingWithATicketInProgressAndOneHeldStillNamesTheTicketInProgress`; `Console#names the held tickets when a close is refused and says how to finish closing`, `#resumes a held ticket from the list, only while nothing else is in progress` | passing |
+| FR-AGT-002, FR-AGT-013, §19.3, ADR-0008 force-close by an Org or Team Admin returns called, serving and held tickets to waiting at the front by Score adjustment and writes an audit entry | §11.1, §19.3 | integration | `IT#anAdminForceClosesAStaleSessionAndItsServingAndHeldTicketsReturnToTheFrontWithAnAuditEntry`, `IT#anOrgAdminMayForceCloseToo`, `IT#forceClosingASessionWithNothingInProgressStillClosesItAndIsAudited` | passing |
+| FR-CFG-103, FR-CFG-105, FR-CFG-106 Hold and force-close are permission-checked on the server: only the session's own agent holds; only an admin within their site and Service group scope force-closes, and only a live session | §5.2 | integration | `IT#holdAndResumeAreCheckedOnTheServerForPermissionAndOwnership`, `IT#forceClosingIsForAdminsWithinTheirScopeAndOnlyForALiveSession` | passing |
+| §11.2 F8 in the console, keyboard only; Hold offered only for a ticket in service below the limit | §11.2, §24 | unit | `Console#holds the ticket in service with F8, lists it under held by me and leaves the counter free to call next`, `#offers Hold only for a ticket in service, in an open session, below the hold limit` | passing |
+| §21.4 `ticket.held` is written and published on the queue and the counter with the held state; a resume is `ticket.serving`; a force-close publishes `ticket.position_changed` and `session.closed` | §21.4 | integration, unit | `IT#holdingAndResumingEachWriteOneEventAndHoldingRecordsHowManyAreHeld`; `RT#holdingResumingAndForceClosingAreAnnouncedOnTheQueueAndTheCounter`; `Support#is behind when a ticket was held or resumed elsewhere, so the held list is stale` | passing |
+| Invariant 1 wait accrues only in waiting: time held or called before a force-close is not wait | §18.5, §19.1 | integration | `IT#aTicketReturnedByAForceCloseAndCalledAgainWaitedOnlyWhileItWasWaiting` | passing |
+| Invariant 3 every transition writes exactly one event, in sequence | §19.1 | integration | `IT#holdingAndResumingEachWriteOneEventAndHoldingRecordsHowManyAreHeld`, `IT#anAdminForceClosesAStaleSessionAndItsServingAndHeldTicketsReturnToTheFrontWithAnAuditEntry` | passing |
+| §20.4 `POST /sessions/{id}/hold` (hold or resume) and `/force-close` map onto their paths and send `If-Match` | §20.4 | unit | `Client#maps the counter session onto its paths…` | passing |
+| NFR-MNT-004 the engine suite covers serving → held, held → serving and held → waiting | §24, §19.1 | unit | `Hold#holdingParksTheServingTicketAndWritesTicketHeld`, `#onlyAServingTicketCanBeHeld`, `#resumingPutsAHeldTicketBackInServiceAndIsAnnouncedAsServing`, `#onlyAHeldTicketCanBeResumed`, `#aForceClosedSessionReturnsItsHeldTicketToWaiting`, `#aForceClosedSessionAlsoReturnsItsCalledAndServingTickets`, `#theHeldTransitionsAreOnesTheDatabaseKnows`, `#aReturnedTicketLandsAtTheFrontWhateverItsOwnWaitAndKeepsItsQueuedAt`, `#ticketsReturnedOneAfterAnotherEndInTheOrderTheyJoinedTheQueue` | passing |
+| FR-I18N-001, FR-I18N-020 the new strings are in both packs; counts follow the language | §17 | unit | `F/packages/i18n/src/i18n.test.ts` (pack parity); `Console#says why the API refused a Hold, in the reader's language, and reads the session again` | passing |
+| Definition of done §27.5 item 6, administrator guide | §27.5 | manual | `docs/admin-guide.md` section 12 | passing |
+
 ## Notes
 
 - **Compose.** Verified by hand on 2026-09-19 with OrbStack Docker, from a clean build: `migrate` exited 0, then Postgres,

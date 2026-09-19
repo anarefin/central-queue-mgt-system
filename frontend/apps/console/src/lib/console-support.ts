@@ -9,6 +9,9 @@ const REFUSALS = new Set([
   "no_ticket_called",
   "no_ticket_serving",
   "reannounce_limit_reached",
+  "hold_limit_reached",
+  "held_tickets_remaining",
+  "no_ticket_held",
   "version_mismatch",
   "session_not_open",
   "counter_occupied",
@@ -71,6 +74,8 @@ export function counterMovedOn(update: RealtimeUpdate, session: CounterSession):
     const count = update.data.announce_count;
     return typeof count === "number" && count !== shown.announce_count;
   }
+  if (state === "held") return !session.held.some((held) => held.id === ticketId); // parked elsewhere: the held list is behind
   if (state === "called" || state === "serving") return shown?.id !== ticketId || shown?.state !== state;
-  return shown?.id === ticketId; // the ticket left service (completed, missed, transferred…) but the screen still holds it
+  // The ticket left service (completed, missed, transferred…) but the screen still holds it, in service or held (FR-AGT-013).
+  return shown?.id === ticketId || session.held.some((held) => held.id === ticketId);
 }

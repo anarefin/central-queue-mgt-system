@@ -76,6 +76,21 @@ public class SessionController {
         return service.miss(id, version(ifMatch));
     }
 
+    /** F8: holds the serving ticket, or, given a {@code ticket_id}, resumes that held ticket (FR-AGT-013). */
+    @PreAuthorize(SessionService.SERVE)
+    @PostMapping("/sessions/{id}/hold")
+    public SessionResponse hold(
+            @PathVariable UUID id, @RequestHeader(value = "If-Match", required = false) String ifMatch, @RequestBody(required = false) HoldRequest request) {
+        return service.hold(id, request, version(ifMatch));
+    }
+
+    /** An Org or Team Admin closes a stale session; its tickets return to the front of their queues (FR-AGT-002). */
+    @PreAuthorize(SessionService.FORCE_CLOSE)
+    @PostMapping("/sessions/{id}/force-close")
+    public SessionResponse forceClose(@PathVariable UUID id, @RequestBody(required = false) ForceCloseRequest request) {
+        return service.forceClose(id, request);
+    }
+
     @PreAuthorize(SessionService.SERVE)
     @PostMapping("/sessions/{id}/serve")
     public SessionResponse serve(@PathVariable UUID id, @RequestHeader(value = "If-Match", required = false) String ifMatch) {

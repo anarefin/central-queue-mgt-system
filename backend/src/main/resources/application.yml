@@ -35,6 +35,8 @@ qms:
     # FR-QUE-051: where a missed ticket re-enters the queue: front, after-n or back; after-n keeps this many tickets ahead of it.
     miss-reentry-position: ${QMS_QUEUE_MISS_REENTRY_POSITION:after-n}
     miss-reentry-after: ${QMS_QUEUE_MISS_REENTRY_AFTER:3}
+    # FR-AGT-013: how many tickets one session may hold (F8) at once; 0 switches Hold off.
+    hold-limit: ${QMS_QUEUE_HOLD_LIMIT:3}
   i18n:
     system-default-language: en
     languages: en,bn

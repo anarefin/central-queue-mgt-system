@@ -21,10 +21,12 @@ import com.qms.session.SessionRepository.BoundTicket;
 import com.qms.session.SessionRepository.CounterRow;
 import com.qms.session.SessionRepository.OutcomeRow;
 import com.qms.session.SessionRepository.ServiceLink;
+import com.qms.session.SessionRepository.ServiceScope;
 import com.qms.session.SessionRepository.SessionRow;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -53,6 +55,8 @@ public class SessionService {
 
     static final String OPEN_CLOSE = "hasAnyAuthority(T(com.qms.platform.security.Authorities).COUNTER_SESSION_OPEN_CLOSE,"
             + " T(com.qms.platform.security.Authorities).COUNTER_SESSION_OPEN_CLOSE + ':own')";
+    /** Only the unrestricted permission, not "own records only": an agent cannot force-close a session, not even their own. */
+    static final String FORCE_CLOSE = "hasAuthority(T(com.qms.platform.security.Authorities).COUNTER_SESSION_OPEN_CLOSE)";
     static final String SERVE = "hasAnyAuthority(T(com.qms.platform.security.Authorities).TICKET_CALL_SERVE_COMPLETE,"
             + " T(com.qms.platform.security.Authorities).TICKET_CALL_SERVE_COMPLETE + ':own')";
     static final String EITHER = "hasAnyAuthority(T(com.qms.platform.security.Authorities).COUNTER_SESSION_OPEN_CLOSE,"
@@ -289,6 +293,51 @@ public class SessionService {
         return view(sessions.session(session.id()).orElseThrow());
     }
 
+    /**
+     * F8. Without a {@code ticket_id} it parks the ticket being served (FR-AGT-013): it leaves the general queue's reach but
+     * stays bound to this session (ADR-0008), the counter is free to call next, and the session may hold at most the hold
+     * limit. With a {@code ticket_id} it resumes that held ticket, which only the session that holds it can do.
+     */
+    @PreAuthorize(SERVE)
+    @Transactional
+    public SessionResponse hold(UUID sessionId, HoldRequest request, Integer ifMatch) {
+        SessionRow session = lockOwn(sessionId);
+        return request != null && request.ticketId() != null ? resume(session, request.ticketId(), ifMatch) : hold(session, ifMatch);
+    }
+
+    private SessionResponse hold(SessionRow session, Integer ifMatch) {
+        // A closing session is trying to empty itself: parking a ticket there would only add to what must be cleared.
+        if (!"open".equals(session.state())) throw refusal("session_not_open");
+        BoundTicket ticket = boundIn(session, TicketTransition.HOLD, "no_ticket_serving");
+        requireVersion(ticket, ifMatch);
+        int held = (int) sessions.unresolved(session.id()).stream().filter(t -> "held".equals(t.state())).count();
+        if (!TicketTransition.mayHold(held, queueProperties.holdLimit())) throw refusal("hold_limit_reached");
+        if (!sessions.hold(ticket.id(), ticket.version(), session.id())) throw refusal("version_mismatch");
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("session_id", session.id().toString());
+        payload.put("held_count", held + 1);
+        events.append(transition(ticket.id(), TicketTransition.HOLD, session, payload, clock.instant()));
+        return view(sessions.session(session.id()).orElseThrow());
+    }
+
+    private SessionResponse resume(SessionRow session, UUID ticketId, Integer ifMatch) {
+        if (!session.live()) throw refusal("session_not_open");
+        List<BoundTicket> unresolved = sessions.unresolved(session.id());
+        // The counter serves one ticket at a time (FR-AGT-010): the one in progress is finished, or held, first.
+        if (unresolved.stream().anyMatch(t -> "called".equals(t.state()) || "serving".equals(t.state()))) throw refusal("ticket_in_progress");
+        BoundTicket ticket = unresolved.stream()
+                .filter(t -> t.id().equals(ticketId) && TicketTransition.RESUME.apply(t.state()).isPresent())
+                .findFirst()
+                .orElseThrow(() -> refusal("no_ticket_held"));
+        requireVersion(ticket, ifMatch);
+        if (!sessions.resume(ticket.id(), ticket.version(), session.id())) throw refusal("version_mismatch");
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("session_id", session.id().toString());
+        payload.put("resumed", true);
+        events.append(transition(ticket.id(), TicketTransition.RESUME, session, payload, clock.instant()));
+        return view(sessions.session(session.id()).orElseThrow());
+    }
+
     // ---- closing ----------------------------------------------------------------------------------------------
 
     /**
@@ -301,11 +350,64 @@ public class SessionService {
     public SessionResponse close(UUID sessionId) {
         SessionRow session = lockOwn(sessionId);
         if (!session.live()) return view(session);
-        if (!sessions.unresolved(session.id()).isEmpty()) {
+        List<BoundTicket> unresolved = sessions.unresolved(session.id());
+        if (!unresolved.isEmpty()) {
             if (!"closing".equals(session.state())) sessions.setState(session.id(), "closing", null);
-            throw refusal("ticket_in_progress");
+            // With only held tickets left the agent has nothing in progress, only a list to clear (FR-AGT-013).
+            boolean inProgress = unresolved.stream().anyMatch(t -> "called".equals(t.state()) || "serving".equals(t.state()));
+            throw refusal(inProgress ? "ticket_in_progress" : "held_tickets_remaining");
         }
         finish(session, clock.instant());
+        return view(sessions.session(session.id()).orElseThrow());
+    }
+
+    /**
+     * An Org or Team Admin closes a session that is stale (FR-AGT-002): its called, serving and held tickets return to
+     * {@code waiting} at the front of their queues through a Score adjustment, their bindings are cleared (ADR-0008,
+     * Invariant 2) and an audit entry is written. The agent's own console learns of it through {@code session.closed}.
+     * The admin's site and Service group scope decide which sessions they may reach (FR-CFG-106).
+     */
+    @PreAuthorize(FORCE_CLOSE)
+    @Transactional
+    public SessionResponse forceClose(UUID sessionId, ForceCloseRequest request) {
+        SessionRow session = sessions.lock(sessionId).orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND));
+        CounterRow counter = sessions.counter(session.counterId()).orElseThrow();
+        scope.requireSite(counter.siteId());
+        List<UUID> groups = session.services().stream().map(sessions::serviceScope).flatMap(Optional::stream).map(ServiceScope::groupId).distinct().toList();
+        if (!groups.isEmpty() && scope.groups(groups).isEmpty()) throw new ApiException(ErrorCode.FORBIDDEN);
+        if (!session.live()) throw refusal("session_not_open");
+        String reason = request == null || request.reason() == null || request.reason().isBlank() ? null : request.reason().strip();
+        if (reason != null && reason.length() > MAX_NOTE_LENGTH) throw invalid("reason", "too_long");
+
+        Instant now = clock.instant();
+        // Each ticket goes to the front in turn, so the one that joined the queue first is returned last and ends up first.
+        List<BoundTicket> returning = new ArrayList<>(sessions.unresolved(session.id()));
+        returning.sort(Comparator.comparing(BoundTicket::queuedAt).reversed().thenComparing(BoundTicket::id));
+        List<Map<String, Object>> returned = new ArrayList<>();
+        for (BoundTicket ticket : returning) {
+            TicketTransition transition = TicketTransition.returnFrom(ticket.state()).orElseThrow();
+            int adjustment = queues.reentryAdjustment(ticket.id(), ReentryPosition.FRONT, 1);
+            if (!sessions.returnToQueue(ticket.id(), ticket.version(), session.id(), transition, adjustment)) throw refusal("version_mismatch");
+            Map<String, Object> payload = new LinkedHashMap<>();
+            payload.put("session_id", session.id().toString());
+            payload.put("reason", "session_force_closed");
+            payload.put("reentry_position", ReentryPosition.FRONT.name().toLowerCase(Locale.ROOT));
+            payload.put("score_adjustment_minutes", adjustment);
+            events.append(transition(ticket.id(), transition, session, payload, now));
+            returned.add(Map.of("ticket_id", ticket.id().toString(), "token_number", ticket.tokenNumber(), "from_state", ticket.state()));
+        }
+
+        sessions.setState(session.id(), "force_closed", now);
+        Map<String, Object> before = new LinkedHashMap<>();
+        before.put("counter_id", session.counterId().toString());
+        before.put("agent_id", session.agentId().toString());
+        before.put("state", session.state());
+        Map<String, Object> after = new LinkedHashMap<>();
+        after.put("state", "force_closed");
+        after.put("returned_tickets", returned);
+        AuditEvent event = AuditEvent.of("session.force_closed", "counter_session", session.id()).withBefore(before).withAfter(after);
+        audit.record(reason == null ? event : event.withReason(reason));
+        announce("session.closed", session.id(), session.counterId(), session.agentId(), "force_closed", now);
         return view(sessions.session(session.id()).orElseThrow());
     }
 
@@ -388,12 +490,20 @@ public class SessionService {
     private SessionResponse view(SessionRow session) {
         CounterRow counter = sessions.counter(session.counterId()).orElseThrow();
         List<SessionResponse.ServiceRef> services = sessions.links(session.counterId(), session.services()).stream().map(SessionViews::service).toList();
-        SessionResponse.SessionTicket ticket = sessions.unresolved(session.id()).stream()
+        List<BoundTicket> unresolved = sessions.unresolved(session.id());
+        SessionResponse.SessionTicket ticket = unresolved.stream()
                 .filter(t -> "called".equals(t.state()) || "serving".equals(t.state()))
                 .findFirst()
-                .map(t -> SessionViews.ticket(t, sessions.outcomes(t.serviceId()), queueProperties.announceRepeatLimit(), queueProperties.missLimit()))
+                .map(this::ticketView)
                 .orElse(null);
-        return new SessionResponse(session.id(), SessionViews.counter(counter), session.agentId(), session.state(), session.openedAt(), session.closedAt(), services, ticket);
+        List<SessionResponse.SessionTicket> held = unresolved.stream().filter(t -> "held".equals(t.state())).map(this::ticketView).toList();
+        return new SessionResponse(
+                session.id(), SessionViews.counter(counter), session.agentId(), session.state(), session.openedAt(), session.closedAt(), services, ticket, held,
+                queueProperties.holdLimit());
+    }
+
+    private SessionResponse.SessionTicket ticketView(BoundTicket t) {
+        return SessionViews.ticket(t, sessions.outcomes(t.serviceId()), queueProperties.announceRepeatLimit(), queueProperties.missLimit());
     }
 
     private TicketEvents.Transition transition(UUID ticketId, TicketTransition transition, SessionRow session, Object payload, Instant now) {

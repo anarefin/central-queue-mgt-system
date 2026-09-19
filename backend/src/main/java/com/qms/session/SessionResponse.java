@@ -7,9 +7,9 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * A counter session as the console shows it (SRS §11, §19.3): who sits where, which Services they serve, and the ticket
- * in progress. Everything the console needs to restore itself after a refresh is here (FR-AGT-004): the console holds no
- * state the server does not, and {@code ticket.version} is what it sends back as {@code If-Match} (§20.1).
+ * A counter session as the console shows it (SRS §11, §19.3): who sits where, which Services they serve, the ticket
+ * in progress and the tickets the agent holds ({@code held}, at most {@code hold_limit}; FR-AGT-013). Everything the
+ * console needs to restore itself after a refresh is here (FR-AGT-004): the console holds no state the server does not, and {@code ticket.version} is what it sends back as {@code If-Match} (§20.1).
  */
 public record SessionResponse(
         UUID id,
@@ -19,7 +19,9 @@ public record SessionResponse(
         @JsonProperty("opened_at") Instant openedAt,
         @JsonProperty("closed_at") Instant closedAt,
         List<ServiceRef> services,
-        SessionTicket ticket) {
+        SessionTicket ticket,
+        List<SessionTicket> held,
+        @JsonProperty("hold_limit") int holdLimit) {
 
     public record CounterRef(UUID id, String label, @JsonProperty("zone_id") UUID zoneId, @JsonProperty("zone_name") String zoneName, @JsonProperty("site_id") UUID siteId) {}
 
@@ -32,8 +34,8 @@ public record SessionResponse(
     public record Outcome(UUID id, String code, @JsonProperty("label_i18n") Map<String, String> labelI18n) {}
 
     /**
-     * The ticket bound to the session, {@code called} or {@code serving}. {@code waitSeconds} is how long it waited in the
-     * queue before it was called. {@code announceCount} of {@code announceLimit} is how many times this call has been
+     * A ticket bound to the session: the one in progress ({@code called} or {@code serving}) or one of those held.
+     * {@code waitSeconds} is how long it waited in the queue before it was called. {@code announceCount} of {@code announceLimit} is how many times this call has been
      * re-announced (FR-DSP-028); {@code missCount} of {@code missLimit} how many times it has been missed, the Miss after the
      * limit closing it as a no-show (FR-QUE-050).
      */

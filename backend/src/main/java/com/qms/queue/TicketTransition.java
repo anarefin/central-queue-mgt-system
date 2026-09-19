@@ -5,7 +5,8 @@ import java.util.Optional;
 /**
  * The ticket transitions a counter session drives (SRS §19.1): {@code waiting → called → serving → completed}, and the two
  * ways out of {@code called} that are not service: Re-announce (no change of state) and Miss (back to waiting, or
- * {@code no_show} past the limit; ADR-0005). Each names
+ * {@code no_show} past the limit; ADR-0005); and Hold, which parks a serving ticket with its Session binding kept until the
+ * same session resumes it, or until an admin force-closes the session and the ticket returns to waiting (ADR-0008). Each names
  * the state it leaves, the state it enters and the event it writes (Invariant 3). Pure, so the engine test suite can walk
  * every transition and every refusal without a database (NFR-MNT-004).
  */
@@ -19,7 +20,18 @@ public enum TicketTransition {
     /** F6: the visitor is absent and the ticket returns to the queue; the binding is cleared (Invariant 2). */
     MISS("called", "waiting", "ticket.missed"),
     /** F6 past the miss limit: the ticket closes. Agents never choose this directly (ADR-0005). */
-    NO_SHOW("called", "no_show", "ticket.no_show");
+    NO_SHOW("called", "no_show", "ticket.no_show"),
+    /** F8: the ticket being served is parked. It stays bound to the session and the counter is free to call next (ADR-0008). */
+    HOLD("serving", "held", "ticket.held"),
+    /** Only the session that holds the ticket may resume it (ADR-0008). Back in service, so it is announced as {@code ticket.serving}. */
+    RESUME("held", "serving", "ticket.serving"),
+    /**
+     * A force-closed session gives up its tickets: each returns to waiting at the front of its queue (ADR-0008) and its binding is
+     * cleared. The ticket's place in the queue changed, so it is announced as {@code ticket.position_changed}.
+     */
+    RETURN_FROM_CALLED("called", "waiting", "ticket.position_changed"),
+    RETURN_FROM_SERVING("serving", "waiting", "ticket.position_changed"),
+    RETURN_FROM_HELD("held", "waiting", "ticket.position_changed");
 
     private final String from;
     private final String to;
@@ -51,6 +63,21 @@ public enum TicketTransition {
     /** Re-announce is allowed while the ticket's {@code announce_count} is below the repeat limit (FR-DSP-028). */
     public static boolean mayReannounce(int announceCount, int repeatLimit) {
         return announceCount < repeatLimit;
+    }
+
+    /** Hold is allowed while the session holds fewer tickets than the hold limit (FR-AGT-013); a limit of 0 switches Hold off. */
+    public static boolean mayHold(int heldCount, int holdLimit) {
+        return heldCount < holdLimit;
+    }
+
+    /** The transition that returns a ticket in {@code state} to waiting when its session is force-closed. */
+    public static Optional<TicketTransition> returnFrom(String state) {
+        return switch (state) {
+            case "called" -> Optional.of(RETURN_FROM_CALLED);
+            case "serving" -> Optional.of(RETURN_FROM_SERVING);
+            case "held" -> Optional.of(RETURN_FROM_HELD);
+            default -> Optional.empty();
+        };
     }
 
     /**

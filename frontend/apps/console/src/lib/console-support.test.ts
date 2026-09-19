@@ -38,6 +38,8 @@ function session(over: Partial<CounterSession> = {}): CounterSession {
     closed_at: null,
     services: [],
     ticket: null,
+    held: [],
+    hold_limit: 3,
     ...over,
   };
 }
@@ -114,6 +116,16 @@ describe("counterMovedOn: is the console behind the server?", () => {
 
   it("ignores an event about a ticket the screen is not holding when that ticket has left", () => {
     expect(counterMovedOn(event("ticket.completed", { ticket_id: "t9", state: "completed" }), session({ ticket: ticket() }))).toBe(false);
+  });
+
+  it("is behind when a ticket was held or resumed elsewhere, so the held list is stale (FR-AGT-013)", () => {
+    const parked = ticket({ state: "held", version: 3 });
+    expect(counterMovedOn(event("ticket.held", { ticket_id: "t1", state: "held" }), session({ ticket: ticket({ state: "serving" }) }))).toBe(true);
+    expect(counterMovedOn(event("ticket.held", { ticket_id: "t1", state: "held" }), session())).toBe(true);
+    expect(counterMovedOn(event("ticket.held", { ticket_id: "t1", state: "held" }), session({ held: [parked] }))).toBe(false);
+    expect(counterMovedOn(event("ticket.serving", { ticket_id: "t1", state: "serving" }), session({ held: [parked] }))).toBe(true);
+    expect(counterMovedOn(event("ticket.position_changed", { ticket_id: "t1", state: "waiting" }), session({ held: [parked] }))).toBe(true);
+    expect(counterMovedOn(event("ticket.position_changed", { ticket_id: "t9", state: "waiting" }), session({ held: [parked] }))).toBe(false);
   });
 
   it("follows the session's own opening and closing", () => {

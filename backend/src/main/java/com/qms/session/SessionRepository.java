@@ -259,6 +259,32 @@ class SessionRepository {
                 TicketTransition.NO_SHOW.to(), ts(now), waitSeconds, ticketId, version, TicketTransition.NO_SHOW.from(), sessionId) == 1;
     }
 
+    /** Parks the serving ticket: it stays bound to the session and keeps its counter, agent and service clock (ADR-0008). */
+    boolean hold(UUID ticketId, int version, UUID sessionId) {
+        return jdbc.update(
+                "UPDATE ticket SET state = ?, version = version + 1 WHERE id = ? AND version = ? AND state = ? AND counter_session_id = ?",
+                TicketTransition.HOLD.to(), ticketId, version, TicketTransition.HOLD.from(), sessionId) == 1;
+    }
+
+    /** Puts a held ticket back in service; only the session that holds it can (ADR-0008). */
+    boolean resume(UUID ticketId, int version, UUID sessionId) {
+        return jdbc.update(
+                "UPDATE ticket SET state = ?, version = version + 1 WHERE id = ? AND version = ? AND state = ? AND counter_session_id = ?",
+                TicketTransition.RESUME.to(), ticketId, version, TicketTransition.RESUME.from(), sessionId) == 1;
+    }
+
+    /**
+     * Takes a called, serving or held ticket out of a force-closed session and back to the queue (ADR-0008): the binding is
+     * cleared, the Score adjustment puts it at the front, and {@code queued_at} is left alone (ADR-0004). Not a Miss, so
+     * {@code miss_count} is untouched.
+     */
+    boolean returnToQueue(UUID ticketId, int version, UUID sessionId, TicketTransition transition, int scoreAdjustmentMinutes) {
+        return jdbc.update(
+                "UPDATE ticket SET state = ?, counter_session_id = NULL, score_adjustment_minutes = ?, version = version + 1"
+                        + " WHERE id = ? AND version = ? AND state = ? AND counter_session_id = ?",
+                transition.to(), scoreAdjustmentMinutes, ticketId, version, transition.from(), sessionId) == 1;
+    }
+
     Integer versionOf(UUID ticketId) {
         return jdbc.query("SELECT version FROM ticket WHERE id = ?", (rs, i) -> rs.getInt("version"), ticketId).stream().findFirst().orElse(null);
     }

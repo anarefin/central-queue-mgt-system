@@ -1,6 +1,6 @@
 "use client";
 
-import type { CounterSession } from "@qms/api-client";
+import type { CounterSession, SessionTicket } from "@qms/api-client";
 import { formatTokenNumber } from "@qms/i18n";
 import { useI18n } from "@qms/i18n/react";
 import { Button, Card, SelectField } from "@qms/ui";
@@ -14,12 +14,16 @@ export interface DeskActions {
   canStart: boolean;
   canComplete: boolean;
   canMiss: boolean;
+  canHold: boolean;
+  canResume: boolean;
   canClose: boolean;
   call: () => void;
   reannounce: () => void;
   start: () => void;
   complete: () => void;
   miss: () => void;
+  hold: () => void;
+  resume: (held: SessionTicket) => void;
   close: () => void;
 }
 
@@ -39,13 +43,16 @@ interface Props {
  * The counter desk (SRS §11.2): the ticket in progress and its actions, each on a function key so a whole day's work needs
  * no mouse (NFR-USA-002). Call next is off while a ticket is called or serving (FR-AGT-010). A called ticket can be
  * re-announced (F3, up to the limit) or missed (F6); the desk says so beforehand when the next Miss would close it as a
- * no-show, since that cannot be undone (FR-QUE-050). The outcome
+ * no-show, since that cannot be undone (FR-QUE-050). A ticket in service can be held (F8) so the counter can call the next one;
+ * the held tickets are listed here and each is resumed from the list, and they must all be cleared before the session can close
+ * (FR-AGT-013). The outcome
  * takes focus when service starts, so the keys, an arrow and F5 are all it takes to finish a ticket.
  */
 export function ServingDesk({ session, actions, busy, waiting, outcome, onOutcome, note, onNote }: Props) {
   const { t, language, formatNumber } = useI18n();
   const ticket = session.ticket;
   const serving = ticket?.state === "serving";
+  const held = session.held;
 
   useEffect(() => {
     if (serving) document.getElementById("console-outcome")?.focus();
@@ -132,6 +139,32 @@ export function ServingDesk({ session, actions, busy, waiting, outcome, onOutcom
         )}
       </Card>
 
+      {held.length > 0 && (
+        <Card>
+          <h3 className="qms-label">{t("console.held.title", { count: formatNumber(held.length), limit: formatNumber(session.hold_limit) })}</h3>
+          <ul className="qms-list" aria-label={t("console.held.list")}>
+            {held.map((heldTicket) => (
+              <li key={heldTicket.id} className="qms-row" data-testid={`held-${heldTicket.id}`}>
+                <span>
+                  <span className="qms-token">{formatTokenNumber(heldTicket.token_number)}</span>{" "}
+                  <span className="qms-muted">{localisedName(heldTicket.service.name_i18n, language)}</span>
+                </span>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  disabled={!actions.canResume || busy}
+                  onClick={() => actions.resume(heldTicket)}
+                  aria-label={t("console.held.resumeFor", { token: heldTicket.token_number })}
+                >
+                  {t("console.held.resume")}
+                </Button>
+              </li>
+            ))}
+          </ul>
+          {session.state === "closing" && <p className="qms-warning">{t("console.held.closing")}</p>}
+        </Card>
+      )}
+
       <Card>
         <div className="qms-row">
           {button(t("console.action.next"), "F2", actions.canCall, actions.call)}
@@ -139,6 +172,7 @@ export function ServingDesk({ session, actions, busy, waiting, outcome, onOutcom
           {button(t("console.action.serve"), "F4", actions.canStart, actions.start)}
           {button(t("console.action.complete"), "F5", actions.canComplete, actions.complete)}
           {button(t("console.action.miss"), "F6", actions.canMiss, actions.miss, "secondary")}
+          {button(t("console.action.hold"), "F8", actions.canHold, actions.hold, "secondary")}
           {button(t("console.action.close"), "F10", actions.canClose, actions.close, "secondary")}
         </div>
         <p className="qms-muted">{t("console.shortcuts")}</p>

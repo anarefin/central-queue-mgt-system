@@ -336,6 +336,40 @@ class RealtimeIT {
     }
 
     @Test
+    void holdingResumingAndForceClosingAreAnnouncedOnTheQueueAndTheCounter() throws Exception {
+        World w = world();
+        Person agent = person(Role.AGENT, w.site(), w.group());
+        Person admin = person(Role.TEAM_ADMIN, w.site(), w.group());
+        issue(w.service());
+        issue(w.service());
+        Socket console = connect(agent);
+        console.subscribe("queue:" + w.service(), "counter:" + w.counter());
+        UUID session = openSession(agent, w.counter());
+        send("POST", "/sessions/" + session + "/next", agent.token(), null);
+        send("POST", "/sessions/" + session + "/serve", agent.token(), null);
+        console.event("ticket.serving");
+        console.event("ticket.serving");
+
+        Map<String, Object> held = json(send("POST", "/sessions/" + session + "/hold", agent.token(), null));
+        Map<String, Object> heldTicket = (Map<String, Object>) ((List<Object>) held.get("held")).getFirst();
+        Map<String, Object> onQueue = console.event("ticket.held");
+        assertThat(onQueue).containsEntry("topic", "queue:" + w.service());
+        assertThat(data(onQueue)).containsEntry("state", "held").containsEntry("token_number", heldTicket.get("token_number")).containsEntry("counter_id", w.counter().toString());
+        assertThat(console.event("ticket.held")).containsEntry("topic", "counter:" + w.counter());
+
+        send("POST", "/sessions/" + session + "/hold", agent.token(), "{\"ticket_id\":\"" + heldTicket.get("id") + "\"}");
+        assertThat(data(console.event("ticket.serving"))).containsEntry("state", "serving");
+        console.event("ticket.serving");
+
+        send("POST", "/sessions/" + session + "/force-close", admin.token(), null);
+        assertThat(data(console.event("ticket.position_changed"))).containsEntry("state", "waiting").containsEntry("waiting_count", 2);
+        console.event("ticket.position_changed");
+        Map<String, Object> closed = console.event("session.closed");
+        assertThat(closed).containsEntry("topic", "counter:" + w.counter());
+        assertThat(data(closed)).containsEntry("state", "force_closed");
+    }
+
+    @Test
     void aSnapshotShowsTheSessionAndTheTicketInProgress() throws Exception {
         World w = world();
         Person agent = person(Role.AGENT, w.site(), w.group());

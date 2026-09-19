@@ -154,6 +154,11 @@ class SessionIT {
 
     /** A signed-in staff user; a member of the group's team when {@code teamOf} is given. Tokens are minted at real time. */
     private Agent user(Role role, UUID site, UUID teamOf) throws Exception {
+        return user(role, site, teamOf, new UUID[0]);
+    }
+
+    /** The same, with the token limited to the given Service groups ({@code groups}; empty means not limited). */
+    private Agent user(Role role, UUID site, UUID teamOf, UUID[] groups) throws Exception {
         Instant testTime = clock.instant();
         clock.set(Instant.now());
         try {
@@ -168,7 +173,7 @@ class SessionIT {
                 ps.setObject(2, user);
                 ps.setString(3, role.wire());
                 ps.setArray(4, connection.createArrayOf("uuid", new UUID[] {site}));
-                ps.setArray(5, connection.createArrayOf("uuid", new UUID[0]));
+                ps.setArray(5, connection.createArrayOf("uuid", groups));
                 return ps;
             });
             if (teamOf != null) {
@@ -240,6 +245,25 @@ class SessionIT {
         MockHttpServletRequestBuilder request = post("/api/v1/sessions/" + session + "/miss");
         if (version != null) request.header("If-Match", "\"" + version + "\"");
         return call(request, agent.token(), null);
+    }
+
+    /** F8: holds the serving ticket, or, given {@code resume}, resumes that held ticket. */
+    private MvcResult hold(Agent agent, UUID session, UUID resume, Integer version) throws Exception {
+        MockHttpServletRequestBuilder request = post("/api/v1/sessions/" + session + "/hold");
+        if (version != null) request.header("If-Match", "\"" + version + "\"");
+        return call(request, agent.token(), resume == null ? null : "{\"ticket_id\":\"" + resume + "\"}");
+    }
+
+    private MvcResult forceClose(Agent admin, UUID session, String reason) throws Exception {
+        return call(post("/api/v1/sessions/" + session + "/force-close"), admin.token(), reason == null ? null : "{\"reason\":\"" + reason + "\"}");
+    }
+
+    /** Calls the next ticket and starts service on it; returns its token number. */
+    private String servingToken(Agent agent, UUID session) throws Exception {
+        String token = calledToken(agent, session);
+        MvcResult started = serve(agent, session, null);
+        assertThat(status(started)).as(body(started)).isEqualTo(200);
+        return token;
     }
 
     /** The token numbers of a service's waiting tickets in the order they will be called. */
@@ -1136,6 +1160,366 @@ class SessionIT {
         assertThat(row.get("state")).as("nothing changed").isEqualTo("called");
         assertThat(row.get("announce_count")).isEqualTo(0);
         assertThat(row.get("miss_count")).isEqualTo(0);
+    }
+
+    // ---- FR-AGT-013, ADR-0008, §19.1: Hold (F8) and resume --------------------------------------------------------
+
+    @Test
+    void holdingKeepsTheBindingTakesTheTicketOutOfTheQueueFreesTheCounterAndOnlyTheSameSessionResumesIt() throws Exception {
+        World w = world();
+        UUID desk1 = counter(w, "Desk 1", w.a(), 1);
+        UUID desk2 = counter(w, "Desk 2", w.a(), 1);
+        String first = issueAgo(w.a(), 30);
+        String second = issueAgo(w.a(), 20);
+        String third = issueAgo(w.a(), 10);
+        Agent agent = agent(w);
+        Agent other = agent(w);
+        UUID session = opened(agent, desk1);
+        UUID othersSession = opened(other, desk2);
+        assertThat(servingToken(agent, session)).isEqualTo(first);
+        UUID heldId = (UUID) ticketRow(first, w.a()).get("id");
+
+        MvcResult held = hold(agent, session, null, 2);
+
+        assertThat(status(held)).as(body(held)).isEqualTo(200);
+        assertThat((Object) field(held, "$.ticket")).as("the counter is free to call next").isNull();
+        assertThat((List<String>) field(held, "$.held[*].token_number")).as("the held-by-me list").containsExactly(first);
+        assertThat((String) field(held, "$.held[0].state")).isEqualTo("held");
+        assertThat((Integer) field(held, "$.hold_limit")).isEqualTo(3);
+        Map<String, Object> row = ticketRow(first, w.a());
+        assertThat(row.get("state")).isEqualTo("held");
+        assertThat(row.get("counter_session_id")).as("the Session binding is kept (Invariant 2, ADR-0008)").isEqualTo(session);
+        assertThat(row.get("version")).isEqualTo(3);
+        assertThat(queueOrder(w.a())).as("out of the general queue").containsExactly(second, third);
+        assertThat(status(current(agent))).isEqualTo(200);
+        assertThat((List<String>) field(current(agent), "$.held[*].token_number")).as("restored after a refresh").containsExactly(first);
+
+        assertThat(reason(hold(other, othersSession, heldId, null))).as("resume only by the same session").isEqualTo("no_ticket_held");
+        assertThat(ticketRow(first, w.a()).get("state")).isEqualTo("held");
+        assertThat(calledToken(other, othersSession)).as("nobody else can be given a held ticket").isEqualTo(second);
+
+        assertThat(calledToken(agent, session)).as("the freed counter calls the next ticket").isEqualTo(third);
+        assertThat(reason(hold(agent, session, heldId, null))).as("one ticket in progress at a time").isEqualTo("ticket_in_progress");
+        serve(agent, session, null);
+        assertThat(status(complete(agent, session, null, null))).isEqualTo(200);
+
+        assertThat(reason(hold(agent, session, heldId, 1))).as("a stale version").isEqualTo("version_mismatch");
+        MvcResult resumed = hold(agent, session, heldId, 3);
+        assertThat(status(resumed)).as(body(resumed)).isEqualTo(200);
+        assertThat((String) field(resumed, "$.ticket.token_number")).isEqualTo(first);
+        assertThat((String) field(resumed, "$.ticket.state")).isEqualTo("serving");
+        assertThat((List<Object>) field(resumed, "$.held")).isEmpty();
+        assertThat(ticketRow(first, w.a()).get("counter_session_id")).isEqualTo(session);
+
+        assertThat(status(complete(agent, session, null, null))).isEqualTo(200);
+        assertThat(ticketRow(first, w.a()).get("state")).isEqualTo("completed");
+    }
+
+    @Test
+    void holdingAndResumingEachWriteOneEventAndHoldingRecordsHowManyAreHeld() throws Exception {
+        World w = world();
+        UUID desk = counter(w, "Desk 1", w.a(), 1);
+        String token = issueAgo(w.a(), 10);
+        Agent agent = agent(w);
+        UUID session = opened(agent, desk);
+        servingToken(agent, session);
+        UUID ticketId = (UUID) ticketRow(token, w.a()).get("id");
+        hold(agent, session, null, null);
+        hold(agent, session, ticketId, null);
+
+        List<Map<String, Object>> events = eventsOf(ticketRow(token, w.a()));
+
+        assertThat(events.stream().map(e -> e.get("event_type"))).containsExactly("ticket.issued", "ticket.called", "ticket.serving", "ticket.held", "ticket.serving");
+        assertThat(events.stream().map(e -> e.get("seq"))).containsExactly(1, 2, 3, 4, 5);
+        assertThat(events.stream().map(e -> e.get("from_state") + ">" + e.get("to_state"))).containsExactly("null>waiting", "waiting>called", "called>serving", "serving>held", "held>serving");
+        assertThat(events.get(3).get("counter_id")).isEqualTo(desk);
+        assertThat(inPayload(events.get(3), "$.held_count")).isEqualTo(1);
+        assertThat(inPayload(events.get(3), "$.session_id")).isEqualTo(session.toString());
+    }
+
+    @Test
+    void aSessionMayHoldOnlyUpToTheHoldLimit() throws Exception {
+        World w = world();
+        UUID desk = counter(w, "Desk 1", w.a(), 1);
+        for (int ago : new int[] {50, 40, 30, 20}) issueAgo(w.a(), ago);
+        Agent agent = agent(w);
+        UUID session = opened(agent, desk);
+        for (int i = 0; i < 3; i++) {
+            servingToken(agent, session);
+            assertThat(status(hold(agent, session, null, null))).as("hold " + (i + 1)).isEqualTo(200);
+        }
+        String fourth = servingToken(agent, session);
+
+        MvcResult refused = hold(agent, session, null, null);
+
+        assertThat(status(refused)).isEqualTo(409);
+        assertThat(reason(refused)).isEqualTo("hold_limit_reached");
+        assertThat(ticketRow(fourth, w.a()).get("state")).as("left as it was").isEqualTo("serving");
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM ticket WHERE counter_session_id = ? AND state = 'held'", Integer.class, session)).isEqualTo(3);
+    }
+
+    @Test
+    void theHoldLimitIsPerSessionSoAnotherCounterHoldsItsOwn() throws Exception {
+        World w = world();
+        UUID desk1 = counter(w, "Desk 1", w.a(), 1);
+        UUID desk2 = counter(w, "Desk 2", w.a(), 1);
+        for (int ago : new int[] {60, 50, 40, 30, 20}) issueAgo(w.a(), ago);
+        Agent first = agent(w);
+        Agent second = agent(w);
+        UUID firstSession = opened(first, desk1);
+        UUID secondSession = opened(second, desk2);
+        for (int i = 0; i < 3; i++) {
+            servingToken(first, firstSession);
+            hold(first, firstSession, null, null);
+        }
+
+        servingToken(second, secondSession);
+
+        assertThat(status(hold(second, secondSession, null, null))).isEqualTo(200);
+    }
+
+    @Test
+    void holdNeedsATicketInServiceAndAnOpenSessionAndTheRightVersion() throws Exception {
+        World w = world();
+        UUID desk = counter(w, "Desk 1", w.a(), 1);
+        issueAgo(w.a(), 20);
+        Agent agent = agent(w);
+        UUID session = opened(agent, desk);
+        assertThat(reason(hold(agent, session, null, null))).as("nothing at all").isEqualTo("no_ticket_serving");
+        assertThat(reason(hold(agent, session, UUID.randomUUID(), null))).as("resuming a ticket that is not held").isEqualTo("no_ticket_held");
+        calledToken(agent, session);
+        assertThat(reason(hold(agent, session, null, null))).as("called, not serving").isEqualTo("no_ticket_serving");
+        serve(agent, session, null);
+        assertThat(reason(hold(agent, session, null, 1))).as("stale version").isEqualTo("version_mismatch");
+        assertThat(status(hold(agent, session, null, 2))).isEqualTo(200);
+
+        assertThat(status(close(agent, session))).isEqualTo(409);
+        assertThat(reason(hold(agent, session, null, null))).as("a closing session takes no more parking").isEqualTo("session_not_open");
+    }
+
+    @Test
+    void holdAndResumeAreCheckedOnTheServerForPermissionAndOwnership() throws Exception {
+        World w = world();
+        UUID desk1 = counter(w, "Desk 1", w.a(), 1);
+        UUID desk2 = counter(w, "Desk 2", w.a(), 1);
+        String token = issueAgo(w.a(), 10);
+        Agent owner = agent(w);
+        Agent other = agent(w);
+        UUID ownersSession = opened(owner, desk1);
+        opened(other, desk2);
+        servingToken(owner, ownersSession);
+        Agent admin = user(Role.ORG_ADMIN, w.site(), w.group());
+        Agent reception = user(Role.RECEPTION_OPERATOR, w.site(), w.group());
+        String path = "/api/v1/sessions/" + ownersSession + "/hold";
+
+        assertThat(status(call(post(path), other.token(), null))).as("another agent's session").isEqualTo(403);
+        assertThat(status(call(post(path), admin.token(), null))).as("org admin may not serve").isEqualTo(403);
+        assertThat(status(call(post(path), reception.token(), null))).isEqualTo(403);
+        assertThat(status(call(post(path), null, null))).isEqualTo(401);
+        assertThat(status(call(post("/api/v1/sessions/" + UUID.randomUUID() + "/hold"), owner.token(), null))).isEqualTo(404);
+        assertThat(ticketRow(token, w.a()).get("state")).as("nothing changed").isEqualTo("serving");
+    }
+
+    // ---- FR-AGT-005, FR-AGT-013, §19.3: held tickets must be cleared before the session closes ------------------
+
+    @Test
+    void aSessionWithHeldTicketsCannotCloseCleanlyUntilTheyAreResumedAndCompleted() throws Exception {
+        World w = world();
+        UUID desk = counter(w, "Desk 1", w.a(), 1);
+        issueAgo(w.a(), 20);
+        String second = issueAgo(w.a(), 10);
+        Agent agent = agent(w);
+        UUID session = opened(agent, desk);
+        String held = servingToken(agent, session);
+        hold(agent, session, null, null);
+        UUID heldId = (UUID) ticketRow(held, w.a()).get("id");
+
+        MvcResult refused = close(agent, session);
+
+        assertThat(status(refused)).isEqualTo(409);
+        assertThat(reason(refused)).as("nothing in progress, only the list to clear").isEqualTo("held_tickets_remaining");
+        assertThat(jdbc.queryForObject("SELECT state FROM counter_session WHERE id = ?", String.class, session)).isEqualTo("closing");
+        assertThat(reason(next(agent, session))).as("closing takes no new calls").isEqualTo("session_not_open");
+        assertThat((List<String>) field(current(agent), "$.held[*].token_number")).containsExactly(held);
+        assertThat(ticketRow(held, w.a()).get("state")).as("the held ticket was not dropped").isEqualTo("held");
+        assertThat(ticketRow(second, w.a()).get("state")).isEqualTo("waiting");
+
+        MvcResult resumed = hold(agent, session, heldId, null);
+        assertThat(status(resumed)).as("resuming is how a closing session clears its list").isEqualTo(200);
+        assertThat((String) field(resumed, "$.state")).isEqualTo("closing");
+        MvcResult done = complete(agent, session, null, null);
+
+        assertThat(status(done)).isEqualTo(200);
+        assertThat((String) field(done, "$.state")).as("closing → closed once the last held ticket is resolved").isEqualTo("closed");
+        assertThat(status(current(agent))).isEqualTo(404);
+    }
+
+    @Test
+    void closingWithATicketInProgressAndOneHeldStillNamesTheTicketInProgress() throws Exception {
+        World w = world();
+        UUID desk = counter(w, "Desk 1", w.a(), 1);
+        issueAgo(w.a(), 20);
+        issueAgo(w.a(), 10);
+        Agent agent = agent(w);
+        UUID session = opened(agent, desk);
+        servingToken(agent, session);
+        hold(agent, session, null, null);
+        calledToken(agent, session);
+
+        assertThat(reason(close(agent, session))).isEqualTo("ticket_in_progress");
+    }
+
+    // ---- FR-AGT-002, FR-AGT-013, §19.3, ADR-0008: force-close --------------------------------------------------
+
+    @Test
+    void anAdminForceClosesAStaleSessionAndItsServingAndHeldTicketsReturnToTheFrontWithAnAuditEntry() throws Exception {
+        World w = world();
+        UUID desk = counter(w, "Desk 1", w.a(), 1);
+        String heldA = issueAgo(w.a(), 60);
+        String heldB = issueAgo(w.a(), 55);
+        String serving = issueAgo(w.a(), 50);
+        String waiting1 = issueAgo(w.a(), 20);
+        String waiting2 = issueAgo(w.a(), 10);
+        Agent agent = agent(w);
+        UUID session = opened(agent, desk);
+        for (int i = 0; i < 2; i++) {
+            servingToken(agent, session);
+            hold(agent, session, null, null);
+        }
+        assertThat(servingToken(agent, session)).isEqualTo(serving);
+        // A waiting ticket someone re-prioritised far ahead: only a Score adjustment can put the returned ones in front of it.
+        jdbc.update("UPDATE ticket SET score_adjustment_minutes = 500 WHERE token_number = ? AND service_id = ?", waiting1, w.a());
+        Object queuedAt = ticketRow(heldA, w.a()).get("queued_at");
+        Agent admin = user(Role.TEAM_ADMIN, w.site(), w.group());
+        clock.set(BASE.plusSeconds(90));
+
+        MvcResult result = forceClose(admin, session, "Tablet left in the corridor");
+
+        assertThat(status(result)).as(body(result)).isEqualTo(200);
+        assertThat((String) field(result, "$.state")).isEqualTo("force_closed");
+        assertThat((Object) field(result, "$.ticket")).isNull();
+        assertThat((List<Object>) field(result, "$.held")).isEmpty();
+        for (String token : List.of(heldA, heldB, serving)) {
+            Map<String, Object> row = ticketRow(token, w.a());
+            assertThat(row.get("state")).as(token).isEqualTo("waiting");
+            assertThat(row.get("counter_session_id")).as(token + " binding cleared (Invariant 2)").isNull();
+            assertThat((Integer) row.get("score_adjustment_minutes")).as(token + " returned by Score adjustment").isGreaterThan(0);
+            assertThat(row.get("miss_count")).as("not a Miss").isEqualTo(0);
+            assertThat(row.get("closed_at")).isNull();
+        }
+        assertThat(ticketRow(heldA, w.a()).get("queued_at")).as("queued_at is never rewritten (ADR-0004)").isEqualTo(queuedAt);
+        assertThat(queueOrder(w.a())).as("the front of the queue, earliest joined first, ahead of the re-prioritised ticket too")
+                .containsExactly(heldA, heldB, serving, waiting1, waiting2);
+
+        Map<String, Object> last = eventsOf(ticketRow(heldA, w.a())).getLast();
+        assertThat(last.get("event_type")).isEqualTo("ticket.position_changed");
+        assertThat(last.get("from_state") + ">" + last.get("to_state")).isEqualTo("held>waiting");
+        assertThat(inPayload(last, "$.reason")).isEqualTo("session_force_closed");
+        assertThat(inPayload(last, "$.reentry_position")).isEqualTo("front");
+        assertThat(inPayload(last, "$.score_adjustment_minutes")).isEqualTo(ticketRow(heldA, w.a()).get("score_adjustment_minutes"));
+        assertThat(eventsOf(ticketRow(serving, w.a())).getLast().get("from_state")).isEqualTo("serving");
+        for (String token : List.of(heldA, heldB, serving)) {
+            List<Map<String, Object>> events = eventsOf(ticketRow(token, w.a()));
+            assertThat(events.stream().map(e -> e.get("seq")).toList()).as("one event per transition, in sequence")
+                    .isEqualTo(java.util.stream.IntStream.rangeClosed(1, events.size()).boxed().toList());
+        }
+
+        Map<String, Object> audit = jdbc.queryForMap("SELECT actor_id, reason, before::text AS before, after::text AS after FROM audit_log WHERE action = 'session.force_closed' AND entity_id = ?", session);
+        assertThat(audit.get("actor_id")).isEqualTo(admin.id());
+        assertThat(audit.get("reason")).isEqualTo("Tablet left in the corridor");
+        assertThat((List<Object>) JsonPath.read((String) audit.get("after"), "$.returned_tickets")).hasSize(3);
+        assertThat(JsonPath.<String>read((String) audit.get("before"), "$.agent_id")).isEqualTo(agent.id().toString());
+        assertThat(jdbc.queryForObject("SELECT closed_at FROM counter_session WHERE id = ?", Object.class, session)).isNotNull();
+
+        assertThat(reason(next(agent, session))).as("the agent's stale device gets nothing").isEqualTo("session_not_open");
+        assertThat(status(current(agent))).isEqualTo(404);
+        assertThat(status(open(agent(w), desk))).as("the counter is free again").isEqualTo(201);
+    }
+
+    @Test
+    void anOrgAdminMayForceCloseToo() throws Exception {
+        World w = world();
+        UUID desk = counter(w, "Desk 1", w.a(), 1);
+        String token = issueAgo(w.a(), 10);
+        Agent agent = agent(w);
+        UUID session = opened(agent, desk);
+        calledToken(agent, session);
+        Agent admin = user(Role.ORG_ADMIN, w.site(), w.group());
+
+        MvcResult result = forceClose(admin, session, null);
+
+        assertThat(status(result)).as(body(result)).isEqualTo(200);
+        assertThat(ticketRow(token, w.a()).get("state")).isEqualTo("waiting");
+        assertThat(eventsOf(ticketRow(token, w.a())).getLast().get("from_state")).as("a called ticket is returned too").isEqualTo("called");
+        assertThat(jdbc.queryForObject("SELECT reason FROM audit_log WHERE action = 'session.force_closed' AND entity_id = ?", String.class, session)).isNull();
+    }
+
+    @Test
+    void forceClosingIsForAdminsWithinTheirScopeAndOnlyForALiveSession() throws Exception {
+        World w = world();
+        UUID desk = counter(w, "Desk 1", w.a(), 1);
+        String token = issueAgo(w.a(), 10);
+        Agent agent = agent(w);
+        UUID session = opened(agent, desk);
+        calledToken(agent, session);
+        World elsewhere = world();
+        UUID otherGroup = otherGroup(elsewhere);
+
+        assertThat(status(forceClose(agent, session, null))).as("an agent may not force-close, not even their own session").isEqualTo(403);
+        assertThat(status(forceClose(user(Role.RECEPTION_OPERATOR, w.site(), w.group()), session, null))).isEqualTo(403);
+        assertThat(status(forceClose(user(Role.TEAM_ADMIN, elsewhere.site(), elsewhere.group()), session, null))).as("outside the token's sites").isEqualTo(403);
+        assertThat(status(forceClose(user(Role.TEAM_ADMIN, w.site(), otherGroup, new UUID[] {otherGroup}), session, null))).as("outside the token's service groups").isEqualTo(403);
+        assertThat(status(call(post("/api/v1/sessions/" + session + "/force-close"), null, null))).isEqualTo(401);
+        Agent admin = user(Role.TEAM_ADMIN, w.site(), w.group());
+        assertThat(status(forceClose(admin, UUID.randomUUID(), null))).isEqualTo(404);
+        assertThat(ticketRow(token, w.a()).get("state")).as("nothing changed").isEqualTo("called");
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM audit_log WHERE action = 'session.force_closed' AND entity_id = ?", Integer.class, session)).isZero();
+
+        assertThat(status(forceClose(admin, session, null))).isEqualTo(200);
+        MvcResult again = forceClose(admin, session, null);
+        assertThat(status(again)).isEqualTo(409);
+        assertThat(reason(again)).isEqualTo("session_not_open");
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM audit_log WHERE action = 'session.force_closed' AND entity_id = ?", Integer.class, session)).as("audited once").isEqualTo(1);
+    }
+
+    @Test
+    void forceClosingASessionWithNothingInProgressStillClosesItAndIsAudited() throws Exception {
+        World w = world();
+        UUID desk = counter(w, "Desk 1", w.a(), 1);
+        Agent agent = agent(w);
+        UUID session = opened(agent, desk);
+        Agent admin = user(Role.TEAM_ADMIN, w.site(), w.group());
+
+        MvcResult result = forceClose(admin, session, null);
+
+        assertThat(status(result)).isEqualTo(200);
+        assertThat((String) field(result, "$.state")).isEqualTo("force_closed");
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM audit_log WHERE action = 'session.force_closed' AND entity_id = ?", Integer.class, session)).isEqualTo(1);
+        assertThat(status(open(agent, desk))).isEqualTo(201);
+    }
+
+    @Test
+    void aTicketReturnedByAForceCloseAndCalledAgainWaitedOnlyWhileItWasWaiting() throws Exception {
+        World w = world();
+        UUID desk = counter(w, "Desk 1", w.a(), 1);
+        String token = issueAgo(w.a(), 5); // queued at BASE - 5 min
+        Agent agent = agent(w);
+        UUID session = opened(agent, desk);
+        calledToken(agent, session); // BASE: 300 s of waiting
+        clock.set(BASE.plusSeconds(120));
+        serve(agent, session, null);
+        hold(agent, session, null, null); // held time is not wait
+        clock.set(BASE.plusSeconds(200));
+        forceClose(user(Role.TEAM_ADMIN, w.site(), w.group()), session, null);
+        clock.set(BASE.plusSeconds(500));
+        Agent next = agent(w);
+        UUID again = opened(next, desk);
+        calledToken(next, again); // 300 s more of waiting
+        serve(next, again, null);
+        clock.set(BASE.plusSeconds(560));
+        complete(next, again, null, null);
+
+        assertThat(ticketRow(token, w.a()).get("wait_seconds")).as("Invariant 1: 300 + 300, not counting time held").isEqualTo(600);
     }
 
     // ---- NFR-PERF-003: console actions acknowledge within 500 ms at P95 ----------------------------------------
