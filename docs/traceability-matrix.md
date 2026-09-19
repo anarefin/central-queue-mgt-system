@@ -450,6 +450,31 @@ with the requirements they extend (FR-QUE-080 here, FR-CFG-104 under ticket 04).
 | FR-I18N-001 the new strings are in both packs | §17 | unit, integration | `EnvIT#aMessageAnAdministratorWroteReplacesTheBuiltInTextOnlyForItsLanguage` (`service_closed` and `issuance.refused.cap_reached` resolve in en and bn); backend `messages_{en,bn}.properties` carry every `issuance.refused.*` and `error.service_closed` key; `F/packages/i18n/src/i18n.test.ts` (pack parity, `errors.service_closed`) | passing |
 | §18.2 the V17 migration is forward-only and re-runnable | §18, §26 | integration | `B/platform/MigrationIT#everyMigrationScriptCanBeReExecutedAgainstAnAlreadyMigratedDatabase` (V17) | passing |
 
+## Ticket 22, visitor directory and walk-in registration
+
+`GW` = `B/issuance/VisitorDirectoryGatewayTest`, `Props` = `B/issuance/VisitorPropertiesTest`, `IT` = `B/issuance/VisitorDirectoryIT`.
+
+| Requirement ID | Section | Test type | Test reference | Status |
+|---|---|---|---|---|
+| FR-INT-010 visitor lookup goes through a `VisitorDirectory` interface; v1's implementation is the local `visitor` table | §22.2 | unit, integration | `GW` (fakes only implement `VisitorDirectory`, never a concrete class); `IT#receptionFindsARegisteredVisitorByCodeOrByPhoneAndGetsNotFoundForAnUnknownOne` (`LocalVisitorDirectory` wired as the sole directory) | passing |
+| FR-INT-012 `lookup(code \| phone \| qr) -> {external_code, name, category, phone, flags}` with a hard timeout (default 1.5 s) and fallback to the next directory (ultimately local data) | §22.2 | unit | `GW#aDirectoryThatNeverAnswersIsAbandonedAtTheTimeoutAndTheCallerGetsAnEmptyResultPromptly`, `#onceASlowDirectoryTimesOutTheGatewayFallsThroughToTheNextDirectoryInsteadOfGivingUp`, `#aDirectoryThatThrowsIsSkippedJustLikeOneThatTimesOut`, `#aFastDirectoryAnswersWellWithinTheTimeoutAndNoFallbackIsNeeded`, `#noDirectoryMatchingIsAnEmptyResultNotAnError` | passing |
+| FR-INT-013 no queue operation blocks on a directory call; a timed-out lookup still lets a ticket be issued without visitor details | §22.2 | integration | `IT#aTicketIssuesFineWithNoVisitorDetailsAtAllSinceIssuanceNeverCallsTheDirectory` (`POST /tickets` never calls `VisitorDirectoryGateway`; the hard timeout itself is `GW`, above) | passing |
+| FR-ISS-021 `GET /visitors/lookup`, `POST /visitors`: register a walk-in with name, phone, optional email/category/purpose and issue a visitor pass reference | §8.3 | integration | `IT#receptionRegistersAWalkInWithAMinimalRecordAndGetsBackAPassReference`, `#nameAndPhoneAreRequiredToRegisterAWalkIn`, `#aVisitorRegisteredWithTheSamePhoneTwiceIsFoundAsTheMostRecentRegistration`, `#aBlankOrMissingQueryIsValidationFailed` | passing |
+| FR-ISS-020 Reception issues a ticket on a visitor's behalf with directory search, a Priority class and an agent-visible note | §8.3 | integration | `IT#receptionIssuesATicketForARegisteredWalkInWithAPriorityClassAndANoteVisibleToTheAgent` (`purpose_note` reaches the ticket row; `priority_class_id` already covered by ticket 07/19's tests, unchanged here); `F/apps/admin/src/components/ReceptionDesk.test.tsx` describe block "visitor directory and walk-in registration" (search, use, note, register, clear, reset after issuing) | passing |
+| FR-SEC-023 the system stores no more visitor data than the configured field set; a field turned off is neither captured nor retained | §25.3 | unit, integration | `Props#aFieldTurnedOnIsCapturedAndTrimmed`, `#aFieldTurnedOffIsNeitherCapturedNorRetainedEvenWhenTheRequestSendsIt`, `#nameAndPhoneAreAlwaysCapturedRegardlessOfConfiguration`, `#aBlankOptionalFieldCapturesAsNullEvenWhenTurnedOn`, `#rejectsAnUnknownField`; `IT#theDefaultConfigurationCapturesEmailAndCategoryIntoTheStoredRecord` (the default `qms.visitor.registration-fields` actually reaches the database) | passing |
+| §5.2 `GET /visitors/lookup` needs `visitor_pii:view` (Reception, admins; an Agent has only their own-record scope, not the directory); `POST /visitors` needs `ticket:issue` (Reception only) | §5.2 | integration | `IT#anAgentCannotSearchTheDirectoryOnlyTheirOwnRecordsElsewhereAreTheirsToSee`, `#anOrgAdminCanSearchTheDirectoryToo`, `#onlyReceptionCanRegisterAWalkIn` | passing |
+| FR-SEC-042 registering a walk-in writes an audit entry | §18.3 | integration | `IT#receptionRegistersAWalkInWithAMinimalRecordAndGetsBackAPassReference` (asserts one `visitor.registered` audit row) | passing |
+| FR-I18N-001 the new strings are in both packs | §17 | unit | `F/packages/i18n/src/i18n.test.ts` (pack parity; `reception.visitor.*`, `reception.note.label` resolve in en and bn) | passing |
+| §18.2 the V18 migration is forward-only and re-runnable | §18, §26 | integration | `B/platform/MigrationIT#everyMigrationScriptCanBeReExecutedAgainstAnAlreadyMigratedDatabase` (V18) | passing |
+| Definition of done §27.5 item 6, administrator guide | §27.5 | manual | `docs/admin-guide.md` section 16 | passing |
+
+**Notes on this ticket's interpretation.** FR-INT-011 (CSV import) is out of scope; only the two ACs SRS lists for `VisitorDirectory`
+in v1 (FR-INT-010, FR-INT-012) are built. `purpose`, given at registration, is accepted and echoed back but not persisted on the
+visitor record — a Visitor is a reusable directory entry, while a purpose is specific to one visit; it is carried forward as the
+ticket's `purpose_note` when Reception subsequently calls `POST /tickets`, which already existed for other fields and now also
+accepts `purpose_note`. A walk-in's pass reference is written into `visitor.external_code` (now unique), so a returning walk-in is
+a known visitor on their next visit, consistent with FR-INT-011's "upsert by external code" language for a later CSV import.
+
 ## Notes
 
 - **Compose.** Verified by hand on 2026-09-19 with OrbStack Docker, from a clean build: `migrate` exited 0, then Postgres,

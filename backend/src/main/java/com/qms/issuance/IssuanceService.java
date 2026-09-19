@@ -117,7 +117,8 @@ public class IssuanceService {
         tickets.insertVisit(visitId, target.siteId(), now);
         UUID ticketId = UUID.randomUUID();
         tickets.insertTicket(new NewTicket(
-                ticketId, tokenNumber, sequence, resetKey, target, tickets.waitingZone(target.serviceId()), visitId, command.originChannel(), now, hash(secret), priorityClassId, command.visitorId()));
+                ticketId, tokenNumber, sequence, resetKey, target, tickets.waitingZone(target.serviceId()), visitId, command.originChannel(), now, hash(secret), priorityClassId, command.visitorId(),
+                blank(command.purposeNote())));
         events.append(new TicketEvents.Transition(
                 ticketId,
                 ISSUED,
@@ -177,6 +178,12 @@ public class IssuanceService {
         byte[] bytes = new byte[SECRET_BYTES];
         RANDOM.nextBytes(bytes);
         return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
+    }
+
+    private static String blank(String value) {
+        if (value == null) return null;
+        String stripped = value.strip();
+        return stripped.isEmpty() ? null : stripped;
     }
 
     /** The secret has 256 bits of entropy, so a plain SHA-256 is enough to make the stored value useless on its own. */

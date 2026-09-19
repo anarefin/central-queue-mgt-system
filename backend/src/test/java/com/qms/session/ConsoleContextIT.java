@@ -152,10 +152,14 @@ class ConsoleContextIT {
         }
     }
 
-    private UUID visitor(String code, String name, String category) {
+    private record Registered(UUID id, String code) {}
+
+    /** {@code code} is suffixed to stay unique across this class's tests, since ticket 22 gave {@code visitor.external_code} a unique index. */
+    private Registered visitor(String code, String name, String category) {
         UUID id = UUID.randomUUID();
-        jdbc.update("INSERT INTO visitor (id, external_code, name, category, created_at) VALUES (?, ?, ?, ?, now())", id, code, name, category);
-        return id;
+        String unique = code + "-" + id.toString().substring(0, 8);
+        jdbc.update("INSERT INTO visitor (id, external_code, name, category, created_at) VALUES (?, ?, ?, ?, now())", id, unique, name, category);
+        return new Registered(id, unique);
     }
 
     /** Issues a ticket {@code minutesAgo} minutes before BASE through the channel, with the visitor and note when given. */
@@ -220,14 +224,14 @@ class ConsoleContextIT {
     @Test
     void aCalledTicketShowsTheVisitorTheServiceTheNoteTheWaitSoFarTheChannelAndWhetherItIsAnAppointment() throws Exception {
         World w = world();
-        UUID asar = visitor("0062", "Asar Ali", "Children Tailoring");
-        issue(w, Channels.APPOINTMENT_CHECKIN, 12, asar, "Follow-up on the scan");
+        Registered asar = visitor("0062", "Asar Ali", "Children Tailoring");
+        issue(w, Channels.APPOINTMENT_CHECKIN, 12, asar.id(), "Follow-up on the scan");
         Staff lead = staff(Role.TEAM_ADMIN, w);
         UUID session = opened(lead, w);
 
         MvcResult called = next(lead, session);
 
-        assertThat((String) field(called, "$.ticket.visitor.code")).isEqualTo("0062");
+        assertThat((String) field(called, "$.ticket.visitor.code")).isEqualTo(asar.code());
         assertThat((String) field(called, "$.ticket.visitor.name")).isEqualTo("Asar Ali");
         assertThat((String) field(called, "$.ticket.visitor.category")).isEqualTo("Children Tailoring");
         assertThat((String) field(called, "$.ticket.purpose_note")).isEqualTo("Follow-up on the scan");
@@ -259,14 +263,14 @@ class ConsoleContextIT {
     @Test
     void onlyTheVisitorFieldsConfiguredForTheCallersRoleAreSentAndTheOthersAreNotInTheResponseAtAll() throws Exception {
         World w = world();
-        UUID asar = visitor("0062", "Asar Ali", "Children Tailoring");
-        issue(w, Channels.RECEPTION, 5, asar, "Follow-up on the scan");
+        Registered asar = visitor("0062", "Asar Ali", "Children Tailoring");
+        issue(w, Channels.RECEPTION, 5, asar.id(), "Follow-up on the scan");
         Staff agent = staff(Role.AGENT, w);
         UUID session = opened(agent, w);
 
         MvcResult called = next(agent, session);
 
-        assertThat((String) field(called, "$.ticket.visitor.code")).isEqualTo("0062");
+        assertThat((String) field(called, "$.ticket.visitor.code")).isEqualTo(asar.code());
         assertThat((String) field(called, "$.ticket.visitor.category")).isEqualTo("Children Tailoring");
         assertThat((String) field(called, "$.ticket.purpose_note")).isEqualTo("Follow-up on the scan");
         assertThat(body(called)).as("the name is left out of the response, not hidden by the screen").doesNotContain("Asar Ali").doesNotContain("\"name\"");
@@ -276,8 +280,8 @@ class ConsoleContextIT {
     @Test
     void aTicketHeldByTheAgentKeepsTheSameVisitorFieldsAsTheOneInService() throws Exception {
         World w = world();
-        UUID asar = visitor("0062", "Asar Ali", "Children Tailoring");
-        issue(w, Channels.RECEPTION, 5, asar, null);
+        Registered asar = visitor("0062", "Asar Ali", "Children Tailoring");
+        issue(w, Channels.RECEPTION, 5, asar.id(), null);
         Staff agent = staff(Role.AGENT, w);
         UUID session = opened(agent, w);
         next(agent, session);
@@ -286,7 +290,7 @@ class ConsoleContextIT {
         MvcResult held = call(post("/api/v1/sessions/" + session + "/hold"), agent.token(), null);
 
         assertThat(held.getResponse().getStatus()).as(body(held)).isEqualTo(200);
-        assertThat((String) field(held, "$.held[0].visitor.code")).isEqualTo("0062");
+        assertThat((String) field(held, "$.held[0].visitor.code")).isEqualTo(asar.code());
         assertThat(body(held)).doesNotContain("Asar Ali");
     }
 

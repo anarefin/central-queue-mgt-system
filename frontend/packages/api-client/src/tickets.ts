@@ -65,6 +65,10 @@ export interface IssueTicketInput {
   occurred_at?: string;
   /** The Priority class staff assign (FR-QUE-011); leave it out for the default (normal) class. */
   priority_class_id?: string;
+  /** The visitor this ticket is for (FR-ISS-020), from a directory search or a fresh walk-in registration. */
+  visitor_id?: string;
+  /** A free-text note visible only to the agent who serves this ticket (FR-ISS-020). */
+  purpose_note?: string;
 }
 
 /** What a staff action on a ticket leaves behind (change of class, cancel). `position` is null once the ticket has left the queue. */

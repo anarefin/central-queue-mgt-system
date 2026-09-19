@@ -407,6 +407,96 @@ describe("reception desk (SRS §8.3)", () => {
   });
 });
 
+describe("visitor directory and walk-in registration (FR-ISS-020, FR-ISS-021)", () => {
+  it("finds a visitor by code, uses it and sends a note with the issued ticket, then resets for the next visitor", async () => {
+    const calls = fakeApi(fresh(), {
+      "GET /visitors/lookup?q=0062": () =>
+        json(200, { id: "vis1", external_code: "0062", name: "Amina Rahman", category: "vip", phone: "01700000000", flags: {} }),
+    });
+    renderApp(<ReceptionDesk />);
+    await chooseConsultation();
+
+    await userEvent.type(screen.getByLabelText("Visitor code, phone or QR"), "0062");
+    await userEvent.click(screen.getByRole("button", { name: "Search" }));
+
+    const found = (await screen.findByText("Amina Rahman")).closest("p")!;
+    expect(found).toHaveTextContent("vip");
+    expect(found).toHaveTextContent("01700000000");
+    await userEvent.click(within(found).getByRole("button", { name: "Use this visitor" }));
+
+    expect(await screen.findByText("Visitor: Amina Rahman")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Visitor code, phone or QR")).not.toBeInTheDocument();
+    await userEvent.type(screen.getByLabelText("Note for the agent"), "Needs wheelchair access");
+    await userEvent.click(screen.getByRole("button", { name: "Issue ticket" }));
+    await screen.findByText("Ticket issued");
+
+    const issue = issuesOf(calls)[0]!;
+    expect(JSON.parse(String(issue.init.body))).toMatchObject({ visitor_id: "vis1", purpose_note: "Needs wheelchair access" });
+
+    // The next ticket starts from a clean visitor and note.
+    expect(screen.getByLabelText("Visitor code, phone or QR")).toHaveValue("");
+    expect(screen.getByLabelText("Note for the agent")).toHaveValue("");
+    expect(screen.queryByText("Visitor: Amina Rahman")).not.toBeInTheDocument();
+  });
+
+  it("says when no visitor matches the search", async () => {
+    fakeApi(fresh(), {
+      "GET /visitors/lookup?q=no-such-code": () => json(404, { error: { code: "not_found", message: "x", trace_id: "t" } }),
+    });
+    renderApp(<ReceptionDesk />);
+    await chooseConsultation();
+
+    await userEvent.type(screen.getByLabelText("Visitor code, phone or QR"), "no-such-code");
+    await userEvent.click(screen.getByRole("button", { name: "Search" }));
+
+    expect(await screen.findByText("No visitor matches that code or phone.")).toBeInTheDocument();
+  });
+
+  it("registers a walk-in visitor with only the fields given, uses it for the ticket and shows the pass reference", async () => {
+    const calls = fakeApi(fresh(), {
+      "POST /visitors": () =>
+        json(201, { id: "vis2", pass_reference: "V-AB12CD34", name: "Karim Uddin", phone: "01700000009", email: null, category: null, purpose: null }),
+    });
+    renderApp(<ReceptionDesk />);
+    await chooseConsultation();
+
+    await userEvent.click(screen.getByRole("button", { name: "Register a walk-in" }));
+    const form = screen.getByRole("group", { name: "Register a walk-in visitor" });
+    await userEvent.type(within(form).getByLabelText("Name"), "Karim Uddin");
+    await userEvent.type(within(form).getByLabelText("Phone"), "01700000009");
+    await userEvent.click(within(form).getByRole("button", { name: "Register" }));
+
+    expect(await screen.findByText("Karim Uddin registered. Pass reference: V-AB12CD34")).toBeInTheDocument();
+    expect(await screen.findByText("Visitor: Karim Uddin")).toBeInTheDocument();
+    expect(screen.queryByRole("group", { name: "Register a walk-in visitor" })).not.toBeInTheDocument();
+
+    const registrations = calls.filter((c) => c.method === "POST" && c.path === "/visitors");
+    expect(registrations).toHaveLength(1);
+    expect(JSON.parse(String(registrations[0]!.init.body))).toEqual({ name: "Karim Uddin", phone: "01700000009" });
+
+    await userEvent.click(screen.getByRole("button", { name: "Issue ticket" }));
+    const issue = issuesOf(calls)[0]!;
+    expect(JSON.parse(String(issue.init.body))).toMatchObject({ visitor_id: "vis2" });
+  });
+
+  it("clears a selected visitor and returns to search", async () => {
+    fakeApi(fresh(), {
+      "GET /visitors/lookup?q=0062": () => json(200, { id: "vis1", external_code: "0062", name: "Amina Rahman", category: null, phone: null, flags: {} }),
+    });
+    renderApp(<ReceptionDesk />);
+    await chooseConsultation();
+    await userEvent.type(screen.getByLabelText("Visitor code, phone or QR"), "0062");
+    await userEvent.click(screen.getByRole("button", { name: "Search" }));
+    await userEvent.click(within((await screen.findByText("Amina Rahman")).closest("p")!).getByRole("button", { name: "Use this visitor" }));
+    await screen.findByText("Visitor: Amina Rahman");
+
+    await userEvent.click(screen.getByRole("button", { name: "Clear" }));
+
+    expect(screen.queryByText("Visitor: Amina Rahman")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Visitor code, phone or QR")).toBeInTheDocument();
+  });
+});
+
 describe("change of priority and cancel from the queue (FR-QUE-012, §5.2)", () => {
   const waitingTicket = (id: string, token: string, klass = { id: "c0", name_i18n: { bn: "সাধারণ", en: "Normal" } }): Ticket => ({
     ...ticket({ id, token_number: token, priority_class: klass }),

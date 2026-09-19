@@ -6,10 +6,10 @@
 
 **Status:** ready-for-agent
 
-- [ ] Lookup goes through a `VisitorDirectory` interface; local implementation in v1 (FR-INT-010, FR-INT-012)
-- [ ] `lookup(code | phone | qr)` returns external code, name, category, phone, flags with a hard timeout (default 1.5 s) and fallback to local data (FR-INT-012)
-- [ ] No queue operation blocks on the directory; on timeout the Ticket is issued without visitor details (FR-INT-013)
-- [ ] `GET /visitors/lookup`, `POST /visitors`: register walk-in with name, phone, optional email/category/purpose and issue a visitor pass reference (FR-ISS-021)
-- [ ] Reception issues on a visitor's behalf with directory search, Priority class and agent-visible note (FR-ISS-020)
-- [ ] Only configured visitor fields are captured (FR-SEC-023)
-- [ ] Definition of done (SRS §27.5): user-facing strings in both en and bn packs; every protected action permission-checked server-side; specified events and audit entries emitted; each requirement ID above mapped to a passing test in the traceability matrix
+- [x] Lookup goes through a `VisitorDirectory` interface; local implementation in v1 (FR-INT-010, FR-INT-012)
+- [x] `lookup(code | phone | qr)` returns external code, name, category, phone, flags with a hard timeout (default 1.5 s) and fallback to local data (FR-INT-012)
+- [x] No queue operation blocks on the directory; on timeout the Ticket is issued without visitor details (FR-INT-013)
+- [x] `GET /visitors/lookup`, `POST /visitors`: register walk-in with name, phone, optional email/category/purpose and issue a visitor pass reference (FR-ISS-021)
+- [x] Reception issues on a visitor's behalf with directory search, Priority class and agent-visible note (FR-ISS-020)
+- [x] Only configured visitor fields are captured (FR-SEC-023)
+- [x] Definition of done (SRS §27.5): user-facing strings in both en and bn packs; every protected action permission-checked server-side; specified events and audit entries emitted; each requirement ID above mapped to a passing test in the traceability matrix

@@ -65,11 +65,12 @@ public class TicketController {
         UUID actor = currentUser.require().userId();
         boolean confirm = Boolean.TRUE.equals(request.confirmDuplicate());
         var command = new IssueCommand(
-                request.serviceId(), channel, actor, ActorType.STAFF, request.occurredAt(), request.priorityClassId(), request.visitorId(), confirm);
+                request.serviceId(), channel, actor, ActorType.STAFF, request.occurredAt(), request.priorityClassId(), request.visitorId(), confirm,
+                request.purposeNote());
         var result = idempotency.execute(
                 "POST /tickets:" + actor,
                 idempotencyKey,
-                fingerprint(request.serviceId(), channel, request.priorityClassId(), request.visitorId(), confirm),
+                fingerprint(request.serviceId(), channel, request.priorityClassId(), request.visitorId(), confirm, request.purposeNote()),
                 TicketResponse.class,
                 () -> issuance.issue(command));
         var response = ResponseEntity.status(HttpStatus.CREATED);
@@ -106,13 +107,17 @@ public class TicketController {
         return new ApiException(ErrorCode.VALIDATION_FAILED, Map.of("fields", List.of(Map.of("field", field, "code", code))));
     }
 
-    /** What makes two requests the same one: the service, the channel, the class, the visitor and the confirmation. The device's clock is not part of it. */
-    private static String fingerprint(UUID serviceId, String channel, UUID priorityClassId, UUID visitorId, boolean confirm) {
+    /**
+     * What makes two requests the same one: the service, the channel, the class, the visitor, the confirmation and the
+     * note. The device's clock is not part of it.
+     */
+    private static String fingerprint(UUID serviceId, String channel, UUID priorityClassId, UUID visitorId, boolean confirm, String purposeNote) {
         try {
             String basis = serviceId + "|" + channel;
             if (priorityClassId != null) basis += "|" + priorityClassId;
             if (visitorId != null) basis += "|visitor:" + visitorId;
             if (confirm) basis += "|confirmed";
+            if (purposeNote != null && !purposeNote.isBlank()) basis += "|note:" + purposeNote;
             byte[] digest = MessageDigest.getInstance("SHA-256").digest(basis.getBytes(StandardCharsets.UTF_8));
             return HexFormat.of().formatHex(digest);
         } catch (NoSuchAlgorithmException e) {

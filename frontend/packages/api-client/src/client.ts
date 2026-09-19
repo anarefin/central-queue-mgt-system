@@ -19,6 +19,7 @@ import type { NumberingPreview, NumberingRule, NumberingRuleChange, NumberingRul
 import type { AgentDay, CompleteInput, CounterSession, OpenSessionInput, SessionCounterOption, TransferInput, TransferResult, TransferTargets } from "./sessions";
 import type { TopicSnapshot } from "./stream";
 import type { IssueTicketInput, QueueSnapshot, ReprioritiseInput, SiteServices, Ticket, TicketChange } from "./tickets";
+import type { RegisterVisitorInput, VisitorMatch, VisitorRegistration } from "./visitors";
 
 export const API_BASE_PATH = "/api/v1";
 
@@ -202,6 +203,16 @@ export class ApiClient {
     /** Cancel an active ticket (§19.1). The reason is optional; an agent may cancel only their own ticket (§5.2). */
     cancel: (id: string, reason?: string, version?: number) =>
       this.request<TicketChange>("POST", `/tickets/${id}/cancel`, reason ? { reason } : undefined, { headers: ifMatch(version) }),
+  };
+
+  /**
+   * The visitor directory and walk-in registration (SRS §8.3, §22.2, FR-ISS-020, FR-ISS-021). `lookup` resolves a
+   * known visitor by code, phone or QR; `register` gives an unknown walk-in a minimal record and a pass reference.
+   * Both are Reception actions; the API enforces the permission and which fields are captured (FR-SEC-023).
+   */
+  readonly visitors = {
+    lookup: (query: string) => this.request<VisitorMatch>("GET", `/visitors/lookup?q=${encodeURIComponent(query)}`),
+    register: (input: RegisterVisitorInput) => this.request<VisitorRegistration>("POST", "/visitors", input),
   };
 
   readonly queues = {

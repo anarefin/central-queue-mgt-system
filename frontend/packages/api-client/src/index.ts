@@ -10,3 +10,4 @@ export * from "./session";
 export * from "./sessions";
 export * from "./stream";
 export * from "./tickets";
+export * from "./visitors";

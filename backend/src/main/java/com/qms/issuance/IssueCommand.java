@@ -10,6 +10,7 @@ import java.util.UUID;
  * {@code priorityClassId} is the class staff chose (FR-QUE-011), or null for the default class. {@code visitorId} is the
  * visitor the ticket is for, when the channel knows them; only then can a duplicate be detected (FR-ISS-004), and
  * {@code confirmDuplicate} is the caller's answer to the warning that the visitor already has an active ticket.
+ * {@code purposeNote} is the free-text note Reception adds, visible only to the agent who is called to it (FR-ISS-020).
  */
 public record IssueCommand(
         UUID serviceId,
@@ -19,11 +20,12 @@ public record IssueCommand(
         Instant deviceTime,
         UUID priorityClassId,
         UUID visitorId,
-        boolean confirmDuplicate) {
+        boolean confirmDuplicate,
+        String purposeNote) {
 
     /** A ticket of the class staff chose, for nobody in particular. */
     public IssueCommand(UUID serviceId, String originChannel, UUID actorId, ActorType actorType, Instant deviceTime, UUID priorityClassId) {
-        this(serviceId, originChannel, actorId, actorType, deviceTime, priorityClassId, null, false);
+        this(serviceId, originChannel, actorId, actorType, deviceTime, priorityClassId, null, false, null);
     }
 
     /** A ticket of the default class. */

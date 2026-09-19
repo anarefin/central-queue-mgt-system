@@ -491,9 +491,9 @@ visitor's own `ticket:{ticket_id}` topic arrives with the visitor ticket page.)
 When an Agent's ticket is called, the console shows the token, the visitor's **name, code and category** where the ticket has a
 visitor record, the Service, the **purpose note**, how long the visitor waited, the channel they came through, and whether they
 came with an appointment (SRS §11.5, FR-AGT-030). A walk-in with no visitor record simply has no visitor lines. The same fields
-ride on the tickets the Agent holds. (Nothing in this release writes a visitor record or a purpose note: the visitor
-directory, walk-in registration and appointment booking, in later tickets, fill them. The `visitor` table and
-`ticket.purpose_note` are where they go.)
+ride on the tickets the Agent holds. (Appointment booking, in a later ticket, is still the only channel that has not yet filled
+these; Reception's directory search, walk-in registration and note — §16 below — write the `visitor` table and
+`ticket.purpose_note` today.)
 
 **Which fields a role sees** is set in the backend configuration, per role, and is enforced on the server: a field outside the
 role's set is left out of the API response, not hidden by the screen (FR-AGT-034, FR-SEC-020). A role with no entry sees the
@@ -515,3 +515,46 @@ is the Agent's; it is stored on the ticket next to, not over, the visitor's purp
 session, their average service time and their break time. `GET /sessions/stats` answers with the caller's figures only
 (`served`, `in_queue`, `average_service_seconds`, `break_seconds`, `as_of`): no other Agent's number, and nothing to rank by.
 "Today" is the day at the Site, in the Site's time zone; a break in progress counts up to now.
+
+## 16. Visitor directory and walk-in registration
+
+Reception can search for a known visitor and issue a ticket on their behalf, or register a visitor the directory does not know
+(SRS §8.3, §22.2). Both are on the Reception desk (`/admin/reception`), and both need the `reception_operator` role
+(`visitor_pii:view` for the search, `ticket:issue` for registering and for issuing — the same permission Reception already has
+to issue any ticket).
+
+**Search** (`GET /visitors/lookup`, FR-ISS-020) takes one query — a typed code, a phone number, or whatever a QR scan reads —
+and returns the visitor's directory record: code, name, category, phone. Reception picks "Use this visitor" to carry it onto
+the ticket they are about to issue.
+
+**Registration** (`POST /visitors`, FR-ISS-021) is for an unknown walk-in: name and phone are required, email, category and
+purpose are optional. The response is the record plus a **pass reference** (`V-` and eight letters/digits, e.g. `V-7K3M9PQR`)
+— hand it to the visitor as their pass, and it becomes their code for next time, so a returning walk-in is a known visitor on
+their next visit. Registering writes a `visitor.registered` audit entry.
+
+**Which optional fields are captured** is closed configuration, enforced on the server, not merely hidden by the screen
+(FR-SEC-023): a field left out of `qms.visitor.registration-fields` is neither read from the request nor stored, even when the
+caller sends it. `name` and `phone` are always captured — they are the minimum record itself.
+
+```
+qms.visitor.registration-fields=email,category,purpose   # the default: all three optional fields on
+qms.visitor.registration-fields=category                 # email and purpose are dropped, not merely unshown
+```
+
+Once a visitor is selected or registered, Reception may also give the ticket a **Priority class** and a free-text **note**
+visible only to the Agent who is called to it (`purpose_note`, FR-ISS-020) — issuing sends `visitor_id` and `purpose_note`
+alongside the usual `service_id` and `priority_class_id` to `POST /tickets`. A registration's own `purpose` is not stored on
+the visitor record (a visitor is reused across visits; a purpose belongs to one visit) — it is Reception's own reminder to
+carry into that same note.
+
+**The directory seam** (FR-INT-010, FR-INT-012) is a `VisitorDirectory` interface; this release ships one implementation, the
+local `visitor` table. A future remote adapter (core banking CIF, HIS patient index, ERP supplier master) is addable behind the
+same interface, ahead of the local one. Every implementation is given a hard time budget
+(`qms.visitor.directory-timeout`, default 1.5 s, FR-INT-012): one that is slow or fails is abandoned, not waited on, and the
+next directory — ultimately the local one — is tried instead (FR-INT-013). No queue operation ever calls the directory
+directly: `POST /tickets` only ever takes a `visitor_id` Reception has already resolved, so a slow or unreachable directory
+can never hold up issuing a ticket.
+
+```
+qms.visitor.directory-timeout=1500ms
+```
