@@ -63,9 +63,9 @@ public class TicketController {
         if (!Channels.RECEPTION.equals(channel)) throw new ApiException(ErrorCode.FORBIDDEN);
 
         UUID actor = currentUser.require().userId();
-        var command = new IssueCommand(request.serviceId(), channel, actor, ActorType.STAFF, request.occurredAt());
+        var command = new IssueCommand(request.serviceId(), channel, actor, ActorType.STAFF, request.occurredAt(), request.priorityClassId());
         var result = idempotency.execute(
-                "POST /tickets:" + actor, idempotencyKey, fingerprint(request.serviceId(), channel), TicketResponse.class, () -> issuance.issue(command));
+                "POST /tickets:" + actor, idempotencyKey, fingerprint(request.serviceId(), channel, request.priorityClassId()), TicketResponse.class, () -> issuance.issue(command));
         var response = ResponseEntity.status(HttpStatus.CREATED);
         if (result.replayed()) response.header(REPLAYED_HEADER, "true");
         return response.body(result.value());
@@ -83,6 +83,13 @@ public class TicketController {
         return queries.queue(serviceId, limit);
     }
 
+    /** The queue in computed order with each term of each score, for admins validating priority settings (FR-QUE-023). */
+    @PreAuthorize(TicketQueries.DRY_RUN)
+    @GetMapping("/queues/{serviceId}/dry-run")
+    public QueueDryRun dryRun(@PathVariable UUID serviceId, @RequestParam(required = false) String strategy) {
+        return queries.dryRun(serviceId, strategy);
+    }
+
     @PreAuthorize(TicketQueries.STAFF)
     @GetMapping("/sites/{siteId}/services")
     public SiteServices siteServices(@PathVariable UUID siteId, @RequestParam(required = false) String channel) {
@@ -93,10 +100,11 @@ public class TicketController {
         return new ApiException(ErrorCode.VALIDATION_FAILED, Map.of("fields", List.of(Map.of("field", field, "code", code))));
     }
 
-    /** What makes two requests the same one: the service and the channel. The device's clock is not part of it. */
-    private static String fingerprint(UUID serviceId, String channel) {
+    /** What makes two requests the same one: the service, the channel and the class. The device's clock is not part of it. */
+    private static String fingerprint(UUID serviceId, String channel, UUID priorityClassId) {
         try {
-            byte[] digest = MessageDigest.getInstance("SHA-256").digest((serviceId + "|" + channel).getBytes(StandardCharsets.UTF_8));
+            String basis = priorityClassId == null ? serviceId + "|" + channel : serviceId + "|" + channel + "|" + priorityClassId;
+            byte[] digest = MessageDigest.getInstance("SHA-256").digest(basis.getBytes(StandardCharsets.UTF_8));
             return HexFormat.of().formatHex(digest);
         } catch (NoSuchAlgorithmException e) {
             throw new IllegalStateException(e);

@@ -8,9 +8,9 @@ import java.util.List;
  * What a numbering rule says (FR-CFG-018), whether it was configured for a Service, for a Service group or is the
  * built-in default.
  *
- * <p>The {@code priority_class} prefix source needs a priority class on the ticket, which no channel assigns yet
- * (FR-QUE-010 arrives with its own ticket). Until then it resolves to the Service's own prefix, which is what a ticket
- * of the normal class would show.
+ * <p>The {@code priority_class} prefix source takes the prefix override of the ticket's Priority class (FR-QUE-010).
+ * A class without an override, and the default class, leave the Service's own prefix, so a ticket of the normal class
+ * looks as it always did.
  */
 public record NumberingSpec(String prefixSource, String fixedPrefix, long start, int padding, ResetBoundary boundary, LocalTime resetTime, String separator) {
 
@@ -24,11 +24,17 @@ public record NumberingSpec(String prefixSource, String fixedPrefix, long start,
     public static final NumberingSpec DEFAULT =
             new NumberingSpec(SERVICE, null, 1, TokenNumbering.PADDING, ResetBoundary.DAILY, LocalTime.MIDNIGHT, TokenNumbering.SEPARATOR);
 
-    /** The prefix a ticket for a Service carries under this rule. */
+    /** The prefix a ticket for a Service carries under this rule, whatever its Priority class. */
     public String prefix(String servicePrefix, String groupPrefix) {
+        return prefix(servicePrefix, groupPrefix, null);
+    }
+
+    /** The prefix a ticket of a Priority class with the given prefix override ({@code null} for none) carries. */
+    public String prefix(String servicePrefix, String groupPrefix, String priorityClassPrefix) {
         return switch (prefixSource) {
             case SERVICE_GROUP -> groupPrefix;
             case FIXED -> fixedPrefix;
+            case PRIORITY_CLASS -> priorityClassPrefix == null ? servicePrefix : priorityClassPrefix;
             default -> servicePrefix;
         };
     }

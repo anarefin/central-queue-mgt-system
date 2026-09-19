@@ -44,7 +44,11 @@ class TicketRepository {
             UUID visitId,
             String originChannel,
             Instant issuedAt,
-            String secretHash) {}
+            String secretHash,
+            UUID priorityClassId) {}
+
+    /** A Priority class as issuance needs it: whether it can be given to a new ticket and the prefix it may impose. */
+    record PriorityClassRef(UUID id, Map<String, String> names, boolean active, String prefixOverride) {}
 
     /** A ticket joined to the names it shows. */
     record TicketRecord(
@@ -64,14 +68,18 @@ class TicketRepository {
             String originChannel,
             Instant issuedAt,
             Instant queuedAt,
-            int version) {}
+            int version,
+            UUID priorityClassId,
+            Map<String, String> priorityClassNames) {}
 
     private static final String TICKET =
             "SELECT t.id, t.token_number, t.state, t.service_id, v.name_i18n AS service_names, t.service_group_id, g.name_i18n AS group_names,"
                     + " t.site_id, t.zone_id, z.name AS zone_name, z.building_label, z.floor_label, t.visit_id, t.origin_channel, t.issued_at,"
-                    + " t.queued_at, t.version"
+                    + " t.queued_at, t.version, pc.id AS priority_class_id, pc.name_i18n AS priority_class_names"
                     + " FROM ticket t JOIN service v ON v.id = t.service_id JOIN service_group g ON g.id = t.service_group_id"
-                    + " LEFT JOIN zone z ON z.id = t.zone_id";
+                    + " LEFT JOIN zone z ON z.id = t.zone_id"
+                    // A ticket without a class of its own belongs to the default class.
+                    + " LEFT JOIN priority_class pc ON pc.id = coalesce(t.priority_class_id, (SELECT id FROM priority_class WHERE is_default))";
 
     private final JdbcTemplate jdbc;
     private final JsonMapper mapper;
@@ -115,6 +123,14 @@ class TicketRepository {
                 .stream().findFirst().orElse(null);
     }
 
+    Optional<PriorityClassRef> priorityClass(UUID id) {
+        return jdbc.query(
+                        "SELECT id, name_i18n, active, token_prefix_override FROM priority_class WHERE id = ?",
+                        (rs, i) -> new PriorityClassRef(rs.getObject("id", UUID.class), names(rs.getString("name_i18n")), rs.getBoolean("active"), rs.getString("token_prefix_override")),
+                        id)
+                .stream().findFirst();
+    }
+
     // ---- writes -----------------------------------------------------------------------------------------------
 
     void insertVisit(UUID id, UUID siteId, Instant startedAt) {
@@ -124,9 +140,9 @@ class TicketRepository {
     void insertTicket(NewTicket t) {
         jdbc.update(
                 "INSERT INTO ticket (id, token_number, sequence_no, reset_key, service_id, service_group_id, site_id, zone_id, visit_id,"
-                        + " origin_channel, state, issued_at, queued_at, secret_hash) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'waiting', ?, ?, ?)",
+                        + " origin_channel, state, issued_at, queued_at, secret_hash, priority_class_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'waiting', ?, ?, ?, ?)",
                 t.id(), t.tokenNumber(), t.sequenceNo(), t.resetKey(), t.target().serviceId(), t.target().groupId(), t.target().siteId(), t.zoneId(),
-                t.visitId(), t.originChannel(), ts(t.issuedAt()), ts(t.issuedAt()), t.secretHash());
+                t.visitId(), t.originChannel(), ts(t.issuedAt()), ts(t.issuedAt()), t.secretHash(), t.priorityClassId());
     }
 
     // ---- reads ------------------------------------------------------------------------------------------------
@@ -149,7 +165,9 @@ class TicketRepository {
                         rs.getString("origin_channel"),
                         rs.getObject("issued_at", OffsetDateTime.class).toInstant(),
                         rs.getObject("queued_at", OffsetDateTime.class).toInstant(),
-                        rs.getInt("version")),
+                        rs.getInt("version"),
+                        rs.getObject("priority_class_id", UUID.class),
+                        rs.getString("priority_class_names") == null ? Map.of() : names(rs.getString("priority_class_names"))),
                 id)
                 .stream().findFirst();
     }

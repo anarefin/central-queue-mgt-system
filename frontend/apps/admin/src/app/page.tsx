@@ -37,6 +37,7 @@ export default function Home() {
             <Link href="/sites/">{t("admin.home.sites")}</Link>
             <Link href="/catalogue/">{t("admin.home.catalogue")}</Link>
             <Link href="/numbering/">{t("admin.home.numbering")}</Link>
+            <Link href="/priority/">{t("admin.home.priority")}</Link>
           </div>
         )}
         {user?.roles.includes("reception_operator") && (

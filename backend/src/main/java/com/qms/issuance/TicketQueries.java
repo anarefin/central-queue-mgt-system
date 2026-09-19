@@ -7,7 +7,9 @@ import com.qms.platform.ApiException;
 import com.qms.platform.ErrorCode;
 import com.qms.platform.Profiles;
 import com.qms.platform.security.ScopeGuard;
+import com.qms.queue.QueueEngine;
 import com.qms.queue.QueueReads;
+import com.qms.queue.QueueStrategy;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -28,6 +30,8 @@ public class TicketQueries {
     static final String STAFF = "hasAnyAuthority(T(com.qms.platform.security.Authorities).DASHBOARD_VIEW_ALL,"
             + " T(com.qms.platform.security.Authorities).DASHBOARD_VIEW_OWN_GROUPS,"
             + " T(com.qms.platform.security.Authorities).DASHBOARD_VIEW_OWN_GROUPS + ':own')";
+
+    static final String DRY_RUN = "hasAuthority(T(com.qms.platform.security.Authorities).CONFIG_PRIORITY_ROUTING)";
 
     public static final int DEFAULT_LIMIT = 50;
     public static final int MAX_LIMIT = 200;
@@ -64,9 +68,46 @@ public class TicketQueries {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, Map.of("fields", List.of(Map.of("field", "limit", "code", "out_of_range"))));
         }
         List<QueueSnapshot.Entry> entries = queues.next(serviceId, take).stream()
-                .map(e -> new QueueSnapshot.Entry(e.ticketId(), e.tokenNumber(), e.state(), e.position(), e.originChannel(), e.queuedAt()))
+                .map(e -> new QueueSnapshot.Entry(e.ticketId(), e.tokenNumber(), e.state(), e.position(), e.originChannel(), e.queuedAt(), classOf(e), e.escalated()))
                 .toList();
         return new QueueSnapshot(new NameRef(serviceId, service.names()), service.siteId(), queues.waitingCount(serviceId), null, entries);
+    }
+
+    /**
+     * The whole queue in the order the engine computes it, with each term of each score (FR-QUE-023). {@code strategy}
+     * tries another strategy than the group's without changing anything. Needs the priority and routing permission,
+     * like the settings it validates.
+     */
+    @PreAuthorize(DRY_RUN)
+    @Transactional(readOnly = true)
+    public QueueDryRun dryRun(UUID serviceId, String strategy) {
+        ServiceNames service = tickets.serviceNames(serviceId).orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND));
+        scope.requireSite(service.siteId());
+        scope.requireGroup(service.groupId());
+        QueueStrategy chosen = null;
+        if (strategy != null) {
+            chosen = QueueStrategy.fromWire(strategy)
+                    .orElseThrow(() -> new ApiException(ErrorCode.VALIDATION_FAILED, Map.of("fields", List.of(Map.of("field", "strategy", "code", "invalid")))));
+        }
+        QueueReads.Ordered ordered = queues.ordered(serviceId, chosen);
+        List<QueueDryRun.Item> items = ordered.entries().stream().map(TicketQueries::dryRunItem).toList();
+        return new QueueDryRun(new NameRef(serviceId, service.names()), service.siteId(), ordered.strategy().wire(), ordered.computedAt(), items.size(), items);
+    }
+
+    private static QueueDryRun.Item dryRunItem(QueueReads.Entry e) {
+        QueueEngine.Terms t = e.terms();
+        var terms = new QueueDryRun.Terms(
+                round(t.effectiveWaitMinutes()), round(t.headstartMinutes()), round(t.appointmentBonusMinutes()), round(t.escalationBonusMinutes()),
+                round(t.scoreAdjustmentMinutes()), t.adjustmentOverridden());
+        return new QueueDryRun.Item(e.ticketId(), e.tokenNumber(), e.state(), e.position(), classOf(e), e.maxWaitMinutes(), e.queuedAt(), terms, round(t.score()), e.escalated());
+    }
+
+    private static double round(double minutes) {
+        return Math.round(minutes * 100.0) / 100.0;
+    }
+
+    private static NameRef classOf(QueueReads.Entry e) {
+        return e.priorityClassId() == null ? null : new NameRef(e.priorityClassId(), e.priorityClassNames());
     }
 
     @PreAuthorize(STAFF)

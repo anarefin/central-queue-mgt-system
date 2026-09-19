@@ -173,8 +173,8 @@ An Organisation Admin (or System Admin) opens **Token numbering** from the home 
 for a service group or for one service. A service's own rule wins over its group's; with neither, the default applies
 (the service's prefix, separator `-`, 3 digits, restarting every day at 00:00). Each rule has:
 
-- **Prefix comes from**: the service, the service group, the priority class (until priority classes exist this
-  shows the service's prefix) or a fixed text of up to 8 letters and digits.
+- **Prefix comes from**: the service, the service group, the priority class (its prefix override, section 10; a class
+  without one, and the default class, leave the service's prefix) or a fixed text of up to 8 letters and digits.
 - **Separator**: any text up to 8 characters, or none. **Digits**: the least number of digits, 0 to 6; a longer number
   is never cut. **First number**: where each new sequence begins.
 - **Restart the sequence**: every day, every week (Monday), every month, or never, at a **reset time** in the site's
@@ -205,7 +205,44 @@ API, all under `/api/v1` and needing the `config:service_catalogue` permission: 
 whole (a field left out takes its default: prefix from the service group, first number 1, 3 digits, daily, 00:00, `-`),
 and `PUT` and `DELETE` answer with `affected_waiting_tickets`.
 
-## 10. Rotating the signing key
+## 10. Priority classes and queue ordering
+
+An Organisation Admin (or System Admin) opens **Priority and queue ordering** from the home screen. Everything on it
+needs the `config:priority_routing` permission, and every change is audited with before and after values.
+
+**Priority classes** are organisation-wide. Each has a name per language (English is required), a **head start** in
+minutes, an optional **maximum wait** in minutes and an optional **token prefix override** (up to 8 letters and digits,
+used when a numbering rule takes its prefix from the priority class). A head start is virtual waiting credited on
+arrival: a visitor with a 20 minute head start is served ahead of everyone who has waited less than 20 minutes, and
+behind everyone who has waited longer. The **default class** (Normal) always has a head start of 0, cannot be
+deactivated and takes no prefix; give it a maximum wait to protect ordinary tickets from waiting too long. A class is
+deactivated, never deleted: it is no longer offered at issue, and tickets that already carry it keep it.
+
+**The order.** Waiting tickets are ordered by score, highest first:
+`effective wait + head start + appointment bonus + escalation bonus + score adjustment`, all in minutes, so every
+ticket's score grows at the same rate. Ties go to the earlier ticket, then the lower id. A ticket whose real wait passes
+its class's maximum is **escalated**: it goes before every ticket that is not, however large their head start, and an
+escalated ticket's negative score adjustment is set aside. Among escalated tickets the one furthest past its maximum goes
+first. Escalated tickets are flagged in the queue snapshot (`escalated`), which the dashboard will use.
+
+**Ordering strategy** is chosen per service group and applies from the next read of the queue; no waiting ticket is
+changed. `weighted_wait` (the default) is the score above. `strict_priority` serves escalated tickets, then the class
+with the larger head start, then first come first served. `fifo` is creation order only, with no escalation. There is
+one logical queue per site and service: a ticket never moves between tables, only its state changes.
+
+**Dry run.** Pick a service and run the dry run to see every waiting ticket in the order the engine computes, with each
+term of its score, its class, its maximum wait and whether it is escalated or had its adjustment set aside. Another
+strategy can be tried without saving it. Nothing is called or changed.
+
+**Reception** chooses a priority class when it issues a ticket; leaving it on the default issues a normal ticket. The
+queue at the desk shows a waiting ticket's class and flags one past its maximum wait.
+
+API, all under `/api/v1`: `GET /priority-classes` (also for Reception, `ticket:issue`), `POST /priority-classes`,
+`PUT /priority-classes/{id}` (replaces the whole class), `POST /priority-classes/{id}/deactivate|activate`,
+`GET|PUT /service-groups/{id}/routing-strategy` and `GET /queues/{serviceId}/dry-run[?strategy=]`. `POST /tickets`
+takes an optional `priority_class_id`; an unknown or deactivated class is refused with `validation_failed`.
+
+## 11. Rotating the signing key
 
 ```
 docker compose -f deploy/compose.yaml run --rm backend --spring.profiles.active=rotate-keys

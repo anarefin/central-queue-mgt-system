@@ -26,6 +26,7 @@ class TicketViews {
                 zone,
                 t.visitId(),
                 t.originChannel(),
+                t.priorityClassId() == null ? null : new NameRef(t.priorityClassId(), t.priorityClassNames()),
                 queues.positionOf(t.id()),
                 null, // the estimate arrives with wait estimation (FR-QUE-040..042)
                 t.issuedAt(),

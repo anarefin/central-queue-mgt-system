@@ -6,9 +6,11 @@ import java.util.UUID;
 
 /**
  * The body of {@code POST /tickets}. {@code origin_channel} defaults to the caller's channel; {@code occurred_at} is the
- * device's own time of the request and defaults to the server's.
+ * device's own time of the request and defaults to the server's; {@code priority_class_id} is the Priority class staff
+ * assign, and its absence means the default (normal) class.
  */
 public record IssueTicketRequest(
         @JsonProperty("service_id") UUID serviceId,
         @JsonProperty("origin_channel") String originChannel,
-        @JsonProperty("occurred_at") Instant occurredAt) {}
+        @JsonProperty("occurred_at") Instant occurredAt,
+        @JsonProperty("priority_class_id") UUID priorityClassId) {}

@@ -6,14 +6,14 @@
 
 **Status:** ready-for-agent
 
-- [ ] Priority classes with name, Head start minutes (normal = 0), optional max wait, optional prefix override (FR-QUE-010, ADR-0003)
-- [ ] Score = effective wait + Head start + appointment bonus + Escalation bonus + Score adjustment; ties by creation time then id (FR-QUE-020)
-- [ ] Strategies `weighted_wait`, `strict_priority`, `fifo` selectable per Service group (FR-QUE-021)
-- [ ] Escalation on real wait past max wait overrides negative Score adjustments; flagged for the dashboard (FR-QUE-022, ADR-0004)
-- [ ] One logical queue per (Site, Service); Tickets never move tables (FR-QUE-001)
-- [ ] Engine is a pure component with no transport dependency (ADR-0001)
-- [ ] Dry-run endpoint and admin view show computed order with each term (FR-QUE-023)
-- [ ] Ordering of 500 waiting Tickets computes in under 50 ms (NFR-SCL-003)
-- [ ] Reception can choose a Priority class at issue
-- [ ] Engine test suite covers every strategy (NFR-MNT-004)
-- [ ] Definition of done (SRS §27.5): user-facing strings in both en and bn packs; every protected action permission-checked server-side; specified events and audit entries emitted; each requirement ID above mapped to a passing test in the traceability matrix
+- [x] Priority classes with name, Head start minutes (normal = 0), optional max wait, optional prefix override (FR-QUE-010, ADR-0003)
+- [x] Score = effective wait + Head start + appointment bonus + Escalation bonus + Score adjustment; ties by creation time then id (FR-QUE-020)
+- [x] Strategies `weighted_wait`, `strict_priority`, `fifo` selectable per Service group (FR-QUE-021)
+- [x] Escalation on real wait past max wait overrides negative Score adjustments; flagged for the dashboard (FR-QUE-022, ADR-0004)
+- [x] One logical queue per (Site, Service); Tickets never move tables (FR-QUE-001)
+- [x] Engine is a pure component with no transport dependency (ADR-0001)
+- [x] Dry-run endpoint and admin view show computed order with each term (FR-QUE-023)
+- [x] Ordering of 500 waiting Tickets computes in under 50 ms (NFR-SCL-003)
+- [x] Reception can choose a Priority class at issue
+- [x] Engine test suite covers every strategy (NFR-MNT-004)
+- [x] Definition of done (SRS §27.5): user-facing strings in both en and bn packs; every protected action permission-checked server-side; specified events and audit entries emitted; each requirement ID above mapped to a passing test in the traceability matrix

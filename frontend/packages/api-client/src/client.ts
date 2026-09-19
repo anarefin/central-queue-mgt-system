@@ -13,6 +13,7 @@ import type {
 } from "./catalogue";
 import type { Counter, CounterInput, Items, Site, SiteInput, Zone, ZoneInput } from "./hierarchy";
 import type { Channel } from "./catalogue";
+import type { PriorityClass, PriorityClassInput, QueueDryRun, QueueStrategy, RoutingStrategy } from "./priority";
 import type { NumberingPreview, NumberingRule, NumberingRuleChange, NumberingRuleInput, NumberingScope } from "./numbering";
 import type { IssueTicketInput, QueueSnapshot, SiteServices, Ticket } from "./tickets";
 
@@ -179,6 +180,25 @@ export class ApiClient {
   readonly queues = {
     snapshot: (serviceId: string, limit?: number) =>
       this.request<QueueSnapshot>("GET", `/queues/${serviceId}${limit === undefined ? "" : `?limit=${limit}`}`),
+    /** The queue in computed order with every term of every score (FR-QUE-023); `strategy` tries another one without saving it. */
+    dryRun: (serviceId: string, strategy?: QueueStrategy) =>
+      this.request<QueueDryRun>("GET", `/queues/${serviceId}/dry-run${strategy ? `?strategy=${strategy}` : ""}`),
+  };
+
+  /**
+   * Priority classes and the ordering strategy of Service groups (FR-QUE-010, FR-QUE-021). Classes are replaced as a
+   * whole and deactivated, never deleted, so tickets that carry one keep resolving. Reception may only `classes`.
+   */
+  readonly priority = {
+    classes: () => this.request<Items<PriorityClass>>("GET", "/priority-classes"),
+    createClass: (input: PriorityClassInput) => this.request<PriorityClass>("POST", "/priority-classes", input),
+    updateClass: (id: string, input: PriorityClassInput) => this.request<PriorityClass>("PUT", `/priority-classes/${id}`, input),
+    deactivateClass: (id: string, reason?: string) =>
+      this.request<PriorityClass>("POST", `/priority-classes/${id}/deactivate`, reason ? { reason } : undefined),
+    activateClass: (id: string) => this.request<PriorityClass>("POST", `/priority-classes/${id}/activate`),
+    strategy: (groupId: string) => this.request<RoutingStrategy>("GET", `/service-groups/${groupId}/routing-strategy`),
+    setStrategy: (groupId: string, strategy: QueueStrategy) =>
+      this.request<RoutingStrategy>("PUT", `/service-groups/${groupId}/routing-strategy`, { strategy }),
   };
 
   /**

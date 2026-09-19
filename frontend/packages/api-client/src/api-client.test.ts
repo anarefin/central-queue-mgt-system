@@ -282,6 +282,41 @@ describe("ApiClient service catalogue", () => {
     expect(JSON.parse(String((fetchImpl.mock.calls[2]?.[1] as RequestInit).body))).toEqual({ reset_boundary: "weekly", reset_time: "04:30" });
   });
 
+  it("maps priority classes, the ordering strategy of a group and the queue dry-run onto their paths (FR-QUE-010, FR-QUE-021, FR-QUE-023)", async () => {
+    const fetchImpl = vi.fn().mockImplementation(async () => json(200, { items: [] }));
+    const client = new ApiClient({ apiOrigin: "", fetch: fetchImpl as unknown as typeof fetch });
+
+    await client.priority.classes();
+    await client.priority.createClass({ name_i18n: { en: "Senior" }, headstart_minutes: 20, max_wait_minutes: 45, token_prefix_override: "SC" });
+    await client.priority.updateClass("c1", { name_i18n: { en: "Senior" }, headstart_minutes: 30 });
+    await client.priority.deactivateClass("c1", "retired");
+    await client.priority.deactivateClass("c1");
+    await client.priority.activateClass("c1");
+    await client.priority.strategy("g1");
+    await client.priority.setStrategy("g1", "strict_priority");
+    await client.queues.dryRun("v1");
+    await client.queues.dryRun("v1", "fifo");
+
+    const calls = fetchImpl.mock.calls.map(([url, init]) => `${(init as RequestInit).method} ${String(url).replace("/api/v1", "")}`);
+    expect(calls).toEqual([
+      "GET /priority-classes",
+      "POST /priority-classes",
+      "PUT /priority-classes/c1",
+      "POST /priority-classes/c1/deactivate",
+      "POST /priority-classes/c1/deactivate",
+      "POST /priority-classes/c1/activate",
+      "GET /service-groups/g1/routing-strategy",
+      "PUT /service-groups/g1/routing-strategy",
+      "GET /queues/v1/dry-run",
+      "GET /queues/v1/dry-run?strategy=fifo",
+    ]);
+    const body = (index: number) => JSON.parse(String((fetchImpl.mock.calls[index]?.[1] as RequestInit).body));
+    expect(body(1)).toEqual({ name_i18n: { en: "Senior" }, headstart_minutes: 20, max_wait_minutes: 45, token_prefix_override: "SC" });
+    expect(body(3)).toEqual({ reason: "retired" });
+    expect((fetchImpl.mock.calls[4]?.[1] as RequestInit).body).toBeUndefined();
+    expect(body(7)).toEqual({ strategy: "strict_priority" });
+  });
+
   it("makes a new idempotency key each time", () => {
     expect(newIdempotencyKey()).not.toBe(newIdempotencyKey());
   });

@@ -13,6 +13,8 @@ interface EntityRowProps {
   /** Non-blocking notices, such as a missing translation (FR-I18N-010). */
   warnings?: string[];
   active: boolean;
+  /** False for a record that must stay active, such as the default priority class; the button is left out. */
+  canDeactivate?: boolean;
   confirmText: string;
   onDeactivate: () => Promise<unknown>;
   onActivate: () => Promise<unknown>;
@@ -27,7 +29,7 @@ interface EntityRowProps {
  * One site, zone or counter in a list: its facts, and the actions the API allows. Deactivation asks first because it
  * also takes everything below the record; nothing here can delete (FR-CFG-001).
  */
-export function EntityRow({ name, heading, lines, warnings = [], active, confirmText, onDeactivate, onActivate, editForm, extra, selected }: EntityRowProps) {
+export function EntityRow({ name, heading, lines, warnings = [], active, canDeactivate = true, confirmText, onDeactivate, onActivate, editForm, extra, selected }: EntityRowProps) {
   const { t } = useI18n();
   const [editing, setEditing] = useState(false);
   const [confirming, setConfirming] = useState(false);
@@ -57,9 +59,11 @@ export function EntityRow({ name, heading, lines, warnings = [], active, confirm
               {t("admin.action.edit")}
             </Button>
             {active ? (
-              <Button variant="secondary" type="button" aria-label={`${t("admin.action.deactivate")} ${name}`} onClick={() => setConfirming(true)}>
-                {t("admin.action.deactivate")}
-              </Button>
+              canDeactivate && (
+                <Button variant="secondary" type="button" aria-label={`${t("admin.action.deactivate")} ${name}`} onClick={() => setConfirming(true)}>
+                  {t("admin.action.deactivate")}
+                </Button>
+              )
             ) : (
               <Button variant="secondary" type="button" aria-label={`${t("admin.action.activate")} ${name}`} disabled={busy} onClick={() => void run(onActivate)}>
                 {t("admin.action.activate")}

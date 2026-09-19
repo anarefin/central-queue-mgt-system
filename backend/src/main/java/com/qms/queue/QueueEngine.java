@@ -1,0 +1,100 @@
+package com.qms.queue;
+
+import java.time.Duration;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
+import java.util.UUID;
+
+/**
+ * The one place a queue's order is computed (SRS §10). It is a pure function of the waiting tickets, the strategy and
+ * the time: it reads no database, holds no state and knows no transport, so a site edge node can embed it later
+ * (ADR-0001). Every term is in minutes, so every waiting ticket's score grows at the same rate and a Priority class
+ * takes effect on arrival (ADR-0003).
+ *
+ * <p>{@code weighted_wait} orders by score, highest first. {@code strict_priority} and {@code fifo} do not use the
+ * score to order; the terms are still computed so the dry-run shows the same breakdown under every strategy.
+ * Escalation (FR-QUE-022) is part of {@code weighted_wait} and {@code strict_priority}; {@code fifo} is creation order
+ * and nothing else. Ties always break by earliest creation time, then by lowest id (FR-QUE-020).
+ */
+public final class QueueEngine {
+
+    /**
+     * Added to an escalated ticket so that it is served before every ticket that is not escalated, whatever the class
+     * or the Score adjustment of the others: a score below this needs more than a year of waiting.
+     */
+    public static final double ESCALATION_TIER_MINUTES = 1_000_000;
+
+    private static final double SECONDS_PER_MINUTE = 60.0;
+
+    private QueueEngine() {}
+
+    /**
+     * A waiting ticket as the engine sees it. {@code createdAt} is when the ticket was issued; {@code waitingSince} is
+     * when its real wait started (for a checked-in appointment the later of slot and check-in). {@code maxWaitMinutes}
+     * is null for a class without a maximum wait.
+     */
+    public record Candidate(
+            UUID id,
+            Instant createdAt,
+            Instant waitingSince,
+            int headstartMinutes,
+            Integer maxWaitMinutes,
+            double appointmentBonusMinutes,
+            int scoreAdjustmentMinutes) {}
+
+    /**
+     * The terms of one ticket's score. {@code scoreAdjustmentMinutes} is what was applied: an escalated ticket's
+     * negative adjustment is overridden to 0 ({@code adjustmentOverridden}); its {@code escalationBonusMinutes} is the
+     * escalation tier plus the minutes it has waited beyond its maximum.
+     */
+    public record Terms(
+            double effectiveWaitMinutes,
+            double headstartMinutes,
+            double appointmentBonusMinutes,
+            double escalationBonusMinutes,
+            double scoreAdjustmentMinutes,
+            boolean escalated,
+            boolean adjustmentOverridden) {
+
+        public double score() {
+            return effectiveWaitMinutes + headstartMinutes + appointmentBonusMinutes + escalationBonusMinutes + scoreAdjustmentMinutes;
+        }
+    }
+
+    /** A candidate with its terms and its 1-based place in the order. */
+    public record Scored(Candidate ticket, Terms terms, int position) {}
+
+    /** The terms of one ticket at {@code now}. */
+    public static Terms terms(Candidate ticket, Instant now) {
+        double wait = Math.max(0, Duration.between(ticket.waitingSince(), now).toMillis() / 1000.0 / SECONDS_PER_MINUTE);
+        Integer max = ticket.maxWaitMinutes();
+        boolean escalated = max != null && wait > max;
+        double escalation = escalated ? ESCALATION_TIER_MINUTES + (wait - max) : 0;
+        int adjustment = ticket.scoreAdjustmentMinutes();
+        boolean overridden = escalated && adjustment < 0;
+        return new Terms(wait, ticket.headstartMinutes(), ticket.appointmentBonusMinutes(), escalation, overridden ? 0 : adjustment, escalated, overridden);
+    }
+
+    /** The tickets in the order they will be called, each with the terms that put it there. */
+    public static List<Scored> order(List<Candidate> candidates, QueueStrategy strategy, Instant now) {
+        List<Scored> scored = new ArrayList<>(candidates.size());
+        for (Candidate candidate : candidates) scored.add(new Scored(candidate, terms(candidate, now), 0));
+        scored.sort(comparator(strategy));
+        List<Scored> ordered = new ArrayList<>(scored.size());
+        for (int i = 0; i < scored.size(); i++) ordered.add(new Scored(scored.get(i).ticket(), scored.get(i).terms(), i + 1));
+        return ordered;
+    }
+
+    private static Comparator<Scored> comparator(QueueStrategy strategy) {
+        Comparator<Scored> creation = Comparator.<Scored, Instant>comparing(s -> s.ticket().createdAt()).thenComparing(s -> s.ticket().id());
+        return switch (strategy) {
+            case WEIGHTED_WAIT -> Comparator.<Scored>comparingDouble(s -> s.terms().score()).reversed().thenComparing(creation);
+            case STRICT_PRIORITY -> Comparator.<Scored, Boolean>comparing(s -> !s.terms().escalated())
+                    .thenComparing(Comparator.<Scored>comparingInt(s -> s.ticket().headstartMinutes()).reversed())
+                    .thenComparing(creation);
+            case FIFO -> creation;
+        };
+    }
+}

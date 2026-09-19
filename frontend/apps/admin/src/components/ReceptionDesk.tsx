@@ -1,9 +1,9 @@
 "use client";
 
-import { ApiRequestError, newIdempotencyKey, type QueueSnapshot, type SiteServices, type Ticket } from "@qms/api-client";
+import { ApiRequestError, newIdempotencyKey, type PriorityClass, type QueueSnapshot, type SiteServices, type Ticket } from "@qms/api-client";
 import { formatTokenNumber } from "@qms/i18n";
 import { useI18n } from "@qms/i18n/react";
-import { Button, Card, ErrorAlert } from "@qms/ui";
+import { Button, Card, ErrorAlert, SelectField } from "@qms/ui";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { describeError, localisedName } from "../lib/admin-support";
 import { useAuth } from "../lib/auth";
@@ -16,7 +16,8 @@ const REFUSALS = new Set(["service_inactive", "channel_not_allowed", "appointmen
  * The reception desk (SRS §8.3): choose a service, issue a walk-in ticket, read the token number, place and secret to the
  * visitor, and watch the service's queue. The screen only asks; the API checks the permission and the site
  * (FR-CFG-103). Each issuing action has one idempotency key that it keeps until the API has answered, so pressing the
- * button again after a lost response returns the same ticket instead of a second one (SRS §20.1).
+ * button again after a lost response returns the same ticket instead of a second one (SRS §20.1). Reception may give
+ * the ticket a Priority class (FR-QUE-011); leaving it on the default is the normal class.
  */
 export function ReceptionDesk() {
   const { t, language } = useI18n();
@@ -27,12 +28,16 @@ export function ReceptionDesk() {
   const [services, setServices] = useState<SiteServices | null>(null);
   const [servicesError, setServicesError] = useState<unknown>(null);
   const [selected, setSelected] = useState<string>("");
+  const [classes, setClasses] = useState<PriorityClass[] | null>(null);
+  const [classesError, setClassesError] = useState<unknown>(null);
+  /** The chosen Priority class; empty is the default (normal) class, which is sent as no class at all. */
+  const [priority, setPriority] = useState<string>("");
   const [queue, setQueue] = useState<QueueSnapshot | null>(null);
   const [queueError, setQueueError] = useState<unknown>(null);
   const [issued, setIssued] = useState<Ticket | null>(null);
   const [issuing, setIssuing] = useState(false);
   const [issueError, setIssueError] = useState<string | null>(null);
-  const pending = useRef<{ service: string; key: string } | null>(null);
+  const pending = useRef<{ request: string; key: string } | null>(null);
 
   const loadServices = useCallback(async () => {
     if (!client || !siteId) return;
@@ -62,17 +67,38 @@ export function ReceptionDesk() {
   }, [loadServices]);
 
   useEffect(() => {
+    if (!client) return;
+    client.priority.classes().then(
+      (result) => {
+        setClasses(result.items);
+        setClassesError(null);
+      },
+      (cause: unknown) => setClassesError(cause),
+    );
+  }, [client]);
+
+  useEffect(() => {
     setQueue(null);
     if (selected) void loadQueue(selected);
   }, [selected, loadQueue]);
 
   async function issue() {
     if (!client || !selected) return;
-    if (pending.current?.service !== selected) pending.current = { service: selected, key: newIdempotencyKey() };
+    // A different service or class is a different request, so it gets its own key.
+    const request = `${selected}|${priority}`;
+    if (pending.current?.request !== request) pending.current = { request, key: newIdempotencyKey() };
     setIssuing(true);
     setIssueError(null);
     try {
-      const ticket = await client.tickets.issue({ service_id: selected, origin_channel: "reception", occurred_at: new Date().toISOString() }, pending.current.key);
+      const ticket = await client.tickets.issue(
+        {
+          service_id: selected,
+          origin_channel: "reception",
+          occurred_at: new Date().toISOString(),
+          ...(priority === "" ? {} : { priority_class_id: priority }),
+        },
+        pending.current.key,
+      );
       pending.current = null;
       setIssued(ticket);
       await Promise.all([loadServices(), loadQueue(selected)]);
@@ -99,6 +125,14 @@ export function ReceptionDesk() {
   const defaultLanguage = services?.default_language ?? "";
   const nameOf = (names: Record<string, string>) => localisedName(names, language, defaultLanguage);
   const selectedService = services?.items.find((s) => s.id === selected) ?? null;
+  const defaultClassId = classes?.find((c) => c.is_default)?.id;
+  // The default class first and always available; the others only while active.
+  const classOptions = (all: PriorityClass[]) => [
+    ...all.filter((c) => c.is_default).map((c) => ({ value: "", label: nameOf(c.name_i18n) })),
+    ...all
+      .filter((c) => !c.is_default && c.active)
+      .map((c) => ({ value: c.id, label: t("reception.priority.option", { name: nameOf(c.name_i18n), minutes: c.headstart_minutes }) })),
+  ];
 
   return (
     <div className="qms-stack">
@@ -117,6 +151,16 @@ export function ReceptionDesk() {
             </label>
           ))}
         </fieldset>
+        {classesError !== null && <ErrorAlert>{describeError(t, classesError)}</ErrorAlert>}
+        {classes && (
+          <SelectField
+            id="reception-priority"
+            label={t("reception.priority.label")}
+            value={priority}
+            onChange={(event) => setPriority(event.target.value)}
+            options={classOptions(classes)}
+          />
+        )}
         {issueError !== null && <ErrorAlert>{issueError}</ErrorAlert>}
         <Button type="button" disabled={!selected || issuing} onClick={issue}>
           {t(issuing ? "reception.issuing" : "reception.issue")}
@@ -147,7 +191,9 @@ export function ReceptionDesk() {
                         <strong>{formatTokenNumber(entry.token_number)}</strong>
                         <span className="qms-muted">
                           {t(`reception.state.${entry.state}`)} · {t("reception.queue.position", { position: entry.position })}
+                          {entry.priority_class && entry.priority_class.id !== defaultClassId && <> · {nameOf(entry.priority_class.name_i18n)}</>}
                         </span>
+                        {entry.escalated && <span className="qms-warning">{t("reception.queue.escalated")}</span>}
                       </li>
                     ))}
                   </ol>
@@ -172,6 +218,7 @@ function IssuedTicket({ ticket, nameOf }: { ticket: Ticket; nameOf: (names: Reco
         {formatTokenNumber(ticket.token_number)}
       </p>
       <p>{t("reception.result.service", { service: nameOf(ticket.service.name_i18n) })}</p>
+      {ticket.priority_class && <p>{t("reception.result.priority", { name: nameOf(ticket.priority_class.name_i18n) })}</p>}
       <p>
         {zone === null
           ? t("reception.result.noZone")

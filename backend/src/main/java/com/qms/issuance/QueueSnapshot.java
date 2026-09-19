@@ -13,11 +13,14 @@ public record QueueSnapshot(
         @JsonProperty("estimated_wait_minutes") EstimatedWait estimatedWait,
         List<Entry> tickets) {
 
+    /** {@code escalated} flags a ticket past its class's maximum wait, for the dashboard (FR-QUE-022). */
     public record Entry(
             UUID id,
             @JsonProperty("token_number") String tokenNumber,
             String state,
             int position,
             @JsonProperty("origin_channel") String originChannel,
-            @JsonProperty("queued_at") Instant queuedAt) {}
+            @JsonProperty("queued_at") Instant queuedAt,
+            @JsonProperty("priority_class") NameRef priorityClass,
+            boolean escalated) {}
 }

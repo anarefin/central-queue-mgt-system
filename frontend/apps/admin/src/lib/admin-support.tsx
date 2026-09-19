@@ -30,6 +30,11 @@ const CATALOGUE_FIELDS = new Set([
   "reset_boundary",
   "reset_time",
   "separator",
+  "headstart_minutes",
+  "max_wait_minutes",
+  "token_prefix_override",
+  "strategy",
+  "priority_class_id",
 ]);
 
 /** A localised sentence for a failed call; a validation failure also names the fields to check (SRS §20.3). */

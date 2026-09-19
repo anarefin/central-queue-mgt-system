@@ -160,3 +160,21 @@ body {
   flex: 1 1 auto;
   min-inline-size: 0;
 }
+
+/* A wide table scrolls inside its card instead of stretching the page. */
+.qms-table-scroll {
+  overflow-x: auto;
+}
+
+.qms-table {
+  inline-size: 100%;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+
+.qms-table th,
+.qms-table td {
+  padding: 0.4rem 0.6rem;
+  border-block-end: 1px solid var(--qms-color-border);
+  text-align: start;
+}

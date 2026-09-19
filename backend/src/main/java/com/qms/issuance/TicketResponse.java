@@ -20,6 +20,7 @@ public record TicketResponse(
         ZoneRef zone,
         @JsonProperty("visit_id") UUID visitId,
         @JsonProperty("origin_channel") String originChannel,
+        @JsonProperty("priority_class") NameRef priorityClass,
         Integer position,
         @JsonProperty("estimated_wait_minutes") EstimatedWait estimatedWait,
         @JsonProperty("issued_at") Instant issuedAt,
@@ -28,6 +29,6 @@ public record TicketResponse(
         @JsonInclude(JsonInclude.Include.NON_NULL) String secret) {
 
     TicketResponse withSecret(String secret) {
-        return new TicketResponse(id, tokenNumber, state, service, serviceGroup, siteId, zone, visitId, originChannel, position, estimatedWait, issuedAt, queuedAt, version, secret);
+        return new TicketResponse(id, tokenNumber, state, service, serviceGroup, siteId, zone, visitId, originChannel, priorityClass, position, estimatedWait, issuedAt, queuedAt, version, secret);
     }
 }

@@ -7,5 +7,12 @@ import java.util.UUID;
  * A request to issue one ticket, independent of the channel it came through (SRS §8.5). Whoever adapts a channel
  * (reception now; kiosk, mobile and appointment check-in later) authenticates its caller, then builds this.
  * {@code deviceTime} is when the originating device says it happened; it is recorded next to the server's time.
+ * {@code priorityClassId} is the class staff chose (FR-QUE-011), or null for the default class.
  */
-public record IssueCommand(UUID serviceId, String originChannel, UUID actorId, ActorType actorType, Instant deviceTime) {}
+public record IssueCommand(UUID serviceId, String originChannel, UUID actorId, ActorType actorType, Instant deviceTime, UUID priorityClassId) {
+
+    /** A ticket of the default class. */
+    public IssueCommand(UUID serviceId, String originChannel, UUID actorId, ActorType actorType, Instant deviceTime) {
+        this(serviceId, originChannel, actorId, actorType, deviceTime, null);
+    }
+}

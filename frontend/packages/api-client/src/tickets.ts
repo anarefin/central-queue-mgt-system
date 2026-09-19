@@ -44,6 +44,8 @@ export interface Ticket {
   zone: TicketZone | null;
   visit_id: string;
   origin_channel: Channel;
+  /** The Priority class the ticket queues under; the API names the default (normal) class for a ticket without one. */
+  priority_class: NameRef | null;
   /** Null once the ticket has left the queue. */
   position: number | null;
   estimated_wait_minutes: EstimatedWait | null;
@@ -60,6 +62,8 @@ export interface IssueTicketInput {
   origin_channel?: Channel;
   /** When the device says the request happened (ISO 8601); defaults to the server's time. */
   occurred_at?: string;
+  /** The Priority class staff assign (FR-QUE-011); leave it out for the default (normal) class. */
+  priority_class_id?: string;
 }
 
 export interface QueuedTicket {
@@ -69,6 +73,9 @@ export interface QueuedTicket {
   position: number;
   origin_channel: Channel;
   queued_at: string;
+  priority_class: NameRef | null;
+  /** Past its class's maximum wait (FR-QUE-022). */
+  escalated: boolean;
 }
 
 export interface QueueSnapshot {

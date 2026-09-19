@@ -3,6 +3,7 @@ package com.qms.issuance;
 import com.qms.audit.AuditEvent;
 import com.qms.audit.AuditWriter;
 import com.qms.issuance.TicketRepository.NewTicket;
+import com.qms.issuance.TicketRepository.PriorityClassRef;
 import com.qms.issuance.TicketRepository.ServiceTarget;
 import com.qms.issuance.TokenNumbering.Period;
 import com.qms.platform.ApiException;
@@ -20,6 +21,7 @@ import java.time.ZoneId;
 import java.util.Base64;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.springframework.context.annotation.Profile;
@@ -83,10 +85,11 @@ public class IssuanceService {
         ServiceTarget target = tickets.serviceTarget(command.serviceId()).orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND));
         if (command.actorType() == ActorType.STAFF) scope.requireSite(target.siteId());
         requireIssuable(target, command.originChannel());
+        PriorityClassRef priority = command.priorityClassId() == null ? null : requireIssuableClass(command.priorityClassId());
 
         Instant now = clock.instant();
         NumberingSpec rule = numbering.effective(target.serviceId(), target.groupId());
-        String prefix = rule.prefix(target.tokenPrefix(), target.groupPrefix());
+        String prefix = rule.prefix(target.tokenPrefix(), target.groupPrefix(), priority == null ? null : priority.prefixOverride());
         Period period = TokenNumbering.period(now, ZoneId.of(target.timezone()), rule.boundary(), rule.resetTime());
         resets.open(target.siteId(), prefix, period, rule, NumberingResets.ISSUANCE, now);
         String resetKey = period.key();
@@ -98,7 +101,7 @@ public class IssuanceService {
         tickets.insertVisit(visitId, target.siteId(), now);
         UUID ticketId = UUID.randomUUID();
         tickets.insertTicket(new NewTicket(
-                ticketId, tokenNumber, sequence, resetKey, target, tickets.waitingZone(target.serviceId()), visitId, command.originChannel(), now, hash(secret)));
+                ticketId, tokenNumber, sequence, resetKey, target, tickets.waitingZone(target.serviceId()), visitId, command.originChannel(), now, hash(secret), command.priorityClassId()));
         events.append(new TicketEvents.Transition(
                 ticketId,
                 ISSUED,
@@ -107,12 +110,29 @@ public class IssuanceService {
                 command.actorId(),
                 command.actorType().wire(),
                 null,
-                Map.of("origin_channel", command.originChannel(), "token_number", tokenNumber),
+                eventPayload(command, tokenNumber),
                 command.deviceTime() == null ? now : command.deviceTime(),
                 now));
-        audit.record(AuditEvent.of(ISSUED, "ticket", ticketId).withAfter(snapshot(ticketId, tokenNumber, target, command.originChannel(), visitId)));
+        audit.record(AuditEvent.of(ISSUED, "ticket", ticketId).withAfter(snapshot(ticketId, tokenNumber, target, command.originChannel(), visitId, command.priorityClassId())));
 
         return views.of(tickets.ticket(ticketId).orElseThrow()).withSecret(secret);
+    }
+
+    /** A class staff choose must exist and be active; the default class is what no choice means, so it needs no id. */
+    private PriorityClassRef requireIssuableClass(UUID id) {
+        PriorityClassRef priority = tickets.priorityClass(id).orElseThrow(() -> new ApiException(ErrorCode.VALIDATION_FAILED, Map.of("fields", List.of(Map.of("field", "priority_class_id", "code", "not_found")))));
+        if (!priority.active()) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, Map.of("fields", List.of(Map.of("field", "priority_class_id", "code", "inactive"))));
+        }
+        return priority;
+    }
+
+    private static Map<String, Object> eventPayload(IssueCommand command, String tokenNumber) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("origin_channel", command.originChannel());
+        payload.put("token_number", tokenNumber);
+        if (command.priorityClassId() != null) payload.put("priority_class_id", command.priorityClassId().toString());
+        return payload;
     }
 
     private static void requireIssuable(ServiceTarget target, String originChannel) {
@@ -127,7 +147,7 @@ public class IssuanceService {
         return new ApiException(ErrorCode.CONFLICT, Map.of("reason", reason));
     }
 
-    private static Map<String, Object> snapshot(UUID ticketId, String tokenNumber, ServiceTarget target, String originChannel, UUID visitId) {
+    private static Map<String, Object> snapshot(UUID ticketId, String tokenNumber, ServiceTarget target, String originChannel, UUID visitId, UUID priorityClassId) {
         Map<String, Object> after = new LinkedHashMap<>();
         after.put("token_number", tokenNumber);
         after.put("service_id", target.serviceId().toString());
@@ -135,6 +155,7 @@ public class IssuanceService {
         after.put("site_id", target.siteId().toString());
         after.put("visit_id", visitId.toString());
         after.put("origin_channel", originChannel);
+        if (priorityClassId != null) after.put("priority_class_id", priorityClassId.toString());
         return after;
     }
 

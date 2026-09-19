@@ -1,4 +1,4 @@
-import type { QueueSnapshot, SiteServices, Ticket } from "@qms/api-client";
+import type { PriorityClass, QueueSnapshot, SiteServices, Ticket } from "@qms/api-client";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -48,6 +48,27 @@ const SERVICES: SiteServices = {
   ],
 };
 
+function priorityClass(over: Partial<PriorityClass>): PriorityClass {
+  return {
+    id: "c0",
+    name_i18n: { en: "Normal", bn: "সাধারণ" },
+    headstart_minutes: 0,
+    max_wait_minutes: null,
+    token_prefix_override: null,
+    is_default: false,
+    active: true,
+    created_at: STAMP,
+    updated_at: STAMP,
+    ...over,
+  };
+}
+
+const CLASSES: PriorityClass[] = [
+  priorityClass({ is_default: true }),
+  priorityClass({ id: "c1", name_i18n: { en: "Senior citizen", bn: "বয়স্ক নাগরিক" }, headstart_minutes: 20 }),
+  priorityClass({ id: "c2", name_i18n: { en: "Retired class" }, headstart_minutes: 90, active: false }),
+];
+
 function ticket(over: Partial<Ticket> = {}): Ticket {
   return {
     id: "t1",
@@ -59,6 +80,7 @@ function ticket(over: Partial<Ticket> = {}): Ticket {
     zone: { id: "z1", name: "Ground waiting", building_label: "Block A", floor_label: "1st" },
     visit_id: "vis1",
     origin_channel: "reception",
+    priority_class: { id: "c0", name_i18n: { bn: "সাধারণ", en: "Normal" } },
     position: 1,
     estimated_wait_minutes: null,
     issued_at: STAMP,
@@ -72,6 +94,7 @@ function ticket(over: Partial<Ticket> = {}): Ticket {
 interface Desk {
   waiting: Ticket[];
   services: SiteServices;
+  classes: PriorityClass[];
 }
 
 /** An in-memory API: an issued ticket joins the queue and the service's waiting count. */
@@ -80,6 +103,7 @@ function fakeApi(desk: Desk, extra: Routes = {}): Recorded[] {
     "POST /auth/refresh": () => json(200, TOKENS),
     "GET /auth/me": () => json(200, ME),
     "GET /sites/s1/services?channel=reception": () => json(200, desk.services),
+    "GET /priority-classes": () => json(200, { items: desk.classes }),
     "GET /queues/v1": () => {
       const snapshot: QueueSnapshot = {
         service: { id: "v1", name_i18n: { bn: "পরামর্শ", en: "Consultation" } },
@@ -93,6 +117,8 @@ function fakeApi(desk: Desk, extra: Routes = {}): Recorded[] {
           position: i + 1,
           origin_channel: w.origin_channel,
           queued_at: w.queued_at,
+          priority_class: w.priority_class,
+          escalated: false,
         })),
       };
       return json(200, snapshot);
@@ -107,7 +133,7 @@ function fakeApi(desk: Desk, extra: Routes = {}): Recorded[] {
   });
 }
 
-const fresh = (): Desk => ({ waiting: [], services: SERVICES });
+const fresh = (): Desk => ({ waiting: [], services: SERVICES, classes: CLASSES });
 
 beforeEach(() => router.replace.mockReset());
 afterEach(() => {
@@ -170,6 +196,89 @@ describe("reception desk (SRS §8.3)", () => {
     expect(within(queue).getByText("S-042")).toBeInTheDocument();
     expect(within(queue).getByText("Waiting · position 1")).toBeInTheDocument();
     expect(screen.getByRole("radio", { name: /Consultation/ }).closest("label")).toHaveTextContent("1 waiting");
+  });
+
+  it("lets reception give the ticket a priority class, which is sent to the API and shown on the result (FR-QUE-011)", async () => {
+    const calls = fakeApi(fresh(), {
+      "POST /tickets": (init) => {
+        const chosen = JSON.parse(String(init.body)).priority_class_id as string | undefined;
+        const name = chosen === "c1" ? { en: "Senior citizen", bn: "বয়স্ক নাগরিক" } : { en: "Normal", bn: "সাধারণ" };
+        return json(201, ticket({ position: chosen ? 1 : 4, priority_class: { id: chosen ?? "c0", name_i18n: name } }));
+      },
+    });
+    renderApp(<ReceptionDesk />);
+    await chooseConsultation();
+
+    const select = await screen.findByLabelText("Priority class");
+    expect(within(select).getAllByRole("option").map((o) => o.textContent)).toEqual(["Normal", "Senior citizen (head start 20 min)"]);
+    expect(select).toHaveValue("");
+    await userEvent.selectOptions(select, "Senior citizen (head start 20 min)");
+    await userEvent.click(screen.getByRole("button", { name: "Issue ticket" }));
+
+    const result = (await screen.findByText("Ticket issued")).closest("section")!;
+    expect(within(result).getByText("Priority class: Senior citizen")).toBeInTheDocument();
+    expect(JSON.parse(String(issuesOf(calls)[0]!.init.body))).toMatchObject({ service_id: "v1", priority_class_id: "c1" });
+  });
+
+  it("sends no class when reception leaves the default, and uses a new key when the class changes after an unknown outcome", async () => {
+    let attempts = 0;
+    const calls = fakeApi(fresh(), {
+      "POST /tickets": () => {
+        attempts += 1;
+        if (attempts === 1) throw new TypeError("connection lost");
+        return json(201, ticket());
+      },
+    });
+    renderApp(<ReceptionDesk />);
+    await chooseConsultation();
+    await userEvent.selectOptions(await screen.findByLabelText("Priority class"), "Senior citizen (head start 20 min)");
+    await userEvent.click(screen.getByRole("button", { name: "Issue ticket" }));
+    await screen.findByRole("alert");
+    await userEvent.selectOptions(screen.getByLabelText("Priority class"), "Normal");
+    await userEvent.click(screen.getByRole("button", { name: "Issue ticket" }));
+
+    await waitFor(() => expect(issuesOf(calls)).toHaveLength(2));
+    const [first, second] = issuesOf(calls);
+    expect(JSON.parse(String(first!.init.body)).priority_class_id).toBe("c1");
+    expect(JSON.parse(String(second!.init.body))).not.toHaveProperty("priority_class_id");
+    expect(keyOf(second)).not.toBe(keyOf(first));
+  });
+
+  it("names a waiting ticket's priority class and flags one past its maximum wait, but not the default class", async () => {
+    const desk = fresh();
+    desk.waiting = [
+      { ...ticket({ id: "w1", token_number: "S-001", secret: undefined }), priority_class: { id: "c0", name_i18n: { en: "Normal", bn: "সাধারণ" } } },
+      { ...ticket({ id: "w2", token_number: "S-002", secret: undefined }), priority_class: { id: "c1", name_i18n: { en: "Senior citizen", bn: "বয়স্ক নাগরিক" } } },
+    ];
+    fakeApi(desk, {
+      "GET /queues/v1": () =>
+        json(200, {
+          service: { id: "v1", name_i18n: { en: "Consultation" } },
+          site_id: "s1",
+          waiting_count: 2,
+          estimated_wait_minutes: null,
+          tickets: desk.waiting.map((w, i) => ({
+            id: w.id,
+            token_number: w.token_number,
+            state: w.state,
+            position: i + 1,
+            origin_channel: "reception",
+            queued_at: w.queued_at,
+            priority_class: w.priority_class,
+            escalated: w.id === "w1",
+          })),
+        }),
+    });
+    renderApp(<ReceptionDesk />);
+    await chooseConsultation();
+
+    const queue = (await screen.findByText("2 waiting", { selector: "p" })).closest("section")!;
+    const [normal, senior] = within(queue).getAllByRole("listitem");
+    expect(normal).toHaveTextContent("S-001");
+    expect(normal).not.toHaveTextContent("Normal");
+    expect(normal).toHaveTextContent("past its maximum wait");
+    expect(senior).toHaveTextContent("Senior citizen");
+    expect(senior).not.toHaveTextContent("past its maximum wait");
   });
 
   it("says where to wait without a building", async () => {
