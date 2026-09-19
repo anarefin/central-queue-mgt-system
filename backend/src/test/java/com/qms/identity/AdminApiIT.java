@@ -457,6 +457,17 @@ class AdminApiIT {
         return "{\"type\":\"" + type + "\",\"payload\":{\"group_id\":\"" + group + "\"," + extra + "}}";
     }
 
+    /** A real service group with its team, created once, for approvals that are applied when approved. */
+    private void ensureServiceGroup(UUID group) {
+        if (jdbc.queryForObject("SELECT count(*) FROM service_group WHERE id = ?", Integer.class, group) > 0) return;
+        UUID site = UUID.randomUUID();
+        jdbc.update(
+                "INSERT INTO site (id, name, code, timezone, address, default_language, enabled_languages) VALUES (?, 'Approval site', ?, 'Asia/Dhaka', 'x', 'en', '[\"en\"]'::jsonb)",
+                site, "AP-" + site);
+        jdbc.update("INSERT INTO service_group (id, site_id, name_i18n, token_prefix) VALUES (?, ?, '{\"en\":\"Group\"}'::jsonb, 'G')", group, site);
+        jdbc.update("INSERT INTO team (id, service_group_id, name) VALUES (?, ?, 'Group')", UUID.randomUUID(), group);
+    }
+
     @Test
     void aTeamAdminRequestsAndAnOrgAdminDecidesWithNoRoleElevationAndNothingTakingEffectEarly() throws Exception {
         TestUser teamAdmin = user("team", new RoleAssignment(Role.TEAM_ADMIN, Set.of(), Set.of(GROUP_1)));
@@ -464,8 +475,12 @@ class AdminApiIT {
         String teamToken = token(teamAdmin);
         String adminToken = token(orgAdmin);
         int rolesBefore = roles.findByUser(teamAdmin.id()).size();
+        // Approving a team_member request applies it (ticket 06), so it must name a real group and a real user.
+        ensureServiceGroup(GROUP_1);
+        TestUser member = user("member", org(Role.AGENT));
 
-        MvcResult requested = call(post("/api/v1/approvals"), teamToken, approvalBody("team_member", GROUP_1));
+        MvcResult requested = call(post("/api/v1/approvals"), teamToken,
+                "{\"type\":\"team_member\",\"payload\":{\"group_id\":\"" + GROUP_1 + "\",\"user_id\":\"" + member.id() + "\"}}");
 
         assertThat(status(requested)).isEqualTo(201);
         String id = JsonPath.read(requested.getResponse().getContentAsString(), "$.id");

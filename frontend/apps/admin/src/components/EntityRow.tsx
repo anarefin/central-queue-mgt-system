@@ -10,6 +10,8 @@ interface EntityRowProps {
   name: string;
   heading: ReactNode;
   lines: string[];
+  /** Non-blocking notices, such as a missing translation (FR-I18N-010). */
+  warnings?: string[];
   active: boolean;
   confirmText: string;
   onDeactivate: () => Promise<unknown>;
@@ -25,7 +27,7 @@ interface EntityRowProps {
  * One site, zone or counter in a list: its facts, and the actions the API allows. Deactivation asks first because it
  * also takes everything below the record; nothing here can delete (FR-CFG-001).
  */
-export function EntityRow({ name, heading, lines, active, confirmText, onDeactivate, onActivate, editForm, extra, selected }: EntityRowProps) {
+export function EntityRow({ name, heading, lines, warnings = [], active, confirmText, onDeactivate, onActivate, editForm, extra, selected }: EntityRowProps) {
   const { t } = useI18n();
   const [editing, setEditing] = useState(false);
   const [confirming, setConfirming] = useState(false);
@@ -41,6 +43,11 @@ export function EntityRow({ name, heading, lines, active, confirmText, onDeactiv
         {lines.map((line, index) => (
           <span className="qms-muted" key={index}>
             {line}
+          </span>
+        ))}
+        {warnings.map((warning, index) => (
+          <span className="qms-warning" role="status" key={index}>
+            {warning}
           </span>
         ))}
         <div className="qms-row">

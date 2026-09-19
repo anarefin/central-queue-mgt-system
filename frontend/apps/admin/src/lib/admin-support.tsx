@@ -7,6 +7,24 @@ import { SHIPPED_LANGUAGES } from "@qms/i18n";
 import { StatusBadge } from "@qms/ui";
 import { useCallback, useEffect, useState } from "react";
 
+/** Field names of the service catalogue; their labels live under `catalogue.fields`, the rest under `sites.fields`. */
+const CATALOGUE_FIELDS = new Set([
+  "name_i18n",
+  "label_i18n",
+  "token_prefix",
+  "display_order",
+  "expected_minutes",
+  "sla_wait_minutes",
+  "channels",
+  "icon",
+  "visitor_identifier",
+  "booking_mode",
+  "preference_weight",
+  "counter_id",
+  "code",
+  "user_id",
+]);
+
 /** A localised sentence for a failed call; a validation failure also names the fields to check (SRS §20.3). */
 export function describeError(t: I18n["t"], cause: unknown): string {
   const code = cause instanceof ApiRequestError ? cause.code : "network_error";
@@ -15,7 +33,7 @@ export function describeError(t: I18n["t"], cause: unknown): string {
   const fields = cause.body?.details?.fields;
   if (!Array.isArray(fields)) return message;
   const names = [...new Set(fields.map((f: { field?: string }) => f.field).filter((f): f is string => Boolean(f)))].map((f) =>
-    t(`sites.fields.${f}`),
+    t(CATALOGUE_FIELDS.has(f) ? `catalogue.fields.${f}` : `sites.fields.${f}`),
   );
   return names.length > 0 ? `${message} ${t("sites.invalidFields", { fields: names.join(", ") })}` : message;
 }
@@ -76,4 +94,9 @@ export function ActiveBadge({ active }: { active: boolean }) {
 
 export function languageName(t: I18n["t"], code: string): string {
   return SHIPPED_LANGUAGES.includes(code) ? t(`languages.${code}`) : code;
+}
+
+/** A name in the reader's language, falling back to the site default, never to a raw key or nothing (FR-I18N-011). */
+export function localisedName(names: Record<string, string>, language: string, defaultLanguage: string): string {
+  return names[language] ?? names[defaultLanguage] ?? Object.values(names)[0] ?? "";
 }

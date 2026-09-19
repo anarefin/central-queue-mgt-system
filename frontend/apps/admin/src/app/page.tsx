@@ -32,7 +32,12 @@ export default function Home() {
         </div>
         {user && <p className="qms-muted">{user.roles.map((role) => t(`roles.${role}`)).join(", ")}</p>}
         {/* A convenience only: the API decides who may configure sites (FR-CFG-103). */}
-        {user?.roles.some((role) => role === "system_admin" || role === "org_admin") && <Link href="/sites/">{t("admin.home.sites")}</Link>}
+        {user?.roles.some((role) => role === "system_admin" || role === "org_admin") && (
+          <div className="qms-row">
+            <Link href="/sites/">{t("admin.home.sites")}</Link>
+            <Link href="/catalogue/">{t("admin.home.catalogue")}</Link>
+          </div>
+        )}
         <HealthPanel />
       </RequireAuth>
     </Page>

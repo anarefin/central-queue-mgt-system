@@ -1,7 +1,7 @@
 # Traceability matrix
 
 SRS §27.1: every requirement ID maps to at least one automated test or documented UAT step, and a requirement with no
-test is treated as not implemented. Covers tickets 01–05; later tickets append rows.
+test is treated as not implemented. Covers tickets 01–06; later tickets append rows.
 
 **Test types:** unit, integration (real PostgreSQL through Testcontainers, or a full Spring context), E2E, UAT, load,
 manual. **Status:** `passing` (the test ran green in the last full run), `partial` (only part of the requirement is
@@ -100,6 +100,32 @@ Paths: `B` = `backend/src/test/java/com/qms`, `F` = `frontend`.
 | FR-CFG-106 a site-scoped admin is limited to their own sites | §5.3 | integration | `IT#aSiteScopedAdminSeesAndChangesOnlyTheirOwnSites` | passing |
 | Definition of done §27.5 item 3, strings in both packs | §27.5 | unit | `F/packages/i18n/src/i18n.test.ts` (`English and Bangla have exactly the same keys`); `UI` (`renders every label in Bangla…`) | passing |
 | Definition of done §27.5 item 6, administrator guide | §27.5 | manual | `docs/admin-guide.md` section 7 | passing |
+
+## Ticket 06, service catalogue administration
+
+`IT` = `B/configuration/catalogue/CatalogueAdminIT`, `Rules` = `B/configuration/catalogue/CatalogueRulesTest`, `UI` =
+`F/apps/admin/src/components/CatalogueAdmin.test.tsx`.
+
+| Requirement ID | Section | Test type | Test reference | Status |
+|---|---|---|---|---|
+| Service groups per site: per-language names, token prefix, display order, active flag | §7.2, §18.2 | integration, unit | `IT#aServiceGroupCarriesPerLanguageNamesPrefixOrderAndActiveFlagAndIsAuditedWithItsTeam`, `IT#deactivatingAGroupDeactivatesItsServicesAndNothingActiveSitsUnderAnInactiveParent`; `UI` (`lists a site's service groups…`); `F/packages/api-client/src/api-client.test.ts` (catalogue paths) | passing |
+| FR-CFG-010 service: per-language name, group, token prefix, expected minutes, SLA wait, channels, active flag | §7.2 | integration, unit | `IT#aServiceCarriesEveryConfiguredFieldAndIsAuditedWithBeforeAndAfterValues`, `IT#invalidServiceFieldsAreRefusedWithTheFieldNamed`; `Rules#channelsAreKnownAndUniqueAndNoneGivenMeansEveryChannel`, `Rules#prefixesCodesMinutesWeightsAndChoicesAreBounded`; `UI` (`adds a service with prefix, times, channels…`) | passing |
+| FR-CFG-012 service display order and kiosk icon | §7.2 | integration, unit | `IT#aServiceCarriesEveryConfiguredFieldAndIsAuditedWithBeforeAndAfterValues` (list ordered by display order, icon set and cleared); `UI` (`adds a service with prefix, times, channels…`) | passing |
+| FR-CFG-013 visitor identifier not required, optional or mandatory | §7.2 | integration, unit | `IT#aServiceCarriesEveryConfiguredFieldAndIsAuditedWithBeforeAndAfterValues` (default `not_required`, change audited), `IT#invalidServiceFieldsAreRefusedWithTheFieldNamed`; `UI` (`adds a service with prefix, times, channels…`) | passing |
+| FR-CFG-014 appointment-only, walk-in-only or both | §7.2 | integration, unit | `IT#aServiceCarriesEveryConfiguredFieldAndIsAuditedWithBeforeAndAfterValues` (default `both`), `IT#invalidServiceFieldsAreRefusedWithTheFieldNamed`; `UI` (`adds a service with prefix, times, channels…`) | passing |
+| FR-CFG-011 counter and service links with preference weight (1 = primary) | §7.2 | integration, unit | `IT#servicesAreLinkedToCountersWithAPreferenceWeightThatCanBeChanged`, `IT#aCounterOfAnotherSiteOrAnInactiveCounterCannotBeLinked`; `Rules#prefixesCodesMinutesWeightsAndChoicesAreBounded`; `UI` (`links counters to a service with a preference weight and unlinks them`) | passing |
+| One Team per service group, with members | §3, §18.2 | integration | `IT#aServiceGroupCarriesPerLanguageNamesPrefixOrderAndActiveFlagAndIsAuditedWithItsTeam` (team created with the group, one per group), `IT#anOrgAdminChangesTheTeamDirectlyAndItIsAudited`; `UI` (`adds and removes team members directly…`) | passing |
+| FR-CFG-102, FR-CFG-107 a Team Admin's membership change goes through approval and takes effect only when approved | §5.3 | integration | `IT#aTeamAdminsMembershipChangeTakesEffectOnlyOnceAnOrgAdminApprovesIt` (pending changes nothing, a Team Admin can neither change directly nor approve, reject changes nothing, approved add and remove apply and are audited with the approval id, an unappliable approval stays pending) | passing |
+| FR-AGT-032 outcome codes per service, chosen on completion | §11.4 | integration, unit | `IT#outcomeCodesAreConfiguredPerServiceWithLocalisedLabelsAndOnlyEverDeactivated`; `UI` (`adds outcome codes with a label per language…`). Recording an outcome on completion arrives with the serving tickets | partial |
+| FR-AGT-033 outcome codes reportable and configurable without a code change | §11.4 | integration, unit | `IT#outcomeCodesAreConfiguredPerServiceWithLocalisedLabelsAndOnlyEverDeactivated` (created, relabelled and deactivated at run time; the code never changes, nothing is deleted); `UI` (same). The reports themselves arrive with the reporting tickets | partial |
+| FR-CFG-015 a service with tickets cannot be deleted, only deactivated | §7.2 | integration, unit | `IT#aServiceWithTicketsCannotBeDeletedOnlyDeactivatedAndAnUnusedOneGoesWithItsLinksAndCodes` (409 `conflict`, still resolves, deactivation allowed), `IT#theRealTicketCheckLooksAtTheTicketTableWhenThereIsOne` (the real check reads `ticket.service_id` once that table exists; no ticket table exists until issuance); `UI` (`explains that a service with tickets cannot be deleted…`, `deletes a service nobody has used…`) | passing |
+| FR-I18N-010 one input per enabled language; warn, do not block, on a missing translation | §17.2 | integration, unit | `IT#aMissingTranslationWarnsButNeverBlocksAndAMissingDefaultLanguageNameIsRefused`; `Rules#namesKeepTheSiteLanguageOrderDropBlanksAndNeedOnlyTheDefaultLanguage`, `Rules#aMissingTranslationIsAWarningButAMissingDefaultLanguageNameIsAnError`; `UI` (`shows one name input per enabled language, warns on a blank translation and still saves`, `lists a site's service groups…`) | passing |
+| FR-I18N-011 a missing translation falls back to the site default language | §17.2 | unit | `UI` (`lists a site's service groups…`: the Bangla name is shown in English when English is missing). The default-language name is required by the API (`IT#aMissingTranslationWarns…`) | passing |
+| FR-SEC-040 catalogue changes audited with before and after values | §25.5 | integration | `IT#aServiceGroupCarries…`, `IT#aServiceCarriesEvery…`, `IT#servicesAreLinkedToCountersWith…`, `IT#outcomeCodesAreConfigured…`, `IT#deactivatingAGroupDeactivates…` (`service_group.*`, `service.*`, `outcome_code.*`, `team.*`; cascades say why) | passing |
+| §5.2 `config:service_catalogue` (and `team_member:approve` for direct team changes) on every endpoint, server-side | §5.2 | integration | `IT#everyEndpointFollowsThePermissionMatrixForEveryRole`, `IT#permissionsAreEnforcedAtTheServiceLayerNotOnlyTheControllers`; `B/identity/ControllerSecurityTest#everyControllerMethodIsSecuredOrExplicitlyPublic` | passing |
+| FR-CFG-106 a site-scoped admin is limited to their own sites' catalogue | §5.3 | integration | `IT#aSiteScopedAdminManagesTheCatalogueOfTheirOwnSitesOnly` | passing |
+| Definition of done §27.5 item 3, strings in both packs | §27.5 | unit | `F/packages/i18n/src/i18n.test.ts` (`English and Bangla have exactly the same keys`); `UI` (`renders every label in Bangla…`) | passing |
+| Definition of done §27.5 item 6, administrator guide | §27.5 | manual | `docs/admin-guide.md` section 8 | passing |
 
 ## Notes
 

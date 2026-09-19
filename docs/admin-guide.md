@@ -1,8 +1,8 @@
 # Administrator guide (Phase 1 foundation)
 
-Covers what tickets 01–05 deliver: running the system, signing in, users and roles, approvals, the audit log, keys,
-language packs, and sites, zones and counters. It grows as later tickets add screens; today the Admin app has sign-in,
-sign-out, a health panel and the site, zone and counter screen. User, approval and audit administration is available
+Covers what tickets 01–06 deliver: running the system, signing in, users and roles, approvals, the audit log, keys,
+language packs, sites, zones and counters, and the service catalogue. It grows as later tickets add screens; today the
+Admin app has sign-in, sign-out, a health panel, the site, zone and counter screen and the service catalogue screen. User, approval and audit administration is available
 through the API (`/api/v1`).
 
 ## 1. Run the system
@@ -123,7 +123,51 @@ API, all under `/api/v1` and needing the `config:org_sites_zones` permission: `G
 `POST /counters/{id}/deactivate|activate`. `PATCH` leaves absent fields unchanged; an empty `building_label` or
 `location_note` clears it.
 
-## 8. Rotating the signing key
+## 8. Service catalogue
+
+An Organisation Admin or System Administrator defines what visitors can queue for at `/admin/catalogue/` (linked from
+the Admin home page): **Service group > Service**, the counters that serve each service, one team per group, and the
+outcome codes agents record. Pick a site first; a group belongs to one site.
+
+- **Service group** (a department or clinic): a name in each of the site's enabled languages, a token prefix of up to
+  eight letters or digits, a display order and an active flag. Each group gets its one **team** when it is created.
+- **Service**: a name per language, a token prefix, expected handling minutes, an SLA wait target in minutes, the
+  channels it can be issued through (kiosk, reception, mobile app, appointment check-in), an optional kiosk icon and a
+  display order, whether a visitor identifier is not required, optional or mandatory, and whether it takes appointments
+  only, walk-ins only or both. Deactivating a group deactivates its services; reactivating a group does not bring them
+  back. Nothing can be added to, or reactivated under, an inactive parent.
+- **Counters.** Open a service's Counters to link the counters of the same site that serve it, each with a
+  preference weight: 1 is the primary counter and a higher number a fallback. Weights can be changed and links removed.
+- **Outcome codes.** Open a service's Outcome codes to add the results an agent can record on completion: a code of
+  lower-case letters, digits and underscores (fixed once created, so reports keep their meaning) with a label per
+  language. They can be relabelled, reordered and deactivated at any time without a release; none can be deleted.
+- **Translations.** Every name and label has one input per enabled language. A blank translation only warns: it is saved
+  and the site's default language is shown in its place until you add it, and the list marks the record "Missing
+  translation". The site's default language must always have a text.
+- **Deleting.** A service can be deleted only while no ticket refers to it; once tickets exist, only deactivation is
+  allowed and the screen says so. An unused service is deleted together with its counter links and outcome codes.
+- **Team.** An Organisation Admin adds and removes team members directly on the Team screen. A **Team Admin's**
+  change is a request: they ask through `POST /api/v1/approvals` with `type` `team_member` and a payload of `group_id`
+  and `user_id` (add `"action": "remove"` to remove), it does nothing while pending, and an Organisation Admin
+  approving it applies it. A request that cannot be applied (for example the user has since been disabled) stays
+  pending and the approver sees why.
+- **Scope.** An Organisation Admin limited to some sites sees and changes only the catalogue of those sites. Every
+  change is checked on the server, never only on the screen.
+- **Audit.** Every change is recorded (`service_group.*`, `service.*`, `outcome_code.*`, `team.*`) with before and after
+  values; deactivations carry their reason and say when a parent caused them.
+
+API, all under `/api/v1` and needing the `config:service_catalogue` permission: `GET|POST /sites/{id}/service-groups`,
+`GET|PATCH /service-groups/{id}`, `POST /service-groups/{id}/deactivate|activate`, `GET|POST /service-groups/{id}/services`,
+`GET /service-groups/{id}/counters`, `GET|PATCH|DELETE /services/{id}` (delete is refused with `conflict` once tickets
+exist), `POST /services/{id}/deactivate|activate`,
+`GET /services/{id}/counters`, `PUT|DELETE /services/{id}/counters/{counterId}`, `GET|POST /services/{id}/outcome-codes`,
+`GET|PATCH /outcome-codes/{id}`, `POST /outcome-codes/{id}/deactivate|activate` and `GET /service-groups/{id}/team`.
+Direct team changes, `POST /service-groups/{id}/team/members` and `DELETE /service-groups/{id}/team/members/{userId}`,
+need `team_member:approve`. Names are objects keyed by language, `{"bn": "…", "en": "…"}`; responses list the enabled
+languages still missing under `missing_translations`. `PATCH` leaves absent fields unchanged and replaces `name_i18n`
+and `label_i18n` as a whole.
+
+## 9. Rotating the signing key
 
 ```
 docker compose -f deploy/compose.yaml run --rm backend --spring.profiles.active=rotate-keys

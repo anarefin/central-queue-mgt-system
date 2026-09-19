@@ -143,3 +143,78 @@ describe("ApiClient site hierarchy", () => {
     expect(JSON.parse(String((fetchImpl.mock.calls[7]?.[1] as RequestInit).body))).toEqual({ building_label: "" });
   });
 });
+
+describe("ApiClient service catalogue", () => {
+  it("maps groups, services, counter links, teams and outcome codes onto the REST paths (FR-CFG-010..015, FR-AGT-032)", async () => {
+    const fetchImpl = vi.fn().mockImplementation(async () => json(200, { items: [] }));
+    const client = new ApiClient({ apiOrigin: "", fetch: fetchImpl as unknown as typeof fetch });
+
+    await client.catalogue.groups("s1");
+    await client.catalogue.createGroup("s1", { name_i18n: { bn: "বহির্বিভাগ" }, token_prefix: "OPD" });
+    await client.catalogue.updateGroup("g1", { display_order: 2 });
+    await client.catalogue.deactivateGroup("g1", "closed");
+    await client.catalogue.activateGroup("g1");
+    await client.catalogue.services("g1");
+    await client.catalogue.createService("g1", {
+      name_i18n: { bn: "পরামর্শ" },
+      token_prefix: "CON",
+      expected_minutes: 12,
+      sla_wait_minutes: 30,
+      channels: ["kiosk"],
+      visitor_identifier: "mandatory",
+      booking_mode: "walk_in_only",
+    });
+    await client.catalogue.updateService("v1", { icon: "" });
+    await client.catalogue.deactivateService("v1");
+    await client.catalogue.activateService("v1");
+    await client.catalogue.deleteService("v1");
+    await client.catalogue.counterOptions("g1");
+    await client.catalogue.links("v1");
+    await client.catalogue.link("v1", "c1", 2);
+    await client.catalogue.link("v1", "c2");
+    await client.catalogue.unlink("v1", "c1");
+    await client.catalogue.outcomes("v1");
+    await client.catalogue.createOutcome("v1", { code: "resolved", label_i18n: { bn: "সমাধান" } });
+    await client.catalogue.updateOutcome("o1", { display_order: 1 });
+    await client.catalogue.deactivateOutcome("o1");
+    await client.catalogue.activateOutcome("o1");
+    await client.catalogue.team("g1");
+    await client.catalogue.addMember("g1", "u1");
+    await client.catalogue.removeMember("g1", "u1");
+    await client.users.list();
+
+    const calls = fetchImpl.mock.calls.map(([url, init]) => `${(init as RequestInit).method} ${String(url).replace("/api/v1", "")}`);
+    expect(calls).toEqual([
+      "GET /sites/s1/service-groups",
+      "POST /sites/s1/service-groups",
+      "PATCH /service-groups/g1",
+      "POST /service-groups/g1/deactivate",
+      "POST /service-groups/g1/activate",
+      "GET /service-groups/g1/services",
+      "POST /service-groups/g1/services",
+      "PATCH /services/v1",
+      "POST /services/v1/deactivate",
+      "POST /services/v1/activate",
+      "DELETE /services/v1",
+      "GET /service-groups/g1/counters",
+      "GET /services/v1/counters",
+      "PUT /services/v1/counters/c1",
+      "PUT /services/v1/counters/c2",
+      "DELETE /services/v1/counters/c1",
+      "GET /services/v1/outcome-codes",
+      "POST /services/v1/outcome-codes",
+      "PATCH /outcome-codes/o1",
+      "POST /outcome-codes/o1/deactivate",
+      "POST /outcome-codes/o1/activate",
+      "GET /service-groups/g1/team",
+      "POST /service-groups/g1/team/members",
+      "DELETE /service-groups/g1/team/members/u1",
+      "GET /users?limit=200",
+    ]);
+    const body = (index: number) => JSON.parse(String((fetchImpl.mock.calls[index]?.[1] as RequestInit).body));
+    expect(body(3)).toEqual({ reason: "closed" });
+    expect(body(13)).toEqual({ preference_weight: 2 });
+    expect((fetchImpl.mock.calls[14]?.[1] as RequestInit).body).toBeUndefined();
+    expect(body(22)).toEqual({ user_id: "u1" });
+  });
+});

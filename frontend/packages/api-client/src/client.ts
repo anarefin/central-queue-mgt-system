@@ -1,4 +1,16 @@
 import { ApiRequestError, isApiErrorCode, type ApiErrorBody } from "./errors";
+import type {
+  CounterLink,
+  CounterOption,
+  OutcomeCode,
+  OutcomeCodeInput,
+  ServiceEntry,
+  ServiceGroup,
+  ServiceGroupInput,
+  ServiceInput,
+  Team,
+  UserPage,
+} from "./catalogue";
 import type { Counter, CounterInput, Items, Site, SiteInput, Zone, ZoneInput } from "./hierarchy";
 
 export const API_BASE_PATH = "/api/v1";
@@ -104,6 +116,46 @@ export class ApiClient {
     update: (id: string, input: Partial<CounterInput>) => this.request<Counter>("PATCH", `/counters/${id}`, input),
     deactivate: (id: string, reason?: string) => this.request<Counter>("POST", `/counters/${id}/deactivate`, reason ? { reason } : undefined),
     activate: (id: string) => this.request<Counter>("POST", `/counters/${id}/activate`),
+  };
+
+  /**
+   * Service groups, services, counter links, teams and outcome codes (FR-CFG-010..015). A service is deleted only while
+   * no ticket refers to it; otherwise the API answers `conflict` and deactivating is the way out.
+   */
+  readonly catalogue = {
+    groups: (siteId: string) => this.request<Items<ServiceGroup>>("GET", `/sites/${siteId}/service-groups`),
+    createGroup: (siteId: string, input: ServiceGroupInput) => this.request<ServiceGroup>("POST", `/sites/${siteId}/service-groups`, input),
+    updateGroup: (id: string, input: Partial<ServiceGroupInput>) => this.request<ServiceGroup>("PATCH", `/service-groups/${id}`, input),
+    deactivateGroup: (id: string, reason?: string) =>
+      this.request<ServiceGroup>("POST", `/service-groups/${id}/deactivate`, reason ? { reason } : undefined),
+    activateGroup: (id: string) => this.request<ServiceGroup>("POST", `/service-groups/${id}/activate`),
+    services: (groupId: string) => this.request<Items<ServiceEntry>>("GET", `/service-groups/${groupId}/services`),
+    createService: (groupId: string, input: ServiceInput) => this.request<ServiceEntry>("POST", `/service-groups/${groupId}/services`, input),
+    updateService: (id: string, input: Partial<ServiceInput>) => this.request<ServiceEntry>("PATCH", `/services/${id}`, input),
+    deactivateService: (id: string, reason?: string) =>
+      this.request<ServiceEntry>("POST", `/services/${id}/deactivate`, reason ? { reason } : undefined),
+    activateService: (id: string) => this.request<ServiceEntry>("POST", `/services/${id}/activate`),
+    deleteService: (id: string) => this.request<void>("DELETE", `/services/${id}`),
+    counterOptions: (groupId: string) => this.request<Items<CounterOption>>("GET", `/service-groups/${groupId}/counters`),
+    links: (serviceId: string) => this.request<Items<CounterLink>>("GET", `/services/${serviceId}/counters`),
+    /** Links the counter, or changes an existing link's weight; the weight defaults to 1, the primary counter. */
+    link: (serviceId: string, counterId: string, preferenceWeight?: number) =>
+      this.request<CounterLink>("PUT", `/services/${serviceId}/counters/${counterId}`, preferenceWeight === undefined ? undefined : { preference_weight: preferenceWeight }),
+    unlink: (serviceId: string, counterId: string) => this.request<void>("DELETE", `/services/${serviceId}/counters/${counterId}`),
+    outcomes: (serviceId: string) => this.request<Items<OutcomeCode>>("GET", `/services/${serviceId}/outcome-codes`),
+    createOutcome: (serviceId: string, input: OutcomeCodeInput) => this.request<OutcomeCode>("POST", `/services/${serviceId}/outcome-codes`, input),
+    updateOutcome: (id: string, input: Partial<Omit<OutcomeCodeInput, "code">>) => this.request<OutcomeCode>("PATCH", `/outcome-codes/${id}`, input),
+    deactivateOutcome: (id: string, reason?: string) =>
+      this.request<OutcomeCode>("POST", `/outcome-codes/${id}/deactivate`, reason ? { reason } : undefined),
+    activateOutcome: (id: string) => this.request<OutcomeCode>("POST", `/outcome-codes/${id}/activate`),
+    team: (groupId: string) => this.request<Team>("GET", `/service-groups/${groupId}/team`),
+    /** A direct change by an Org Admin; a Team Admin asks through an approval request instead (FR-CFG-102). */
+    addMember: (groupId: string, userId: string) => this.request<Team>("POST", `/service-groups/${groupId}/team/members`, { user_id: userId }),
+    removeMember: (groupId: string, userId: string) => this.request<Team>("DELETE", `/service-groups/${groupId}/team/members/${userId}`),
+  };
+
+  readonly users = {
+    list: (limit = 200) => this.request<UserPage>("GET", `/users?limit=${limit}`),
   };
 
   /**
