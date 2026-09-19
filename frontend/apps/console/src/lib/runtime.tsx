@@ -47,6 +47,11 @@ export function RuntimeProvider({ children, configUrl = `${BASE_PATH}/config.jso
     const realtime = createRealtimeClient({
       url: streamUrl(apiOrigin),
       getAccessToken: () => session.accessToken,
+      // The socket re-authenticates before its token expires and after the hub drops it for a changed user (ADR-0009).
+      refreshAccessToken: async () => {
+        await session.refresh();
+        return session.accessToken;
+      },
       fetchSnapshot: (topic) => client.stream.snapshot(topic),
     });
     return { client, session, realtime, error };

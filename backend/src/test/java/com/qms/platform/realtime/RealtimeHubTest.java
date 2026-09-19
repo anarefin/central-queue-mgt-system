@@ -12,6 +12,7 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import org.junit.jupiter.api.AfterEach;
@@ -96,7 +97,7 @@ class RealtimeHubTest {
 
     @BeforeEach
     void newHub() {
-        hub = new RealtimeHub(List.of(source), properties, MAPPER, clock);
+        hub = new RealtimeHub(List.of(source), properties, MAPPER, clock, Optional.empty());
     }
 
     @AfterEach

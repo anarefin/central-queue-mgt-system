@@ -3,9 +3,11 @@ package com.qms.platform.realtime;
 import java.time.Instant;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ScheduledFuture;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.security.core.Authentication;
+import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 
 /** One client's connection to the hub: who it is, what it is subscribed to and when it last spoke. */
 final class Connection {
@@ -14,7 +16,8 @@ final class Connection {
     static final int SEND_FAILED = 1011;
 
     private final Outbound out;
-    private final Authentication authentication;
+    private volatile Authentication authentication;
+    private volatile ScheduledFuture<?> expiry;
     private final Map<String, Subscription> subscriptions = new ConcurrentHashMap<>();
     private volatile Instant lastReceived;
 
@@ -26,6 +29,32 @@ final class Connection {
 
     Authentication authentication() {
         return authentication;
+    }
+
+    /** A {@code reauth} frame replaced the token this connection was opened with (ADR-0009). */
+    void reauthenticate(Authentication fresh) {
+        this.authentication = fresh;
+    }
+
+    /** The token's {@code sub}: who a {@code principal.changed} is about. */
+    String subject() {
+        return authentication.getName();
+    }
+
+    /** When the token expires, or null for an authentication that does not expire (only ever a test's). */
+    Instant expiresAt() {
+        return authentication instanceof JwtAuthenticationToken jwt ? jwt.getToken().getExpiresAt() : null;
+    }
+
+    static Instant issuedAt(Authentication authentication) {
+        return authentication instanceof JwtAuthenticationToken jwt ? jwt.getToken().getIssuedAt() : null;
+    }
+
+    /** The timer that closes this connection at {@link #expiresAt}; replaced at each reauth. */
+    void expiry(ScheduledFuture<?> timer) {
+        ScheduledFuture<?> previous = this.expiry;
+        this.expiry = timer;
+        if (previous != null) previous.cancel(false);
     }
 
     Map<String, Subscription> subscriptions() {

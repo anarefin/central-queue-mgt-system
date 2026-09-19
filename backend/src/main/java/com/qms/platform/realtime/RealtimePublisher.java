@@ -20,4 +20,14 @@ public interface RealtimePublisher {
      * @param data the event's payload; it must be JSON-serialisable
      */
     void publish(String topic, String type, Instant occurredAt, Map<String, Object> data);
+
+    /**
+     * The internal {@code principal.changed(sub)} event (ADR-0009): the subject was disabled, or its roles, scopes or device
+     * were changed or revoked. The hub drops that subject's sockets at once and will not take a token issued before now for
+     * it again, so the client comes back with a fresh token that carries the new claims. Like a published event it takes
+     * effect only once the surrounding transaction commits.
+     *
+     * @param subject the token's {@code sub}
+     */
+    void principalChanged(String subject);
 }

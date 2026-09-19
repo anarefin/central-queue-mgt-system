@@ -379,6 +379,22 @@ public class SessionService {
         String reason = request == null || request.reason() == null || request.reason().isBlank() ? null : request.reason().strip();
         if (reason != null && reason.length() > MAX_NOTE_LENGTH) throw invalid("reason", "too_long");
 
+        returnTicketsAndClose(session, "session_force_closed", reason);
+        return view(sessions.session(session.id()).orElseThrow());
+    }
+
+    /**
+     * Ends the live session of an Agent whose account was just disabled (FR-CFG-104): the same return of called, serving and
+     * held tickets to the front of their queues as a force-close, audited as such with the cause {@code user_disabled}. It runs
+     * inside the disabling transaction, on behalf of an administrator who is not necessarily allowed to force-close (the
+     * disable itself is what was authorised), so it takes no scope check. Does nothing if the user has no live session.
+     */
+    @Transactional
+    public void closeForDisabledUser(UUID userId) {
+        sessions.liveSessionOfAgent(userId).flatMap(live -> sessions.lock(live.id())).filter(SessionRow::live).ifPresent(session -> returnTicketsAndClose(session, "user_disabled", "user_disabled"));
+    }
+
+    private void returnTicketsAndClose(SessionRow session, String cause, String reason) {
         Instant now = clock.instant();
         // Each ticket goes to the front in turn, so the one that joined the queue first is returned last and ends up first.
         List<BoundTicket> returning = new ArrayList<>(sessions.unresolved(session.id()));
@@ -390,7 +406,7 @@ public class SessionService {
             if (!sessions.returnToQueue(ticket.id(), ticket.version(), session.id(), transition, adjustment)) throw refusal("version_mismatch");
             Map<String, Object> payload = new LinkedHashMap<>();
             payload.put("session_id", session.id().toString());
-            payload.put("reason", "session_force_closed");
+            payload.put("reason", cause);
             payload.put("reentry_position", ReentryPosition.FRONT.name().toLowerCase(Locale.ROOT));
             payload.put("score_adjustment_minutes", adjustment);
             events.append(transition(ticket.id(), transition, session, payload, now));
@@ -408,7 +424,6 @@ public class SessionService {
         AuditEvent event = AuditEvent.of("session.force_closed", "counter_session", session.id()).withBefore(before).withAfter(after);
         audit.record(reason == null ? event : event.withReason(reason));
         announce("session.closed", session.id(), session.counterId(), session.agentId(), "force_closed", now);
-        return view(sessions.session(session.id()).orElseThrow());
     }
 
     private void finish(SessionRow session, Instant now) {

@@ -42,6 +42,11 @@ class FakeSocket implements SocketLike {
     this.onclose?.({});
   }
 
+  /** The hub closing the socket with one of its own close codes. */
+  dropWith(code: number): void {
+    this.onclose?.({ code });
+  }
+
   fail(): void {
     this.onerror?.({});
     this.onclose?.({});
@@ -506,5 +511,159 @@ describe("streamUrl", () => {
   it("uses the page's own origin when the API origin is empty", () => {
     expect(streamUrl("", "https://qms.example.org")).toBe("wss://qms.example.org/api/v1/stream");
     expect(streamUrl("", "http://localhost:3000")).toBe("ws://localhost:3000/api/v1/stream");
+  });
+});
+
+describe("re-authenticating before the token expires and after the hub drops the socket (ADR-0009, SRS §21.1)", () => {
+  /** A JWT as far as the client reads one: only `exp` matters, and the signature is never checked here. */
+  function jwt(expiresInSeconds: number, jti = "a"): string {
+    const part = (value: object) => btoa(JSON.stringify(value)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+    return `${part({ alg: "ES256" })}.${part({ sub: "u1", jti, exp: Math.floor(Date.now() / 1000) + expiresInSeconds })}.signature`;
+  }
+
+  /** Time passes with the hub still answering, so the client's own heartbeat watchdog never fires. */
+  function alive(socket: FakeSocket, ms: number): void {
+    for (let left = ms; left > 0; left -= 10_000) {
+      vi.advanceTimersByTime(Math.min(left, 10_000));
+      socket.say({ frame: "heartbeat", time: "x" });
+    }
+  }
+
+  async function aliveAsync(socket: FakeSocket, ms: number): Promise<void> {
+    for (let left = ms; left > 0; left -= 10_000) {
+      await vi.advanceTimersByTimeAsync(Math.min(left, 10_000));
+      socket.say({ frame: "heartbeat", time: "x" });
+    }
+  }
+
+  it("sends reauth with the newest token 30 seconds before the one the hub holds expires, and not before", () => {
+    const { client, setToken } = setup();
+    const first = jwt(900);
+    setToken(first);
+    listen(client);
+    lastSocket().open();
+
+    alive(lastSocket(), 860_000);
+    expect(lastSocket().frames("reauth")).toEqual([]);
+
+    const refreshed = jwt(900, "b"); // the session refreshed it in the background
+    setToken(refreshed);
+    alive(lastSocket(), 20_000);
+
+    expect(lastSocket().frames("reauth")).toEqual([{ frame: "reauth", token: refreshed }]);
+    expect(FakeSocket.all).toHaveLength(1); // the socket stays as it is: no reconnect
+  });
+
+  it("schedules the next reauth from the token it just sent", () => {
+    const { client, setToken } = setup();
+    setToken(jwt(900));
+    listen(client);
+    lastSocket().open();
+    alive(lastSocket(), 860_000);
+    setToken(jwt(900, "b"));
+    alive(lastSocket(), 20_000);
+    expect(lastSocket().frames("reauth")).toHaveLength(1);
+
+    const third = jwt(900, "c");
+    setToken(third);
+    alive(lastSocket(), 840_000);
+    expect(lastSocket().frames("reauth")).toHaveLength(1);
+    alive(lastSocket(), 20_000);
+
+    expect(lastSocket().frames("reauth").map((f) => f.token)).toHaveLength(2);
+    expect(lastSocket().frames("reauth")[1]).toEqual({ frame: "reauth", token: third });
+  });
+
+  it("looks again every 2 seconds while there is no fresher token, and sends it as soon as there is", () => {
+    const { client, setToken } = setup();
+    setToken(jwt(900));
+    listen(client);
+    lastSocket().open();
+    alive(lastSocket(), 875_000);
+    expect(lastSocket().frames("reauth")).toEqual([]);
+
+    alive(lastSocket(), 4_000);
+    expect(lastSocket().frames("reauth")).toEqual([]);
+    const late = jwt(900, "late");
+    setToken(late);
+    alive(lastSocket(), 2_000);
+
+    expect(lastSocket().frames("reauth")).toEqual([{ frame: "reauth", token: late }]);
+  });
+
+  it("asks for a refreshed token when the session has not handed it a new one yet", async () => {
+    let refreshed = "";
+    const refreshAccessToken = vi.fn(async () => (refreshed = jwt(900, "refreshed")));
+    const { client, setToken } = setup({ refreshAccessToken });
+    setToken(jwt(900));
+    listen(client);
+    lastSocket().open();
+
+    await aliveAsync(lastSocket(), 880_000);
+
+    expect(refreshAccessToken).toHaveBeenCalledTimes(1);
+    expect(lastSocket().frames("reauth")).toEqual([{ frame: "reauth", token: refreshed }]);
+  });
+
+  it("does not reauth a token whose expiry it cannot read, and stops when the client is closed", () => {
+    const { client } = setup(); // "tok-1" is not a JWT
+    listen(client);
+    lastSocket().open();
+    alive(lastSocket(), 3_600_000);
+    expect(lastSocket().frames("reauth")).toEqual([]);
+
+    const { client: other, setToken } = setup();
+    setToken(jwt(900));
+    listen(other);
+    lastSocket().open();
+    const socket = lastSocket();
+    other.close();
+    setToken(jwt(900, "b"));
+    alive(lastSocket(), 900_000);
+    expect(socket.frames("reauth")).toEqual([]);
+  });
+
+  it.each([4401, 4403])("comes back with a token from the API after the hub closed the socket with %i", async (code) => {
+    const fresh = jwt(900, "fresh");
+    const { client, setToken } = setup({ refreshAccessToken: async () => (setToken(fresh), fresh) });
+    setToken(jwt(900));
+    listen(client);
+    lastSocket().open();
+
+    lastSocket().dropWith(code);
+    await vi.advanceTimersByTimeAsync(1_000);
+
+    expect(FakeSocket.all).toHaveLength(2);
+    expect(lastSocket().protocols).toEqual(["qms.v1", `bearer.${fresh}`]);
+  });
+
+  it("does not go to the API for a token after an ordinary drop", async () => {
+    const refreshAccessToken = vi.fn(async () => "never");
+    const { client } = setup({ refreshAccessToken });
+    listen(client);
+    lastSocket().open();
+
+    lastSocket().dropWith(1006);
+    await vi.advanceTimersByTimeAsync(1_000);
+
+    expect(refreshAccessToken).not.toHaveBeenCalled();
+    expect(lastSocket().protocols).toEqual(["qms.v1", "bearer.tok-1"]);
+  });
+
+  it("starts over with a fresh token when the hub answers a reauth with unauthorized", async () => {
+    const fresh = jwt(900, "fresh");
+    const { client, setToken } = setup({ refreshAccessToken: async () => (setToken(fresh), fresh) });
+    setToken(jwt(900));
+    listen(client);
+    lastSocket().open();
+
+    lastSocket().say({ frame: "error", code: "unauthorized" });
+    await vi.advanceTimersByTimeAsync(1_000);
+
+    expect(socketAt(0).closed).toBe(true);
+    expect(FakeSocket.all).toHaveLength(2);
+    expect(lastSocket().protocols).toEqual(["qms.v1", `bearer.${fresh}`]);
+    lastSocket().open();
+    expect(lastSocket().frames("subscribe")).toEqual([{ frame: "subscribe", topics: [{ topic: QUEUE }] }]); // and it subscribes again
   });
 });

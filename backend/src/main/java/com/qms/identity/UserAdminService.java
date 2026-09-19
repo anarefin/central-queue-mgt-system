@@ -10,6 +10,7 @@ import com.qms.platform.security.Authz;
 import com.qms.platform.security.CurrentUser;
 import com.qms.platform.security.Permission;
 import com.qms.platform.security.Role;
+import com.qms.platform.security.UserDisabled;
 import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.Instant;
@@ -21,6 +22,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.annotation.Profile;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -46,6 +48,7 @@ public class UserAdminService {
     private final PasswordPolicy policy;
     private final AuditWriter audit;
     private final PrincipalChangedPublisher principalChanged;
+    private final ApplicationEventPublisher events;
     private final CurrentUser currentUser;
     private final Authz authz;
     private final Clock clock;
@@ -58,6 +61,7 @@ public class UserAdminService {
             PasswordPolicy policy,
             AuditWriter audit,
             PrincipalChangedPublisher principalChanged,
+            ApplicationEventPublisher events,
             CurrentUser currentUser,
             Authz authz,
             Clock clock) {
@@ -68,6 +72,7 @@ public class UserAdminService {
         this.policy = policy;
         this.audit = audit;
         this.principalChanged = principalChanged;
+        this.events = events;
         this.currentUser = currentUser;
         this.authz = authz;
         this.clock = clock;
@@ -141,9 +146,10 @@ public class UserAdminService {
     }
 
     /**
-     * Disables the account: refresh tokens are revoked so no new access token can be minted, and
-     * {@code principal.changed} is published. The open counter session and its tickets are handled by ticket 12; the
-     * current access token stays valid for REST until it expires (API-013, FR-CFG-104).
+     * Disables the account: refresh tokens are revoked so no new access token can be minted, the counter session is closed
+     * and its tickets go back to waiting ({@link UserDisabled}, ADR-0008), and {@code principal.changed} is published so the
+     * realtime hub drops the user's sockets. The current access token stays valid for REST until it expires (API-013,
+     * FR-CFG-104).
      */
     @PreAuthorize("hasAuthority(T(com.qms.platform.security.Authorities).USER_MANAGE)")
     @Transactional
@@ -163,6 +169,7 @@ public class UserAdminService {
                 .withBefore(Map.of("active", true))
                 .withAfter(Map.of("active", false, "refresh_tokens_revoked", revoked))
                 .withReason(reason));
+        events.publishEvent(new UserDisabled(id, reason));
         principalChanged.principalChanged(id);
         return view(id);
     }

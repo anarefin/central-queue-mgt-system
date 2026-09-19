@@ -10,6 +10,21 @@ import type {
 /** The subprotocol the hub speaks; the token is offered beside it because a browser cannot set `Authorization` (SRS §21.1). */
 export const STREAM_PROTOCOL = "qms.v1";
 const STREAM_PATH = "/api/v1/stream";
+/** The hub closed the socket because its token expired without a `reauth` (4401), or its user was disabled or changed (4403). */
+const TOKEN_EXPIRED = 4401;
+const PRINCIPAL_CHANGED = 4403;
+
+/** The `exp` of a JWT in milliseconds since the epoch, or null when the token is not one we can read (it is not verified here). */
+function expiryMs(token: string): number | null {
+  try {
+    const payload = token.split(".")[1];
+    if (!payload) return null;
+    const claims = JSON.parse(atob(payload.replace(/-/g, "+").replace(/_/g, "/"))) as { exp?: unknown };
+    return typeof claims.exp === "number" ? claims.exp * 1000 : null;
+  } catch {
+    return null;
+  }
+}
 
 /** `ws(s)://<origin>/api/v1/stream` for the configured API origin; an empty origin means the page's own. */
 export function streamUrl(apiOrigin: string, pageOrigin: string = globalThis.location?.origin ?? ""): string {
@@ -34,7 +49,9 @@ type Frame = Record<string, unknown>;
  * The client of the realtime hub (SRS §21). It keeps one WebSocket for every topic anybody listens to and hides what goes
  * wrong with it: it sends a heartbeat and reconnects after two missed (§21.1), tells the hub the last seq it applied so the
  * hub can replay what was missed or resync it (FR-QUE-081), applies each event once and in order (FR-QUE-082), and where a
- * WebSocket cannot be had it polls the API for snapshots (FR-QUE-084). Nothing here is about tickets: what a topic's data
+ * WebSocket cannot be had it polls the API for snapshots (FR-QUE-084). It sends a `reauth` frame with a fresh access token
+ * before the one it holds expires, so the hub does not close the socket (ADR-0009), and after the hub drops it for an
+ * expired token or a changed user it comes back with a token from the API. Nothing here is about tickets: what a topic's data
  * means is for its listener.
  */
 export function createRealtimeClient(options: RealtimeClientOptions): RealtimeClient {
@@ -44,6 +61,8 @@ export function createRealtimeClient(options: RealtimeClientOptions): RealtimeCl
   const fallbackAfter = options.fallbackAfterFailures ?? 2;
   const baseDelay = options.reconnectDelayMs ?? 1_000;
   const maxDelay = options.maxReconnectDelayMs ?? 30_000;
+  const reauthLead = options.reauthLeadMs ?? 30_000;
+  const reauthRetry = options.reauthRetryMs ?? 2_000;
   const createSocket = options.createSocket ?? ((url: string, protocols: string[]) => new WebSocket(url, protocols) as unknown as SocketLike);
 
   const topics = new Map<string, Topic>();
@@ -60,6 +79,11 @@ export function createRealtimeClient(options: RealtimeClientOptions): RealtimeCl
   let poll: ReturnType<typeof setInterval> | undefined;
   let pollInFlight = false;
   let wanted = false;
+  /** The token the hub currently holds for this socket, and the timer that will send it a fresher one. */
+  let heldToken: string | null = null;
+  let reauthTimer: ReturnType<typeof setTimeout> | undefined;
+  /** The hub dropped us over our token, so the one `getAccessToken` gives is not to be trusted on the next connection. */
+  let tokenStale = false;
 
   function change(patch: Partial<Diagnostics>): void {
     state = { ...state, ...patch };
@@ -71,6 +95,12 @@ export function createRealtimeClient(options: RealtimeClientOptions): RealtimeCl
   function connect(): void {
     redial = undefined;
     if (!wanted || socket) return;
+    if (tokenStale && options.refreshAccessToken) {
+      tokenStale = false;
+      const again = () => connect();
+      options.refreshAccessToken().then(again, again);
+      return;
+    }
     const token = options.getAccessToken();
     if (token === null) {
       // Signed out, or the first token is not here yet: nothing to authenticate with, so try again shortly. That is not
@@ -89,6 +119,7 @@ export function createRealtimeClient(options: RealtimeClientOptions): RealtimeCl
       return;
     }
     socket = next;
+    heldToken = token;
     next.onopen = () => {
       if (socket !== next) return;
       opened = true;
@@ -100,6 +131,7 @@ export function createRealtimeClient(options: RealtimeClientOptions): RealtimeCl
       heartbeat = setInterval(() => send({ frame: "heartbeat" }), heartbeatMs);
       watchdog = setInterval(listen, Math.max(Math.floor(heartbeatMs / 4), 1));
       resubscribe([...topics.keys()]);
+      armReauth();
     };
     next.onmessage = (event) => {
       if (socket !== next) return;
@@ -109,8 +141,10 @@ export function createRealtimeClient(options: RealtimeClientOptions): RealtimeCl
     next.onerror = () => {
       if (socket === next && !opened) change({ lastError: "the WebSocket could not be opened" });
     };
-    next.onclose = () => {
-      if (socket === next) lost();
+    next.onclose = (event) => {
+      if (socket !== next) return;
+      if (event?.code === TOKEN_EXPIRED || event?.code === PRINCIPAL_CHANGED) tokenStale = true;
+      lost();
     };
   }
 
@@ -120,7 +154,8 @@ export function createRealtimeClient(options: RealtimeClientOptions): RealtimeCl
     socket = null;
     clearInterval(heartbeat);
     clearInterval(watchdog);
-    heartbeat = watchdog = undefined;
+    clearTimeout(reauthTimer);
+    heartbeat = watchdog = reauthTimer = undefined;
     if (dead) {
       dead.onopen = dead.onmessage = dead.onclose = dead.onerror = null;
       try {
@@ -157,6 +192,42 @@ export function createRealtimeClient(options: RealtimeClientOptions): RealtimeCl
     if (!socket || Date.now() - lastHeard <= heartbeatMs * missedLimit) return;
     change({ lastError: "the hub stopped answering" });
     lost();
+  }
+
+  // ---- re-authenticating before the token expires (ADR-0009) -------------------------------------------------
+
+  /** Schedules the `reauth` for `reauthLead` before the held token expires; a token we cannot read the expiry of is not scheduled. */
+  function armReauth(): void {
+    clearTimeout(reauthTimer);
+    reauthTimer = undefined;
+    const expiry = heldToken === null ? null : expiryMs(heldToken);
+    if (expiry === null || !socket) return;
+    reauthTimer = setTimeout(() => void reauth(), Math.max(expiry - Date.now() - reauthLead, 0));
+  }
+
+  /** Sends the hub a fresher token than the one it holds; until there is one, looks again shortly, until the token is spent. */
+  async function reauth(): Promise<void> {
+    reauthTimer = undefined;
+    const current = socket;
+    if (!current || !opened) return;
+    let token = options.getAccessToken();
+    if ((token === null || token === heldToken) && options.refreshAccessToken) {
+      try {
+        token = await options.refreshAccessToken();
+      } catch {
+        token = null;
+      }
+    }
+    if (socket !== current) return; // the socket went away while we waited
+    if (token !== null && token !== heldToken) {
+      heldToken = token;
+      send({ frame: "reauth", token });
+      armReauth();
+      return;
+    }
+    const expiry = heldToken === null ? null : expiryMs(heldToken);
+    if (expiry !== null && Date.now() < expiry) reauthTimer = setTimeout(() => void reauth(), reauthRetry);
+    // Otherwise the hub closes the socket at the expiry and the reconnect brings a new token.
   }
 
   function send(frame: Frame): void {
@@ -205,8 +276,16 @@ export function createRealtimeClient(options: RealtimeClientOptions): RealtimeCl
       case "denied":
         if (topic) tell(topic, { kind: "denied", topic: String(frame.topic), code: String(frame.code) });
         break;
+      case "error":
+        if (frame.code === "unauthorized") {
+          // The hub did not accept our reauth, so it will close the socket at the old expiry: start over with a fresh token now.
+          tokenStale = true;
+          change({ lastError: "the hub refused the token" });
+          lost();
+        }
+        break;
       default:
-        break; // heartbeat, replay marker, error
+        break; // heartbeat, replay marker, reauth acknowledgement
     }
   }
 
@@ -299,7 +378,8 @@ export function createRealtimeClient(options: RealtimeClientOptions): RealtimeCl
     socket = null;
     clearInterval(heartbeat);
     clearInterval(watchdog);
-    heartbeat = watchdog = undefined;
+    clearTimeout(reauthTimer);
+    heartbeat = watchdog = reauthTimer = undefined;
     if (dead) {
       dead.onopen = dead.onmessage = dead.onclose = dead.onerror = null;
       try {
