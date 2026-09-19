@@ -16,6 +16,7 @@ import type { Channel } from "./catalogue";
 import type { PriorityClass, PriorityClassInput, QueueDryRun, QueueStrategy, RoutingStrategy } from "./priority";
 import type { NumberingPreview, NumberingRule, NumberingRuleChange, NumberingRuleInput, NumberingScope } from "./numbering";
 import type { CompleteInput, CounterSession, OpenSessionInput, SessionCounterOption } from "./sessions";
+import type { TopicSnapshot } from "./stream";
 import type { IssueTicketInput, QueueSnapshot, SiteServices, Ticket } from "./tickets";
 
 export const API_BASE_PATH = "/api/v1";
@@ -206,6 +207,11 @@ export class ApiClient {
       this.request<CounterSession>("POST", `/sessions/${id}/serve`, undefined, { headers: ifMatch(version) }),
     complete: (id: string, input: CompleteInput, version?: number) =>
       this.request<CounterSession>("POST", `/sessions/${id}/complete`, input, { headers: ifMatch(version) }),
+  };
+
+  /** The polling fallback of the realtime stream (FR-QUE-084): a topic's snapshot, under the same authorisation as a subscription. */
+  readonly stream = {
+    snapshot: (topic: string) => this.request<TopicSnapshot>("GET", `/stream/snapshot?topic=${encodeURIComponent(topic)}`),
   };
 
   /**

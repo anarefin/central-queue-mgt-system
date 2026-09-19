@@ -316,6 +316,8 @@
   "console.session.state.force_closed": "Closed by an admin",
   "console.session.services": "Serving: {services}",
   "console.session.closing": "This session is closing. Complete the ticket in progress to finish closing.",
+  "console.waiting.title": "Waiting in the queue",
+  "console.waiting.row": "{service}: {count} waiting",
   "console.ticket.none": "No ticket in progress. Press F2 to call the next ticket.",
   "console.ticket.state.called": "Called, waiting for the visitor",
   "console.ticket.state.serving": "In service",

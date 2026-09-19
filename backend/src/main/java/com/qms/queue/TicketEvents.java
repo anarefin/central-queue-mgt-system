@@ -1,9 +1,13 @@
 package com.qms.queue;
 
+import com.qms.platform.realtime.RealtimePublisher;
+import com.qms.platform.realtime.Topics;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.time.temporal.ChronoUnit;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.UUID;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
@@ -13,6 +17,10 @@ import tools.jackson.databind.json.JsonMapper;
  * The ticket event log, and the only way into it. Every transition of a ticket writes exactly one row (Invariant 3)
  * carrying the originating device's time and the server's time (ADR-0001) and the next number of that ticket's own
  * sequence (FR-QUE-070). It joins the caller's transaction, so the transition and its event commit together.
+ *
+ * <p>The same transition is published to the realtime hub (SRS §21.4) on the queue of its Service and, when a counter took
+ * part, on that counter's topic. The hub delivers it only once the transaction commits, so a subscriber never hears of a
+ * transition that was rolled back.
  */
 @Repository
 public class TicketEvents {
@@ -32,10 +40,12 @@ public class TicketEvents {
 
     private final JdbcTemplate jdbc;
     private final JsonMapper mapper;
+    private final RealtimePublisher realtime;
 
-    TicketEvents(JdbcTemplate jdbc, JsonMapper mapper) {
+    TicketEvents(JdbcTemplate jdbc, JsonMapper mapper, RealtimePublisher realtime) {
         this.jdbc = jdbc;
         this.mapper = mapper;
+        this.realtime = realtime;
     }
 
     /** Appends the event and returns its per-ticket sequence number, one more than the ticket's last. */
@@ -57,7 +67,28 @@ public class TicketEvents {
                 transition.payload() == null ? null : mapper.writeValueAsString(transition.payload()),
                 ts(transition.deviceTime()),
                 ts(transition.serverTime()));
+        publish(transition);
         return seq;
+    }
+
+    /**
+     * Tells the hub. The waiting count is read here, inside the transaction, so it is the count this transition leaves
+     * behind; it travels with the event so a console can keep its number without asking again.
+     */
+    private void publish(Transition transition) {
+        var facts = jdbc.queryForMap("SELECT service_id, token_number FROM ticket WHERE id = ?", transition.ticketId());
+        UUID serviceId = (UUID) facts.get("service_id");
+        Integer waiting = jdbc.queryForObject("SELECT count(*) FROM ticket WHERE service_id = ? AND state IN ('waiting', 'paused')", Integer.class, serviceId);
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("ticket_id", transition.ticketId().toString());
+        data.put("token_number", facts.get("token_number"));
+        data.put("service_id", serviceId.toString());
+        data.put("state", transition.toState());
+        if (transition.counterId() != null) data.put("counter_id", transition.counterId().toString());
+        data.put("waiting_count", waiting == null ? 0 : waiting);
+        if (transition.payload() instanceof Map<?, ?> payload && payload.containsKey("announce")) data.put("announce", payload.get("announce"));
+        realtime.publish(Topics.queue(serviceId), transition.eventType(), transition.deviceTime(), data);
+        if (transition.counterId() != null) realtime.publish(Topics.counter(transition.counterId()), transition.eventType(), transition.deviceTime(), data);
     }
 
     private static OffsetDateTime ts(Instant instant) {

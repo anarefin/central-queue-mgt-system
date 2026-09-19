@@ -349,6 +349,17 @@ describe("ApiClient service catalogue", () => {
     expect(JSON.parse(String((fetchImpl.mock.calls[6]?.[1] as RequestInit).body))).toEqual({ outcome_code_id: "o1", note: "done" });
   });
 
+  it("asks for a topic's snapshot on the polling path, the topic name escaped (FR-QUE-084)", async () => {
+    const snapshot = { topic: "queue:v1", seq: 3, epoch: "e1", data: { waiting_count: 2 } };
+    const fetchImpl = vi.fn().mockResolvedValue(json(200, snapshot));
+    const client = new ApiClient({ apiOrigin: "", fetch: fetchImpl as unknown as typeof fetch, getAccessToken: () => "tok" });
+
+    await expect(client.stream.snapshot("queue:v1")).resolves.toEqual(snapshot);
+
+    expect(fetchImpl.mock.calls[0]?.[0]).toBe("/api/v1/stream/snapshot?topic=queue%3Av1");
+    expect((fetchImpl.mock.calls[0]?.[1] as RequestInit).method).toBe("GET");
+  });
+
   it("makes a new idempotency key each time", () => {
     expect(newIdempotencyKey()).not.toBe(newIdempotencyKey());
   });

@@ -2,6 +2,7 @@
 
 import { createAuth, loadRuntimeConfig, type ApiClient, type AuthSession } from "@qms/api-client";
 import { useI18n } from "@qms/i18n/react";
+import { createRealtimeClient, streamUrl, type RealtimeClient } from "@qms/realtime-client";
 import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 export const BASE_PATH = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
@@ -9,11 +10,13 @@ export const BASE_PATH = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
 interface RuntimeState {
   client: ApiClient | null;
   session: AuthSession | null;
+  /** The live channel to the hub, which falls back to polling by itself where WebSocket is blocked (SRS §21, FR-QUE-084). */
+  realtime: RealtimeClient | null;
   /** Set when config.json could not be loaded; the app cannot talk to the API without it. */
   error: Error | null;
 }
 
-const RuntimeContext = createContext<RuntimeState>({ client: null, session: null, error: null });
+const RuntimeContext = createContext<RuntimeState>({ client: null, session: null, realtime: null, error: null });
 
 /**
  * Loads `config.json` at boot (ADR-0012) and exposes an ApiClient and AuthSession bound to the configured API origin.
@@ -39,10 +42,17 @@ export function RuntimeProvider({ children, configUrl = `${BASE_PATH}/config.jso
   }, [configUrl]);
 
   const value = useMemo<RuntimeState>(() => {
-    if (apiOrigin === null) return { client: null, session: null, error };
+    if (apiOrigin === null) return { client: null, session: null, realtime: null, error };
     const { client, session } = createAuth({ apiOrigin, getLanguage: () => languageRef.current });
-    return { client, session, error };
+    const realtime = createRealtimeClient({
+      url: streamUrl(apiOrigin),
+      getAccessToken: () => session.accessToken,
+      fetchSnapshot: (topic) => client.stream.snapshot(topic),
+    });
+    return { client, session, realtime, error };
   }, [apiOrigin, error]);
+
+  useEffect(() => () => value.realtime?.close(), [value.realtime]);
 
   return <RuntimeContext.Provider value={value}>{children}</RuntimeContext.Provider>;
 }

@@ -5,15 +5,10 @@ import org.springframework.context.annotation.Configuration;
 
 /**
  * Dependencies that do not exist yet in the walking skeleton. Each later ticket that introduces the real component
- * (realtime hub: ticket 11, notification gateway: ticket 38) deletes its placeholder and registers a real probe.
+ * (notification gateway: ticket 38) deletes its placeholder and registers a real probe.
  */
 @Configuration
 class PlaceholderProbes {
-
-    @Bean
-    DependencyProbe realtimeHubProbe() {
-        return placeholder("realtime_hub");
-    }
 
     @Bean
     DependencyProbe notificationGatewayProbe() {

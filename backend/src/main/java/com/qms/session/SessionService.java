@@ -5,6 +5,8 @@ import com.qms.audit.AuditWriter;
 import com.qms.platform.ApiException;
 import com.qms.platform.ErrorCode;
 import com.qms.platform.Profiles;
+import com.qms.platform.realtime.RealtimePublisher;
+import com.qms.platform.realtime.Topics;
 import com.qms.platform.security.ScopeGuard;
 import com.qms.platform.security.CurrentUser;
 import com.qms.queue.QueueEngine;
@@ -69,6 +71,7 @@ public class SessionService {
     private final ScopeGuard scope;
     private final CurrentUser currentUser;
     private final QueueProperties queueProperties;
+    private final RealtimePublisher realtime;
     private final Clock clock;
 
     SessionService(
@@ -79,6 +82,7 @@ public class SessionService {
             ScopeGuard scope,
             CurrentUser currentUser,
             QueueProperties queueProperties,
+            RealtimePublisher realtime,
             Clock clock) {
         this.sessions = sessions;
         this.queues = queues;
@@ -87,6 +91,7 @@ public class SessionService {
         this.scope = scope;
         this.currentUser = currentUser;
         this.queueProperties = queueProperties;
+        this.realtime = realtime;
         this.clock = clock;
     }
 
@@ -137,6 +142,7 @@ public class SessionService {
         after.put("site_id", counter.siteId().toString());
         after.put("service_ids", chosen.stream().map(UUID::toString).toList());
         audit.record(AuditEvent.of("session.opened", "counter_session", id).withAfter(after));
+        announce("session.opened", id, counter.id(), user, "open", now);
         return view(sessions.session(id).orElseThrow());
     }
 
@@ -251,6 +257,17 @@ public class SessionService {
         after.put("counter_id", session.counterId().toString());
         after.put("state", "closed");
         audit.record(AuditEvent.of("session.closed", "counter_session", session.id()).withAfter(after));
+        announce("session.closed", session.id(), session.counterId(), session.agentId(), "closed", now);
+    }
+
+    /** Tells the counter's console its session changed (SRS §21.4); the hub delivers it once this transaction commits. */
+    private void announce(String type, UUID sessionId, UUID counterId, UUID agentId, String state, Instant now) {
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("session_id", sessionId.toString());
+        data.put("counter_id", counterId.toString());
+        data.put("agent_id", agentId.toString());
+        data.put("state", state);
+        realtime.publish(Topics.counter(counterId), type, now, data);
     }
 
     // ---- helpers ----------------------------------------------------------------------------------------------

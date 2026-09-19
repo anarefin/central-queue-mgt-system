@@ -3,7 +3,7 @@ import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import Home from "../app/page";
-import { json, renderApp, stubApi, type Recorded, type Routes } from "../test-utils";
+import { FakeWebSocket, json, renderApp, stubApi, type Recorded, type Routes } from "../test-utils";
 
 const router = vi.hoisted(() => ({ replace: vi.fn() }));
 vi.mock("next/navigation", () => ({ useRouter: () => router }));
@@ -381,5 +381,159 @@ describe("language (FR-I18N-001, FR-I18N-020)", () => {
     expect(screen.getByTestId("current-token")).toHaveTextContent("S-042");
     expect(screen.getByRole("button", { name: /পরবর্তী ডাকুন/ })).toBeInTheDocument();
     expect(screen.getByText("সেবা: পরামর্শ")).toBeInTheDocument();
+  });
+});
+
+/** The hub's snapshot of a queue topic. */
+function queueSnapshot(service: string, waiting: number, seq = 0) {
+  return { frame: "snapshot", topic: `queue:${service}`, seq, epoch: "e1", resync: false, data: { service_id: service, waiting_count: waiting, next: [] } };
+}
+
+function counterSnapshot(live: unknown, held: unknown, seq = 0) {
+  return { frame: "snapshot", topic: "counter:c1", seq, epoch: "e1", resync: false, data: { counter_id: "c1", label: "Desk 1", session: live, ticket: held } };
+}
+
+function hubEvent(topic: string, seq: number, type: string, data: Record<string, unknown>) {
+  return { frame: "event", topic, seq, type, occurred_at: STAMP, data };
+}
+
+/** Waits for the console to dial the hub, and opens the socket. */
+async function connected(): Promise<FakeWebSocket> {
+  await waitFor(() => expect(FakeWebSocket.all).toHaveLength(1));
+  const socket = FakeWebSocket.all[0]!;
+  socket.open();
+  return socket;
+}
+
+describe("live updates (SRS §21, FR-QUE-080, FR-QUE-082, FR-QUE-084)", () => {
+  it("listens to its counter and to the queue of each service it serves, on the access token, and shows the waiting counts moving", async () => {
+    stubApi({ ...AUTH, "GET /sessions/current": () => json(200, session()) });
+    renderApp(<Home />);
+    const socket = await connected();
+
+    expect(socket.protocols).toEqual(["qms.v1", "bearer.tok"]);
+    expect(socket.subscribed()).toEqual(["counter:c1", "queue:v1", "queue:v2"]);
+    expect(screen.getByTestId("waiting-v1")).toHaveTextContent("Consultation: – waiting"); // not heard from yet
+
+    socket.say(queueSnapshot("v1", 3));
+    socket.say(queueSnapshot("v2", 0));
+    expect(screen.getByTestId("waiting-v1")).toHaveTextContent("Consultation: 3 waiting");
+    expect(screen.getByTestId("waiting-v2")).toHaveTextContent("Laboratory: 0 waiting");
+
+    socket.say(hubEvent("queue:v1", 1, "ticket.issued", { waiting_count: 4 }));
+    expect(screen.getByTestId("waiting-v1")).toHaveTextContent("Consultation: 4 waiting");
+    socket.say(hubEvent("queue:v1", 2, "ticket.called", { waiting_count: 3 }));
+    expect(screen.getByTestId("waiting-v1")).toHaveTextContent("Consultation: 3 waiting");
+    socket.say(hubEvent("queue:v1", 1, "ticket.issued", { waiting_count: 4 })); // seen already: applying it again would go backwards
+    expect(screen.getByTestId("waiting-v1")).toHaveTextContent("Consultation: 3 waiting");
+  });
+
+  it("shows the counts in Bangla digits and words in the Bangla console", async () => {
+    stubApi({ ...AUTH, "GET /sessions/current": () => json(200, session()) });
+    renderApp(<Home />, ["bn-BD"]);
+    const socket = await connected();
+    socket.say(queueSnapshot("v1", 3));
+
+    expect(screen.getByTestId("waiting-v1")).toHaveTextContent("পরামর্শ: ৩ জন অপেক্ষায়");
+  });
+
+  it("reads the session again when something other than the agent's own action changed the ticket", async () => {
+    let state: CounterSession = session({ ticket: ticket({ state: "serving", version: 2 }) });
+    const calls = stubApi({ ...AUTH, "GET /sessions/current": () => json(200, state) });
+    renderApp(<Home />);
+    const socket = await connected();
+    expect(await screen.findByTestId("current-token")).toHaveTextContent("S-042");
+    socket.say(counterSnapshot({ id: "s1", state: "open" }, { id: "t1", token_number: "S-042", state: "serving", version: 2 }));
+    expect(count(calls, "GET /sessions/current")).toBe(1); // the snapshot agrees with the screen
+
+    state = session(); // an admin closed the ticket
+    socket.say(hubEvent("counter:c1", 1, "ticket.completed", { ticket_id: "t1", state: "completed", counter_id: "c1" }));
+
+    await waitFor(() => expect(screen.queryByTestId("current-token")).not.toBeInTheDocument());
+    expect(count(calls, "GET /sessions/current")).toBe(2);
+  });
+
+  it("does not read the session again for the events its own action caused", async () => {
+    let state: CounterSession = session();
+    const calls = stubApi({
+      ...AUTH,
+      "GET /sessions/current": () => json(200, state),
+      "POST /sessions/s1/next": () => json(200, (state = session({ ticket: ticket() }))),
+    });
+    const user = userEvent.setup();
+    renderApp(<Home />);
+    const socket = await connected();
+    socket.say(counterSnapshot({ id: "s1", state: "open" }, null));
+    await screen.findByText("No ticket in progress. Press F2 to call the next ticket.");
+
+    await user.keyboard("{F2}");
+    await screen.findByTestId("current-token");
+    socket.say(hubEvent("counter:c1", 1, "ticket.called", { ticket_id: "t1", state: "called", counter_id: "c1" }));
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    expect(count(calls, "GET /sessions/current")).toBe(1);
+    expect(screen.getByTestId("current-token")).toHaveTextContent("S-042");
+  });
+
+  it("reads the session again after a resync, since the hub could not say what was missed", async () => {
+    let state: CounterSession = session();
+    const calls = stubApi({ ...AUTH, "GET /sessions/current": () => json(200, state) });
+    renderApp(<Home />);
+    const socket = await connected();
+    await screen.findByText("No ticket in progress. Press F2 to call the next ticket.");
+
+    state = session({ ticket: ticket() });
+    socket.say({ ...counterSnapshot({ id: "s1", state: "open" }, { id: "t1", token_number: "S-042", state: "called", version: 1 }, 40), resync: true });
+
+    expect(await screen.findByTestId("current-token")).toHaveTextContent("S-042");
+    expect(count(calls, "GET /sessions/current")).toBe(2);
+  });
+
+  it("stops listening when the session is closed, and listens again when the next one opens", async () => {
+    const calls = stubApi({
+      ...AUTH,
+      "GET /sessions/current": () => json(200, session()),
+      "GET /sessions/options": () => json(200, { items: OPTIONS }),
+      "DELETE /sessions/s1": () => json(200, session({ state: "closed", closed_at: STAMP })),
+      "POST /sessions": () => json(201, session()),
+    });
+    const user = userEvent.setup();
+    renderApp(<Home />);
+    const first = await connected();
+    await screen.findByText("No ticket in progress. Press F2 to call the next ticket.");
+
+    await user.keyboard("{F10}");
+    expect(await screen.findByText("Open a counter session")).toBeInTheDocument();
+    expect(first.closed).toBe(true);
+    expect(count(calls, "DELETE /sessions/s1")).toBe(1);
+
+    await user.click(await screen.findByRole("radio", { name: /Desk 1/ }));
+    await user.click(screen.getByRole("button", { name: "Open session" }));
+    await screen.findByText("Counter Desk 1");
+    await waitFor(() => expect(FakeWebSocket.all).toHaveLength(2));
+    FakeWebSocket.all[1]!.open();
+    expect(FakeWebSocket.all[1]!.subscribed()).toEqual(["counter:c1", "queue:v1", "queue:v2"]);
+  });
+
+  it("falls back to polling where WebSocket is blocked, with nothing on screen to say so (FR-QUE-084)", async () => {
+    const snapshot = (topic: string, data: Record<string, unknown>) => () => json(200, { topic, seq: 2, epoch: "e1", data });
+    const calls = stubApi({
+      ...AUTH,
+      "GET /sessions/current": () => json(200, session()),
+      "GET /stream/snapshot?topic=counter%3Ac1": snapshot("counter:c1", { session: { id: "s1", state: "open" }, ticket: null }),
+      "GET /stream/snapshot?topic=queue%3Av1": snapshot("queue:v1", { waiting_count: 6 }),
+      "GET /stream/snapshot?topic=queue%3Av2": snapshot("queue:v2", { waiting_count: 1 }),
+    });
+    renderApp(<Home />);
+    await waitFor(() => expect(FakeWebSocket.all).toHaveLength(1));
+    FakeWebSocket.all[0]!.fail();
+    await waitFor(() => expect(FakeWebSocket.all).toHaveLength(2), { timeout: 3000 }); // the client dials again after a second
+    FakeWebSocket.all[1]!.fail();
+
+    await waitFor(() => expect(screen.getByTestId("waiting-v1")).toHaveTextContent("Consultation: 6 waiting"));
+    expect(screen.getByTestId("waiting-v2")).toHaveTextContent("Laboratory: 1 waiting");
+    expect(calls.filter((c) => c.path.startsWith("/stream/snapshot")).length).toBeGreaterThanOrEqual(3);
+    expect(screen.queryByText(/poll|degraded|offline|connection/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 });

@@ -57,6 +57,16 @@ class ArchitectureTest {
             .resideInAnyPackage(CONTEXTS)
             .allowEmptyShould(true);
 
+    /** Publishing goes through {@code RealtimePublisher}, so a node-spanning fan-out can replace the hub behind it (ticket 59, ADR-0010). */
+    @ArchTest
+    static final ArchRule onlyThePlatformRealtimePackageKnowsTheHub = noClasses()
+            .that()
+            .resideOutsideOfPackage("com.qms.platform.realtime..")
+            .should()
+            .dependOnClassesThat()
+            .haveFullyQualifiedName("com.qms.platform.realtime.RealtimeHub")
+            .allowEmptyShould(true);
+
     @ArchTest
     static final ArchRule packagesAreFreeOfCycles =
             slices().matching("com.qms.(*)..").should().beFreeOfCycles();

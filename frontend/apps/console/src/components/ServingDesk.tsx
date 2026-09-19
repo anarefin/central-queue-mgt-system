@@ -23,6 +23,8 @@ interface Props {
   session: CounterSession;
   actions: DeskActions;
   busy: boolean;
+  /** Tickets waiting per Service id, as the queue topics last said; a Service with no entry has not been heard from yet. */
+  waiting: Record<string, number>;
   outcome: string;
   onOutcome: (id: string) => void;
   note: string;
@@ -34,7 +36,7 @@ interface Props {
  * work needs no mouse (NFR-USA-002). Call next is off while a ticket is called or serving (FR-AGT-010). The outcome
  * takes focus when service starts, so the keys, an arrow and F5 are all it takes to finish a ticket.
  */
-export function ServingDesk({ session, actions, busy, outcome, onOutcome, note, onNote }: Props) {
+export function ServingDesk({ session, actions, busy, waiting, outcome, onOutcome, note, onNote }: Props) {
   const { t, language, formatNumber } = useI18n();
   const ticket = session.ticket;
   const serving = ticket?.state === "serving";
@@ -61,6 +63,20 @@ export function ServingDesk({ session, actions, busy, outcome, onOutcome, note, 
           {t("console.session.services", { services: session.services.map((s) => localisedName(s.name_i18n, language)).join(", ") })}
         </p>
         {session.state === "closing" && <p className="qms-warning">{t("console.session.closing")}</p>}
+      </Card>
+
+      <Card>
+        <h3 className="qms-label">{t("console.waiting.title")}</h3>
+        <ul className="qms-list" aria-label={t("console.waiting.title")}>
+          {session.services.map((service) => {
+            const count = waiting[service.id];
+            return (
+              <li key={service.id} data-testid={`waiting-${service.id}`}>
+                {t("console.waiting.row", { service: localisedName(service.name_i18n, language), count: count === undefined ? "–" : formatNumber(count) })}
+              </li>
+            );
+          })}
+        </ul>
       </Card>
 
       <Card>

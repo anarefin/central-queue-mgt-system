@@ -54,6 +54,9 @@ class SessionRepository {
             Instant calledAt,
             Instant servedAt) {}
 
+    /** The Service group and site a Service belongs to, which decide who may watch its queue. */
+    record ServiceScope(UUID serviceId, UUID groupId, UUID siteId) {}
+
     record OutcomeRow(UUID id, String code, Map<String, String> labels) {}
 
     private static final String BOUND =
@@ -126,6 +129,21 @@ class SessionRepository {
         counters.forEach((id, counter) -> items.add(new CounterOptions.Item(
                 SessionViews.counter(counter), occupied.get(id), links.get(id).stream().map(SessionViews::service).toList())));
         return items;
+    }
+
+    Optional<ServiceScope> serviceScope(UUID serviceId) {
+        return jdbc.query(
+                        "SELECT v.id, g.id AS group_id, g.site_id FROM service v JOIN service_group g ON g.id = v.service_group_id WHERE v.id = ?",
+                        (rs, i) -> new ServiceScope(rs.getObject("id", UUID.class), rs.getObject("group_id", UUID.class), rs.getObject("site_id", UUID.class)),
+                        serviceId)
+                .stream().findFirst();
+    }
+
+    /** Whether the user is on the team of the Service group (CONTEXT.md), which is what lets an Agent serve its Services. */
+    boolean onTeamOf(UUID groupId, UUID userId) {
+        Boolean member = jdbc.queryForObject(
+                "SELECT EXISTS (SELECT 1 FROM team t JOIN team_member m ON m.team_id = t.id WHERE t.service_group_id = ? AND m.user_id = ?)", Boolean.class, groupId, userId);
+        return Boolean.TRUE.equals(member);
     }
 
     /** The links of a counter to the given Services, active only, as they are now (the links may have been changed). */

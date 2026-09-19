@@ -1,6 +1,7 @@
 package com.qms.identity;
 
 import com.qms.platform.Profiles;
+import com.qms.platform.realtime.RealtimeEndpoint;
 import com.qms.platform.security.AuthenticatedUser;
 import com.qms.platform.security.PermissionMatrix;
 import java.util.Collection;
@@ -20,6 +21,8 @@ import org.springframework.security.oauth2.jwt.BadJwtException;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
+import org.springframework.security.oauth2.server.resource.web.BearerTokenResolver;
+import org.springframework.security.oauth2.server.resource.web.DefaultBearerTokenResolver;
 import org.springframework.security.web.SecurityFilterChain;
 
 /**
@@ -64,11 +67,26 @@ class SecurityConfig {
         };
     }
 
+    /**
+     * The bearer token is the {@code Authorization} header, as everywhere. A browser cannot set a header on a WebSocket, so
+     * for the hub's endpoint alone the token may instead ride in the {@code Sec-WebSocket-Protocol} offer, where it is
+     * neither in a URL nor in a log (SRS §21.1).
+     */
+    @Bean
+    BearerTokenResolver bearerTokenResolver() {
+        DefaultBearerTokenResolver header = new DefaultBearerTokenResolver();
+        return request -> {
+            String token = header.resolve(request);
+            return token != null ? token : RealtimeEndpoint.offeredToken(request).orElse(null);
+        };
+    }
+
     @Bean
     SecurityFilterChain apiSecurity(
             HttpSecurity http,
             JwtDecoder decoder,
             JwtAuthenticationConverter converter,
+            BearerTokenResolver bearerTokens,
             ApiAuthenticationEntryPoint entryPoint,
             ApiAccessDeniedHandler accessDenied)
             throws Exception {
@@ -79,6 +97,7 @@ class SecurityConfig {
                 .logout(AbstractHttpConfigurer::disable)
                 .authorizeHttpRequests(requests -> requests.requestMatchers(PUBLIC_PATHS).permitAll().anyRequest().authenticated())
                 .oauth2ResourceServer(oauth -> oauth
+                        .bearerTokenResolver(bearerTokens)
                         .jwt(jwt -> jwt.decoder(decoder).jwtAuthenticationConverter(converter))
                         .authenticationEntryPoint(entryPoint)
                         .accessDeniedHandler(accessDenied))

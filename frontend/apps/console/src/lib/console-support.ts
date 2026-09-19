@@ -1,4 +1,5 @@
-import { ApiRequestError } from "@qms/api-client";
+import { ApiRequestError, type CounterSession } from "@qms/api-client";
+import type { RealtimeUpdate } from "@qms/realtime-client";
 import type { I18n } from "@qms/i18n";
 
 /** Reasons the API gives a refused session action that the console has a sentence for. */
@@ -31,4 +32,39 @@ export function reasonOf(cause: unknown): string | undefined {
 /** A name in the reader's language, falling back to English and then to whatever there is, never to nothing (FR-I18N-011). */
 export function localisedName(names: Record<string, string>, language: string): string {
   return names[language] ?? names.en ?? Object.values(names)[0] ?? "";
+}
+
+const QUEUE_PREFIX = "queue:";
+
+export const queueTopic = (serviceId: string): string => `${QUEUE_PREFIX}${serviceId}`;
+export const counterTopic = (counterId: string): string => `counter:${counterId}`;
+
+/** The waiting count a queue topic reports, keyed by its Service, or null when the update says nothing about it. */
+export function waitingFrom(update: RealtimeUpdate): { serviceId: string; count: number } | null {
+  if (update.kind === "denied" || !update.topic.startsWith(QUEUE_PREFIX)) return null;
+  const count = update.data.waiting_count;
+  return typeof count === "number" ? { serviceId: update.topic.slice(QUEUE_PREFIX.length), count } : null;
+}
+
+/**
+ * Whether a counter-topic update says the session on screen is behind the server (FR-AGT-004: the server is the truth).
+ * A snapshot is compared with the session and the ticket shown; an event is the echo of what the screen already shows
+ * when the agent's own action has been answered, so only the rest send the console back to ask. A resync always does.
+ */
+export function counterMovedOn(update: RealtimeUpdate, session: CounterSession): boolean {
+  if (update.kind === "denied") return false;
+  const shown = session.ticket;
+  if (update.kind === "snapshot") {
+    if (update.resync) return true;
+    const live = update.data.session as { id?: string; state?: string } | null | undefined;
+    const ticket = update.data.ticket as { id?: string; state?: string; version?: number } | null | undefined;
+    if (!live || live.id !== session.id || live.state !== session.state) return true;
+    return (ticket?.id ?? null) !== (shown?.id ?? null) || (ticket?.state ?? null) !== (shown?.state ?? null) || (ticket?.version ?? null) !== (shown?.version ?? null);
+  }
+  if (update.type === "session.opened") return update.data.session_id !== session.id;
+  if (update.type === "session.closed") return update.data.session_id === session.id;
+  const state = update.data.state;
+  const ticketId = update.data.ticket_id;
+  if (state === "called" || state === "serving") return shown?.id !== ticketId || shown?.state !== state;
+  return shown?.id === ticketId; // the ticket left service (completed, missed, transferred…) but the screen still holds it
 }

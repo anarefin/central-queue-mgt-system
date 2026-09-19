@@ -4,7 +4,8 @@ import { ApiRequestError, type CounterSession } from "@qms/api-client";
 import { useI18n } from "@qms/i18n/react";
 import { Button, ErrorAlert } from "@qms/ui";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { describeError, reasonOf } from "../lib/console-support";
+import { counterMovedOn, counterTopic, describeError, queueTopic, reasonOf, waitingFrom } from "../lib/console-support";
+import { useTopics } from "../lib/realtime";
 import { useApi } from "../lib/runtime";
 import { OpenSessionCard } from "./OpenSessionCard";
 import { ServingDesk, type DeskActions } from "./ServingDesk";
@@ -23,6 +24,10 @@ const KEYS: Record<string, keyof Pick<DeskActions, "call" | "start" | "complete"
  * online and after any refused or lost action it asks the server for the session again, so a refresh, a short network loss
  * or a device restart puts the agent back at the ticket they were serving (FR-AGT-004). Whether an action is allowed is
  * shown here for convenience only; the API checks each one (FR-CFG-103, FR-CFG-105).
+ *
+ * The console also listens to its counter and to the queue of each Service it serves (SRS §21.2), so what happens without
+ * the agent's hand shows at once: the waiting counts move as visitors arrive, and the desk asks the server again when the
+ * counter's session or ticket changed under it. Whether it is live or polling is the client's business, not the screen's.
  */
 export function CounterConsole() {
   const { t } = useI18n();
@@ -32,16 +37,24 @@ export function CounterConsole() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  /** Waiting tickets per Service, from the queue topics; a Service is missing until its first snapshot arrives. */
+  const [waiting, setWaiting] = useState<Record<string, number>>({});
   const [outcome, setOutcome] = useState("");
   const [note, setNote] = useState("");
   const working = useRef(false);
+  /** Counts the actions begun, so a read of the session that an action overtook is thrown away rather than shown. */
+  const generation = useRef(0);
 
   const restore = useCallback(async () => {
     if (!client) return;
+    const asked = generation.current;
     try {
-      setSession(await client.sessions.current());
+      const current = await client.sessions.current();
+      if (asked !== generation.current) return;
+      setSession(current);
       setError(null);
     } catch (cause) {
+      if (asked !== generation.current) return;
       if (cause instanceof ApiRequestError && cause.code === "not_found") {
         setSession(null);
         setError(null);
@@ -71,6 +84,7 @@ export function CounterConsole() {
   async function perform(action: () => Promise<void>) {
     if (working.current) return;
     working.current = true;
+    generation.current += 1;
     setBusy(true);
     setError(null);
     setNotice(null);
@@ -91,6 +105,15 @@ export function CounterConsole() {
       setBusy(false);
     }
   }
+
+  useTopics(session ? [counterTopic(session.counter.id)] : [], (update) => {
+    // While an action is in flight its answer is the truth; the events it caused are not news.
+    if (session && !working.current && counterMovedOn(update, session)) void restore();
+  });
+  useTopics(session ? session.services.map((service) => queueTopic(service.id)) : [], (update) => {
+    const count = waitingFrom(update);
+    if (count) setWaiting((counts) => (counts[count.serviceId] === count.count ? counts : { ...counts, [count.serviceId]: count.count }));
+  });
 
   const ticket = session?.ticket ?? null;
   const canCall = session?.state === "open" && ticket === null;
@@ -170,7 +193,7 @@ export function CounterConsole() {
       )}
       {notice !== null && <p role="status">{notice}</p>}
       {session === null && <OpenSessionCard onOpened={setSession} />}
-      {session && <ServingDesk session={session} actions={actions} busy={busy} outcome={outcome} onOutcome={setOutcome} note={note} onNote={setNote} />}
+      {session && <ServingDesk session={session} actions={actions} busy={busy} waiting={waiting} outcome={outcome} onOutcome={setOutcome} note={note} onNote={setNote} />}
     </div>
   );
 }

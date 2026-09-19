@@ -316,6 +316,8 @@
   "console.session.state.force_closed": "অ্যাডমিন বন্ধ করেছেন",
   "console.session.services": "সেবা: {services}",
   "console.session.closing": "এই সেশন বন্ধ হচ্ছে। বন্ধ করা শেষ করতে চলমান টিকিটটি সম্পন্ন করুন।",
+  "console.waiting.title": "সারিতে অপেক্ষমাণ",
+  "console.waiting.row": "{service}: {count} জন অপেক্ষায়",
   "console.ticket.none": "কোনো টিকিট চলমান নেই। পরবর্তী টিকিট ডাকতে F2 চাপুন।",
   "console.ticket.state.called": "ডাকা হয়েছে, দর্শনার্থীর অপেক্ষায়",
   "console.ticket.state.serving": "সেবা চলছে",

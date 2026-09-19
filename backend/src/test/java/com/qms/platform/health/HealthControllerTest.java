@@ -39,7 +39,15 @@ class HealthControllerTest {
 
         @Bean
         DependencyProbe realtimeHubProbe() {
-            return new PlaceholderProbes().realtimeHubProbe();
+            return new DependencyProbe() {
+                public String name() {
+                    return "realtime_hub";
+                }
+
+                public State check() {
+                    return State.UP;
+                }
+            };
         }
 
         @Bean
@@ -83,7 +91,7 @@ class HealthControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("up"))
                 .andExpect(jsonPath("$.dependencies.database.status").value("up"))
-                .andExpect(jsonPath("$.dependencies.realtime_hub.status").value("not_configured"))
+                .andExpect(jsonPath("$.dependencies.realtime_hub.status").value("up"))
                 .andExpect(jsonPath("$.dependencies.notification_gateway.status").value("not_configured"));
     }
 
