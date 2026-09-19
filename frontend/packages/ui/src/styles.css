@@ -151,3 +151,8 @@ body {
   padding-block: 0.6rem;
   border-block-end: 1px solid var(--qms-color-border);
 }
+
+.qms-grow {
+  flex: 1 1 auto;
+  min-inline-size: 0;
+}

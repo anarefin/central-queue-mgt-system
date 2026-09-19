@@ -1,8 +1,9 @@
 # Administrator guide (Phase 1 foundation)
 
-Covers what tickets 01–04 deliver: running the system, signing in, users and roles, approvals, the audit log, keys and
-language packs. It grows as later tickets add screens; today the Admin app has sign-in, sign-out and a health panel, and
-user, approval and audit administration is available through the API (`/api/v1`).
+Covers what tickets 01–05 deliver: running the system, signing in, users and roles, approvals, the audit log, keys,
+language packs, and sites, zones and counters. It grows as later tickets add screens; today the Admin app has sign-in,
+sign-out, a health panel and the site, zone and counter screen. User, approval and audit administration is available
+through the API (`/api/v1`).
 
 ## 1. Run the system
 
@@ -94,7 +95,35 @@ English and Bangla ship complete. To add a language or change wording without a 
 shipped text. A missing translation falls back to the site default language, never to a raw key. Token numbers always
 show in Western Arabic digits.
 
-## 7. Rotating the signing key
+## 7. Sites, zones and counters
+
+The physical hierarchy is **Site > Zone > Counter** (ADR-0002). An Organisation Admin or System Administrator sets it
+up at `/admin/sites/` (linked from the Admin home page), with no code change and no restart, so a new site is usable the
+moment it is saved.
+
+- **Site**: name, a short unique code, an IANA timezone such as `Asia/Dhaka`, an address, a default language and an
+  ordered list of enabled languages. The default language must be one of the enabled ones; every language must be
+  installed (section 6). Timestamps are stored in UTC and the screen shows them in the site's own timezone.
+- **Zone** (a waiting area in a site): a name, a floor label such as `Ground` or `3rd`, and an optional building label
+  such as `Block B`. Buildings of one campus are zones' building labels, not separate sites.
+- **Counter** (a serving position in a zone): a short display label of at most 30 characters, such as `Counter 3`, and an
+  optional location note.
+- **Deactivation is soft.** Nothing can be deleted, so tickets and reports keep resolving to a deactivated record.
+  Deactivating a site also deactivates its zones and counters, and deactivating a zone also deactivates its counters.
+  Reactivating a parent does not bring its children back; reactivate each one deliberately. A zone or counter cannot be
+  added to, or reactivated under, an inactive parent.
+- **Scope.** An Organisation Admin whose role is limited to some sites sees and changes only those sites, and cannot add
+  a site. Every change is checked on the server, never only on the screen.
+- **Audit.** Each create, edit, deactivation and reactivation is recorded (`site.*`, `zone.*`, `counter.*`) with before
+  and after values; a deactivation carries its reason, and the entries for what it took with it say so.
+
+API, all under `/api/v1` and needing the `config:org_sites_zones` permission: `GET|POST /sites`,
+`GET|PATCH /sites/{id}`, `POST /sites/{id}/deactivate|activate`, `GET|POST /sites/{id}/zones`, `GET|PATCH /zones/{id}`,
+`POST /zones/{id}/deactivate|activate`, `GET|POST /zones/{id}/counters`, `GET|PATCH /counters/{id}` and
+`POST /counters/{id}/deactivate|activate`. `PATCH` leaves absent fields unchanged; an empty `building_label` or
+`location_note` clears it.
+
+## 8. Rotating the signing key
 
 ```
 docker compose -f deploy/compose.yaml run --rm backend --spring.profiles.active=rotate-keys

@@ -99,3 +99,47 @@ describe("ApiClient", () => {
     await expect(client.health.live()).rejects.toMatchObject({ status: 0, code: "network_error" });
   });
 });
+
+describe("ApiClient site hierarchy", () => {
+  it("maps sites, zones and counters onto the REST paths, deactivating softly and never deleting (FR-CFG-001)", async () => {
+    const fetchImpl = vi.fn().mockImplementation(async () => json(200, { items: [] }));
+    const client = new ApiClient({ apiOrigin: "", fetch: fetchImpl as unknown as typeof fetch });
+
+    await client.sites.list();
+    await client.sites.create({ name: "N", code: "C", timezone: "Asia/Dhaka", address: "A", default_language: "bn", enabled_languages: ["bn", "en"] });
+    await client.sites.update("s1", { name: "Renamed" });
+    await client.sites.deactivate("s1", "closed");
+    await client.sites.activate("s1");
+    await client.sites.zones("s1");
+    await client.sites.createZone("s1", { name: "Z", floor_label: "Ground", building_label: "Block B" });
+    await client.zones.update("z1", { building_label: "" });
+    await client.zones.deactivate("z1");
+    await client.zones.activate("z1");
+    await client.zones.counters("z1");
+    await client.zones.createCounter("z1", { label: "3", location_note: "Behind the pillar" });
+    await client.counters.update("c1", { label: "4" });
+    await client.counters.deactivate("c1");
+    await client.counters.activate("c1");
+
+    const calls = fetchImpl.mock.calls.map(([url, init]) => `${(init as RequestInit).method} ${String(url).replace("/api/v1", "")}`);
+    expect(calls).toEqual([
+      "GET /sites",
+      "POST /sites",
+      "PATCH /sites/s1",
+      "POST /sites/s1/deactivate",
+      "POST /sites/s1/activate",
+      "GET /sites/s1/zones",
+      "POST /sites/s1/zones",
+      "PATCH /zones/z1",
+      "POST /zones/z1/deactivate",
+      "POST /zones/z1/activate",
+      "GET /zones/z1/counters",
+      "POST /zones/z1/counters",
+      "PATCH /counters/c1",
+      "POST /counters/c1/deactivate",
+      "POST /counters/c1/activate",
+    ]);
+    expect(JSON.parse(String((fetchImpl.mock.calls[3]?.[1] as RequestInit).body))).toEqual({ reason: "closed" });
+    expect(JSON.parse(String((fetchImpl.mock.calls[7]?.[1] as RequestInit).body))).toEqual({ building_label: "" });
+  });
+});

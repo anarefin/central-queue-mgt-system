@@ -57,6 +57,19 @@ describe("silent sign-in and the guarded dashboard", () => {
     expect(refresh.init.credentials).toBe("same-origin");
   });
 
+  it("links to site administration for an Org Admin only; the API enforces access either way (FR-CFG-001)", async () => {
+    stubApi({ "POST /auth/refresh": () => json(200, TOKENS), "GET /auth/me": () => json(200, ME), ...HEALTH });
+    const admin = renderApp(<Home />);
+    const link = await screen.findByRole("link", { name: "Sites, zones and counters" });
+    expect(link.getAttribute("href")).toMatch(/^\/sites\/?$/); // the export config adds the trailing slash
+    admin.unmount();
+
+    stubApi({ "POST /auth/refresh": () => json(200, TOKENS), "GET /auth/me": () => json(200, { ...ME, roles: ["agent"] }), ...HEALTH });
+    renderApp(<Home />);
+    await screen.findByText("Agent");
+    expect(screen.queryByRole("link", { name: "Sites, zones and counters" })).not.toBeInTheDocument();
+  });
+
   it("uses the signed-in user's preferred language over the device setting", async () => {
     stubApi({
       "POST /auth/refresh": () => json(200, TOKENS),

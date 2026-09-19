@@ -2,6 +2,7 @@
 
 import { useI18n } from "@qms/i18n/react";
 import { Button, Page } from "@qms/ui";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { HealthPanel } from "../components/HealthPanel";
 import { RequireAuth } from "../components/RequireAuth";
@@ -30,6 +31,8 @@ export default function Home() {
           </div>
         </div>
         {user && <p className="qms-muted">{user.roles.map((role) => t(`roles.${role}`)).join(", ")}</p>}
+        {/* A convenience only: the API decides who may configure sites (FR-CFG-103). */}
+        {user?.roles.some((role) => role === "system_admin" || role === "org_admin") && <Link href="/sites/">{t("admin.home.sites")}</Link>}
         <HealthPanel />
       </RequireAuth>
     </Page>

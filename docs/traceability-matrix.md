@@ -1,7 +1,7 @@
 # Traceability matrix
 
 SRS §27.1: every requirement ID maps to at least one automated test or documented UAT step, and a requirement with no
-test is treated as not implemented. Covers tickets 01–04; later tickets append rows.
+test is treated as not implemented. Covers tickets 01–05; later tickets append rows.
 
 **Test types:** unit, integration (real PostgreSQL through Testcontainers, or a full Spring context), E2E, UAT, load,
 manual. **Status:** `passing` (the test ran green in the last full run), `partial` (only part of the requirement is
@@ -82,6 +82,24 @@ Paths: `B` = `backend/src/test/java/com/qms`, `F` = `frontend`.
 | FR-SEC-042 searchable and exportable by Org Admin; not editable | §25.5 | integration | `B/audit/AuditLogIT#searchFiltersByActorActionEntityAndTimeRange`, `#cursorPaginationVisitsEveryRowOnceEvenWithIdenticalTimestamps`; `B/audit/AuditCursorTest`, `B/audit/AuditCsvTest`; `B/identity/AdminApiIT#auditSearchFiltersAndPaginatesByCursor`, `#badAuditQueryParametersAreValidationErrors`, `#csvExportIsSpreadsheetSafeAndItselfAudited` | passing |
 | FR-INT-002 role assignment mappable from an external group claim (seam) | §22.1 | integration | `B/identity/AdminApiIT#externalGroupMappingOwnsItsOwnAssignmentsAndNeverTouchesManualOnes`; interface `RoleMapper` | passing |
 | Definition of done §27.5 item 6, administrator guide | §27.5 | manual | `docs/admin-guide.md` | passing |
+
+## Ticket 05, site, zone and counter administration
+
+`IT` = `B/configuration/site/HierarchyAdminIT`, `Rules` = `B/configuration/site/SiteRulesTest`, `UI` = `F/apps/admin/src/components/SiteAdmin.test.tsx`.
+
+| Requirement ID | Section | Test type | Test reference | Status |
+|---|---|---|---|---|
+| FR-CFG-001 create, rename and soft-deactivate sites, zones, counters; history keeps resolving | §7.1 | integration, unit | `IT#aSiteCarriesTimezoneAddressAndOrderedLanguagesStoresUtcAndIsAuditedOnCreateAndRename`, `IT#aZoneNeedsAFloorLabelAndMayHaveABuildingLabelThatCanBeCleared`, `IT#aCounterHasAShortLabelAZoneAndAnOptionalLocationNote`, `IT#deactivationIsSoftSoHistoricalReferencesKeepResolving` (no delete endpoint, the database refuses a delete), `IT#anActiveZoneOrCounterNeverSitsUnderAnInactiveParent`; `UI` (adds, renames, asks before deactivating, deactivates and reactivates); `F/packages/api-client/src/api-client.test.ts` (site hierarchy paths) | passing |
+| FR-CFG-002 site timezone, address, default language; stored UTC, rendered in site timezone | §7.1 | integration, unit | `IT#aSiteCarriesTimezoneAddressAndOrderedLanguagesStoresUtcAndIsAuditedOnCreateAndRename` (`created_at` is a UTC instant equal to the stored `timestamptz`), `IT#invalidTimezonesLanguagesAndCodesAreRefusedWithTheFieldNamed`; `Rules#timezoneMustBeAnIanaZoneId`; `UI` (`renders each site's timestamps in that site's own timezone`, Dhaka and New York) | passing |
+| FR-I18N-002 site default language and ordered enabled languages | §17 | integration, unit | `IT#aSiteCarriesTimezoneAddressAndOrderedLanguagesStoresUtcAndIsAuditedOnCreateAndRename` (order kept and changed), `IT#invalidTimezonesLanguagesAndCodesAreRefusedWithTheFieldNamed`; `Rules#enabledLanguagesKeepTheirOrderAndMustIncludeTheDefault`, `Rules#unknownAndRepeatedLanguagesAreRefused`; `UI` (`adds a site with timezone, address, default language and ordered languages`). The resolver's site default (`SiteDefaultLanguage`) still reads configuration: which site applies to a request arrives with device and visitor context | partial |
+| FR-CFG-003 zone floor label, optional building label (ADR-0002) | §7.1 | integration, unit | `IT#aZoneNeedsAFloorLabelAndMayHaveABuildingLabelThatCanBeCleared`; `UI` (`shows a site's zones with building and floor…`, `adds a zone with floor and optional building…`) | passing |
+| FR-CFG-004 counter short display label, zone, optional location note | §7.1 | integration, unit | `IT#aCounterHasAShortLabelAZoneAndAnOptionalLocationNote`; `UI` (same two tests) | passing |
+| NFR-SCL-002 adding a site needs no code change or restart | §23 | integration, unit | `IT#addingSitesNeedsNoCodeChangeOrRestart` (two sites, a zone under one, in the one running context); `UI` (the new site appears without a reload) | passing |
+| FR-SEC-040 configuration changes audited with before and after values | §25.5 | integration | `IT#aSiteCarriesTimezoneAddressAndOrderedLanguagesStoresUtcAndIsAuditedOnCreateAndRename` (`site.created`, `site.updated`, a no-op edit writes nothing), `IT#aZoneNeeds…`, `IT#aCounterHas…`, `IT#deactivationIsSoftSoHistoricalReferencesKeepResolving` (`*.deactivated` with reason, cascaded entries say why), `IT#anActiveZoneOrCounterNeverSitsUnderAnInactiveParent` (`*.activated`) | passing |
+| §5.2 `config:org_sites_zones` permission on every endpoint, server-side | §5.2 | integration | `IT#everyEndpointFollowsThePermissionMatrixForEveryRole` (every role, every endpoint, and no token), `IT#permissionsAreEnforcedAtTheServiceLayerNotOnlyTheControllers`; `B/identity/ControllerSecurityTest#everyControllerMethodIsSecuredOrExplicitlyPublic` | passing |
+| FR-CFG-106 a site-scoped admin is limited to their own sites | §5.3 | integration | `IT#aSiteScopedAdminSeesAndChangesOnlyTheirOwnSites` | passing |
+| Definition of done §27.5 item 3, strings in both packs | §27.5 | unit | `F/packages/i18n/src/i18n.test.ts` (`English and Bangla have exactly the same keys`); `UI` (`renders every label in Bangla…`) | passing |
+| Definition of done §27.5 item 6, administrator guide | §27.5 | manual | `docs/admin-guide.md` section 7 | passing |
 
 ## Notes
 

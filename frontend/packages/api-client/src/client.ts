@@ -1,4 +1,5 @@
 import { ApiRequestError, isApiErrorCode, type ApiErrorBody } from "./errors";
+import type { Counter, CounterInput, Items, Site, SiteInput, Zone, ZoneInput } from "./hierarchy";
 
 export const API_BASE_PATH = "/api/v1";
 
@@ -75,6 +76,34 @@ export class ApiClient {
     refresh: () => this.request<TokenResponse>("POST", "/auth/refresh", undefined, { anonymous: true }),
     logout: () => this.request<void>("POST", "/auth/logout", undefined, { anonymous: true }),
     me: () => this.request<Me>("GET", "/auth/me"),
+  };
+
+  /** Deactivation is soft: an inactive record still resolves by id (FR-CFG-001). Deactivating a parent takes its children. */
+  readonly sites = {
+    list: () => this.request<Items<Site>>("GET", "/sites"),
+    get: (id: string) => this.request<Site>("GET", `/sites/${id}`),
+    create: (input: SiteInput) => this.request<Site>("POST", "/sites", input),
+    update: (id: string, input: Partial<SiteInput>) => this.request<Site>("PATCH", `/sites/${id}`, input),
+    deactivate: (id: string, reason?: string) => this.request<Site>("POST", `/sites/${id}/deactivate`, reason ? { reason } : undefined),
+    activate: (id: string) => this.request<Site>("POST", `/sites/${id}/activate`),
+    zones: (siteId: string) => this.request<Items<Zone>>("GET", `/sites/${siteId}/zones`),
+    createZone: (siteId: string, input: ZoneInput) => this.request<Zone>("POST", `/sites/${siteId}/zones`, input),
+  };
+
+  readonly zones = {
+    get: (id: string) => this.request<Zone>("GET", `/zones/${id}`),
+    update: (id: string, input: Partial<ZoneInput>) => this.request<Zone>("PATCH", `/zones/${id}`, input),
+    deactivate: (id: string, reason?: string) => this.request<Zone>("POST", `/zones/${id}/deactivate`, reason ? { reason } : undefined),
+    activate: (id: string) => this.request<Zone>("POST", `/zones/${id}/activate`),
+    counters: (zoneId: string) => this.request<Items<Counter>>("GET", `/zones/${zoneId}/counters`),
+    createCounter: (zoneId: string, input: CounterInput) => this.request<Counter>("POST", `/zones/${zoneId}/counters`, input),
+  };
+
+  readonly counters = {
+    get: (id: string) => this.request<Counter>("GET", `/counters/${id}`),
+    update: (id: string, input: Partial<CounterInput>) => this.request<Counter>("PATCH", `/counters/${id}`, input),
+    deactivate: (id: string, reason?: string) => this.request<Counter>("POST", `/counters/${id}/deactivate`, reason ? { reason } : undefined),
+    activate: (id: string) => this.request<Counter>("POST", `/counters/${id}/activate`),
   };
 
   /**
