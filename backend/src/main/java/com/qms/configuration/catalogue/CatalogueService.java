@@ -75,6 +75,11 @@ public class CatalogueService {
         requireActiveParent(site.active());
         Instant now = clock.instant();
         Map<String, String> names = CatalogueRules.names("name_i18n", request.nameI18n(), site.defaultLanguage(), site.enabled());
+        List<ServiceGroup.CustomLevelOption> customLevelOptions =
+                CatalogueRules.customLevelOptions(request.customLevelOptions(), site.defaultLanguage(), site.enabled());
+        Map<String, String> customLevelNames = customLevelOptions.isEmpty()
+                ? null
+                : CatalogueRules.names("custom_level_name_i18n", request.customLevelNameI18n(), site.defaultLanguage(), site.enabled());
         ServiceGroup group = new ServiceGroup(
                 UUID.randomUUID(),
                 siteId,
@@ -83,6 +88,10 @@ public class CatalogueService {
                 CatalogueRules.tokenPrefix(request.tokenPrefix()),
                 CatalogueRules.displayOrder(request.displayOrder()),
                 true,
+                Boolean.TRUE.equals(request.teamSelectable()),
+                Boolean.TRUE.equals(request.individualSelectable()),
+                customLevelNames,
+                customLevelOptions,
                 now,
                 now);
         repository.insert(group);
@@ -101,6 +110,19 @@ public class CatalogueService {
         Map<String, String> names = change.nameI18n() == null
                 ? before.nameI18n()
                 : CatalogueRules.names("name_i18n", change.nameI18n(), site.defaultLanguage(), site.enabled());
+        List<ServiceGroup.CustomLevelOption> customLevelOptions = change.customLevelOptions() == null
+                ? before.customLevelOptions()
+                : CatalogueRules.customLevelOptions(change.customLevelOptions(), site.defaultLanguage(), site.enabled());
+        Map<String, String> customLevelNames;
+        if (customLevelOptions.isEmpty()) {
+            customLevelNames = null;
+        } else if (change.customLevelNameI18n() != null) {
+            customLevelNames = CatalogueRules.names("custom_level_name_i18n", change.customLevelNameI18n(), site.defaultLanguage(), site.enabled());
+        } else if (before.customLevelNameI18n() != null) {
+            customLevelNames = before.customLevelNameI18n();
+        } else {
+            throw CatalogueRules.invalid("custom_level_name_i18n", "NotBlank");
+        }
         ServiceGroup after = new ServiceGroup(
                 id,
                 before.siteId(),
@@ -109,6 +131,10 @@ public class CatalogueService {
                 change.tokenPrefix() == null ? before.tokenPrefix() : CatalogueRules.tokenPrefix(change.tokenPrefix()),
                 change.displayOrder() == null ? before.displayOrder() : CatalogueRules.displayOrder(change.displayOrder()),
                 before.active(),
+                change.teamSelectable() == null ? before.teamSelectable() : change.teamSelectable(),
+                change.individualSelectable() == null ? before.individualSelectable() : change.individualSelectable(),
+                customLevelNames,
+                customLevelOptions,
                 before.createdAt(),
                 clock.instant());
         if (snapshot(after).equals(snapshot(before))) return before;
@@ -471,6 +497,10 @@ public class CatalogueService {
         values.put("token_prefix", group.tokenPrefix());
         values.put("display_order", group.displayOrder());
         values.put("active", group.active());
+        values.put("team_selectable", group.teamSelectable());
+        values.put("individual_selectable", group.individualSelectable());
+        values.put("custom_level_name_i18n", group.customLevelNameI18n());
+        values.put("custom_level_options", group.customLevelOptions());
         return values;
     }
 

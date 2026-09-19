@@ -13,6 +13,8 @@ import org.springframework.context.annotation.Profile;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
@@ -59,12 +61,35 @@ public class KioskTicketController {
         scope.requireSite(target.siteId());
 
         UUID deviceId = currentUser.require().userId();
-        var command = new IssueCommand(request.serviceId(), Channels.KIOSK, deviceId, ActorType.DEVICE, null);
+        var command = new IssueCommand(
+                request.serviceId(), Channels.KIOSK, deviceId, ActorType.DEVICE, null, null, request.visitorId(), false, null,
+                request.agentId(), request.customLevelId());
         var result = idempotency.execute(
-                "POST /kiosk/tickets:" + deviceId, idempotencyKey, request.serviceId().toString(), TicketResponse.class, () -> issuance.issue(command));
+                "POST /kiosk/tickets:" + deviceId, idempotencyKey, fingerprint(request), TicketResponse.class, () -> issuance.issue(command));
         var response = ResponseEntity.status(HttpStatus.CREATED);
         if (result.replayed()) response.header(TicketController.REPLAYED_HEADER, "true");
         return response.body(result.value());
+    }
+
+    /**
+     * The visitor's identification, choice of Agent and custom-level pick all change what gets issued, so a replayed
+     * key must match all of them, the same way {@link TicketController} fingerprints the choices staff made.
+     */
+    private static String fingerprint(KioskIssueTicketRequest request) {
+        return request.serviceId() + "|" + request.visitorId() + "|" + request.agentId() + "|" + request.customLevelId();
+    }
+
+    /** The on-duty Agents of a Service group's team the visitor may pick at the individual level (FR-ISS-012). */
+    @PreAuthorize(ISSUE)
+    @GetMapping("/kiosk/groups/{groupId}/agents")
+    public KioskAgentOptions agents(@PathVariable UUID groupId) {
+        TicketRepository.GroupSite groupSite = tickets.groupSite(groupId).orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND));
+        scope.requireSite(groupSite.siteId());
+        int groupQueueLength = tickets.groupQueueLength(groupId);
+        List<KioskAgentOptions.Agent> agents = tickets.onDutyTeamAgents(groupId).stream()
+                .map(a -> new KioskAgentOptions.Agent(a.agentId(), a.displayName(), a.queueLength(), a.queueLength() > groupQueueLength))
+                .toList();
+        return new KioskAgentOptions(agents);
     }
 
     private static ApiException invalid(String field, String code) {

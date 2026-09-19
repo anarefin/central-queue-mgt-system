@@ -66,7 +66,7 @@ public class TicketController {
         boolean confirm = Boolean.TRUE.equals(request.confirmDuplicate());
         var command = new IssueCommand(
                 request.serviceId(), channel, actor, ActorType.STAFF, request.occurredAt(), request.priorityClassId(), request.visitorId(), confirm,
-                request.purposeNote());
+                request.purposeNote(), null, null);
         var result = idempotency.execute(
                 "POST /tickets:" + actor,
                 idempotencyKey,

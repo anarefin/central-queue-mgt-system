@@ -61,9 +61,39 @@ export interface DeviceBootstrap {
       counters: { id: string; label: string }[];
     };
   } | null;
-  service_tree: {
-    id: string;
-    name_i18n: Record<string, string>;
-    services: { id: string; name_i18n: Record<string, string> }[];
-  }[];
+  service_tree: KioskServiceTreeGroup[];
+}
+
+/** A service the kiosk selection tree can lead to (ticket 26). `visitor_identifier` decides the identify step: `not_required`, `optional` or `mandatory` (FR-CFG-013). */
+export interface KioskServiceTreeEntry {
+  id: string;
+  name_i18n: Record<string, string>;
+  visitor_identifier: "not_required" | "optional" | "mandatory";
+}
+
+/** One option of a group's custom kiosk-selection level (ticket 26, FR-ISS-010). */
+export interface KioskCustomLevelOption {
+  id: string;
+  name_i18n: Record<string, string>;
+}
+
+/** A group's custom level, or absent when the group has none. */
+export interface KioskCustomLevel {
+  name_i18n: Record<string, string>;
+  options: KioskCustomLevelOption[];
+}
+
+/**
+ * A group's own kiosk selection tree (ticket 26, FR-ISS-010, FR-ISS-011): the group and service levels always apply.
+ * `individual_selectable` only ever offers the on-duty-agent level when `team_selectable` is also true (a group has
+ * exactly one team, so the team level itself is never its own screen — see the backend `ServiceGroup`'s header).
+ * `custom_level` is null when the group has none.
+ */
+export interface KioskServiceTreeGroup {
+  id: string;
+  name_i18n: Record<string, string>;
+  services: KioskServiceTreeEntry[];
+  team_selectable: boolean;
+  individual_selectable: boolean;
+  custom_level: KioskCustomLevel | null;
 }

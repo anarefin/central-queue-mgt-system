@@ -590,6 +590,48 @@ makes them achievable (idle renders synchronously, no chunk of blocking work sit
 handler) — a load/device test is the gap, matching how NFR-PERF-003 in ticket 17 needed a real integration test rather
 than a unit one for its own timing claim.
 
+## Ticket 26, kiosk identification and full selection tree
+
+`Kiosk` = `B/issuance/KioskTicketIT`, `Catalogue` = `B/configuration/catalogue/CatalogueAdminIT`, `Flow` = `F/apps/kiosk/src/components/KioskFlow.test.tsx`.
+
+| Requirement ID | Section | Test type | Test reference | Status |
+|---|---|---|---|---|
+| FR-ISS-013 identification by typed code, camera QR (where the browser supports it) or mobile number, all through one directory lookup | §8.2, §22.6 | unit, integration | `Kiosk#identifyResolvesACodeOrPhoneToOnlyNameAndCategoryAndNothingElse` (`GET /kiosk/visitors/identify` resolves both a code and a phone number, `hasRole('KIOSK')`, 401/403 for no token or a staff token); `Flow#resolves a typed code to only a name and category…`, `#hides the QR scan option when the browser cannot detect a barcode` (feature-detected via `BarcodeDetector`, never a peripheral driver — SRS §28.1's Phase 1 assumption) | passing |
+| FR-ISS-013 "no identification" where the Service allows it | §8.2 | unit | `Flow#lets the visitor skip identification when it is only optional` | passing |
+| FR-ISS-014 a resolved code shows only name and category, nothing else stored on the visitor | §8.2 | unit, integration | `Kiosk#identifyResolvesACodeOrPhoneToOnlyNameAndCategoryAndNothingElse` (response body contains neither the phone number nor the external code); `KioskVisitorIdentifyResponse` carries only `visitor_id`, `name`, `category`, unlike Reception's own `VisitorLookupResponse`; `Flow` shows the name/category on confirm, never anything else | passing |
+| FR-ISS-010 selection tree up to five levels: group, Service, team, individual Agent, one custom level | §8.2 | unit, integration | `Catalogue#aGroupsKioskSelectionTreeDefaultsToDisabledAndCanBeConfiguredThenClearedAgain` (the group/service levels always apply; team, individual and custom are configured, round-tripped and cleared); `Flow` describe blocks "individual Agent level" and "custom level" (both offered, both skippable, both send their pick when issuing) | passing |
+| FR-ISS-011 each level individually enabled or disabled per Service group | §8.2 | integration | `Catalogue#aGroupsKioskSelectionTreeDefaultsToDisabledAndCanBeConfiguredThenClearedAgain` (`team_selectable`, `individual_selectable`, `custom_level_options` each default off and are set independently) | passing |
+| FR-ISS-012 an individual Agent is selectable only when on duty | §8.2 | integration, unit | `Kiosk#anIndividualAgentMustBeOnDutyOnTheGroupsTeamAndTheLevelMustBeEnabled` (server-side: a team member who is off duty, or on duty on another group's team, is refused `agent_not_on_duty`; the level itself refused `individual_not_selectable` when the group has not enabled it); `Flow#offers only the on-duty Agents plus 'anyone'…`, `#skips the individual level with no agent chosen when nobody on the team is on duty` (`GET /kiosk/groups/{id}/agents` never lists an off-duty member) | passing |
+| FR-ISS-012 warns when the Agent's own queue is longer than the group's | §8.2 | integration, unit | `Kiosk#theOnDutyAgentsEndpointListsOnlyOnDutyTeamMembersAndWarnsWhenTheirQueueIsLongerThanTheGroups` (`queue_longer_than_group` compares an Agent's own personally-targeted queue against the group's shared, not-yet-targeted queue); `Flow#offers only the on-duty Agents plus 'anyone', warns when one's queue is longer…` | passing |
+| FR-CFG-013 a mandatory visitor identifier is enforced before issuance | §7.2, §8.2 | integration, unit | `Kiosk#aServiceRequiringAMandatoryVisitorIdentifierRefusesWithoutOneAndIssuesWithOne` (`validation_failed` on `visitor_id` without one, issues and records `visitor_id` with one); `Flow#never offers to skip when identification is mandatory, and shows a not-found message that can be retried` (no skip tile; the API enforcement is what actually blocks issuance, not just the UI hiding a button) | passing |
+| §8.2 a group's custom level picks one of its currently configured options, or is skipped | §8.2 | integration, unit | `Kiosk#aCustomLevelPickMustBeOneOfTheGroupsCurrentOptionsAndIsRecordedOnTheTicket` (an id not among the group's options is `validation_failed`; a valid one is recorded on the ticket); `Flow#offers the group's configured options, can be skipped…`, `#auto-picks a custom level with only one option…` (single-option skip, same rule as every other level) | passing |
+| FR-I18N-001 the new `kiosk.identify.*`, `kiosk.individual.*`, `kiosk.custom.*` and `kiosk.confirm.visitorLabel`/`agentLabel` strings are in both packs | §17 | unit | `F/packages/i18n/src/i18n.test.ts` (pack parity, unchanged, now covers the added keys) | passing |
+| Definition of done §27.5: every protected action permission-checked server-side | §5.2, §27.5 | integration | `Kiosk#identifyResolvesACodeOrPhoneToOnlyNameAndCategoryAndNothingElse` (`hasRole('KIOSK')` on the identify endpoint), `#anIndividualAgentMustBeOnDutyOnTheGroupsTeamAndTheLevelMustBeEnabled` (on-duty and level checks happen again in `IssuanceService.issue`, not only in the listing endpoint, so a stale client-side list can never issue an unauthorised targeted ticket) | passing |
+| Definition of done §27.5: specified events and audit entries emitted | §27.5 | integration | `Kiosk#anIndividualAgentMustBeOnDutyOnTheGroupsTeamAndTheLevelMustBeEnabled` (`target_agent_id` on the `ticket` row and in the `ticket.issued` event payload), `#aCustomLevelPickMustBeOneOfTheGroupsCurrentOptionsAndIsRecordedOnTheTicket` (`custom_level_id` likewise); `Catalogue#aGroupsKioskSelectionTreeDefaultsToDisabledAndCanBeConfiguredThenClearedAgain` (`service_group.updated` audit entry carries the new fields) | passing |
+
+**Notes on this ticket's interpretation.** The team level is never its own kiosk screen: a Service group has exactly
+one team (CONTEXT.md), so by §8.2's own single-option-skip rule it would never be shown regardless. `team_selectable`
+therefore does real work by gating whether `individual_selectable` may offer the team's on-duty Agents at all (both
+must be true), rather than existing as a flag with no effect — see `ServiceGroup`'s header. FR-ISS-013's "select an
+individual Agent" and FR-ISS-012's queue comparison reuse `ticket.target_agent_id`, the routing column ticket 11's
+transfer already introduced ("waits in that Agent's personal queue and no other Counter draws it") rather than adding
+a second, parallel notion of "assigned to". The group's "shared queue" `GET /kiosk/groups/{id}/agents` compares an
+Agent's own queue against is tickets **not yet** targeted at anyone (`target_agent_id IS NULL`): a personally-targeted
+ticket is, by construction, always counted in the group's raw total too, so comparing against that raw total could
+never show an Agent's own queue as "longer" — the shared/undirected pool is the only comparison that can actually
+warn. The custom level's options live on `service_group` as `custom_level_options` (`jsonb`, `[{"id", "name_i18n"}]`);
+the level is enabled by the array being non-empty, with no separate boolean, the same way `visitor_identifier`'s three
+states already avoid a redundant flag. `KioskTicketController`/`KioskVisitorController` query `counter_session` and
+`team`/`team_member` directly by SQL from the `issuance` package rather than depending on the `session` package's
+Java types, because `session` already depends on `issuance` (`SessionViews`) and the reverse edge would be a package
+cycle `ArchitectureTest` forbids — the same "read a foreign table directly" pattern `TicketRepository`'s own header
+already documents for the catalogue and site tables. QR scanning is the browser's own `BarcodeDetector` API
+(feature-detected; the "Scan QR" tile never renders where it is unavailable), not a peripheral driver or an npm
+package, per SRS §28.1's Phase-1 assumption of a camera reachable from the browser. The identify step is asked
+**after** the Service is chosen, not before it as the SRS §8.2 flowchart's general diagram orders it: FR-CFG-013 makes
+the requirement per-Service, so it cannot be resolved before the Service is known; asking generically up front for
+every visitor regardless of what they came for would also cost taps for Services that never require it.
+
 ## Notes
 
 - **Compose.** Verified by hand on 2026-09-19 with OrbStack Docker, from a clean build: `migrate` exited 0, then Postgres,

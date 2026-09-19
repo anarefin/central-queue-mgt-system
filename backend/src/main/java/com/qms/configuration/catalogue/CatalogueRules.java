@@ -114,4 +114,23 @@ final class CatalogueRules {
     static List<String> missing(Map<String, String> names, List<String> enabled) {
         return enabled.stream().filter(language -> !names.containsKey(language)).toList();
     }
+
+    /**
+     * The kiosk selection tree's custom level (ticket 26, FR-ISS-010, FR-ISS-011): {@code null} or an empty list
+     * disables the level. Each option needs a short, unique {@code id} (the value recorded on a ticket) and a name in
+     * every enabled language, the same rule {@link #names} applies to a group's own name.
+     */
+    static List<ServiceGroup.CustomLevelOption> customLevelOptions(
+            List<ServiceGroup.CustomLevelOption> given, String defaultLanguage, List<String> enabled) {
+        if (given == null || given.isEmpty()) return List.of();
+        LinkedHashSet<String> seen = new LinkedHashSet<>();
+        List<ServiceGroup.CustomLevelOption> kept = new java.util.ArrayList<>();
+        for (ServiceGroup.CustomLevelOption option : given) {
+            String id = option == null ? null : optional("custom_level_options.id", option.id(), 50);
+            if (id == null) throw invalid("custom_level_options.id", "NotBlank");
+            if (!seen.add(id)) throw invalid("custom_level_options.id", "duplicate");
+            kept.add(new ServiceGroup.CustomLevelOption(id, names("custom_level_options.name_i18n", option.nameI18n(), defaultLanguage, enabled)));
+        }
+        return List.copyOf(kept);
+    }
 }

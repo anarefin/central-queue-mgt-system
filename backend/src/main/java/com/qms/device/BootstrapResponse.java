@@ -26,7 +26,24 @@ record BootstrapResponse(Branding branding, List<String> languages, Layout layou
 
     record CounterLayout(UUID id, String label) {}
 
-    record ServiceTreeGroup(UUID id, @JsonProperty("name_i18n") Map<String, String> nameI18n, List<ServiceTreeEntry> services) {}
+    /**
+     * A group's kiosk selection tree (ticket 26, FR-ISS-010, FR-ISS-011), shipped with the tree itself so the kiosk
+     * never needs another round trip to know which of the optional levels to walk the visitor through. {@code
+     * teamSelectable} and {@code individualSelectable} gate the individual-agent level together (see {@link
+     * com.qms.configuration.catalogue.ServiceGroup}'s header); {@code customLevel} is null when the group has none.
+     */
+    record ServiceTreeGroup(
+            UUID id,
+            @JsonProperty("name_i18n") Map<String, String> nameI18n,
+            List<ServiceTreeEntry> services,
+            @JsonProperty("team_selectable") boolean teamSelectable,
+            @JsonProperty("individual_selectable") boolean individualSelectable,
+            @JsonProperty("custom_level") CustomLevel customLevel) {}
 
-    record ServiceTreeEntry(UUID id, @JsonProperty("name_i18n") Map<String, String> nameI18n) {}
+    /** {@code visitorIdentifier} is {@code not_required}, {@code optional} or {@code mandatory} (FR-CFG-013), read at the kiosk without another call. */
+    record ServiceTreeEntry(UUID id, @JsonProperty("name_i18n") Map<String, String> nameI18n, @JsonProperty("visitor_identifier") String visitorIdentifier) {}
+
+    record CustomLevel(@JsonProperty("name_i18n") Map<String, String> nameI18n, List<CustomLevelOption> options) {}
+
+    record CustomLevelOption(String id, @JsonProperty("name_i18n") Map<String, String> nameI18n) {}
 }

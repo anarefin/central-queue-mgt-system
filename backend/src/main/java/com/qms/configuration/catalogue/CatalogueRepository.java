@@ -24,7 +24,8 @@ import tools.jackson.databind.json.JsonMapper;
 class CatalogueRepository {
 
     private static final String GROUP =
-            "SELECT g.id, g.site_id, g.name_i18n, g.token_prefix, g.display_order, g.active, g.created_at, g.updated_at, s.enabled_languages"
+            "SELECT g.id, g.site_id, g.name_i18n, g.token_prefix, g.display_order, g.active, g.team_selectable, g.individual_selectable,"
+                    + " g.custom_level_name_i18n, g.custom_level_options, g.created_at, g.updated_at, s.enabled_languages"
                     + " FROM service_group g JOIN site s ON s.id = g.site_id";
     private static final String SERVICE =
             "SELECT v.id, v.service_group_id, g.site_id, v.name_i18n, v.token_prefix, v.expected_minutes, v.sla_wait_minutes, v.channels, v.icon,"
@@ -86,14 +87,23 @@ class CatalogueRepository {
 
     void insert(ServiceGroup group) {
         jdbc.update(
-                "INSERT INTO service_group (id, site_id, name_i18n, token_prefix, display_order, active, created_at, updated_at) VALUES (?, ?, ?::jsonb, ?, ?, ?, ?, ?)",
-                group.id(), group.siteId(), json(group.nameI18n()), group.tokenPrefix(), group.displayOrder(), group.active(), ts(group.createdAt()), ts(group.updatedAt()));
+                "INSERT INTO service_group (id, site_id, name_i18n, token_prefix, display_order, active, team_selectable, individual_selectable,"
+                        + " custom_level_name_i18n, custom_level_options, created_at, updated_at)"
+                        + " VALUES (?, ?, ?::jsonb, ?, ?, ?, ?, ?, ?::jsonb, ?::jsonb, ?, ?)",
+                group.id(), group.siteId(), json(group.nameI18n()), group.tokenPrefix(), group.displayOrder(), group.active(),
+                group.teamSelectable(), group.individualSelectable(), jsonOrNull(group.customLevelNameI18n()),
+                group.customLevelOptions() == null || group.customLevelOptions().isEmpty() ? null : json(group.customLevelOptions()),
+                ts(group.createdAt()), ts(group.updatedAt()));
     }
 
     void update(ServiceGroup group) {
         jdbc.update(
-                "UPDATE service_group SET name_i18n = ?::jsonb, token_prefix = ?, display_order = ?, updated_at = ? WHERE id = ?",
-                json(group.nameI18n()), group.tokenPrefix(), group.displayOrder(), ts(group.updatedAt()), group.id());
+                "UPDATE service_group SET name_i18n = ?::jsonb, token_prefix = ?, display_order = ?, team_selectable = ?, individual_selectable = ?,"
+                        + " custom_level_name_i18n = ?::jsonb, custom_level_options = ?::jsonb, updated_at = ? WHERE id = ?",
+                json(group.nameI18n()), group.tokenPrefix(), group.displayOrder(), group.teamSelectable(), group.individualSelectable(),
+                jsonOrNull(group.customLevelNameI18n()),
+                group.customLevelOptions() == null || group.customLevelOptions().isEmpty() ? null : json(group.customLevelOptions()),
+                ts(group.updatedAt()), group.id());
     }
 
     void setGroupActive(UUID id, boolean active, Instant now) {
@@ -209,6 +219,11 @@ class CatalogueRepository {
         return mapper.writeValueAsString(value);
     }
 
+    /** Like {@link #json}, but a Java {@code null} binds a real SQL {@code NULL} rather than the JSON literal {@code "null"}. */
+    private String jsonOrNull(Object value) {
+        return value == null ? null : json(value);
+    }
+
     private List<String> strings(String json) {
         return List.copyOf(Arrays.asList(mapper.readValue(json, String[].class)));
     }
@@ -216,6 +231,17 @@ class CatalogueRepository {
     @SuppressWarnings("unchecked")
     private Map<String, String> names(String json) {
         return new LinkedHashMap<>(mapper.readValue(json, LinkedHashMap.class));
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, String> namesOrNull(String json) {
+        return json == null ? null : new LinkedHashMap<>(mapper.readValue(json, LinkedHashMap.class));
+    }
+
+    /** {@code custom_level_options}: {@code NULL} or an empty array both mean the level is disabled (§/ticket 26 header). */
+    private List<ServiceGroup.CustomLevelOption> customLevelOptions(String json) {
+        if (json == null) return List.of();
+        return List.copyOf(Arrays.asList(mapper.readValue(json, ServiceGroup.CustomLevelOption[].class)));
     }
 
     private static OffsetDateTime ts(Instant instant) {
@@ -236,6 +262,10 @@ class CatalogueRepository {
                 rs.getString("token_prefix"),
                 rs.getInt("display_order"),
                 rs.getBoolean("active"),
+                rs.getBoolean("team_selectable"),
+                rs.getBoolean("individual_selectable"),
+                namesOrNull(rs.getString("custom_level_name_i18n")),
+                customLevelOptions(rs.getString("custom_level_options")),
                 instant(rs, "created_at"),
                 instant(rs, "updated_at"));
     }

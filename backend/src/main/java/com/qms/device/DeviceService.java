@@ -201,9 +201,16 @@ public class DeviceService {
                     List<ServiceEntry> services = catalogue.servicesForDevice(group.id());
                     List<ServiceTreeEntry> entries = services.stream()
                             .filter(s -> !kiosk || s.channels().contains("kiosk"))
-                            .map(s -> new ServiceTreeEntry(s.id(), s.nameI18n()))
+                            .map(s -> new ServiceTreeEntry(s.id(), s.nameI18n(), s.visitorIdentifier()))
                             .toList();
-                    return new ServiceTreeGroup(group.id(), group.nameI18n(), entries);
+                    BootstrapResponse.CustomLevel customLevel = group.customLevelOptions().isEmpty()
+                            ? null
+                            : new BootstrapResponse.CustomLevel(
+                                    group.customLevelNameI18n(),
+                                    group.customLevelOptions().stream()
+                                            .map(o -> new BootstrapResponse.CustomLevelOption(o.id(), o.nameI18n()))
+                                            .toList());
+                    return new ServiceTreeGroup(group.id(), group.nameI18n(), entries, group.teamSelectable(), group.individualSelectable(), customLevel);
                 })
                 .filter(g -> !kiosk || !g.services().isEmpty())
                 .toList();

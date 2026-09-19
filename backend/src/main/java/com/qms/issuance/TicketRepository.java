@@ -31,9 +31,14 @@ class TicketRepository {
             List<String> channels,
             String bookingMode,
             boolean active,
-            String timezone) {}
+            String timezone,
+            String visitorIdentifier) {}
 
-    /** A new ticket row. {@code purposeNote} is the agent-visible note Reception adds at issuance (FR-ISS-020). */
+    /**
+     * A new ticket row. {@code purposeNote} is the agent-visible note Reception adds at issuance (FR-ISS-020).
+     * {@code targetAgentId} and {@code customLevelId} are the kiosk selection tree's individual and custom levels
+     * (ticket 26, FR-ISS-010..012); both are null when the visitor's path never reached, or skipped, that level.
+     */
     record NewTicket(
             UUID id,
             String tokenNumber,
@@ -47,7 +52,15 @@ class TicketRepository {
             String secretHash,
             UUID priorityClassId,
             UUID visitorId,
-            String purposeNote) {}
+            String purposeNote,
+            UUID targetAgentId,
+            String customLevelId) {}
+
+    /** A group joined to its site, for a kiosk scope check (ticket 26). */
+    record GroupSite(UUID groupId, UUID siteId) {}
+
+    /** An on-duty member of a group's team, with how many tickets already wait in their personal queue (FR-ISS-012). */
+    record AgentQueueRow(UUID agentId, String displayName, int queueLength) {}
 
     /** A Priority class as issuance needs it: whether it can be given to a new ticket and the prefix it may impose. */
     record PriorityClassRef(UUID id, Map<String, String> names, boolean active, String prefixOverride) {}
@@ -96,7 +109,7 @@ class TicketRepository {
     Optional<ServiceTarget> serviceTarget(UUID serviceId) {
         return jdbc.query(
                         "SELECT v.id, v.service_group_id, g.site_id, v.token_prefix, g.token_prefix AS group_prefix, v.channels, v.booking_mode,"
-                                + " (v.active AND g.active AND s.active) AS active, s.timezone"
+                                + " (v.active AND g.active AND s.active) AS active, s.timezone, v.requires_visitor_id"
                                 + " FROM service v JOIN service_group g ON g.id = v.service_group_id JOIN site s ON s.id = g.site_id WHERE v.id = ?",
                         (rs, i) -> new ServiceTarget(
                                 rs.getObject("id", UUID.class),
@@ -107,9 +120,73 @@ class TicketRepository {
                                 strings(rs.getString("channels")),
                                 rs.getString("booking_mode"),
                                 rs.getBoolean("active"),
-                                rs.getString("timezone")),
+                                rs.getString("timezone"),
+                                rs.getString("requires_visitor_id")),
                         serviceId)
                 .stream().findFirst();
+    }
+
+    // ---- kiosk selection tree (ticket 26, FR-ISS-010..014) ----------------------------------------------------
+
+    Optional<GroupSite> groupSite(UUID groupId) {
+        return jdbc.query(
+                        "SELECT id, site_id FROM service_group WHERE id = ?",
+                        (rs, i) -> new GroupSite(rs.getObject("id", UUID.class), rs.getObject("site_id", UUID.class)),
+                        groupId)
+                .stream().findFirst();
+    }
+
+    /** Whether the group offers the individual level at all, and (when it does) the custom level's valid option ids. */
+    record GroupSelection(boolean teamSelectable, boolean individualSelectable, List<String> customLevelOptionIds) {}
+
+    Optional<GroupSelection> groupSelection(UUID groupId) {
+        return jdbc.query(
+                        "SELECT team_selectable, individual_selectable, custom_level_options FROM service_group WHERE id = ?",
+                        (rs, i) -> new GroupSelection(
+                                rs.getBoolean("team_selectable"), rs.getBoolean("individual_selectable"), customLevelOptionIds(rs.getString("custom_level_options"))),
+                        groupId)
+                .stream().findFirst();
+    }
+
+    /**
+     * The "group queue" FR-ISS-012 compares an Agent's own queue against: tickets still waiting or paused in the
+     * group that are not already earmarked for a specific Agent, i.e. the shared pool any team member could still
+     * draw. A ticket already targeted at someone (this endpoint's own kind of ticket) is excluded, or an Agent's
+     * personal queue — itself always a subset of the group's tickets — could never be found longer than it.
+     */
+    int groupQueueLength(UUID groupId) {
+        Integer count = jdbc.queryForObject(
+                "SELECT count(*) FROM ticket WHERE service_group_id = ? AND state IN ('waiting', 'paused') AND target_agent_id IS NULL",
+                Integer.class, groupId);
+        return count == null ? 0 : count;
+    }
+
+    /** Active members of a group's team who are on duty right now: a live (open, on-break or closing) counter session. */
+    List<AgentQueueRow> onDutyTeamAgents(UUID groupId) {
+        return jdbc.query(
+                "SELECT u.id, u.display_name,"
+                        + " (SELECT count(*) FROM ticket t WHERE t.target_agent_id = u.id AND t.state IN ('waiting', 'paused')) AS queue_length"
+                        + " FROM team tm JOIN team_member m ON m.team_id = tm.id JOIN users u ON u.id = m.user_id"
+                        + " WHERE tm.service_group_id = ? AND u.active"
+                        + " AND EXISTS (SELECT 1 FROM counter_session cs WHERE cs.agent_id = u.id AND cs.state IN ('open', 'on_break', 'closing'))"
+                        + " ORDER BY u.display_name, u.id",
+                (rs, i) -> new AgentQueueRow(rs.getObject("id", UUID.class), rs.getString("display_name"), rs.getInt("queue_length")),
+                groupId);
+    }
+
+    /** Whether {@code agentId} is an active member of {@code groupId}'s team and on duty right now (FR-ISS-012). */
+    boolean agentOnDutyInGroup(UUID groupId, UUID agentId) {
+        return Boolean.TRUE.equals(jdbc.queryForObject(
+                "SELECT EXISTS (SELECT 1 FROM team tm JOIN team_member m ON m.team_id = tm.id JOIN users u ON u.id = m.user_id"
+                        + " JOIN counter_session cs ON cs.agent_id = u.id"
+                        + " WHERE tm.service_group_id = ? AND m.user_id = ? AND u.active AND cs.state IN ('open', 'on_break', 'closing'))",
+                Boolean.class, groupId, agentId));
+    }
+
+    private List<String> customLevelOptionIds(String json) {
+        if (json == null) return List.of();
+        Map<?, ?>[] rows = mapper.readValue(json, Map[].class);
+        return java.util.Arrays.stream(rows).map(row -> String.valueOf(row.get("id"))).toList();
     }
 
     /**
@@ -160,10 +237,11 @@ class TicketRepository {
     void insertTicket(NewTicket t) {
         jdbc.update(
                 "INSERT INTO ticket (id, token_number, sequence_no, reset_key, service_id, service_group_id, site_id, zone_id, visit_id,"
-                        + " origin_channel, state, issued_at, queued_at, secret_hash, priority_class_id, visitor_id, purpose_note)"
-                        + " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'waiting', ?, ?, ?, ?, ?, ?)",
+                        + " origin_channel, state, issued_at, queued_at, secret_hash, priority_class_id, visitor_id, purpose_note, target_agent_id, custom_level_id)"
+                        + " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'waiting', ?, ?, ?, ?, ?, ?, ?, ?)",
                 t.id(), t.tokenNumber(), t.sequenceNo(), t.resetKey(), t.target().serviceId(), t.target().groupId(), t.target().siteId(), t.zoneId(),
-                t.visitId(), t.originChannel(), ts(t.issuedAt()), ts(t.issuedAt()), t.secretHash(), t.priorityClassId(), t.visitorId(), t.purposeNote());
+                t.visitId(), t.originChannel(), ts(t.issuedAt()), ts(t.issuedAt()), t.secretHash(), t.priorityClassId(), t.visitorId(), t.purposeNote(),
+                t.targetAgentId(), t.customLevelId());
     }
 
     // ---- reads ------------------------------------------------------------------------------------------------

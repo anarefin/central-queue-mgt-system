@@ -67,6 +67,29 @@
   gap: 2rem;
 }
 
+/* The identify step's typed-code/phone entry (FR-ISS-013): as tall as a tile, so the OS on-screen keyboard target is generous too. */
+.qms-kiosk-input {
+  min-block-size: 4rem;
+  font-size: 1.25rem;
+  inline-size: 100%;
+  max-inline-size: 28rem;
+}
+
+/* FR-ISS-012's warning: the Agent's own queue is already longer than the group's shared one. */
+.qms-kiosk-warning {
+  color: var(--qms-color-danger, #b00020);
+  font-size: 0.9em;
+}
+
+/* The QR-scan step's live camera preview (FR-ISS-013). */
+.qms-kiosk-scan-video {
+  inline-size: min(90vw, 24rem);
+  aspect-ratio: 1 / 1;
+  object-fit: cover;
+  border-radius: 0.5rem;
+  background: #000;
+}
+
 /* Larger-text mode (FR-ISS-017): scales body and token text well past the default for low-vision visitors. */
 .qms-kiosk--large-text {
   font-size: 1.375rem;

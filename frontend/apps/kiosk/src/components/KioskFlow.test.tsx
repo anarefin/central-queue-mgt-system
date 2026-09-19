@@ -31,11 +31,26 @@ function ticketResponse(overrides: Partial<Ticket> = {}): Ticket {
   };
 }
 
+/** Shorthand for a bootstrap Service with no selection-tree extras (ticket 25's baseline behaviour, ticket 26 default). */
+function service(id: string, nameI18n: Record<string, string>, visitorIdentifier: "not_required" | "optional" | "mandatory" = "not_required") {
+  return { id, name_i18n: nameI18n, visitor_identifier: visitorIdentifier };
+}
+
+/** Shorthand for a bootstrap group with every ticket-26 level left off, unless overridden. */
+function group(
+  id: string,
+  nameI18n: Record<string, string>,
+  services: ReturnType<typeof service>[],
+  overrides: Partial<Pick<DeviceBootstrap["service_tree"][number], "team_selectable" | "individual_selectable" | "custom_level">> = {},
+) {
+  return { id, name_i18n: nameI18n, services, team_selectable: false, individual_selectable: false, custom_level: null, ...overrides };
+}
+
 const SINGLE: DeviceBootstrap = {
   branding: { site_name: "Main campus", default_language: "en" },
   languages: ["en"],
   layout: null,
-  service_tree: [{ id: "grp-1", name_i18n: { en: "Outpatient" }, services: [{ id: "svc-1", name_i18n: { en: "Consultation" } }] }],
+  service_tree: [group("grp-1", { en: "Outpatient" }, [service("svc-1", { en: "Consultation" })])],
 };
 
 const MULTI_LANGUAGE_SINGLE_GROUP: DeviceBootstrap = {
@@ -43,14 +58,10 @@ const MULTI_LANGUAGE_SINGLE_GROUP: DeviceBootstrap = {
   languages: ["en", "bn"],
   layout: null,
   service_tree: [
-    {
-      id: "grp-1",
-      name_i18n: { en: "Outpatient", bn: "বহির্বিভাগ" },
-      services: [
-        { id: "svc-1", name_i18n: { en: "Consultation", bn: "পরামর্শ" } },
-        { id: "svc-2", name_i18n: { en: "Pharmacy", bn: "ফার্মেসি" } },
-      ],
-    },
+    group("grp-1", { en: "Outpatient", bn: "বহির্বিভাগ" }, [
+      service("svc-1", { en: "Consultation", bn: "পরামর্শ" }),
+      service("svc-2", { en: "Pharmacy", bn: "ফার্মেসি" }),
+    ]),
   ],
 };
 
@@ -59,15 +70,8 @@ const TWO_GROUPS: DeviceBootstrap = {
   languages: ["en"],
   layout: null,
   service_tree: [
-    {
-      id: "grp-1",
-      name_i18n: { en: "Outpatient" },
-      services: [
-        { id: "svc-1", name_i18n: { en: "Consultation" } },
-        { id: "svc-2", name_i18n: { en: "Pharmacy" } },
-      ],
-    },
-    { id: "grp-2", name_i18n: { en: "Records" }, services: [{ id: "svc-3", name_i18n: { en: "Certificates" } }] },
+    group("grp-1", { en: "Outpatient" }, [service("svc-1", { en: "Consultation" }), service("svc-2", { en: "Pharmacy" })]),
+    group("grp-2", { en: "Records" }, [service("svc-3", { en: "Certificates" })]),
   ],
 };
 
@@ -319,5 +323,220 @@ describe("KioskFlow idle-to-first-touch (NFR-PERF-007)", () => {
     // device's first touch is never waiting on a promise (bootstrap is already-loaded, passed in as a prop).
     const start = screen.getByRole("button", { name: "Tap to begin" });
     expect(start).toBeEnabled();
+  });
+});
+
+// ---- ticket 26: identification and the rest of the selection tree ---------------------------------------------
+
+/** Routes a fake `fetch` by method and a substring of the URL, mirroring the other kiosk suites' `stubApi`. */
+function routedFetch(routes: Record<string, (init: RequestInit) => Response | Promise<Response>>) {
+  return vi.fn(async (url: string, init: RequestInit = {}) => {
+    const method = init.method ?? "GET";
+    for (const [key, handler] of Object.entries(routes)) {
+      const spaceAt = key.indexOf(" ");
+      const routeMethod = key.slice(0, spaceAt);
+      const routePath = key.slice(spaceAt + 1);
+      if (routeMethod === method && url.includes(routePath)) return handler(init);
+    }
+    throw new Error(`unrouted ${method} ${url}`);
+  });
+}
+
+function issuedBody(fetchImpl: ReturnType<typeof vi.fn>): unknown {
+  const call = fetchImpl.mock.calls.find(([url]) => String(url).includes("/kiosk/tickets"));
+  if (!call) throw new Error("no /kiosk/tickets call recorded");
+  return JSON.parse(String((call[1] as RequestInit).body));
+}
+
+const OPTIONAL_ID_GROUP: DeviceBootstrap = {
+  branding: { site_name: "Main campus", default_language: "en" },
+  languages: ["en"],
+  layout: null,
+  service_tree: [group("grp-1", { en: "Outpatient" }, [service("svc-1", { en: "Consultation" }, "optional")])],
+};
+
+const MANDATORY_ID_GROUP: DeviceBootstrap = {
+  branding: { site_name: "Main campus", default_language: "en" },
+  languages: ["en"],
+  layout: null,
+  service_tree: [group("grp-1", { en: "Outpatient" }, [service("svc-1", { en: "Consultation" }, "mandatory")])],
+};
+
+const INDIVIDUAL_GROUP: DeviceBootstrap = {
+  branding: { site_name: "Main campus", default_language: "en" },
+  languages: ["en"],
+  layout: null,
+  service_tree: [
+    group("grp-1", { en: "Outpatient" }, [service("svc-1", { en: "Consultation" })], { team_selectable: true, individual_selectable: true }),
+  ],
+};
+
+const CUSTOM_LEVEL_GROUP: DeviceBootstrap = {
+  branding: { site_name: "Main campus", default_language: "en" },
+  languages: ["en"],
+  layout: null,
+  service_tree: [
+    group("grp-1", { en: "Outpatient" }, [service("svc-1", { en: "Consultation" })], {
+      custom_level: {
+        name_i18n: { en: "Preferred language" },
+        options: [
+          { id: "bn", name_i18n: { en: "Bangla" } },
+          { id: "en", name_i18n: { en: "English" } },
+        ],
+      },
+    }),
+  ],
+};
+
+const SINGLE_CUSTOM_OPTION_GROUP: DeviceBootstrap = {
+  branding: { site_name: "Main campus", default_language: "en" },
+  languages: ["en"],
+  layout: null,
+  service_tree: [
+    group("grp-1", { en: "Outpatient" }, [service("svc-1", { en: "Consultation" })], {
+      custom_level: { name_i18n: { en: "Preferred language" }, options: [{ id: "en", name_i18n: { en: "English" } }] },
+    }),
+  ],
+};
+
+describe("KioskFlow identification (ticket 26, FR-ISS-013, FR-ISS-014, FR-CFG-013)", () => {
+  it("skips the identify step entirely for a Service that does not require one", async () => {
+    render(<KioskFlow bootstrap={SINGLE} client={clientWith(vi.fn().mockResolvedValue(json(201, ticketResponse())))} printer={new ResolvingPrinter()} />);
+    await userEvent.click(screen.getByRole("button", { name: "Tap to begin" }));
+    expect(await screen.findByText("Confirm your token")).toBeInTheDocument();
+    expect(screen.queryByText("Identify yourself")).not.toBeInTheDocument();
+  });
+
+  it("resolves a typed code to only a name and category, carries it to confirm, and sends visitor_id when issuing", async () => {
+    const fetchImpl = routedFetch({
+      "GET /kiosk/visitors/identify": () => json(200, { visitor_id: "vis-1", name: "Karim Rahman", category: "citizen" }),
+      "POST /kiosk/tickets": () => json(201, ticketResponse()),
+    });
+    render(<KioskFlow bootstrap={OPTIONAL_ID_GROUP} client={clientWith(fetchImpl)} printer={new ResolvingPrinter()} />);
+
+    await userEvent.click(screen.getByRole("button", { name: "Tap to begin" }));
+    expect(await screen.findByText("Identify yourself")).toBeInTheDocument();
+    expect(screen.getByText("You may identify yourself, or continue without it.")).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Enter code" }));
+    await userEvent.type(screen.getByLabelText("Type your code"), "V-CODE-1");
+    await userEvent.click(screen.getByRole("button", { name: "Look up" }));
+
+    expect(await screen.findByText("Confirm your token")).toBeInTheDocument();
+    expect(screen.getByText("Identified as: Karim Rahman (citizen)")).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Get my token" }));
+    await waitFor(() => expect(issuedBody(fetchImpl)).toMatchObject({ service_id: "svc-1", visitor_id: "vis-1" }));
+  });
+
+  it("lets the visitor skip identification when it is only optional", async () => {
+    const fetchImpl = routedFetch({ "POST /kiosk/tickets": () => json(201, ticketResponse()) });
+    render(<KioskFlow bootstrap={OPTIONAL_ID_GROUP} client={clientWith(fetchImpl)} printer={new ResolvingPrinter()} />);
+
+    await userEvent.click(screen.getByRole("button", { name: "Tap to begin" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Continue without identification" }));
+
+    expect(await screen.findByText("Confirm your token")).toBeInTheDocument();
+    expect(screen.queryByText(/Identified as/)).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Get my token" }));
+    await waitFor(() => expect(issuedBody(fetchImpl)).toEqual({ service_id: "svc-1" }));
+  });
+
+  it("never offers to skip when identification is mandatory, and shows a not-found message that can be retried", async () => {
+    const fetchImpl = routedFetch({
+      "GET /kiosk/visitors/identify": () => json(404, { error: { code: "not_found", message: "x", trace_id: "t" } }),
+    });
+    render(<KioskFlow bootstrap={MANDATORY_ID_GROUP} client={clientWith(fetchImpl)} printer={new ResolvingPrinter()} />);
+
+    await userEvent.click(screen.getByRole("button", { name: "Tap to begin" }));
+    expect(await screen.findByText("This service requires you to identify yourself first.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Continue without identification" })).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Enter code" }));
+    await userEvent.type(screen.getByLabelText("Type your code"), "NOPE");
+    await userEvent.click(screen.getByRole("button", { name: "Look up" }));
+
+    expect(await screen.findByText("We could not find that. Check it and try again.")).toBeInTheDocument();
+  });
+
+  it("hides the QR scan option when the browser cannot detect a barcode", async () => {
+    render(<KioskFlow bootstrap={OPTIONAL_ID_GROUP} client={clientWith(vi.fn())} printer={new ResolvingPrinter()} />);
+    await userEvent.click(screen.getByRole("button", { name: "Tap to begin" }));
+    expect(await screen.findByText("Identify yourself")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Scan QR code" })).not.toBeInTheDocument();
+  });
+});
+
+describe("KioskFlow individual Agent level (ticket 26, FR-ISS-012)", () => {
+  it("offers only the on-duty Agents plus 'anyone', warns when one's queue is longer, and sends agent_id when picked", async () => {
+    const fetchImpl = routedFetch({
+      "GET /kiosk/groups/grp-1/agents": () =>
+        json(200, {
+          items: [
+            { agent_id: "a1", name: "Busy Agent", queue_length: 4, queue_longer_than_group: true },
+            { agent_id: "a2", name: "Idle Agent", queue_length: 0, queue_longer_than_group: false },
+          ],
+        }),
+      "POST /kiosk/tickets": () => json(201, ticketResponse()),
+    });
+    render(<KioskFlow bootstrap={INDIVIDUAL_GROUP} client={clientWith(fetchImpl)} printer={new ResolvingPrinter()} />);
+
+    await userEvent.click(screen.getByRole("button", { name: "Tap to begin" }));
+    expect(await screen.findByText("Choose who you'd like to see")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Anyone available" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Busy Agent.*queue is longer than usual/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Idle Agent" })).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: /Busy Agent/ }));
+
+    expect(await screen.findByText("Confirm your token")).toBeInTheDocument();
+    expect(screen.getByText("Agent: Busy Agent")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Get my token" }));
+    await waitFor(() => expect(issuedBody(fetchImpl)).toMatchObject({ agent_id: "a1" }));
+  });
+
+  it("skips the individual level with no agent chosen when nobody on the team is on duty", async () => {
+    const fetchImpl = routedFetch({
+      "GET /kiosk/groups/grp-1/agents": () => json(200, { items: [] }),
+      "POST /kiosk/tickets": () => json(201, ticketResponse()),
+    });
+    render(<KioskFlow bootstrap={INDIVIDUAL_GROUP} client={clientWith(fetchImpl)} printer={new ResolvingPrinter()} />);
+
+    await userEvent.click(screen.getByRole("button", { name: "Tap to begin" }));
+
+    expect(await screen.findByText("Confirm your token")).toBeInTheDocument();
+    expect(screen.queryByText("Choose who you'd like to see")).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Get my token" }));
+    await waitFor(() => expect(issuedBody(fetchImpl)).toEqual({ service_id: "svc-1" }));
+  });
+});
+
+describe("KioskFlow custom level (ticket 26, FR-ISS-010)", () => {
+  it("offers the group's configured options, can be skipped, and sends the pick's id when issuing", async () => {
+    const fetchImpl = routedFetch({ "POST /kiosk/tickets": () => json(201, ticketResponse()) });
+    render(<KioskFlow bootstrap={CUSTOM_LEVEL_GROUP} client={clientWith(fetchImpl)} printer={new ResolvingPrinter()} />);
+
+    await userEvent.click(screen.getByRole("button", { name: "Tap to begin" }));
+    expect(await screen.findByRole("button", { name: "Bangla" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "English" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Skip this step" })).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Bangla" }));
+
+    expect(await screen.findByText("Confirm your token")).toBeInTheDocument();
+    expect(screen.getByText("Bangla")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Get my token" }));
+    await waitFor(() => expect(issuedBody(fetchImpl)).toMatchObject({ custom_level_id: "bn" }));
+  });
+
+  it("auto-picks a custom level with only one option, the same skip rule as every other level", async () => {
+    const fetchImpl = routedFetch({ "POST /kiosk/tickets": () => json(201, ticketResponse()) });
+    render(<KioskFlow bootstrap={SINGLE_CUSTOM_OPTION_GROUP} client={clientWith(fetchImpl)} printer={new ResolvingPrinter()} />);
+
+    await userEvent.click(screen.getByRole("button", { name: "Tap to begin" }));
+
+    expect(await screen.findByText("Confirm your token")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Get my token" }));
+    await waitFor(() => expect(issuedBody(fetchImpl)).toMatchObject({ custom_level_id: "en" }));
   });
 });

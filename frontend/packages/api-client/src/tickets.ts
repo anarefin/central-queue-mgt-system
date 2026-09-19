@@ -131,7 +131,32 @@ export function newIdempotencyKey(): string {
   return globalThis.crypto.randomUUID();
 }
 
-/** The body of {@code POST /kiosk/tickets} (ticket 25): the visitor's chosen Service is the only input the kiosk gives. */
+/**
+ * The body of `POST /kiosk/tickets` (ticket 25, extended by ticket 26): the visitor's chosen Service, and the rest of
+ * the selection tree they walked. `visitor_id` is who `GET /kiosk/visitors/identify` resolved them to, or omitted for
+ * no identification (FR-ISS-013). `agent_id` is the on-duty Agent picked at the individual level, or omitted for
+ * anyone on the Service's team (FR-ISS-012). `custom_level_id` is the option picked at the group's custom level, or
+ * omitted when it has none or the visitor skipped it (FR-ISS-010).
+ */
 export interface KioskIssueTicketInput {
   service_id: string;
+  visitor_id?: string;
+  agent_id?: string;
+  custom_level_id?: string;
+}
+
+/** `GET /kiosk/visitors/identify` (ticket 26, FR-ISS-013, FR-ISS-014): only name and category, nothing else stored about the visitor. */
+export interface KioskVisitorIdentity {
+  visitor_id: string;
+  name: string;
+  category: string | null;
+}
+
+/** One on-duty Agent of a group's team the kiosk may offer at the individual level (ticket 26, FR-ISS-012). */
+export interface KioskAgentOption {
+  agent_id: string;
+  name: string;
+  queue_length: number;
+  /** Warn the visitor: this Agent's own queue already has more people waiting for them than the group's shared queue. */
+  queue_longer_than_group: boolean;
 }

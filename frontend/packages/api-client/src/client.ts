@@ -26,7 +26,17 @@ import type { PriorityClass, PriorityClassInput, PriorityDefaults, QueueDryRun, 
 import type { NumberingPreview, NumberingRule, NumberingRuleChange, NumberingRuleInput, NumberingScope } from "./numbering";
 import type { AgentDay, CompleteInput, CounterSession, OpenSessionInput, SessionCounterOption, TransferInput, TransferResult, TransferTargets } from "./sessions";
 import type { TopicSnapshot } from "./stream";
-import type { IssueTicketInput, KioskIssueTicketInput, QueueSnapshot, ReprioritiseInput, SiteServices, Ticket, TicketChange } from "./tickets";
+import type {
+  IssueTicketInput,
+  KioskAgentOption,
+  KioskIssueTicketInput,
+  KioskVisitorIdentity,
+  QueueSnapshot,
+  ReprioritiseInput,
+  SiteServices,
+  Ticket,
+  TicketChange,
+} from "./tickets";
 import type {
   RegisterVisitorInput,
   VisitorImportMapping,
@@ -224,6 +234,16 @@ export class ApiClient {
      */
     issueKiosk: (input: KioskIssueTicketInput, idempotencyKey: string) =>
       this.request<Ticket>("POST", "/kiosk/tickets", input, { headers: { "Idempotency-Key": idempotencyKey } }),
+  };
+
+  /**
+   * The kiosk's own, minimal window onto the visitor directory and a group's on-duty Agents (ticket 26, FR-ISS-012,
+   * FR-ISS-013, FR-ISS-014): a paired kiosk device is the caller, so `identify` returns only name and category —
+   * unlike Reception's own `visitors.lookup`, never a phone number, external code or flag.
+   */
+  readonly kiosk = {
+    identify: (query: string) => this.request<KioskVisitorIdentity>("GET", `/kiosk/visitors/identify?q=${encodeURIComponent(query)}`),
+    agentsOf: (groupId: string) => this.request<Items<KioskAgentOption>>("GET", `/kiosk/groups/${groupId}/agents`),
   };
 
   /**

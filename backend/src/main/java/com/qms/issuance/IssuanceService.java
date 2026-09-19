@@ -92,6 +92,9 @@ public class IssuanceService {
         gate.beforeService(command, now);
         requireIssuable(target, command.originChannel());
         gate.forService(target, command, now);
+        requireVisitorIdentifier(target, command.visitorId());
+        requireValidCustomLevel(target.groupId(), command.customLevelId());
+        requireOnDutyAgent(target.groupId(), command.targetAgentId());
         if (command.priorityClassId() != null) requireIssuableClass(command.priorityClassId());
         // The class is decided once, here, and stored on the ticket, so a change to a default later cannot move it (FR-CFG-041).
         // Appointments and visitor categories do not exist yet; their sources are passed as none until they do.
@@ -118,7 +121,7 @@ public class IssuanceService {
         UUID ticketId = UUID.randomUUID();
         tickets.insertTicket(new NewTicket(
                 ticketId, tokenNumber, sequence, resetKey, target, tickets.waitingZone(target.serviceId()), visitId, command.originChannel(), now, hash(secret), priorityClassId, command.visitorId(),
-                blank(command.purposeNote())));
+                blank(command.purposeNote()), command.targetAgentId(), command.customLevelId()));
         events.append(new TicketEvents.Transition(
                 ticketId,
                 ISSUED,
@@ -144,6 +147,39 @@ public class IssuanceService {
         return priority;
     }
 
+    /** FR-CFG-013: a Service that requires a visitor identifier refuses issuance until one has resolved to a visitor. */
+    private static void requireVisitorIdentifier(ServiceTarget target, UUID visitorId) {
+        if ("mandatory".equals(target.visitorIdentifier()) && visitorId == null) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, Map.of("fields", List.of(Map.of("field", "visitor_id", "code", "required"))));
+        }
+    }
+
+    /** FR-ISS-010: a custom-level pick must be one of its group's currently configured options. */
+    private void requireValidCustomLevel(UUID groupId, String customLevelId) {
+        if (customLevelId == null) return;
+        List<String> allowed = tickets.groupSelection(groupId).map(TicketRepository.GroupSelection::customLevelOptionIds).orElse(List.of());
+        if (!allowed.contains(customLevelId)) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, Map.of("fields", List.of(Map.of("field", "custom_level_id", "code", "not_found"))));
+        }
+    }
+
+    /**
+     * FR-ISS-012: an individual Agent may be picked only when the group's tree offers that level (both the team and
+     * individual levels enabled) and the Agent is, right now, an active team member on duty. Checked again here, at
+     * write time, and not only by what {@code GET /kiosk/groups/{id}/agents} showed the kiosk a moment earlier,
+     * because the Agent could have gone off duty in between.
+     */
+    private void requireOnDutyAgent(UUID groupId, UUID targetAgentId) {
+        if (targetAgentId == null) return;
+        TicketRepository.GroupSelection selection = tickets.groupSelection(groupId).orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND));
+        if (!selection.teamSelectable() || !selection.individualSelectable()) {
+            throw IssuanceGate.conflict("individual_not_selectable", Map.of());
+        }
+        if (!tickets.agentOnDutyInGroup(groupId, targetAgentId)) {
+            throw IssuanceGate.conflict("agent_not_on_duty", Map.of());
+        }
+    }
+
     private static Map<String, Object> eventPayload(IssueCommand command, String tokenNumber, PriorityPrecedence.Choice choice) {
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("origin_channel", command.originChannel());
@@ -152,6 +188,8 @@ public class IssuanceService {
             payload.put("priority_class_id", choice.classId().toString());
             payload.put("priority_source", choice.source().wire());
         }
+        if (command.targetAgentId() != null) payload.put("target_agent_id", command.targetAgentId().toString());
+        if (command.customLevelId() != null) payload.put("custom_level_id", command.customLevelId());
         return payload;
     }
 

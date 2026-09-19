@@ -51,6 +51,16 @@ class VisitorService {
         return new VisitorLookupResponse(match.id(), match.externalCode(), match.name(), match.category(), match.phone(), match.flags());
     }
 
+    /**
+     * {@code GET /kiosk/visitors/identify} (ticket 26, FR-ISS-013, FR-ISS-014): the same directory a typed code, a
+     * scanned QR payload or a dialled mobile number all resolve through, but only name and category come back — the
+     * kiosk is the visitor's own device, not staff, so nothing else on the visitor record may reach it.
+     */
+    KioskVisitorIdentifyResponse identifyForKiosk(String query) {
+        VisitorDirectory.Match match = gateway.lookup(query).orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND));
+        return new KioskVisitorIdentifyResponse(match.id(), match.name(), match.category());
+    }
+
     /** {@code POST /visitors} (FR-ISS-021): a minimal record and a pass reference for an unknown walk-in. */
     @Transactional
     VisitorRegistrationResponse register(RegisterVisitorRequest request) {

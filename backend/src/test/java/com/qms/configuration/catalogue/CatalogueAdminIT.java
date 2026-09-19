@@ -285,6 +285,44 @@ class CatalogueAdminIT {
         assertThat(status(call(get("/api/v1/sites/" + UUID.randomUUID() + "/service-groups"), token, null))).isEqualTo(404);
     }
 
+    // ---- kiosk selection tree (ticket 26, FR-ISS-010, FR-ISS-011) ------------------------------------------------
+
+    @Test
+    void aGroupsKioskSelectionTreeDefaultsToDisabledAndCanBeConfiguredThenClearedAgain() throws Exception {
+        String token = tokenFor(Role.ORG_ADMIN);
+        UUID site = createSite(token);
+        UUID group = createGroup(token, site, "OPD");
+
+        MvcResult plain = call(get("/api/v1/service-groups/" + group), token, null);
+        assertThat((Boolean) field(plain, "$.team_selectable")).isFalse();
+        assertThat((Boolean) field(plain, "$.individual_selectable")).isFalse();
+        assertThat((List<Object>) field(plain, "$.custom_level_options")).isEmpty();
+
+        MvcResult configured = call(patch("/api/v1/service-groups/" + group), token,
+                "{\"team_selectable\":true,\"individual_selectable\":true,"
+                        + "\"custom_level_name_i18n\":{\"bn\":\"ভাষা\",\"en\":\"Preferred language\"},"
+                        + "\"custom_level_options\":[{\"id\":\"bn\",\"name_i18n\":{\"bn\":\"বাংলা\",\"en\":\"Bangla\"}},"
+                        + "{\"id\":\"en\",\"name_i18n\":{\"bn\":\"ইংরেজি\",\"en\":\"English\"}}]}");
+        assertThat(status(configured)).as(body(configured)).isEqualTo(200);
+        assertThat((Boolean) field(configured, "$.team_selectable")).isTrue();
+        assertThat((Boolean) field(configured, "$.individual_selectable")).isTrue();
+        assertThat((String) field(configured, "$.custom_level_name_i18n.en")).isEqualTo("Preferred language");
+        assertThat((List<String>) field(configured, "$.custom_level_options[*].id")).containsExactly("bn", "en");
+        var update = audit("service_group.updated", group);
+        assertThat((String) update.get("after")).contains("Preferred language").contains("Bangla");
+
+        MvcResult cleared = call(patch("/api/v1/service-groups/" + group), token,
+                "{\"team_selectable\":false,\"individual_selectable\":false,\"custom_level_options\":[]}");
+        assertThat(status(cleared)).as(body(cleared)).isEqualTo(200);
+        assertThat((Boolean) field(cleared, "$.team_selectable")).isFalse();
+        assertThat((List<Object>) field(cleared, "$.custom_level_options")).isEmpty();
+
+        assertThat(status(call(patch("/api/v1/service-groups/" + group), token,
+                "{\"custom_level_options\":[{\"id\":\"bn\",\"name_i18n\":{\"bn\":\"বাংলা\",\"en\":\"Bangla\"}},{\"id\":\"bn\",\"name_i18n\":{\"bn\":\"খ\",\"en\":\"B\"}}]}")))
+                .as("duplicate custom-level option ids are refused")
+                .isEqualTo(400);
+    }
+
     @Test
     void aMissingTranslationWarnsButNeverBlocksAndAMissingDefaultLanguageNameIsRefused() throws Exception {
         String token = tokenFor(Role.ORG_ADMIN);
