@@ -4,7 +4,7 @@
 
 **Blocked by:** 07 — Reception issues a walk-in Ticket
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [x] Weekly hours per Site with per-Service overrides; holiday calendar incl. half-days (FR-CFG-020, FR-CFG-021)
 - [x] Per-channel cut-off before close (FR-CFG-022)

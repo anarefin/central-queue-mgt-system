@@ -22,7 +22,7 @@
 18-reprioritise-and-staff-cancel           09,04           done     23m      36 files, +2191 −24 a67a187..9535147
 19-wait-estimation                         10,11           done     23m      30 files, +1010 −68 9535147..a849a6d
 20-console-visitor-context-and-stats       10              done     16m      26 files, +1053 −15 a849a6d..03c5cbb
-21-issuance-rules                          07              todo     —        —                   —
+21-issuance-rules                          07              done     27m      28 files, +2089 −36 03c5cbb..8f43b29
 22-visitor-directory-and-registration      07              todo     —        —                   —
 23-visitor-csv-import                      22              todo     —        —                   —
 24-device-pairing-and-fleet                05,11           todo     —        —                   —
