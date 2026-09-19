@@ -25,7 +25,8 @@ class ArchitectureTest {
         "com.qms.notification..",
         "com.qms.reporting..",
         "com.qms.identity..",
-        "com.qms.audit.."
+        "com.qms.audit..",
+        "com.qms.device.."
     };
 
     /** The queue engine can later be embedded in a site edge node, so it may not know about web or transport types. */

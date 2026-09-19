@@ -502,6 +502,44 @@ needs; the admin app's own navigation link is still shown only to System Adminis
 single, global setting (not per-site), matching the visitor directory's own scope (§16: "the directory is not a per-site
 record"). A run's validation errors are capped at 500 per file as a defensive limit; `failed_count` itself is never capped.
 
+## Ticket 24, device pairing and fleet management
+
+`Rules` = `B/device/DeviceRulesTest`, `Fleet` = `B/device/DeviceFleetIT`, `RT` = `B/platform/realtime/DeviceRealtimeIT`.
+
+| Requirement ID | Section | Test type | Test reference | Status |
+|---|---|---|---|---|
+| FR-OPS-011 short-lived pairing code exchanged once for a device JWT carrying a device role and its site/zone | §20.2, §26.2 | unit, integration | `Rules#kindAcceptsOnlyKioskOrDisplay`, `#aKioskHasNoZoneAndADisplayMustHaveOne`, `#randomPairingCodeIsEightUnambiguousCharacters`; `Fleet#aKioskPairsWithItsCodeAndGetsAnAccessAndRefreshToken`, `#aDisplayMustBePairedWithAZoneAndAKioskMustNot`, `#aPairingCodeIsSingleUseAndExpires` | passing |
+| NFR-SEC-005 / FR-DSP-013 per-device credentials provisioned per device, stored hashed, rotatable, individually revocable; revoke publishes `principal.changed` | §20.2, §25.1, §12.2 | integration | `Fleet#refreshRotatesTheDeviceTokenAndReuseRevokesTheWholeFamily`, `#theHealthViewShowsConnectivityAndRevokeDropsTheDeviceAndItsCredential` (revoked device's refresh tokens are all revoked, `device_refresh_tokens` hashed not raw); `RT#revokingTheDeviceDropsItsSocketAtOnce` (the live socket drops at once, not at token expiry) | passing |
+| API-017 device refresh credential returned in the response body, not a cookie, for the kiosk/display shell to hold in its own OS-permission-restricted file | §20.2 | integration | `Fleet#aKioskPairsWithItsCodeAndGetsAnAccessAndRefreshToken` (`refresh_token` in the JSON body; no `Set-Cookie`); `F/packages/api-client/src/device-session.test.ts` (`DeviceCredentialStore` interface, IndexedDB-backed default, access token never persisted) | passing |
+| `GET /config/bootstrap` returns branding, languages, layout and service tree | §20.4 | integration | `Fleet#bootstrapReturnsBrandingLanguagesLayoutAndServiceTreeScopedToTheDevice` (a kiosk gets no zone layout, a display gets its zone and counters; a staff token, even an admin one, cannot call it) | passing |
+| `POST /devices/{id}/heartbeat` with health and version; central device health view with last heartbeat, version, connectivity | §20.4, §26.5 | integration | `Fleet#heartbeatUpdatesLastSeenAndVersionAndIsRejectedForAnotherDevice`, `#theHealthViewShowsConnectivityAndRevokeDropsTheDeviceAndItsCredential` (server-computed `connectivity`: online / stale / offline) | passing |
+| FR-OPS-042 an administrator pushes a reload or configuration update to a device over the `device:` topic | §21.2, §26.5 | integration | `Fleet#pushingACommandToARevokedDeviceIsAConflictAndAnUnknownCommandIsAValidationError`; `RT#aDeviceWatchesItsOwnTopicAndReceivesAPushedCommand`, `#anAdminWhoManagesTheSiteMayWatchTheDeviceButAnotherRoleMayNot` | passing |
+| §5.2 fleet administration needs `config:org_sites_zones` (devices sit under a Site/Zone like a Counter); device roles carry no staff permissions | §5.2 | unit, integration | `B/platform/security/PermissionMatrixTest#deviceRolesHaveNoEntryInTheStaffPermissionMatrix`, `#roleWireNamesAreStableAndRoundTrip`; `Fleet#onlySystemAndOrgAdminManageTheFleet` | passing |
+| FR-SEC-040/042 pairing, revoking and pushing a command are audited | §18.3 | integration | `Fleet#aKioskPairsWithItsCodeAndGetsAnAccessAndRefreshToken` (`device.paired`), `#theHealthViewShowsConnectivityAndRevokeDropsTheDeviceAndItsCredential` (`device.revoked`), `#pushingACommandToARevokedDeviceIsAConflictAndAnUnknownCommandIsAValidationError` (`device.command_pushed`) | passing |
+| §18.2 the V20 migration is forward-only and re-runnable | §18, §26 | integration | `B/platform/MigrationIT#everyMigrationScriptCanBeReExecutedAgainstAnAlreadyMigratedDatabase` (V20) | passing |
+| FR-I18N-001 the new strings are in both packs | §17 | unit | `F/packages/i18n/src/i18n.test.ts` (pack parity; `devices.*` resolve in en and bn) | passing |
+| Definition of done §27.5 item 6, administrator guide | §27.5 | manual | `docs/admin-guide.md` section 18 | passing |
+
+**Notes on this ticket's interpretation.** The SRS gives no numeric pairing-code length/TTL or device-refresh-token TTL
+(FR-OPS-011 says only "short-lived"; NFR-SEC-005 says only "rotatable"); this build uses an 8-character unambiguous code
+(`DeviceRules.randomPairingCode`), a 10-minute pairing-code TTL and a 90-day device refresh-token TTL, all configurable
+under `qms.device.*` like `qms.security`'s own defaults. Fleet administration (issuing pairing codes, the health view,
+revoke, the command push) reuses `config:org_sites_zones` rather than adding a permission: §5.2's matrix is closed and
+SRS-defined, has no row for devices, and a device is physically scoped to a Site or Zone exactly like a Counter, which
+that permission already governs. `Role.KIOSK`/`Role.DISPLAY` are new entries in the existing `Role` enum (its own Javadoc
+anticipated this: "device… principals get their own roles with the tickets that introduce them") but carry no
+`PermissionMatrix` entries of their own; device endpoints authorise with `hasRole(...)` instead, and
+`PermissionMatrixTest` asserts the two device roles reach none of the §5.2 staff permissions. A display's zone rides in
+the JWT's `groups` claim: API-011's closed claim set (`sub, jti, iss, aud, iat, exp, roles`, and only `sites`/`groups`)
+has no `zones` claim, and the SRS does not say how a display's zone scope should travel; reusing `groups` (already a
+generic scoped-id list) avoids widening that schema for one device kind. API-017 requires a kiosk/display shell to hold
+its refresh credential "in an OS-permission-restricted file", but nothing in this repo runs a kiosk/display outside a
+plain browser tab (no Electron/Tauri or other native shell exists); `packages/api-client/src/device-session.ts` defines
+the `DeviceCredentialStore` interface that call sites use, with a browser-only default backed by IndexedDB (never
+`localStorage`, and the access token itself is always memory-only, matching `AuthSession`) as the closest available
+approximation until a native kiosk/display shell — a separate, larger piece of work — can supply a real OS-file-backed
+implementation behind the same interface.
+
 ## Notes
 
 - **Compose.** Verified by hand on 2026-09-19 with OrbStack Docker, from a clean build: `migrate` exited 0, then Postgres,

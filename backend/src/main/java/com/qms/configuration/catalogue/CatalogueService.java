@@ -421,6 +421,22 @@ public class CatalogueService {
         return requireOutcome(id);
     }
 
+    // ---- device bootstrap reads (ticket 24) ---------------------------------------------------------------------
+    // A kiosk or display authenticates with a device role, not config:service_catalogue, so these two reads carry
+    // their own narrower @PreAuthorize. They back the "service tree" of GET /config/bootstrap (SRS §20.4).
+
+    @PreAuthorize("hasAnyRole('KIOSK','DISPLAY')")
+    @Transactional(readOnly = true)
+    public List<ServiceGroup> serviceTreeForDevice(UUID siteId) {
+        return repository.groupsOfSite(siteId).stream().filter(ServiceGroup::active).toList();
+    }
+
+    @PreAuthorize("hasAnyRole('KIOSK','DISPLAY')")
+    @Transactional(readOnly = true)
+    public List<ServiceEntry> servicesForDevice(UUID groupId) {
+        return repository.servicesOfGroup(groupId).stream().filter(ServiceEntry::active).toList();
+    }
+
     // ---- internals ---------------------------------------------------------------------------------------------
 
     private static AuditEvent activeFlag(String action, String entity, UUID id, boolean nowActive) {

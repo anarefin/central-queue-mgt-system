@@ -480,8 +480,11 @@ class RealtimeIT {
         assertThat(denials(outsider, queue, counter)).as("an agent not on the team sees neither its queue nor its counter").containsExactly(Map.entry(queue, "forbidden"), Map.entry(counter, "forbidden"));
         assertThat(denials(otherSite, queue, counter)).as("outside the token's sites").containsExactly(Map.entry(queue, "forbidden"), Map.entry(counter, "forbidden"));
         assertThat(denials(reception, queue, counter)).as("a dashboard viewer watches queues, not counters").containsExactly(Map.entry(counter, "forbidden"));
-        assertThat(denials(teammate, "queue:" + UUID.randomUUID(), "counter:" + UUID.randomUUID())).extracting(Map.Entry::getValue).containsExactly("not_found", "not_found");
-        assertThat(denials(teammate, "queue:nonsense", "device:" + UUID.randomUUID())).extracting(Map.Entry::getValue).containsExactly("invalid_topic", "unknown_topic");
+        // A device: topic exists since ticket 24, so a random device id is a well-formed but nonexistent resource
+        // (not_found), not an unrecognised topic family; "widget:" stands in for a topic no TopicSource handles.
+        assertThat(denials(teammate, "queue:" + UUID.randomUUID(), "counter:" + UUID.randomUUID(), "device:" + UUID.randomUUID()))
+                .extracting(Map.Entry::getValue).containsExactly("not_found", "not_found", "not_found");
+        assertThat(denials(teammate, "queue:nonsense", "widget:" + UUID.randomUUID())).extracting(Map.Entry::getValue).containsExactly("invalid_topic", "unknown_topic");
     }
 
     /** Subscribes to each topic and returns the ones refused, with the reason; the others must each get a snapshot. */

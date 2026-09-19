@@ -677,12 +677,17 @@ class IssuanceIT {
 
     // ---- permissions and scope (§5.2, FR-CFG-103, FR-CFG-106) --------------------------------------------------
 
+    /** Staff roles only: {@link Role#KIOSK} and {@link Role#DISPLAY} (ticket 24) are device roles, not staff, and are
+     * not staff-permission-gated readers of tickets or queues. */
+    private static final List<Role> STAFF_ROLES =
+            List.of(Role.SYSTEM_ADMIN, Role.ORG_ADMIN, Role.TEAM_ADMIN, Role.AGENT, Role.RECEPTION_OPERATOR);
+
     @Test
     void onlyReceptionMayIssueAndEveryStaffRoleMayReadTicketsAndQueues() throws Exception {
         Setup s = setup("B");
         UUID ticket = UUID.fromString(field(issueOk(token(Role.RECEPTION_OPERATOR, s.site()), s.service()), "$.id"));
 
-        for (Role role : Role.values()) {
+        for (Role role : STAFF_ROLES) {
             String token = token(role);
             boolean issues = role == Role.RECEPTION_OPERATOR;
             assertThat(status(issue(token, UUID.randomUUID().toString(), s.service()))).as(role + " issue").isEqualTo(issues ? 201 : 403);

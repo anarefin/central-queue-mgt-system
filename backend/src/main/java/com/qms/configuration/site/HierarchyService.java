@@ -315,6 +315,29 @@ public class HierarchyService {
         return requireCounter(id);
     }
 
+    // ---- device bootstrap reads (ticket 24) ---------------------------------------------------------------------
+    // A kiosk or display authenticates with a device role, not a staff permission, so these three reads carry their
+    // own narrower @PreAuthorize instead of the config:org_sites_zones check every other method here uses. They back
+    // GET /config/bootstrap (SRS §20.4) and are read-only.
+
+    @PreAuthorize("hasAnyRole('KIOSK','DISPLAY')")
+    @Transactional(readOnly = true)
+    public Site siteForDevice(UUID id) {
+        return requireSite(id);
+    }
+
+    @PreAuthorize("hasAnyRole('KIOSK','DISPLAY')")
+    @Transactional(readOnly = true)
+    public Zone zoneForDevice(UUID id) {
+        return requireZone(id);
+    }
+
+    @PreAuthorize("hasAnyRole('KIOSK','DISPLAY')")
+    @Transactional(readOnly = true)
+    public List<Counter> countersForDevice(UUID zoneId) {
+        return repository.countersOfZone(zoneId);
+    }
+
     // ---- internals ---------------------------------------------------------------------------------------------
 
     private void deactivateZoneRow(UUID zoneId, Instant now, String reason) {

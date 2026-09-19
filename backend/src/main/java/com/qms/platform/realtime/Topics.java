@@ -7,6 +7,7 @@ public final class Topics {
 
     public static final String QUEUE = "queue:";
     public static final String COUNTER = "counter:";
+    public static final String DEVICE = "device:";
 
     private Topics() {}
 
@@ -16,5 +17,10 @@ public final class Topics {
 
     public static String counter(UUID counterId) {
         return COUNTER + counterId;
+    }
+
+    /** Config change, reload and revoke commands for one device (§21.2, FR-OPS-042). */
+    public static String device(UUID deviceId) {
+        return DEVICE + deviceId;
     }
 }

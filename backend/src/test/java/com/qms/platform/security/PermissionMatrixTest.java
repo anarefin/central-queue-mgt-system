@@ -63,11 +63,22 @@ class PermissionMatrixTest {
     @Test
     void roleWireNamesAreStableAndRoundTrip() {
         assertThat(Arrays.stream(Role.values()).map(Role::wire))
-                .containsExactly("system_admin", "org_admin", "team_admin", "agent", "reception_operator");
+                .containsExactly(
+                        "system_admin", "org_admin", "team_admin", "agent", "reception_operator", "kiosk", "display");
         for (Role role : Role.values()) {
             assertThat(Role.fromWire(role.wire())).isEqualTo(role);
         }
         assertThat(Role.tryFromWire("root")).isEmpty();
+    }
+
+    /** Ticket 24: device roles carry no staff permissions; they are authorised by {@code hasRole(...)} instead. */
+    @Test
+    void deviceRolesHaveNoEntryInTheStaffPermissionMatrix() {
+        for (Permission permission : Permission.values()) {
+            assertThat(PermissionMatrix.access(Role.KIOSK, permission)).isEqualTo(Access.DENIED);
+            assertThat(PermissionMatrix.access(Role.DISPLAY, permission)).isEqualTo(Access.DENIED);
+        }
+        assertThat(PermissionMatrix.authoritiesFor(Set.of(Role.KIOSK, Role.DISPLAY))).isEmpty();
     }
 
     @Test

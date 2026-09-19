@@ -596,3 +596,43 @@ qms.visitor.import.pickup-cron=0 */15 * * * *
 /visitors/import/runs/{id}` for one in full), since a scheduled run has nobody present to see its report synchronously.
 A completed import writes a `visitor.import.completed` audit entry with its counts; changing the mapping writes
 `visitor.import.mapping_updated`.
+
+## 18. Device pairing and fleet management
+
+An Org Admin or System Administrator (`config:org_sites_zones`, the same permission that manages Sites, Zones and
+Counters — a device is physically scoped to one of them, SRS §20.2) pairs a kiosk or display, watches its health, and
+can revoke it or push it a reload without touching the device itself (FR-OPS-011, FR-OPS-041, FR-OPS-042).
+
+**Pairing** is a two-step handoff, never a shared secret typed into the device (FR-OPS-011). In the admin app
+(`/admin/devices`), pick **New pairing code**, choose the kind — **Kiosk** (scoped to a Site) or **Display** (scoped to
+a Zone within that Site) — and a label; the server returns an 8-character code (letters and digits only, no `0/O` or
+`1/I/L`, so it reads and types cleanly) that expires in 10 minutes and can be redeemed once. Enter that code on the
+device's own pairing screen; it exchanges the code for its own credential — an access token like any staff sign-in,
+and a refresh token it keeps to itself, never shown again.
+
+**A device's credential is its own**, never a staff one (NFR-SEC-005): stored hashed, rotated every time the device
+silently refreshes, and revocable on its own without touching any other device. On a kiosk or display, the refresh
+credential lives in the device's own storage rather than the cookie a staff browser gets, because a kiosk/display shell
+is not a browser (API-017); the access token itself is always held in memory only, exactly like a staff session, and
+is never written anywhere durable.
+
+**The fleet list** (`/admin/devices`) shows every paired device with its site or zone, when it last reported in, its
+app version, and a computed **connectivity**: `online` (heartbeat within the last 2.5 minutes), `stale` (up to 10
+minutes), or `offline` beyond that or never seen (FR-OPS-041). Printer paper status is a Phase 2 field (SRS §22.6): it
+has no place in this release.
+
+**Revoke** ends a device's credential immediately: its refresh tokens are all revoked, and if it is connected to the
+realtime hub right now, its connection is dropped at once, not at its access token's next expiry (FR-DSP-013,
+`principal.changed`, the same mechanism disabling a staff user's account uses). A revoked device's own next heartbeat
+or refresh attempt is refused; pairing it again needs a fresh code.
+
+**Push reload or config change** sends a live command to a connected device over its own `device:{id}` realtime topic
+(FR-OPS-042) without physical access to it: **Reload** tells it to reload itself; **push config update** tells it its
+configuration changed and it should refetch `GET /config/bootstrap`. Pushing to a device that has been revoked is
+refused (`conflict`, `device_inactive`).
+
+**What a device itself loads** (`GET /config/bootstrap`, device-authenticated only) is everything it needs to render
+without a second round trip: site branding and enabled languages, its own zone's layout and counters when it is a
+display, and the site's active service tree — nothing here needs a staff permission, since the device authenticates
+with its own kiosk/display role instead.
+`visitor.import.mapping_updated`.

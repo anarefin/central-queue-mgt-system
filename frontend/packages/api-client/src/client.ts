@@ -11,6 +11,14 @@ import type {
   Team,
   UserPage,
 } from "./catalogue";
+import type {
+  CreatePairingCodeInput,
+  DeviceBootstrap,
+  DeviceCommand,
+  DeviceTokenResponse,
+  DeviceView,
+  PairingCodeResponse,
+} from "./devices";
 import type { Counter, CounterInput, Items, Site, SiteInput, Zone, ZoneInput } from "./hierarchy";
 import type { Channel } from "./catalogue";
 import type { AgentAvailability, AvailabilityInput, BreakReport, BreakReportQuery, BreakType, BreakTypeInput } from "./breaks";
@@ -358,6 +366,26 @@ export class ApiClient {
 
   readonly users = {
     list: (limit = 200) => this.request<UserPage>("GET", `/users?limit=${limit}`),
+  };
+
+  /**
+   * Device pairing, silent refresh, heartbeat and bootstrap (device-authenticated, ticket 24), plus fleet
+   * administration (`config:org_sites_zones`, since a device sits under a Site/Zone like a Counter): issuing a
+   * pairing code, the central health view, revoking a device, and pushing it a reload or configuration update over
+   * its `device:{id}` realtime topic (FR-OPS-011, FR-OPS-041, FR-OPS-042).
+   */
+  readonly devices = {
+    pair: (code: string) => this.request<DeviceTokenResponse>("POST", "/devices/pair", { code }, { anonymous: true }),
+    /** Rotates the device's own refresh credential; unlike staff refresh, the token travels in the body (API-017). */
+    refresh: (refreshToken: string) =>
+      this.request<DeviceTokenResponse>("POST", "/devices/refresh", { refresh_token: refreshToken }, { anonymous: true }),
+    heartbeat: (id: string, appVersion: string) => this.request<void>("POST", `/devices/${id}/heartbeat`, { app_version: appVersion }),
+    bootstrap: () => this.request<DeviceBootstrap>("GET", "/config/bootstrap"),
+    createPairingCode: (input: CreatePairingCodeInput) => this.request<PairingCodeResponse>("POST", "/devices/pairing-codes", input),
+    list: () => this.request<Items<DeviceView>>("GET", "/devices"),
+    get: (id: string) => this.request<DeviceView>("GET", `/devices/${id}`),
+    revoke: (id: string) => this.request<DeviceView>("POST", `/devices/${id}/revoke`),
+    command: (id: string, command: DeviceCommand) => this.request<void>("POST", `/devices/${id}/commands`, { command }),
   };
 
   /**

@@ -35,6 +35,7 @@ export default function Home() {
         {user?.roles.some((role) => role === "system_admin" || role === "org_admin") && (
           <div className="qms-row">
             <Link href="/sites/">{t("admin.home.sites")}</Link>
+            <Link href="/devices/">{t("admin.home.devices")}</Link>
             <Link href="/catalogue/">{t("admin.home.catalogue")}</Link>
             <Link href="/numbering/">{t("admin.home.numbering")}</Link>
             <Link href="/priority/">{t("admin.home.priority")}</Link>
