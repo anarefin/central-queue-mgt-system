@@ -4,7 +4,7 @@
 
 **Blocked by:** 24 — Device pairing and fleet management; 21 — Issuance rules; 02 — Language packs and i18n foundation
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [x] Idle screen with language choice when more than one language is enabled; choice lasts only for the session (FR-I18N-004)
 - [x] Group → Service selection with single-option steps skipped (§8.2)

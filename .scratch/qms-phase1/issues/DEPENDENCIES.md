@@ -26,7 +26,7 @@
 22-visitor-directory-and-registration      07              done     38m      33 files, +1454 −40 0763409..788f271
 23-visitor-csv-import                      22              done     23m      28 files, +1703 −7  fc6216f..02d6ae3
 24-device-pairing-and-fleet                05,11           done     52m      68 files, +3390 −42 131ff44..26b1995
-25-kiosk-common-path                       24,21,02        todo     —        —                   —
+25-kiosk-common-path                       24,21,02        done     46m      24 files, +2251 −23 3fbd63b..7ffbaba
 26-kiosk-identification-and-selection-tree 25,22           todo     —        —                   —
 27-branding-and-print-template             25              todo     —        —                   —
 28-display-now-serving-table               24,11           todo     —        —                   —
