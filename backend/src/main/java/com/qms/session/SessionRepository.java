@@ -54,7 +54,14 @@ class SessionRepository {
             Instant calledAt,
             Instant servedAt,
             int announceCount,
-            int missCount) {}
+            int missCount,
+            int scoreAdjustmentMinutes) {}
+
+    /** A ticket named for an out-of-order call (FR-AGT-012): where it is, whether it is free to be called, and who it is meant for. */
+    record WaitingTicket(UUID id, String tokenNumber, String state, int version, UUID serviceId, UUID groupId, UUID siteId, UUID sessionId, UUID targetCounterId, UUID targetAgentId) {}
+
+    /** A called ticket whose Agent has not acted in time and has now been prompted (FR-QUE-032). */
+    record TimedOutCall(UUID ticketId, String tokenNumber, UUID serviceId, UUID sessionId, UUID counterId, int version) {}
 
     /** The Service group and site a Service belongs to, which decide who may watch its queue. */
     record ServiceScope(UUID serviceId, UUID groupId, UUID siteId) {}
@@ -90,7 +97,7 @@ class SessionRepository {
     private static final String BOUND =
             "SELECT t.id, t.token_number, t.state, t.version, t.service_id, v.name_i18n AS service_names, t.origin_channel,"
                     + " pc.id AS class_id, pc.name_i18n AS class_names, t.queued_at, t.called_at, t.served_at,"
-                    + " t.announce_count, t.miss_count"
+                    + " t.announce_count, t.miss_count, t.score_adjustment_minutes"
                     + " FROM ticket t JOIN service v ON v.id = t.service_id"
                     + " LEFT JOIN priority_class pc ON pc.id = coalesce(t.priority_class_id, (SELECT id FROM priority_class WHERE is_default))";
 
@@ -325,7 +332,7 @@ class SessionRepository {
     /** The tickets bound to the session that are not finished: called, serving or held (ADR-0008). */
     List<BoundTicket> unresolved(UUID sessionId) {
         return jdbc.query(
-                BOUND + " WHERE t.counter_session_id = ? AND t.state IN ('called', 'serving', 'held') ORDER BY t.called_at, t.id",
+                BOUND + " WHERE t.counter_session_id = ? AND t.state IN ('called', 'serving', 'held') ORDER BY t.called_at, t.queued_at, t.id",
                 (rs, i) -> bound(rs),
                 sessionId);
     }
@@ -406,6 +413,62 @@ class SessionRepository {
                 "UPDATE ticket SET state = ?, counter_session_id = NULL, score_adjustment_minutes = ?, version = version + 1"
                         + " WHERE id = ? AND version = ? AND state = ? AND counter_session_id = ?",
                 transition.to(), scoreAdjustmentMinutes, ticketId, version, transition.from(), sessionId) == 1;
+    }
+
+    /** The ticket an agent names for an out-of-order call, wherever it is now; empty when there is no such ticket. */
+    Optional<WaitingTicket> waitingTicket(UUID ticketId) {
+        return jdbc.query(
+                        "SELECT id, token_number, state, version, service_id, service_group_id, site_id, counter_session_id, target_counter_id, target_agent_id FROM ticket WHERE id = ?",
+                        (rs, i) -> new WaitingTicket(
+                                rs.getObject("id", UUID.class),
+                                rs.getString("token_number"),
+                                rs.getString("state"),
+                                rs.getInt("version"),
+                                rs.getObject("service_id", UUID.class),
+                                rs.getObject("service_group_id", UUID.class),
+                                rs.getObject("site_id", UUID.class),
+                                rs.getObject("counter_session_id", UUID.class),
+                                rs.getObject("target_counter_id", UUID.class),
+                                rs.getObject("target_agent_id", UUID.class)),
+                        ticketId)
+                .stream().findFirst();
+    }
+
+    /**
+     * How many tickets a counter may have in progress for each of the Services (FR-AGT-010, FR-AGT-011): the Service's maximum when it
+     * serves in parallel, else one.
+     */
+    Map<UUID, Integer> concurrencyLimits(Collection<UUID> serviceIds) {
+        Map<UUID, Integer> limits = new LinkedHashMap<>();
+        jdbc.query(
+                connection -> {
+                    var ps = connection.prepareStatement("SELECT id, parallel_serving, parallel_limit FROM service WHERE id = ANY (?)");
+                    ps.setArray(1, connection.createArrayOf("uuid", serviceIds.toArray()));
+                    return ps;
+                },
+                (org.springframework.jdbc.core.RowCallbackHandler) rs -> limits.put(
+                        rs.getObject("id", UUID.class), com.qms.queue.CallRules.limit(rs.getBoolean("parallel_serving"), rs.getInt("parallel_limit"))));
+        return limits;
+    }
+
+    /**
+     * Claims the calls that have gone unanswered for {@code timeoutSeconds}: each called ticket whose Agent has not yet been prompted
+     * for this call is marked as prompted and returned. The mark is what keeps the prompt to once per call however many nodes run
+     * the check (ADR-0010). The ticket's state and version are left alone: a prompt is not a transition (Invariant 3).
+     */
+    List<TimedOutCall> claimTimedOutCalls(Instant now, int timeoutSeconds) {
+        return jdbc.query(
+                "UPDATE ticket SET call_timeout_notified_at = ? WHERE state = 'called' AND counter_session_id IS NOT NULL AND called_at <= ?"
+                        + " AND (call_timeout_notified_at IS NULL OR call_timeout_notified_at <= called_at)"
+                        + " RETURNING id, token_number, service_id, counter_session_id, counter_id, version",
+                (rs, i) -> new TimedOutCall(
+                        rs.getObject("id", UUID.class),
+                        rs.getString("token_number"),
+                        rs.getObject("service_id", UUID.class),
+                        rs.getObject("counter_session_id", UUID.class),
+                        rs.getObject("counter_id", UUID.class),
+                        rs.getInt("version")),
+                ts(now), ts(now.minusSeconds(timeoutSeconds)));
     }
 
     Integer versionOf(UUID ticketId) {
@@ -592,7 +655,8 @@ class SessionRepository {
                 instant(rs, "called_at"),
                 instant(rs, "served_at"),
                 rs.getInt("announce_count"),
-                rs.getInt("miss_count"));
+                rs.getInt("miss_count"),
+                rs.getInt("score_adjustment_minutes"));
     }
 
     private static Instant instant(java.sql.ResultSet rs, String column) throws java.sql.SQLException {

@@ -9,7 +9,9 @@ import java.util.UUID;
 /**
  * A counter session as the console shows it (SRS §11, §19.3): who sits where, which Services they serve, the ticket
  * in progress and the tickets the agent holds ({@code held}, at most {@code hold_limit}; FR-AGT-013), and the {@code break} they are on while the session is
- * {@code on_break} (FR-AGT-021). Everything the
+ * {@code on_break} (FR-AGT-021). {@code ticket} is the first ticket in progress and {@code tickets} all of them: more than one only
+ * when the Services allow parallel serving (FR-AGT-010, FR-AGT-011). {@code can_call} says whether a call would be taken now, and
+ * {@code call_timeout_seconds} how long a called ticket waits for its Agent before they are prompted (FR-QUE-032). Everything the
  * console needs to restore itself after a refresh is here (FR-AGT-004): the console holds no state the server does not, and {@code ticket.version} is what it sends back as {@code If-Match} (§20.1).
  */
 public record SessionResponse(
@@ -21,9 +23,12 @@ public record SessionResponse(
         @JsonProperty("closed_at") Instant closedAt,
         List<ServiceRef> services,
         SessionTicket ticket,
+        List<SessionTicket> tickets,
         List<SessionTicket> held,
         @JsonProperty("hold_limit") int holdLimit,
-        @JsonProperty("break") Break onBreak) {
+        @JsonProperty("break") Break onBreak,
+        @JsonProperty("can_call") boolean canCall,
+        @JsonProperty("call_timeout_seconds") int callTimeoutSeconds) {
 
     /** The break type a break is of, with the longest it may run (FR-AGT-020). */
     public record BreakType(UUID id, @JsonProperty("name_i18n") Map<String, String> nameI18n, @JsonProperty("max_minutes") Integer maxMinutes) {}
@@ -45,7 +50,8 @@ public record SessionResponse(
      * A ticket bound to the session: the one in progress ({@code called} or {@code serving}) or one of those held.
      * {@code waitSeconds} is how long it waited in the queue before it was called. {@code announceCount} of {@code announceLimit} is how many times this call has been
      * re-announced (FR-DSP-028); {@code missCount} of {@code missLimit} how many times it has been missed, the Miss after the
-     * limit closing it as a no-show (FR-QUE-050).
+     * limit closing it as a no-show (FR-QUE-050). {@code callTimedOut} is set once a called ticket has waited for its Agent longer than the
+     * call timeout, which is when the Agent may return it to the queue (FR-QUE-032).
      */
     public record SessionTicket(
             UUID id,
@@ -63,5 +69,6 @@ public record SessionResponse(
             @JsonProperty("announce_limit") int announceLimit,
             @JsonProperty("miss_count") int missCount,
             @JsonProperty("miss_limit") int missLimit,
+            @JsonProperty("call_timed_out") boolean callTimedOut,
             List<Outcome> outcomes) {}
 }

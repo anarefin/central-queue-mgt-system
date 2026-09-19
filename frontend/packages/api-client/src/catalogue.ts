@@ -46,6 +46,9 @@ export interface ServiceEntry {
   display_order: number;
   visitor_identifier: VisitorIdentifier;
   booking_mode: BookingMode;
+  /** A counter may have up to `parallel_limit` of this Service's tickets in progress at once (FR-AGT-010, FR-AGT-011). */
+  parallel_serving: boolean;
+  parallel_limit: number;
   active: boolean;
   created_at: string;
   updated_at: string;
@@ -62,6 +65,9 @@ export interface ServiceInput {
   display_order?: number;
   visitor_identifier: VisitorIdentifier;
   booking_mode: BookingMode;
+  /** From 1 to 20, and at least 2 while `parallel_serving` is on; left out it is kept, or 2 for a Service just made parallel. */
+  parallel_serving?: boolean;
+  parallel_limit?: number;
 }
 
 /** A counter that serves a service; weight 1 is the primary counter, a higher weight a fallback (FR-CFG-011). */

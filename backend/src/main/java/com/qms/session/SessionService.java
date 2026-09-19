@@ -11,6 +11,7 @@ import com.qms.platform.security.Authz;
 import com.qms.platform.security.CurrentUser;
 import com.qms.platform.security.Permission;
 import com.qms.platform.security.ScopeGuard;
+import com.qms.queue.CallRules;
 import com.qms.queue.QueueEngine;
 import com.qms.queue.QueueEngine.Contender;
 import com.qms.queue.QueueProperties;
@@ -28,9 +29,11 @@ import com.qms.session.SessionRepository.OutcomeRow;
 import com.qms.session.SessionRepository.ServiceLink;
 import com.qms.session.SessionRepository.ServiceScope;
 import com.qms.session.SessionRepository.SessionRow;
+import com.qms.session.SessionRepository.TimedOutCall;
 import com.qms.session.SessionRepository.TransferAgent;
 import com.qms.session.SessionRepository.TransferService;
 import com.qms.session.SessionRepository.TransferSource;
+import com.qms.session.SessionRepository.WaitingTicket;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -183,18 +186,23 @@ public class SessionService {
 
     /**
      * Calls the highest-scoring eligible ticket across the queues of the session's Services (FR-QUE-002, FR-QUE-030) and
-     * binds it to the session (FR-QUE-031). Refused while a ticket is called or serving (FR-AGT-010).
+     * binds it to the session (FR-QUE-031). Refused while the counter has as many tickets called or serving as its Services allow:
+     * one, unless the Service of each of them, and of the ticket to call, is served in parallel (FR-AGT-010, FR-AGT-011).
      */
     @PreAuthorize(SERVE)
     @Transactional
     public SessionResponse callNext(UUID sessionId) {
         SessionRow session = lockOwn(sessionId);
         if (!"open".equals(session.state())) throw refusal("session_not_open");
-        if (sessions.unresolved(session.id()).stream().anyMatch(t -> "called".equals(t.state()) || "serving".equals(t.state()))) {
-            throw refusal("ticket_in_progress");
-        }
+        List<BoundTicket> busy = inProgress(sessions.unresolved(session.id()));
+        Map<UUID, Integer> limits = limits(session, busy);
+        if (!busy.isEmpty() && !mayTakeAnother(busy, limits, null)) throw refusal("ticket_in_progress");
+        boolean full = false;
         for (int attempt = 0; attempt < CALL_ATTEMPTS; attempt++) {
-            Optional<Contender> pick = QueueEngine.pick(heads(session), queueProperties.primaryLinkToleranceMinutes());
+            List<Contender> heads = heads(session);
+            List<Contender> callable = heads.stream().filter(head -> mayTakeAnother(busy, limits, head.serviceId())).toList();
+            full = callable.size() < heads.size();
+            Optional<Contender> pick = QueueEngine.pick(callable, queueProperties.primaryLinkToleranceMinutes());
             if (pick.isEmpty()) break;
             Contender chosen = pick.get();
             Instant now = clock.instant();
@@ -210,15 +218,69 @@ public class SessionService {
                 return view(session);
             }
         }
-        throw refusal("no_ticket_waiting");
+        // Nothing to call is not the same as a full desk: the console says so differently.
+        throw refusal(full ? "ticket_in_progress" : "no_ticket_waiting");
+    }
+
+    /**
+     * F2 on a chosen ticket (FR-AGT-012): the agent calls a specific waiting ticket out of order, with a mandatory reason. The ticket
+     * must be waiting, in a Service this session serves and its counter still links, and not meant for another counter or agent; the
+     * desk must have room for it as for any call. The call is audited as an out-of-order call with the reason and the place the ticket
+     * had in its queue (FR-SEC-040), and written to the ticket's events like any call. Only the agent's own session calls (FR-CFG-105).
+     */
+    @PreAuthorize(SERVE)
+    @Transactional
+    public SessionResponse callTicket(UUID sessionId, CallTicketRequest request) {
+        SessionRow session = lockOwn(sessionId);
+        if (request == null || request.ticketId() == null) throw invalid("ticket_id", "required");
+        String reason = request.reason() == null || request.reason().isBlank() ? null : request.reason().strip();
+        if (reason == null) throw invalid("reason", "required");
+        if (reason.length() > MAX_NOTE_LENGTH) throw invalid("reason", "too_long");
+        if (!"open".equals(session.state())) throw refusal("session_not_open");
+
+        WaitingTicket ticket = sessions.waitingTicket(request.ticketId()).orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND));
+        scope.requireSite(ticket.siteId());
+        scope.requireGroup(ticket.groupId());
+        ServiceLink link = sessions.links(session.counterId(), session.services()).stream()
+                .filter(l -> l.serviceId().equals(ticket.serviceId()))
+                .findFirst()
+                .orElseThrow(() -> refusal("ticket_not_callable"));
+        boolean drawable = new TransferRules.Target(ticket.targetCounterId(), ticket.targetAgentId()).drawableBy(session.counterId(), session.agentId());
+        if (!"waiting".equals(ticket.state()) || ticket.sessionId() != null || !drawable) throw refusal("ticket_not_callable");
+        List<BoundTicket> busy = inProgress(sessions.unresolved(session.id()));
+        if (!mayTakeAnother(busy, limits(session, busy), ticket.serviceId())) throw refusal("ticket_in_progress");
+
+        Integer position = queues.positionOf(ticket.id());
+        Instant now = clock.instant();
+        if (!sessions.call(ticket.id(), ticket.version(), session.id(), session.counterId(), session.agentId(), now)) throw refusal("ticket_not_callable");
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("session_id", session.id().toString());
+        payload.put("service_id", ticket.serviceId().toString());
+        payload.put("preference_weight", link.weight());
+        payload.put("announce", true);
+        payload.put("out_of_order", true);
+        payload.put("reason", reason);
+        events.append(transition(ticket.id(), TicketTransition.CALL, session, payload, now));
+
+        Map<String, Object> before = new LinkedHashMap<>();
+        before.put("state", ticket.state());
+        before.put("position", position);
+        Map<String, Object> after = new LinkedHashMap<>();
+        after.put("state", TicketTransition.CALL.to());
+        after.put("token_number", ticket.tokenNumber());
+        after.put("service_id", ticket.serviceId().toString());
+        after.put("counter_id", session.counterId().toString());
+        after.put("session_id", session.id().toString());
+        audit.record(AuditEvent.of("ticket.called_out_of_order", "ticket", ticket.id()).withBefore(before).withAfter(after).withReason(reason));
+        return view(session);
     }
 
     /** Starts service on the ticket this session called (FR-AGT-032). {@code ifMatch} is the version the console last saw. */
     @PreAuthorize(SERVE)
     @Transactional
-    public SessionResponse startService(UUID sessionId, Integer ifMatch) {
+    public SessionResponse startService(UUID sessionId, UUID ticketId, Integer ifMatch) {
         SessionRow session = lockOwn(sessionId);
-        BoundTicket ticket = boundIn(session, TicketTransition.START_SERVICE, "no_ticket_called");
+        BoundTicket ticket = boundIn(session, ticketId, TicketTransition.START_SERVICE, "no_ticket_called");
         requireVersion(ticket, ifMatch);
         Instant now = clock.instant();
         if (!sessions.startService(ticket.id(), ticket.version(), session.id(), now)) throw refusal("version_mismatch");
@@ -232,9 +294,9 @@ public class SessionService {
      */
     @PreAuthorize(SERVE)
     @Transactional
-    public SessionResponse complete(UUID sessionId, CompleteRequest request, Integer ifMatch) {
+    public SessionResponse complete(UUID sessionId, UUID ticketId, CompleteRequest request, Integer ifMatch) {
         SessionRow session = lockOwn(sessionId);
-        BoundTicket ticket = boundIn(session, TicketTransition.COMPLETE, "no_ticket_serving");
+        BoundTicket ticket = boundIn(session, ticketId, TicketTransition.COMPLETE, "no_ticket_serving");
         requireVersion(ticket, ifMatch);
         String note = request == null || request.note() == null || request.note().isBlank() ? null : request.note().strip();
         if (note != null && note.length() > MAX_NOTE_LENGTH) throw invalid("note", "too_long");
@@ -263,9 +325,9 @@ public class SessionService {
      */
     @PreAuthorize(SERVE)
     @Transactional
-    public SessionResponse reannounce(UUID sessionId, Integer ifMatch) {
+    public SessionResponse reannounce(UUID sessionId, UUID ticketId, Integer ifMatch) {
         SessionRow session = lockOwn(sessionId);
-        BoundTicket ticket = boundIn(session, TicketTransition.REANNOUNCE, "no_ticket_called");
+        BoundTicket ticket = boundIn(session, ticketId, TicketTransition.REANNOUNCE, "no_ticket_called");
         requireVersion(ticket, ifMatch);
         if (!TicketTransition.mayReannounce(ticket.announceCount(), queueProperties.announceRepeatLimit())) throw refusal("reannounce_limit_reached");
         if (!sessions.reannounce(ticket.id(), ticket.version(), session.id())) throw refusal("version_mismatch");
@@ -285,9 +347,9 @@ public class SessionService {
      */
     @PreAuthorize(SERVE)
     @Transactional
-    public SessionResponse miss(UUID sessionId, Integer ifMatch) {
+    public SessionResponse miss(UUID sessionId, UUID ticketId, Integer ifMatch) {
         SessionRow session = lockOwn(sessionId);
-        BoundTicket ticket = boundIn(session, TicketTransition.MISS, "no_ticket_called");
+        BoundTicket ticket = boundIn(session, ticketId, TicketTransition.MISS, "no_ticket_called");
         requireVersion(ticket, ifMatch);
         Instant now = clock.instant();
         TicketTransition result = TicketTransition.onMiss(ticket.missCount(), queueProperties.missLimit());
@@ -313,21 +375,77 @@ public class SessionService {
     }
 
     /**
+     * The Agent answers the call timeout prompt by returning the called ticket to the queue (FR-QUE-032). Only a call that has gone
+     * unanswered for the call timeout can be returned this way; a visitor who is absent is a Miss (F6), which counts. The ticket goes
+     * back to waiting with its original wait: {@code queued_at} is never rewritten and no Miss is counted. Its place is restored
+     * with a Score adjustment (ADR-0004): the ticket's adjustment from before the call is set again and recorded on the event, and every
+     * waiting score grows at the same rate, so it lands where it stood. The binding is cleared (Invariant 2), the counter is free, and a
+     * closing session that this resolves closes now (§19.3).
+     */
+    @PreAuthorize(SERVE)
+    @Transactional
+    public SessionResponse returnToQueue(UUID sessionId, UUID ticketId, Integer ifMatch) {
+        SessionRow session = lockOwn(sessionId);
+        BoundTicket ticket = boundIn(session, ticketId, TicketTransition.RETURN_FROM_CALLED, "no_ticket_called");
+        requireVersion(ticket, ifMatch);
+        Instant now = clock.instant();
+        if (!CallRules.callTimedOut(ticket.calledAt(), now, queueProperties.callTimeoutSeconds())) throw refusal("call_not_timed_out");
+        int adjustment = ticket.scoreAdjustmentMinutes();
+        if (!sessions.returnToQueue(ticket.id(), ticket.version(), session.id(), TicketTransition.RETURN_FROM_CALLED, adjustment)) throw refusal("version_mismatch");
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("session_id", session.id().toString());
+        payload.put("reason", "call_timeout");
+        payload.put("reentry_position", "original");
+        payload.put("score_adjustment_minutes", adjustment);
+        events.append(transition(ticket.id(), TicketTransition.RETURN_FROM_CALLED, session, payload, now));
+
+        if ("closing".equals(session.state()) && sessions.unresolved(session.id()).isEmpty()) finish(session, now);
+        return view(sessions.session(session.id()).orElseThrow());
+    }
+
+    /**
+     * The call timeout check (FR-QUE-032), run every few seconds by every node: each called ticket that has waited for its Agent longer
+     * than the timeout prompts them once, on their counter's topic as {@code ticket.call_timeout}. The ticket does not change (a prompt
+     * is not a transition), so the Agent's screen keeps its version; the Agent then keeps the ticket or returns it to the queue. Nodes
+     * race for the ticket in the database, so the prompt is sent once however many nodes run this. Returns how many were prompted.
+     */
+    @Transactional
+    public int promptTimedOutCalls() {
+        int timeout = queueProperties.callTimeoutSeconds();
+        if (timeout <= 0) return 0;
+        Instant now = clock.instant();
+        List<TimedOutCall> due = sessions.claimTimedOutCalls(now, timeout);
+        for (TimedOutCall call : due) {
+            Map<String, Object> data = new LinkedHashMap<>();
+            data.put("ticket_id", call.ticketId().toString());
+            data.put("token_number", call.tokenNumber());
+            data.put("service_id", call.serviceId().toString());
+            data.put("session_id", call.sessionId().toString());
+            data.put("counter_id", call.counterId().toString());
+            data.put("state", TicketTransition.CALL.to());
+            data.put("version", call.version());
+            data.put("timeout_seconds", timeout);
+            realtime.publish(Topics.counter(call.counterId()), "ticket.call_timeout", now, data);
+        }
+        return due.size();
+    }
+
+    /**
      * F8. Without a {@code ticket_id} it parks the ticket being served (FR-AGT-013): it leaves the general queue's reach but
      * stays bound to this session (ADR-0008), the counter is free to call next, and the session may hold at most the hold
      * limit. With a {@code ticket_id} it resumes that held ticket, which only the session that holds it can do.
      */
     @PreAuthorize(SERVE)
     @Transactional
-    public SessionResponse hold(UUID sessionId, HoldRequest request, Integer ifMatch) {
+    public SessionResponse hold(UUID sessionId, UUID ticketId, HoldRequest request, Integer ifMatch) {
         SessionRow session = lockOwn(sessionId);
-        return request != null && request.ticketId() != null ? resume(session, request.ticketId(), ifMatch) : hold(session, ifMatch);
+        return request != null && request.ticketId() != null ? resume(session, request.ticketId(), ifMatch) : hold(session, ticketId, ifMatch);
     }
 
-    private SessionResponse hold(SessionRow session, Integer ifMatch) {
+    private SessionResponse hold(SessionRow session, UUID ticketId, Integer ifMatch) {
         // A closing session is trying to empty itself: parking a ticket there would only add to what must be cleared.
         if (!"open".equals(session.state())) throw refusal("session_not_open");
-        BoundTicket ticket = boundIn(session, TicketTransition.HOLD, "no_ticket_serving");
+        BoundTicket ticket = boundIn(session, ticketId, TicketTransition.HOLD, "no_ticket_serving");
         requireVersion(ticket, ifMatch);
         int held = (int) sessions.unresolved(session.id()).stream().filter(t -> "held".equals(t.state())).count();
         if (!TicketTransition.mayHold(held, queueProperties.holdLimit())) throw refusal("hold_limit_reached");
@@ -342,12 +460,11 @@ public class SessionService {
     private SessionResponse resume(SessionRow session, UUID ticketId, Integer ifMatch) {
         if (!session.live()) throw refusal("session_not_open");
         List<BoundTicket> unresolved = sessions.unresolved(session.id());
-        // The counter serves one ticket at a time (FR-AGT-010): the one in progress is finished, or held, first.
-        if (unresolved.stream().anyMatch(t -> "called".equals(t.state()) || "serving".equals(t.state()))) throw refusal("ticket_in_progress");
-        BoundTicket ticket = unresolved.stream()
-                .filter(t -> t.id().equals(ticketId) && TicketTransition.RESUME.apply(t.state()).isPresent())
-                .findFirst()
-                .orElseThrow(() -> refusal("no_ticket_held"));
+        Optional<BoundTicket> resuming = unresolved.stream().filter(t -> t.id().equals(ticketId) && TicketTransition.RESUME.apply(t.state()).isPresent()).findFirst();
+        // The desk takes a ticket back like any other (FR-AGT-010): the one in progress is finished, or held, first, unless its Services are parallel.
+        List<BoundTicket> busy = inProgress(unresolved);
+        if (!busy.isEmpty() && (resuming.isEmpty() || !mayTakeAnother(busy, limits(session, busy, resuming.get().serviceId()), resuming.get().serviceId()))) throw refusal("ticket_in_progress");
+        BoundTicket ticket = resuming.orElseThrow(() -> refusal("no_ticket_held"));
         requireVersion(ticket, ifMatch);
         if (!sessions.resume(ticket.id(), ticket.version(), session.id())) throw refusal("version_mismatch");
         Map<String, Object> payload = new LinkedHashMap<>();
@@ -804,13 +921,36 @@ public class SessionService {
         return version == null ? -1 : version;
     }
 
-    /** The ticket this session holds in the state {@code transition} leaves, or a conflict named {@code reason}. */
-    private BoundTicket boundIn(SessionRow session, TicketTransition transition, String reason) {
+    /**
+     * The ticket this session holds in the state {@code transition} leaves, or a conflict named {@code reason}. With several tickets in
+     * progress (parallel serving) {@code ticketId} says which; left out, it is the one called first.
+     */
+    private BoundTicket boundIn(SessionRow session, UUID ticketId, TicketTransition transition, String reason) {
         if (!session.live()) throw refusal("session_not_open");
         return sessions.unresolved(session.id()).stream()
-                .filter(t -> transition.apply(t.state()).isPresent())
+                .filter(t -> (ticketId == null || t.id().equals(ticketId)) && transition.apply(t.state()).isPresent())
                 .findFirst()
                 .orElseThrow(() -> refusal(reason));
+    }
+
+    private static List<BoundTicket> inProgress(List<BoundTicket> unresolved) {
+        return unresolved.stream().filter(t -> "called".equals(t.state()) || "serving".equals(t.state())).toList();
+    }
+
+    /** How many tickets the counter may have in progress for each Service the session serves, each one in progress and {@code extra} (FR-AGT-011). */
+    private Map<UUID, Integer> limits(SessionRow session, List<BoundTicket> busy, UUID... extra) {
+        Set<UUID> serviceIds = new java.util.LinkedHashSet<>(session.services());
+        busy.forEach(t -> serviceIds.add(t.serviceId()));
+        for (UUID id : extra) if (id != null) serviceIds.add(id);
+        return sessions.concurrencyLimits(serviceIds);
+    }
+
+    /** Whether the counter has room for one more ticket of {@code serviceId} (none: only the tickets in progress are asked) (FR-AGT-010). */
+    private static boolean mayTakeAnother(List<BoundTicket> busy, Map<UUID, Integer> limits, UUID serviceId) {
+        List<Integer> all = new ArrayList<>();
+        for (BoundTicket t : busy) all.add(limits.getOrDefault(t.serviceId(), 1));
+        if (serviceId != null) all.add(limits.getOrDefault(serviceId, 1));
+        return CallRules.mayTakeAnother(busy.size(), all);
     }
 
     private static void requireVersion(BoundTicket ticket, Integer ifMatch) {
@@ -839,19 +979,19 @@ public class SessionService {
         CounterRow counter = sessions.counter(session.counterId()).orElseThrow();
         List<SessionResponse.ServiceRef> services = sessions.links(session.counterId(), session.services()).stream().map(SessionViews::service).toList();
         List<BoundTicket> unresolved = sessions.unresolved(session.id());
-        SessionResponse.SessionTicket ticket = unresolved.stream()
-                .filter(t -> "called".equals(t.state()) || "serving".equals(t.state()))
-                .findFirst()
-                .map(this::ticketView)
-                .orElse(null);
+        List<BoundTicket> busy = inProgress(unresolved);
+        List<SessionResponse.SessionTicket> tickets = busy.stream().map(this::ticketView).toList();
         List<SessionResponse.SessionTicket> held = unresolved.stream().filter(t -> "held".equals(t.state())).map(this::ticketView).toList();
+        Map<UUID, Integer> limits = limits(session, busy);
+        boolean canCall = "open".equals(session.state()) && session.services().stream().anyMatch(serviceId -> mayTakeAnother(busy, limits, serviceId));
         return new SessionResponse(
-                session.id(), SessionViews.counter(counter), session.agentId(), session.state(), session.openedAt(), session.closedAt(), services, ticket, held,
-                queueProperties.holdLimit(), breakOf(session));
+                session.id(), SessionViews.counter(counter), session.agentId(), session.state(), session.openedAt(), session.closedAt(), services,
+                tickets.isEmpty() ? null : tickets.getFirst(), tickets, held, queueProperties.holdLimit(), breakOf(session), canCall, queueProperties.callTimeoutSeconds());
     }
 
     private SessionResponse.SessionTicket ticketView(BoundTicket t) {
-        return SessionViews.ticket(t, sessions.outcomes(t.serviceId()), queueProperties.announceRepeatLimit(), queueProperties.missLimit());
+        boolean timedOut = "called".equals(t.state()) && CallRules.callTimedOut(t.calledAt(), clock.instant(), queueProperties.callTimeoutSeconds());
+        return SessionViews.ticket(t, sessions.outcomes(t.serviceId()), queueProperties.announceRepeatLimit(), queueProperties.missLimit(), timedOut);
     }
 
     private TicketEvents.Transition transition(UUID ticketId, TicketTransition transition, SessionRow session, Object payload, Instant now) {

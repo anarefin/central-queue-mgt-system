@@ -53,6 +53,7 @@ Everything is an environment variable (or a Spring property). Secrets are never 
 | `QMS_QUEUE_MISS_REENTRY_POSITION` | `after-n` | Where a missed ticket re-enters the queue: `front`, `after-n` or `back`, section 12 |
 | `QMS_QUEUE_MISS_REENTRY_AFTER` | `3` | With `after-n`: how many tickets stay ahead of the missed one (at least 1), section 12 |
 | `QMS_QUEUE_HOLD_LIMIT` | `3` | How many tickets one session may hold (F8) at once; `0` switches Hold off, section 12 |
+| `QMS_QUEUE_CALL_TIMEOUT_SECONDS` | `90` | How long a called ticket may wait for its agent to act before the agent is prompted and may return it to the queue; `0` switches the prompt off, section 12 |
 | `QMS_QUEUE_TRANSFER_HEADSTART_MINUTES` | empty | The Head start, in minutes, of the successor a transfer (F7) creates; empty means the predecessor's accrued wait, section 12 |
 
 Two limits are enforced at startup and cannot be raised: access tokens last at most 15 minutes, and bcrypt cost is at
@@ -298,6 +299,40 @@ missed ticket cannot jump an escalated one. Each `ticket.missed` event records t
 does not order the queue, so the position has no effect there (section 10). A ticket that is called again after a Miss stores
 a `wait_seconds` that adds up only the time it spent in `waiting`, not the time it was called.
 
+**Call timeout.** A called ticket that nobody acts on prompts its agent. After `QMS_QUEUE_CALL_TIMEOUT_SECONDS` (default 90, `0`
+switches it off) a check that runs every few seconds on every node claims the call in the database, so it prompts once per call
+however many nodes run: the agent's console gets `ticket.call_timeout` on the counter's topic and, after a refresh, the same
+prompt from `ticket.call_timed_out` in the session. The ticket itself does not change and a prompt writes no ticket event. The
+agent then keeps the ticket, or returns it to the queue (`POST /sessions/{id}/return`, the "Return to queue" button). A return is
+refused with `call_not_timed_out` before the timeout has passed: an absent visitor before that is a Miss (F6), which counts. A
+returned ticket goes back to `waiting` with its session binding cleared, `queued_at` untouched and no Miss counted, so its
+original wait is preserved. Its place is restored with a Score adjustment (section 10): the adjustment the ticket had before the
+call is set again, every waiting score grows at the same rate, and the ticket lands where it stood. `ticket.position_changed` is
+written with `reason: call_timeout` and the `score_adjustment_minutes` applied. Re-announce does not reset the timeout. Returning
+the last ticket of a closing session closes it.
+
+**Calling a specific ticket out of order.** An agent can call a specific waiting ticket instead of the next one
+(`POST /sessions/{id}/call` with `ticket_id` and a mandatory `reason`; the console's "Call a specific ticket", which lists the
+waiting tickets of a chosen Service). The ticket must be `waiting`, in a Service the session serves and its counter still links, in
+the agent's site and not meant for another counter or agent; anything else is refused with `ticket_not_callable`. The same
+permission as any call is needed (`ticket:call_serve_complete`, own session only), and the desk must have room (below). The ticket
+is bound to the session and `ticket.called` is written with `out_of_order: true` and the reason, and every call is audited as
+`ticket.called_out_of_order` with the reason, the place the ticket had in its queue and the counter. A missing or blank reason,
+or one over 1000 characters, is `validation_failed` naming `reason`. Everyone else keeps their place.
+
+**Parallel serving.** A Service can be marked as one a counter serves to several visitors at once (`/admin/catalogue/`, the
+service form: "A counter serves several visitors of this service at once" and "Most visitors a counter serves at once"; API
+`parallel_serving` and `parallel_limit`, 1 to 20 and at least 2 while it is on; switching it on without a maximum allows two).
+Without it, and by default, a counter has one ticket called or serving at a time and Call next is off meanwhile. With it, a
+counter may have up to the maximum of that Service in progress; when the tickets in progress and the one to call are of
+different Services, every one of them must have room, so a counter busy with a Service that is not parallel takes no second
+ticket. Call next then skips the heads it cannot take yet and calls the best one it can; when the desk is full it is refused with
+`ticket_in_progress`. An out-of-order call and a resume of a held ticket follow the same limit. With several tickets in progress
+the session response lists them all in `tickets` (`ticket` is the first, `can_call` says whether a call would be taken) and each
+action (`serve`, `complete`, `reannounce`, `miss`, `hold`, `return`) names its ticket with `?ticket_id=`; without it the action
+is for the first. The console lists the tickets in progress and acts on the one chosen. Changes to the flag and the maximum are
+audited with `service.updated` (before and after).
+
 **Hold and held by me.** An agent can Hold (F8) the ticket in service to call the next visitor and come back to it later. The
 ticket moves `serving` to `held`, stays bound to the session (so only that session can resume it), leaves the general queue,
 and `ticket.held` is written and published; the counter is free to call next. Held tickets show in the console under "Held by
@@ -347,19 +382,20 @@ session. The time a ticket spent held or called never counts as wait (Invariant 
 a restart the console asks `GET /sessions/current` and shows the ticket the agent was serving.
 
 API, all under `/api/v1`: `GET /sessions/options`, `GET /sessions/current` (`not_found` when there is none),
-`POST /sessions` (`counter_id`, optional `service_ids`), `DELETE /sessions/{id}`, and `POST /sessions/{id}/next|reannounce|serve|complete|miss|hold|force-close`,
+`POST /sessions` (`counter_id`, optional `service_ids`), `DELETE /sessions/{id}`, and `POST /sessions/{id}/next|call|reannounce|serve|complete|miss|return|hold|force-close`,
 `GET /sessions/{id}/transfer-targets` (where the ticket in service may go) and `POST /tickets/{id}/transfer` (`service_id`, optional
 `counter_id` or `agent_id`, and the mandatory `note`; it answers with the predecessor, the successor and the session).
 `POST /sessions/{id}/break` starts a break (`{"break_type_id": ...}`) or, with no body, ends the one the session is on (section 13). `hold` holds the serving ticket, or resumes a held one when given `{"ticket_id": ...}`. The session response carries `ticket`
-(in progress), `held` (the held-by-me list), `hold_limit` and `break` (the break being taken, or null).
-`reannounce`, `serve`, `complete`, `miss`, `hold` and `transfer` take the ticket's `version` as `If-Match`; a stale version is a `conflict` with reason
+(the first in progress), `tickets` (all of them), `held` (the held-by-me list), `hold_limit`, `break` (the break being taken, or null),
+`can_call` and `call_timeout_seconds`.
+`reannounce`, `serve`, `complete`, `miss`, `return`, `hold` and `transfer` take the ticket's `version` as `If-Match`; a stale version is a `conflict` with reason
 `version_mismatch`. Conflict reasons: `counter_occupied`, `agent_has_open_session`, `counter_inactive`, `session_not_open`,
 `ticket_in_progress`, `held_tickets_remaining`, `no_ticket_waiting`, `no_ticket_called`, `no_ticket_serving`, `no_ticket_held`,
 `reannounce_limit_reached`, `hold_limit_reached`, `transfer_target_inactive`, `transfer_cross_site`, `transfer_target_mismatch`,
-`already_on_break`, `not_on_break`, `no_live_session`, `version_mismatch`. Events written per transition: `ticket.called`,
+`already_on_break`, `not_on_break`, `no_live_session`, `ticket_not_callable`, `call_not_timed_out`, `version_mismatch`. Events written per transition: `ticket.called`,
 `ticket.reannounced`, `ticket.missed`, `ticket.no_show`, `ticket.serving`, `ticket.held`, `ticket.position_changed`,
-`ticket.completed`, `ticket.transferred` (and `ticket.issued` for the successor); audit entries `session.opened`, `session.closed`, `session.force_closed`, `ticket.transferred`, `session.break_started`, `session.break_ended` and `agent.availability_changed`.
-The counter's topic also carries `session.break_started` and `session.break_ended`.
+`ticket.completed`, `ticket.transferred` (and `ticket.issued` for the successor); audit entries `session.opened`, `session.closed`, `session.force_closed`, `ticket.transferred`, `ticket.called_out_of_order`, `session.break_started`, `session.break_ended` and `agent.availability_changed`.
+The counter's topic also carries `session.break_started`, `session.break_ended` and `ticket.call_timeout`.
 
 ## 13. Breaks and agent availability
 

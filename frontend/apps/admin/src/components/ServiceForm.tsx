@@ -28,7 +28,8 @@ interface ServiceFormProps {
 
 /**
  * A service (FR-CFG-010): names per language, token prefix, expected handling and SLA wait minutes, enabled channels,
- * kiosk icon and display order (FR-CFG-012), visitor identifier (FR-CFG-013) and appointment / walk-in mode (FR-CFG-014).
+ * kiosk icon and display order (FR-CFG-012), visitor identifier (FR-CFG-013), appointment / walk-in mode (FR-CFG-014) and whether a counter
+ * serves several visitors of it at once, with the most it may have in progress (FR-AGT-010, FR-AGT-011).
  */
 export function ServiceForm({ site, initial, submitLabel, onSubmit, onDone, onCancel }: ServiceFormProps) {
   const { t } = useI18n();
@@ -42,6 +43,8 @@ export function ServiceForm({ site, initial, submitLabel, onSubmit, onDone, onCa
   const [order, setOrder] = useState(String(initial?.display_order ?? 0));
   const [identifier, setIdentifier] = useState<VisitorIdentifier>(initial?.visitor_identifier ?? "not_required");
   const [booking, setBooking] = useState<BookingMode>(initial?.booking_mode ?? "both");
+  const [parallel, setParallel] = useState(initial?.parallel_serving ?? false);
+  const [parallelLimit, setParallelLimit] = useState(String(initial?.parallel_limit && initial.parallel_limit > 1 ? initial.parallel_limit : 2));
   const { busy, error, run } = useSubmit();
 
   const toggle = (channel: Channel) =>
@@ -59,6 +62,9 @@ export function ServiceForm({ site, initial, submitLabel, onSubmit, onDone, onCa
       display_order: Number(order),
       visitor_identifier: identifier,
       booking_mode: booking,
+      parallel_serving: parallel,
+      // Only a parallel Service has a maximum to send; otherwise the one kept for it stays as it is.
+      ...(parallel ? { parallel_limit: Number(parallelLimit) } : {}),
     };
     if (await run(() => onSubmit(input))) onDone();
   }
@@ -107,6 +113,19 @@ export function ServiceForm({ site, initial, submitLabel, onSubmit, onDone, onCa
         onChange={(e) => setBooking(e.target.value as BookingMode)}
         options={BOOKING_MODES.map((value) => ({ value, label: t(`catalogue.bookingMode.${value}`) }))}
       />
+      <label className="qms-row">
+        <input type="checkbox" checked={parallel} onChange={(e) => setParallel(e.target.checked)} />
+        {t("catalogue.fields.parallel_serving")}
+      </label>
+      {parallel && (
+        <TextField
+          id={`${id}-parallel-limit`}
+          type="number"
+          label={t("catalogue.fields.parallel_limit")}
+          value={parallelLimit}
+          onChange={(e) => setParallelLimit(e.target.value)}
+        />
+      )}
       {error && <ErrorAlert>{error}</ErrorAlert>}
       <div className="qms-row">
         <Button type="submit" disabled={busy}>

@@ -401,6 +401,57 @@ class CatalogueAdminIT {
         assertThat((List<Object>) field(call(get("/api/v1/service-groups/" + group + "/services"), token, null), "$.items")).isEmpty();
     }
 
+    @Test
+    void aServiceIsOneAtATimeByDefaultAndParallelServingIsAFlagWithAMaximumThatIsAudited() throws Exception {
+        String token = tokenFor(Role.ORG_ADMIN);
+        UUID group = createGroup(token, createSite(token), "OPD");
+
+        MvcResult plain = call(post("/api/v1/service-groups/" + group + "/services"), token, serviceJson("CON"));
+        assertThat((Boolean) field(plain, "$.parallel_serving")).as("a counter serves one visitor at a time by default (FR-AGT-010)").isFalse();
+        assertThat((Integer) field(plain, "$.parallel_limit")).isEqualTo(1);
+        UUID svc = UUID.fromString(field(plain, "$.id"));
+
+        MvcResult parallel = call(patch("/api/v1/services/" + svc), token, "{\"parallel_serving\":true,\"parallel_limit\":4}");
+        assertThat(status(parallel)).as(body(parallel)).isEqualTo(200);
+        assertThat((Boolean) field(parallel, "$.parallel_serving")).isTrue();
+        assertThat((Integer) field(parallel, "$.parallel_limit")).isEqualTo(4);
+        var update = audit("service.updated", svc);
+        assertThat((String) update.get("before")).contains("\"parallel_serving\": false").contains("\"parallel_limit\": 1");
+        assertThat((String) update.get("after")).contains("\"parallel_serving\": true").contains("\"parallel_limit\": 4");
+        assertThat(jdbc.queryForObject("SELECT parallel_limit FROM service WHERE id = ?", Integer.class, svc)).isEqualTo(4);
+
+        MvcResult off = call(patch("/api/v1/services/" + svc), token, "{\"parallel_serving\":false}");
+        assertThat((Boolean) field(off, "$.parallel_serving")).isFalse();
+        assertThat((Integer) field(off, "$.parallel_limit")).as("the maximum is kept for when it is switched on again").isEqualTo(4);
+
+        MvcResult created = call(post("/api/v1/service-groups/" + group + "/services"), token, serviceJson("LAB").replace("\"booking_mode\":\"walk_in_only\"", "\"parallel_serving\":true"));
+        assertThat((Boolean) field(created, "$.parallel_serving")).isTrue();
+        assertThat((Integer) field(created, "$.parallel_limit")).as("switching it on without a maximum allows two").isEqualTo(2);
+        assertThat((String) audit("service.created", UUID.fromString(field(created, "$.id"))).get("after")).contains("\"parallel_serving\": true");
+    }
+
+    @Test
+    void theParallelMaximumIsOneToTwentyAndAtLeastTwoWhileParallelServingIsOn() throws Exception {
+        String token = tokenFor(Role.ORG_ADMIN);
+        UUID group = createGroup(token, createSite(token), "OPD");
+        String good = serviceJson("CON");
+        String[] cases = {
+            good.replace("\"booking_mode\"", "\"parallel_limit\":0,\"booking_mode\""),
+            good.replace("\"booking_mode\"", "\"parallel_limit\":21,\"booking_mode\""),
+            good.replace("\"booking_mode\"", "\"parallel_serving\":true,\"parallel_limit\":1,\"booking_mode\""),
+        };
+        for (String body : cases) {
+            MvcResult result = call(post("/api/v1/service-groups/" + group + "/services"), token, body);
+            assertThat(status(result)).as(body).isEqualTo(400);
+            assertThat(errorCode(result)).isEqualTo("validation_failed");
+            assertThat(body(result)).contains("\"parallel_limit\"");
+        }
+        UUID svc = createService(token, group, "LAB");
+        assertThat(status(call(patch("/api/v1/services/" + svc), token, "{\"parallel_serving\":true,\"parallel_limit\":1}"))).isEqualTo(400);
+        assertThat(status(call(patch("/api/v1/services/" + svc), token, "{\"parallel_limit\":50}"))).isEqualTo(400);
+        assertThat(jdbc.queryForObject("SELECT parallel_serving FROM service WHERE id = ?", Boolean.class, svc)).as("nothing changed").isFalse();
+    }
+
     // ---- counter links -----------------------------------------------------------------------------------------
 
     @Test

@@ -28,7 +28,7 @@ class CatalogueRepository {
                     + " FROM service_group g JOIN site s ON s.id = g.site_id";
     private static final String SERVICE =
             "SELECT v.id, v.service_group_id, g.site_id, v.name_i18n, v.token_prefix, v.expected_minutes, v.sla_wait_minutes, v.channels, v.icon,"
-                    + " v.display_order, v.requires_visitor_id, v.booking_mode, v.active, v.created_at, v.updated_at, s.enabled_languages"
+                    + " v.display_order, v.requires_visitor_id, v.booking_mode, v.parallel_serving, v.parallel_limit, v.active, v.created_at, v.updated_at, s.enabled_languages"
                     + " FROM service v JOIN service_group g ON g.id = v.service_group_id JOIN site s ON s.id = g.site_id";
     private static final String OUTCOME =
             "SELECT o.id, o.service_id, g.site_id, o.code, o.label_i18n, o.display_order, o.active, o.created_at, o.updated_at, s.enabled_languages"
@@ -113,18 +113,20 @@ class CatalogueRepository {
     void insert(ServiceEntry service) {
         jdbc.update(
                 "INSERT INTO service (id, service_group_id, name_i18n, token_prefix, expected_minutes, sla_wait_minutes, channels, icon, display_order,"
-                        + " requires_visitor_id, booking_mode, active, created_at, updated_at) VALUES (?, ?, ?::jsonb, ?, ?, ?, ?::jsonb, ?, ?, ?, ?, ?, ?, ?)",
+                        + " requires_visitor_id, booking_mode, parallel_serving, parallel_limit, active, created_at, updated_at) VALUES (?, ?, ?::jsonb, ?, ?, ?, ?::jsonb, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 service.id(), service.serviceGroupId(), json(service.nameI18n()), service.tokenPrefix(), service.expectedMinutes(), service.slaWaitMinutes(),
-                json(service.channels()), service.icon(), service.displayOrder(), service.visitorIdentifier(), service.bookingMode(), service.active(),
+                json(service.channels()), service.icon(), service.displayOrder(), service.visitorIdentifier(), service.bookingMode(), service.parallelServing(),
+                service.parallelLimit(), service.active(),
                 ts(service.createdAt()), ts(service.updatedAt()));
     }
 
     void update(ServiceEntry service) {
         jdbc.update(
                 "UPDATE service SET name_i18n = ?::jsonb, token_prefix = ?, expected_minutes = ?, sla_wait_minutes = ?, channels = ?::jsonb, icon = ?,"
-                        + " display_order = ?, requires_visitor_id = ?, booking_mode = ?, updated_at = ? WHERE id = ?",
+                        + " display_order = ?, requires_visitor_id = ?, booking_mode = ?, parallel_serving = ?, parallel_limit = ?, updated_at = ? WHERE id = ?",
                 json(service.nameI18n()), service.tokenPrefix(), service.expectedMinutes(), service.slaWaitMinutes(), json(service.channels()), service.icon(),
-                service.displayOrder(), service.visitorIdentifier(), service.bookingMode(), ts(service.updatedAt()), service.id());
+                service.displayOrder(), service.visitorIdentifier(), service.bookingMode(), service.parallelServing(), service.parallelLimit(), ts(service.updatedAt()),
+                service.id());
     }
 
     void setServiceActive(UUID id, boolean active, Instant now) {
@@ -254,6 +256,8 @@ class CatalogueRepository {
                 rs.getInt("display_order"),
                 rs.getString("requires_visitor_id"),
                 rs.getString("booking_mode"),
+                rs.getBoolean("parallel_serving"),
+                rs.getInt("parallel_limit"),
                 rs.getBoolean("active"),
                 instant(rs, "created_at"),
                 instant(rs, "updated_at"));

@@ -51,6 +51,12 @@ export function CounterConsole() {
   const [transferring, setTransferring] = useState(false);
   /** Whether the break panel (F9) is open. */
   const [breaking, setBreaking] = useState(false);
+  /** Whether the out-of-order call panel is open (FR-AGT-012). */
+  const [callingSpecific, setCallingSpecific] = useState(false);
+  /** The ticket in progress the actions are for, when several are (FR-AGT-011); null means the first. */
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  /** The tickets whose call timeout prompt the agent chose to keep, so it is not shown again (FR-QUE-032). */
+  const [kept, setKept] = useState<string[]>([]);
   const working = useRef(false);
   /** Counts the actions begun, so a read of the session that an action overtook is thrown away rather than shown. */
   const generation = useRef(0);
@@ -89,14 +95,23 @@ export function CounterConsole() {
     setBreaking(false);
   }, [sessionState]);
 
-  const ticketId = session?.ticket?.id;
-  const ticketState = session?.ticket?.state;
+  const inProgress = session?.tickets ?? [];
+  const ticket = inProgress.find((t) => t.id === selectedId) ?? inProgress[0] ?? null;
+  /** Only a desk with several tickets in progress has to say which one an action is for (FR-AGT-011). */
+  const named = inProgress.length > 1 && ticket ? ticket.id : undefined;
+  const ticketId = ticket?.id;
+  const ticketState = ticket?.state;
   useEffect(() => {
     setOutcome("");
     setNote("");
     // The panel is for the ticket in service; once that ticket moves on, the panel has nothing to send.
     setTransferring(false);
   }, [ticketId, ticketState]);
+  const sessionOpen = session?.state === "open";
+  useEffect(() => {
+    // The panel is for calling while the session is open with room for another ticket; once that stops, it has nothing to offer.
+    if (!sessionOpen) setCallingSpecific(false);
+  }, [sessionOpen]);
 
   /** Runs one action at a time, so a key held down or pressed twice cannot send the same action twice. */
   async function perform(action: () => Promise<void>) {
@@ -133,8 +148,10 @@ export function CounterConsole() {
     if (count) setWaiting((counts) => (counts[count.serviceId] === count.count ? counts : { ...counts, [count.serviceId]: count.count }));
   });
 
-  const ticket = session?.ticket ?? null;
-  const canCall = session?.state === "open" && ticket === null;
+  const canCall = session?.state === "open" && session.can_call;
+  const canCallSpecific = canCall;
+  const timedOut = ticket?.state === "called" && ticket.call_timed_out && !kept.includes(ticket.id);
+  const canReturn = ticket?.state === "called" && ticket.call_timed_out;
   const canReannounce = ticket?.state === "called" && ticket.announce_count < ticket.announce_limit;
   const canStart = ticket?.state === "called";
   const canComplete = ticket?.state === "serving";
@@ -143,10 +160,10 @@ export function CounterConsole() {
   const heldTickets = session?.held ?? [];
   const canHold = session?.state === "open" && ticket?.state === "serving" && heldTickets.length < (session?.hold_limit ?? 0);
   /** A held ticket comes back only when the desk has nothing else in progress (FR-AGT-010). */
-  const canResume = session !== null && session !== undefined && session.state !== "closed" && ticket === null;
+  const canResume = session !== null && session !== undefined && session.state !== "closed" && (inProgress.length === 0 || session.can_call);
   const canClose = session?.state === "open" || session?.state === "on_break" || session?.state === "closing";
   /** A break needs the ticket in progress resolved first (FR-AGT-021); a held ticket is parked, not in progress. */
-  const canBreak = session?.state === "open" && ticket === null;
+  const canBreak = session?.state === "open" && inProgress.length === 0;
   const canEndBreak = session?.state === "on_break";
   const actions: DeskActions = {
     canCall,
@@ -160,18 +177,32 @@ export function CounterConsole() {
     canClose,
     canBreak,
     canEndBreak,
+    canCallSpecific,
+    canReturn,
+    callSpecific() {
+      if (!canCallSpecific) return;
+      setCallingSpecific((open) => !open);
+    },
+    returnToQueue() {
+      if (!client || !session || !ticket || !canReturn) return;
+      void perform(async () => {
+        const next = await client.sessions.returnToQueue(session.id, ticket.version, named);
+        // Returning the last ticket of a closing session resolves it, and the session closes (SRS §19.3).
+        setSession(next.state === "closed" ? null : next);
+      });
+    },
     call() {
       if (!client || !session || !canCall) return;
       void perform(async () => setSession(await client.sessions.next(session.id)));
     },
     reannounce() {
       if (!client || !session || !ticket || !canReannounce) return;
-      void perform(async () => setSession(await client.sessions.reannounce(session.id, ticket.version)));
+      void perform(async () => setSession(await client.sessions.reannounce(session.id, ticket.version, named)));
     },
     miss() {
       if (!client || !session || !ticket || !canMiss) return;
       void perform(async () => {
-        const next = await client.sessions.miss(session.id, ticket.version);
+        const next = await client.sessions.miss(session.id, ticket.version, named);
         // Missing the ticket of a closing session resolves it, and the session closes (SRS §19.3).
         setSession(next.state === "closed" ? null : next);
       });
@@ -182,7 +213,7 @@ export function CounterConsole() {
     },
     hold() {
       if (!client || !session || !ticket || !canHold) return;
-      void perform(async () => setSession(await client.sessions.hold(session.id, ticket.version)));
+      void perform(async () => setSession(await client.sessions.hold(session.id, ticket.version, named)));
     },
     takeBreak() {
       if (!client || !session) return;
@@ -198,7 +229,7 @@ export function CounterConsole() {
     },
     start() {
       if (!client || !session || !ticket || !canStart) return;
-      void perform(async () => setSession(await client.sessions.serve(session.id, ticket.version)));
+      void perform(async () => setSession(await client.sessions.serve(session.id, ticket.version, named)));
     },
     complete() {
       if (!client || !session || !ticket || !canComplete) return;
@@ -212,6 +243,7 @@ export function CounterConsole() {
           session.id,
           { ...(outcome === "" ? {} : { outcome_code_id: outcome }), ...(note.trim() === "" ? {} : { note: note.trim() }) },
           ticket.version,
+          named,
         );
         // Completing the ticket of a closing session closes it (SRS §19.3).
         setSession(next.state === "closed" ? null : next);
@@ -235,6 +267,17 @@ export function CounterConsole() {
     });
   }
 
+  /** Calls the chosen waiting ticket out of order (FR-AGT-012); the answer is the session with it in progress. */
+  function callSpecific(chosen: string, reason: string) {
+    if (!client || !session || !canCallSpecific) return;
+    void perform(async () => {
+      const next = await client.sessions.callTicket(session.id, chosen, reason);
+      setSession(next);
+      setCallingSpecific(false);
+      setSelectedId(next.tickets.find((t) => t.id === chosen)?.id ?? null);
+    });
+  }
+
   /** Sends the ticket in service to its target (FR-QUE-052); the answer carries the session as it stands, and the successor's place. */
   function transfer(input: TransferInput) {
     if (!client || !session || !ticket || !canTransfer) return;
@@ -252,7 +295,7 @@ export function CounterConsole() {
   const latest = useRef(actions);
   latest.current = actions;
   const openPanel = useRef(false);
-  openPanel.current = transferring || breaking;
+  openPanel.current = transferring || breaking || callingSpecific;
   const active = Boolean(session);
   useEffect(() => {
     if (!active) return;
@@ -289,6 +332,10 @@ export function CounterConsole() {
       {session && (
         <ServingDesk
           session={session}
+          ticket={ticket}
+          onSelect={setSelectedId}
+          timedOut={timedOut}
+          onKeep={() => ticket && setKept((current) => [...current, ticket.id])}
           actions={actions}
           busy={busy}
           waiting={waiting}
@@ -302,6 +349,9 @@ export function CounterConsole() {
           breaking={breaking}
           onStartBreak={startBreak}
           onCancelBreak={() => setBreaking(false)}
+          callingSpecific={callingSpecific}
+          onCallSpecific={callSpecific}
+          onCancelCallSpecific={() => setCallingSpecific(false)}
         />
       )}
     </div>

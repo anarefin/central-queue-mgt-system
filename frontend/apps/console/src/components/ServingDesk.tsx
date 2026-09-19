@@ -8,6 +8,7 @@ import { useEffect } from "react";
 import { localisedName } from "../lib/console-support";
 import { BreakCard } from "./BreakCard";
 import { BreakPanel } from "./BreakPanel";
+import { CallTicketPanel } from "./CallTicketPanel";
 import { TransferPanel } from "./TransferPanel";
 
 /** What the desk lets the agent do right now; the server checks every one of these again (FR-CFG-103). */
@@ -21,6 +22,10 @@ export interface DeskActions {
   canHold: boolean;
   canResume: boolean;
   canClose: boolean;
+  /** Call a specific waiting ticket out of order, with a reason (FR-AGT-012). */
+  canCallSpecific: boolean;
+  /** Return a called ticket that has waited for its Agent past the call timeout to the queue (FR-QUE-032). */
+  canReturn: boolean;
   /** F9 with the session open and nothing in progress: offers the break types. */
   canBreak: boolean;
   /** F9 while on a break: ends it. */
@@ -37,10 +42,19 @@ export interface DeskActions {
   takeBreak: () => void;
   resume: (held: SessionTicket) => void;
   close: () => void;
+  /** Opens the out-of-order call panel, or closes it when it is already open. */
+  callSpecific: () => void;
+  returnToQueue: () => void;
 }
 
 interface Props {
   session: CounterSession;
+  /** The ticket in progress the actions are for: the one chosen from the list, else the first (FR-AGT-011). */
+  ticket: SessionTicket | null;
+  onSelect: (ticketId: string) => void;
+  /** The call timeout has passed for the ticket and the agent has not yet chosen to keep it (FR-QUE-032). */
+  timedOut: boolean;
+  onKeep: () => void;
   actions: DeskActions;
   busy: boolean;
   /** Tickets waiting per Service id, as the queue topics last said; a Service with no entry has not been heard from yet. */
@@ -57,6 +71,10 @@ interface Props {
   breaking: boolean;
   onStartBreak: (breakTypeId: string) => void;
   onCancelBreak: () => void;
+  /** Whether the out-of-order call panel is open, and what it sends. */
+  callingSpecific: boolean;
+  onCallSpecific: (ticketId: string, reason: string) => void;
+  onCancelCallSpecific: () => void;
 }
 
 /**
@@ -66,13 +84,36 @@ interface Props {
  * no-show, since that cannot be undone (FR-QUE-050). A ticket in service can be transferred (F7) to another Service, counter or agent
  * with a note (FR-QUE-052), or held (F8) so the counter can call the next one;
  * the held tickets are listed here and each is resumed from the list, and they must all be cleared before the session can close
- * (FR-AGT-013). F9 takes a break of a chosen type when nothing is in progress: while it runs no ticket is assigned and the desk shows its
+ * (FR-AGT-013). A Service served in parallel lets the counter have several tickets in progress (FR-AGT-011): they are listed, one is chosen,
+ * and the actions are for it. A called ticket that its agent has not acted on for the call timeout says so, and may be returned to the
+ * queue with its original wait or kept (FR-QUE-032). A specific waiting ticket can be called out of order with a reason (FR-AGT-012). F9 takes a break of a chosen type when nothing is in progress: while it runs no ticket is assigned and the desk shows its
  * clock (FR-AGT-021, FR-AGT-022); F9 again ends it. The outcome
  * takes focus when service starts, so the keys, an arrow and F5 are all it takes to finish a ticket.
  */
-export function ServingDesk({ session, actions, busy, waiting, outcome, onOutcome, note, onNote, transferring, onTransfer, onCancelTransfer, breaking, onStartBreak, onCancelBreak }: Props) {
+export function ServingDesk({
+  session,
+  ticket,
+  onSelect,
+  timedOut,
+  onKeep,
+  actions,
+  busy,
+  waiting,
+  outcome,
+  onOutcome,
+  note,
+  onNote,
+  transferring,
+  onTransfer,
+  onCancelTransfer,
+  breaking,
+  onStartBreak,
+  onCancelBreak,
+  callingSpecific,
+  onCallSpecific,
+  onCancelCallSpecific,
+}: Props) {
   const { t, language, formatNumber } = useI18n();
-  const ticket = session.ticket;
   const serving = ticket?.state === "serving";
   const held = session.held;
 
@@ -113,6 +154,34 @@ export function ServingDesk({ session, actions, busy, waiting, outcome, onOutcom
           })}
         </ul>
       </Card>
+
+      {session.tickets.length > 1 && (
+        <Card>
+          <h3 className="qms-label">{t("console.inProgress.title", { count: formatNumber(session.tickets.length) })}</h3>
+          <ul className="qms-list" aria-label={t("console.inProgress.list")}>
+            {session.tickets.map((inProgress) => (
+              <li key={inProgress.id} className="qms-row" data-testid={`in-progress-${inProgress.id}`}>
+                <span>
+                  <span className="qms-token">{formatTokenNumber(inProgress.token_number)}</span>{" "}
+                  <span className="qms-muted">
+                    {localisedName(inProgress.service.name_i18n, language)} · {t(`console.ticket.state.${inProgress.state}`)}
+                  </span>
+                </span>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  aria-pressed={inProgress.id === ticket?.id}
+                  disabled={busy || inProgress.id === ticket?.id}
+                  onClick={() => onSelect(inProgress.id)}
+                  aria-label={t("console.inProgress.select", { token: inProgress.token_number })}
+                >
+                  {t("console.inProgress.selectShort")}
+                </Button>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
 
       <Card>
         {!ticket && <p className="qms-muted">{t("console.ticket.none")}</p>}
@@ -161,8 +230,27 @@ export function ServingDesk({ session, actions, busy, waiting, outcome, onOutcom
         )}
       </Card>
 
+      {ticket && timedOut && (
+        <Card>
+          <h3 className="qms-label">{t("console.timeout.title")}</h3>
+          <p className="qms-warning" data-testid="call-timeout">
+            {t("console.timeout.prompt", { token: formatTokenNumber(ticket.token_number), seconds: formatNumber(session.call_timeout_seconds) })}
+          </p>
+          <div className="qms-row">
+            <Button type="button" disabled={!actions.canReturn || busy} onClick={actions.returnToQueue}>
+              {t("console.timeout.return")}
+            </Button>
+            <Button type="button" variant="secondary" disabled={busy} onClick={onKeep}>
+              {t("console.timeout.keep")}
+            </Button>
+          </div>
+        </Card>
+      )}
+
       <BreakCard session={session} busy={busy} canEnd={actions.canEndBreak} onEnd={actions.takeBreak} />
       {breaking && session.state === "open" && <BreakPanel busy={busy} onSubmit={onStartBreak} onCancel={onCancelBreak} />}
+
+      {callingSpecific && session.state === "open" && <CallTicketPanel session={session} busy={busy} onSubmit={onCallSpecific} onCancel={onCancelCallSpecific} />}
 
       {transferring && ticket && serving && <TransferPanel sessionId={session.id} ticket={ticket} busy={busy} onSubmit={onTransfer} onCancel={onCancelTransfer} />}
 
@@ -195,6 +283,9 @@ export function ServingDesk({ session, actions, busy, waiting, outcome, onOutcom
       <Card>
         <div className="qms-row">
           {button(t("console.action.next"), "F2", actions.canCall, actions.call)}
+          <Button type="button" variant="secondary" disabled={!actions.canCallSpecific || busy} onClick={actions.callSpecific}>
+            {t("console.action.callTicket")}
+          </Button>
           {button(t("console.action.reannounce"), "F3", actions.canReannounce, actions.reannounce, "secondary")}
           {button(t("console.action.serve"), "F4", actions.canStart, actions.start)}
           {button(t("console.action.complete"), "F5", actions.canComplete, actions.complete)}

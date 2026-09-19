@@ -60,6 +60,16 @@ final class CatalogueRules {
         return value;
     }
 
+    /**
+     * The most tickets a counter may have in progress for a Service (FR-AGT-011): 1 to 20, and at least 2 when the Service serves in
+     * parallel (FR-AGT-010). Not given, it stays as it was, or is 2 for a Service that has just been made parallel.
+     */
+    static int parallelLimit(Integer value, boolean parallelServing, int current) {
+        int limit = value != null ? value : parallelServing && current < 2 ? 2 : current;
+        if (limit < 1 || limit > 20 || (parallelServing && limit < 2)) throw invalid("parallel_limit", "Range");
+        return limit;
+    }
+
     static int preferenceWeight(Integer value) {
         if (value == null) return 1;
         if (value < 1 || value > 99) throw invalid("preference_weight", "Range");

@@ -37,6 +37,8 @@ qms:
     miss-reentry-after: ${QMS_QUEUE_MISS_REENTRY_AFTER:3}
     # FR-AGT-013: how many tickets one session may hold (F8) at once; 0 switches Hold off.
     hold-limit: ${QMS_QUEUE_HOLD_LIMIT:3}
+    # FR-QUE-032: how long a called ticket waits for its Agent to act before the Agent is prompted (and may return it to the queue); 0 switches it off.
+    call-timeout-seconds: ${QMS_QUEUE_CALL_TIMEOUT_SECONDS:90}
     # FR-QUE-053: the Head start, in minutes, of a Successor ticket made by a transfer (F7); empty means the predecessor's accrued wait.
     transfer-headstart-minutes: ${QMS_QUEUE_TRANSFER_HEADSTART_MINUTES:}
   i18n:

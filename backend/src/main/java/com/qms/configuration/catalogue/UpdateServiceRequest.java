@@ -14,4 +14,6 @@ record UpdateServiceRequest(
         String icon,
         @JsonProperty("display_order") Integer displayOrder,
         @JsonProperty("visitor_identifier") String visitorIdentifier,
-        @JsonProperty("booking_mode") String bookingMode) {}
+        @JsonProperty("booking_mode") String bookingMode,
+        @JsonProperty("parallel_serving") Boolean parallelServing,
+        @JsonProperty("parallel_limit") Integer parallelLimit) {}

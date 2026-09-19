@@ -317,6 +317,37 @@ describe("ApiClient service catalogue", () => {
     expect(body(7)).toEqual({ strategy: "strict_priority" });
   });
 
+  it("names the ticket an action is for, returns a timed-out call and calls a specific ticket with a reason (FR-QUE-032, FR-AGT-011, FR-AGT-012)", async () => {
+    const fetchImpl = vi.fn().mockImplementation(async () => json(200, {}));
+    const client = new ApiClient({ apiOrigin: "", fetch: fetchImpl as unknown as typeof fetch });
+
+    await client.sessions.serve("s1", 4, "t 2");
+    await client.sessions.complete("s1", { note: "done" }, 5, "t2");
+    await client.sessions.reannounce("s1", 1, "t2");
+    await client.sessions.miss("s1", 1, "t2");
+    await client.sessions.hold("s1", 2, "t2");
+    await client.sessions.returnToQueue("s1", 1);
+    await client.sessions.returnToQueue("s1", 1, "t2");
+    await client.sessions.callTicket("s1", "t9", "Frail, asked to be seen");
+
+    const calls = fetchImpl.mock.calls.map(([url, init]) => `${(init as RequestInit).method} ${String(url).replace("/api/v1", "")}`);
+    expect(calls).toEqual([
+      "POST /sessions/s1/serve?ticket_id=t%202",
+      "POST /sessions/s1/complete?ticket_id=t2",
+      "POST /sessions/s1/reannounce?ticket_id=t2",
+      "POST /sessions/s1/miss?ticket_id=t2",
+      "POST /sessions/s1/hold?ticket_id=t2",
+      "POST /sessions/s1/return",
+      "POST /sessions/s1/return?ticket_id=t2",
+      "POST /sessions/s1/call",
+    ]);
+    const init = (index: number) => fetchImpl.mock.calls[index]?.[1] as RequestInit;
+    expect((init(0).headers as Record<string, string>)["If-Match"]).toBe('"4"');
+    expect((init(5).headers as Record<string, string>)["If-Match"]).toBe('"1"');
+    expect(JSON.parse(String(init(1).body))).toEqual({ note: "done" });
+    expect(JSON.parse(String(init(7).body))).toEqual({ ticket_id: "t9", reason: "Frail, asked to be seen" });
+  });
+
   it("maps the counter session onto its paths and sends the ticket version as If-Match (FR-AGT-001, FR-QUE-031)", async () => {
     const fetchImpl = vi.fn().mockImplementation(async () => json(200, { items: [] }));
     const client = new ApiClient({ apiOrigin: "", fetch: fetchImpl as unknown as typeof fetch });

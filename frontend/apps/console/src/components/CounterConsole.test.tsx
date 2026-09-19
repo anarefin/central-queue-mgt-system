@@ -40,13 +40,16 @@ function ticket(over: Partial<SessionTicket> = {}): SessionTicket {
     announce_limit: 3,
     miss_count: 0,
     miss_limit: 2,
+    call_timed_out: false,
     outcomes: OUTCOMES,
     ...over,
   };
 }
 
+/** A session as the API sends it; unless told otherwise `tickets` is the ticket in progress and the desk takes a call only while it has none (one at a time, FR-AGT-010). */
 function session(over: Partial<CounterSession> = {}): CounterSession {
-  return { id: "s1", counter: COUNTER, agent_id: "u1", state: "open", opened_at: STAMP, closed_at: null, services: SERVICES, ticket: null, held: [], hold_limit: 3, break: null, ...over };
+  const base = { id: "s1", counter: COUNTER, agent_id: "u1", state: "open" as const, opened_at: STAMP, closed_at: null, services: SERVICES, ticket: null, held: [], hold_limit: 3, break: null, ...over };
+  return { ...base, tickets: over.tickets ?? (base.ticket ? [base.ticket] : []), can_call: over.can_call ?? (base.state === "open" && base.ticket === null), call_timeout_seconds: 90 };
 }
 
 const OPTIONS: SessionCounterOption[] = [
@@ -1152,5 +1155,272 @@ describe("live updates (SRS §21, FR-QUE-080, FR-QUE-082, FR-QUE-084)", () => {
     expect(calls.filter((c) => c.path.startsWith("/stream/snapshot")).length).toBeGreaterThanOrEqual(3);
     expect(screen.queryByText(/poll|degraded|offline|connection/i)).not.toBeInTheDocument();
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+});
+
+describe("the call timeout prompt and returning a ticket to the queue (FR-QUE-032, ADR-0004)", () => {
+  const TIMED_OUT = () => ticket({ call_timed_out: true });
+
+  it("says nothing while a call is within its timeout and is not offered a return", async () => {
+    stubApi({ ...AUTH, "GET /sessions/current": () => json(200, session({ ticket: ticket() })) });
+    renderApp(<Home />);
+    await screen.findByTestId("current-token");
+
+    expect(screen.queryByTestId("call-timeout")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Return to queue" })).not.toBeInTheDocument();
+  });
+
+  it("prompts the agent after a refresh and returns the ticket to the queue, sending its version and freeing the desk", async () => {
+    let state = session({ ticket: TIMED_OUT() });
+    const calls = stubApi({
+      ...AUTH,
+      "GET /sessions/current": () => json(200, state),
+      "POST /sessions/s1/return": () => json(200, (state = session())),
+    });
+    const user = userEvent.setup();
+    renderApp(<Home />);
+
+    expect(await screen.findByTestId("call-timeout")).toHaveTextContent(
+      "S-042 was called 90 seconds ago and nothing has been done with it. Return it to the queue, where it keeps its original wait and its place, or keep it.",
+    );
+    await user.click(screen.getByRole("button", { name: "Return to queue" }));
+
+    await waitFor(() => expect(screen.queryByTestId("current-token")).not.toBeInTheDocument());
+    expect(ifMatch(calls.find((c) => c.path === "/sessions/s1/return"))).toBe('"1"');
+    expect(screen.queryByTestId("call-timeout")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Call next/ })).toBeEnabled();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("lets the agent keep the ticket, and the prompt does not come back for it", async () => {
+    const calls = stubApi({ ...AUTH, "GET /sessions/current": () => json(200, session({ ticket: TIMED_OUT() })) });
+    const user = userEvent.setup();
+    renderApp(<Home />);
+    await screen.findByTestId("call-timeout");
+
+    await user.click(screen.getByRole("button", { name: "Keep it" }));
+
+    expect(screen.queryByTestId("call-timeout")).not.toBeInTheDocument();
+    expect(screen.getByTestId("current-token")).toHaveTextContent("S-042");
+    expect(count(calls, "POST /sessions/s1/return")).toBe(0);
+  });
+
+  it("shows the prompt when the hub says a call timed out, by reading the session again, and not for an echo of what it shows", async () => {
+    let state = session({ ticket: ticket() });
+    const calls = stubApi({ ...AUTH, "GET /sessions/current": () => json(200, state) });
+    renderApp(<Home />);
+    const socket = await connected();
+    await screen.findByTestId("current-token");
+    socket.say(counterSnapshot({ id: "s1", state: "open" }, { id: "t1", state: "called", version: 1 }));
+
+    state = session({ ticket: TIMED_OUT() });
+    socket.say(hubEvent("counter:c1", 1, "ticket.call_timeout", { ticket_id: "t1", token_number: "S-042", state: "called", version: 1, timeout_seconds: 90 }));
+
+    expect(await screen.findByTestId("call-timeout")).toBeInTheDocument();
+    expect(count(calls, "GET /sessions/current")).toBe(2);
+    socket.say(hubEvent("counter:c1", 2, "ticket.call_timeout", { ticket_id: "t1", token_number: "S-042", state: "called", version: 1, timeout_seconds: 90 }));
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    expect(count(calls, "GET /sessions/current"), "the screen already shows the prompt").toBe(2);
+  });
+
+  it("says why the API refused a return and reads the session again", async () => {
+    const calls = stubApi({
+      ...AUTH,
+      "GET /sessions/current": () => json(200, session({ ticket: TIMED_OUT() })),
+      "POST /sessions/s1/return": () => refusal(409, "call_not_timed_out"),
+    });
+    const user = userEvent.setup();
+    renderApp(<Home />);
+    await user.click(await screen.findByRole("button", { name: "Return to queue" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("This call has not gone unanswered long enough to be returned to the queue.");
+    expect(count(calls, "GET /sessions/current")).toBe(2);
+  });
+
+  it("returns the last ticket of a closing session and goes back to the counter list", async () => {
+    stubApi({
+      ...AUTH,
+      "GET /sessions/current": () => json(200, session({ state: "closing", ticket: TIMED_OUT() })),
+      "POST /sessions/s1/return": () => json(200, session({ state: "closed", closed_at: STAMP })),
+      "GET /sessions/options": () => json(200, { items: OPTIONS }),
+    });
+    const user = userEvent.setup();
+    renderApp(<Home />);
+    await user.click(await screen.findByRole("button", { name: "Return to queue" }));
+
+    expect(await screen.findByText("Open a counter session")).toBeInTheDocument();
+  });
+
+  it("shows the prompt in Bangla", async () => {
+    stubApi({ ...AUTH, "GET /auth/me": () => json(200, { ...ME, preferred_language: "bn" }), "GET /sessions/current": () => json(200, session({ ticket: TIMED_OUT() })) });
+    renderApp(<Home />);
+
+    expect(await screen.findByText("ডাকে সাড়া মেলেনি")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "সারিতে ফেরত পাঠান" })).toBeInTheDocument();
+    expect(screen.getByTestId("call-timeout")).toHaveTextContent("S-042");
+  });
+});
+
+describe("calling a specific ticket out of order (FR-AGT-012, FR-SEC-040)", () => {
+  const QUEUE = {
+    service: { id: "v1", name_i18n: { en: "Consultation" } },
+    site_id: "s1",
+    waiting_count: 3,
+    estimated_wait_minutes: null,
+    tickets: [
+      { id: "w1", token_number: "S-050", state: "waiting", position: 1, origin_channel: "reception", queued_at: STAMP, priority_class: null, escalated: false },
+      { id: "w2", token_number: "S-051", state: "waiting", position: 2, origin_channel: "kiosk", queued_at: STAMP, priority_class: { id: "p1", name_i18n: { en: "Senior citizen" } }, escalated: false },
+      { id: "w3", token_number: "S-052", state: "paused", position: 3, origin_channel: "kiosk", queued_at: STAMP, priority_class: null, escalated: false },
+    ],
+  };
+
+  it("lists the waiting tickets of a chosen service, needs a reason and calls the ticket with it", async () => {
+    let state = session();
+    const calls = stubApi({
+      ...AUTH,
+      "GET /sessions/current": () => json(200, state),
+      "GET /queues/v1?limit=20": () => json(200, QUEUE),
+      "POST /sessions/s1/call": () => json(200, (state = session({ ticket: ticket({ id: "w2", token_number: "S-051" }) }))),
+    });
+    const user = userEvent.setup();
+    renderApp(<Home />);
+    await screen.findByText(/No ticket in progress/);
+
+    await user.click(screen.getByRole("button", { name: "Call a specific ticket" }));
+
+    const choose = await screen.findByLabelText("Ticket");
+    expect(within(choose).getAllByRole("option").map((o) => o.textContent)).toEqual(["Choose a ticket", "1. S-050", "2. S-051 Senior citizen"]);
+    expect(screen.getByRole("button", { name: "Call ticket" })).toBeDisabled();
+    await user.selectOptions(choose, "w2");
+    expect(screen.getByRole("button", { name: "Call ticket" }), "no reason yet").toBeDisabled();
+    await user.type(screen.getByLabelText("Reason for calling out of order (required)"), "Frail, asked to be seen");
+    await user.click(screen.getByRole("button", { name: "Call ticket" }));
+
+    expect(await screen.findByTestId("current-token")).toHaveTextContent("S-051");
+    expect(body(calls.find((c) => c.path === "/sessions/s1/call"))).toEqual({ ticket_id: "w2", reason: "Frail, asked to be seen" });
+    expect(screen.queryByLabelText("Ticket")).not.toBeInTheDocument();
+  });
+
+  it("is off while the desk is full, and closes with Esc without calling anything", async () => {
+    const calls = stubApi({ ...AUTH, "GET /sessions/current": () => json(200, session({ ticket: ticket() })) });
+    renderApp(<Home />);
+    await screen.findByTestId("current-token");
+    expect(screen.getByRole("button", { name: "Call a specific ticket" })).toBeDisabled();
+    expect(calls.filter((c) => c.path.startsWith("/queues"))).toHaveLength(0);
+  });
+
+  it("closes with Esc and says why the API refused a ticket", async () => {
+    const calls = stubApi({
+      ...AUTH,
+      "GET /sessions/current": () => json(200, session()),
+      "GET /queues/v1?limit=20": () => json(200, QUEUE),
+      "POST /sessions/s1/call": () => refusal(409, "ticket_not_callable"),
+    });
+    const user = userEvent.setup();
+    renderApp(<Home />);
+    await user.click(await screen.findByRole("button", { name: "Call a specific ticket" }));
+    await user.keyboard("{Escape}");
+    expect(screen.queryByLabelText("Ticket")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Call a specific ticket" }));
+    await user.selectOptions(await screen.findByLabelText("Ticket"), "w1");
+    await user.type(screen.getByLabelText("Reason for calling out of order (required)"), "Because");
+    await user.click(screen.getByRole("button", { name: "Call ticket" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("That ticket cannot be called from this counter. It may have been called already.");
+    expect(count(calls, "GET /sessions/current")).toBe(2);
+  });
+
+  it("says so when nobody is waiting for the chosen service", async () => {
+    stubApi({
+      ...AUTH,
+      "GET /sessions/current": () => json(200, session()),
+      "GET /queues/v1?limit=20": () => json(200, { ...QUEUE, waiting_count: 0, tickets: [] }),
+    });
+    const user = userEvent.setup();
+    renderApp(<Home />);
+    await user.click(await screen.findByRole("button", { name: "Call a specific ticket" }));
+
+    expect(await screen.findByText("Nobody is waiting for this service.")).toBeInTheDocument();
+  });
+});
+
+describe("parallel serving: several tickets in progress at one counter (FR-AGT-010, FR-AGT-011)", () => {
+  const FIRST = () => ticket({ id: "t1", token_number: "S-042" });
+  const SECOND = () => ticket({ id: "t2", token_number: "S-043", version: 4 });
+
+  it("keeps calling while the API says the desk has room, lists what is in progress and stops when it is full", async () => {
+    let state = session({ tickets: [FIRST()], ticket: FIRST(), can_call: true });
+    const calls = stubApi({
+      ...AUTH,
+      "GET /sessions/current": () => json(200, state),
+      "POST /sessions/s1/next": () => json(200, (state = session({ tickets: [FIRST(), SECOND()], ticket: FIRST(), can_call: false }))),
+    });
+    const user = userEvent.setup();
+    renderApp(<Home />);
+    await screen.findByTestId("current-token");
+    expect(screen.getByRole("button", { name: /Call next/ }), "room for a second").toBeEnabled();
+    expect(screen.queryByText(/In progress at this counter/)).not.toBeInTheDocument();
+
+    await user.keyboard("{F2}");
+
+    expect(await screen.findByText("In progress at this counter (2)")).toBeInTheDocument();
+    expect(screen.getByTestId("in-progress-t1")).toHaveTextContent("S-042");
+    expect(screen.getByTestId("in-progress-t2")).toHaveTextContent("S-043");
+    expect(screen.getByRole("button", { name: /Call next/ }), "full").toBeDisabled();
+    await user.keyboard("{F2}");
+    expect(count(calls, "POST /sessions/s1/next")).toBe(1);
+  });
+
+  it("acts on the ticket chosen from the list and names it, while a single ticket sends no name", async () => {
+    const state = session({ tickets: [FIRST(), SECOND()], ticket: FIRST(), can_call: false });
+    const calls = stubApi({
+      ...AUTH,
+      "GET /sessions/current": () => json(200, state),
+      "POST /sessions/s1/serve?ticket_id=t2": () => json(200, session({ tickets: [FIRST(), ticket({ id: "t2", token_number: "S-043", state: "serving", version: 5 })], ticket: FIRST(), can_call: false })),
+    });
+    const user = userEvent.setup();
+    renderApp(<Home />);
+    await screen.findByTestId("current-token");
+    expect(screen.getByTestId("current-token")).toHaveTextContent("S-042");
+
+    await user.click(screen.getByRole("button", { name: "Work on S-043" }));
+    expect(screen.getByTestId("current-token")).toHaveTextContent("S-043");
+    await user.keyboard("{F4}");
+
+    await screen.findByText("In service");
+    const serve = calls.find((c) => c.method === "POST" && c.path.startsWith("/sessions/s1/serve"));
+    expect(serve?.path).toBe("/sessions/s1/serve?ticket_id=t2");
+    expect(ifMatch(serve)).toBe('"4"');
+  });
+
+  it("reads the session again when another of its tickets is called or leaves service, but not for the ones it shows", async () => {
+    let state = session({ tickets: [FIRST(), SECOND()], ticket: FIRST(), can_call: false });
+    const calls = stubApi({ ...AUTH, "GET /sessions/current": () => json(200, state) });
+    renderApp(<Home />);
+    const socket = await connected();
+    await screen.findByText("In progress at this counter (2)");
+    socket.say(counterSnapshot({ id: "s1", state: "open" }, { id: "t1", state: "called", version: 1 }));
+
+    socket.say(hubEvent("counter:c1", 1, "ticket.called", { ticket_id: "t2", state: "called", counter_id: "c1" }));
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    expect(count(calls, "GET /sessions/current"), "the screen shows it in progress already").toBe(1);
+
+    state = session({ tickets: [FIRST()], ticket: FIRST(), can_call: true });
+    socket.say(hubEvent("counter:c1", 2, "ticket.completed", { ticket_id: "t2", state: "completed", counter_id: "c1" }));
+    await waitFor(() => expect(screen.queryByText("In progress at this counter (2)")).not.toBeInTheDocument());
+    expect(count(calls, "GET /sessions/current")).toBe(2);
+  });
+
+  it("offers a break and a resume only when nothing is in progress or the desk has room", async () => {
+    stubApi({
+      ...AUTH,
+      "GET /sessions/current": () => json(200, session({ tickets: [FIRST()], ticket: FIRST(), can_call: true, held: [ticket({ id: "h1", token_number: "S-030", state: "held", version: 3 })] })),
+    });
+    renderApp(<Home />);
+    await screen.findByTestId("current-token");
+
+    expect(screen.getByRole("button", { name: "Resume S-030" }), "room for another").toBeEnabled();
+    expect(screen.getByRole("button", { name: /Break/ }), "a ticket is in progress").toBeDisabled();
   });
 });

@@ -59,7 +59,8 @@ import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilde
  * scoring ticket, starts service and completes it with an outcome, and closes the session. Covers FR-AGT-001, -003, -004,
  * -005, -010, -032, FR-QUE-002, -030, -031, FR-CFG-105, ADR-0008, §18.4, §18.5, §19.3, Invariants 1-3 and NFR-PERF-003; and,
  * from ticket 12, Re-announce and Miss: FR-DSP-028, FR-QUE-050, -051, ADR-0004 and ADR-0005; and, from ticket 16, breaks and
- * availability: FR-AGT-020, -021, -022, -024 and §19.3.
+ * availability: FR-AGT-020, -021, -022, -024 and §19.3; and, from ticket 17, the call timeout, the out-of-order call and parallel
+ * serving: FR-QUE-032, FR-AGT-010, -011, -012, FR-SEC-040 and ADR-0004.
  */
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -83,6 +84,8 @@ class SessionIT {
     @DynamicPropertySource
     static void properties(DynamicPropertyRegistry registry) {
         registry.add("qms.security.key-dir", KEY_DIR::toString);
+        // The call timeout check is driven by the tests, on their clock, not by the schedule (FR-QUE-032).
+        registry.add("qms.queue.call-timeout-check-cron", () -> "-");
     }
 
     private static Path newKeyDir() {
@@ -98,6 +101,7 @@ class SessionIT {
     @Autowired IssuanceService issuance;
     @Autowired QueueReads queues;
     @Autowired MutableClock clock;
+    @Autowired SessionService sessionService;
 
     @BeforeEach
     void startAtBase() {
@@ -2316,6 +2320,369 @@ class SessionIT {
         assertThat(status(takeBreak(user(Role.RECEPTION_OPERATOR, w.site(), w.group()), session, lunch))).isEqualTo(403);
         assertThat(status(call(post("/api/v1/sessions/" + session + "/break"), null, null))).isEqualTo(401);
         assertThat(status(takeBreak(agent, session, lunch))).isEqualTo(200);
+    }
+
+    // ---- FR-QUE-032, ADR-0004: the call timeout ----------------------------------------------------------------
+
+    /** A service that lets a counter have up to {@code limit} of its tickets in progress (FR-AGT-010, FR-AGT-011). */
+    private void makeParallel(UUID service, int limit) {
+        jdbc.update("UPDATE service SET parallel_serving = true, parallel_limit = ? WHERE id = ?", limit, service);
+    }
+
+    private MvcResult returnCalled(Agent agent, UUID session, UUID ticket, Integer version) throws Exception {
+        MockHttpServletRequestBuilder request = post("/api/v1/sessions/" + session + "/return" + (ticket == null ? "" : "?ticket_id=" + ticket));
+        if (version != null) request.header("If-Match", "\"" + version + "\"");
+        return call(request, agent.token(), null);
+    }
+
+    private MvcResult callSpecific(Agent agent, UUID session, Object ticket, String reason) throws Exception {
+        String reasonJson = reason == null ? "" : ",\"reason\":\"" + reason + "\"";
+        return call(post("/api/v1/sessions/" + session + "/call"), agent.token(), "{" + (ticket == null ? "" : "\"ticket_id\":\"" + ticket + "\"") + (ticket == null ? reasonJson.replaceFirst(",", "") : reasonJson) + "}");
+    }
+
+    /** Calls next and returns the token number of the ticket that call added to those in progress (the last one). */
+    private String lastCalledToken(Agent agent, UUID session) throws Exception {
+        MvcResult called = next(agent, session);
+        assertThat(status(called)).as(body(called)).isEqualTo(200);
+        List<String> tokens = field(called, "$.tickets[*].token_number");
+        return tokens.getLast();
+    }
+
+    private UUID ticketId(String token, UUID service) {
+        return (UUID) ticketRow(token, service).get("id");
+    }
+
+    @Test
+    void aCalledTicketNobodyActsOnPromptsTheAgentOnceAfterTheTimeoutAndTheAgentMayReturnItWithItsOriginalWait() throws Exception {
+        World w = world();
+        UUID desk = counter(w, "Desk 1", w.a(), 1);
+        String first = issueAgo(w.a(), 40);
+        String second = issueAgo(w.a(), 20);
+        Agent agent = agent(w);
+        UUID session = opened(agent, desk);
+        MvcResult called = next(agent, session);
+        assertThat((String) field(called, "$.ticket.token_number")).isEqualTo(first);
+        assertThat((Integer) field(called, "$.call_timeout_seconds")).as("the default is 90 seconds").isEqualTo(90);
+        assertThat((Boolean) field(called, "$.ticket.call_timed_out")).isFalse();
+        UUID ticket = ticketId(first, w.a());
+        Map<String, Object> before = ticketRow(first, w.a());
+
+        clock.advance(Duration.ofSeconds(89));
+        sessionService.promptTimedOutCalls();
+        assertThat(ticketRow(first, w.a()).get("call_timeout_notified_at")).as("not yet").isNull();
+        assertThat(status(returnCalled(agent, session, null, null))).as("nor may it be returned yet").isEqualTo(409);
+
+        clock.advance(Duration.ofSeconds(1));
+        assertThat(sessionService.promptTimedOutCalls()).as("the Agent is prompted at the timeout").isPositive();
+        Map<String, Object> prompted = ticketRow(first, w.a());
+        Object promptedAt = prompted.get("call_timeout_notified_at");
+        assertThat(promptedAt).isNotNull();
+        assertThat(sessionService.promptTimedOutCalls()).as("once for this call, however often the check runs").isZero();
+        assertThat(ticketRow(first, w.a()).get("call_timeout_notified_at")).isEqualTo(promptedAt);
+        assertThat(prompted.get("state")).as("a prompt is not a transition").isEqualTo("called");
+        assertThat(prompted.get("version")).as("the Agent's screen keeps its version").isEqualTo(before.get("version"));
+        assertThat(eventsOf(prompted)).hasSameSizeAs(eventsOf(before));
+        MvcResult restored = current(agent);
+        assertThat((Boolean) field(restored, "$.ticket.call_timed_out")).as("a refreshed console still shows the prompt").isTrue();
+
+        int version = field(restored, "$.ticket.version");
+        MvcResult returned = returnCalled(agent, session, ticket, version);
+        assertThat(status(returned)).as(body(returned)).isEqualTo(200);
+        assertThat((Object) field(returned, "$.ticket")).as("the counter is free").isNull();
+        assertThat((Boolean) field(returned, "$.can_call")).isTrue();
+        Map<String, Object> row = ticketRow(first, w.a());
+        assertThat(row.get("state")).isEqualTo("waiting");
+        assertThat(row.get("counter_session_id")).as("the binding is cleared (Invariant 2)").isNull();
+        assertThat(row.get("queued_at")).as("queued_at is never rewritten (ADR-0004)").isEqualTo(before.get("queued_at"));
+        assertThat(row.get("miss_count")).as("a timeout is not a Miss").isEqualTo(0);
+        assertThat(row.get("wait_seconds")).isNull();
+        assertThat(row.get("score_adjustment_minutes")).isEqualTo(0);
+        assertThat(queueOrder(w.a())).as("it lands where it stood").containsExactly(first, second);
+
+        Map<String, Object> event = eventsOf(row).getLast();
+        assertThat(event.get("event_type")).isEqualTo("ticket.position_changed");
+        assertThat(event.get("from_state") + ">" + event.get("to_state")).isEqualTo("called>waiting");
+        assertThat(inPayload(event, "$.reason")).isEqualTo("call_timeout");
+        assertThat(inPayload(event, "$.score_adjustment_minutes")).as("the adjustment applied is on the event (ADR-0004)").isEqualTo(0);
+
+        assertThat(calledToken(agent, session)).as("called again, it is the same visitor first in line").isEqualTo(first);
+        sessionService.promptTimedOutCalls();
+        Object afterFirstCall = ticketRow(first, w.a()).get("call_timeout_notified_at");
+        assertThat(afterFirstCall).as("the new call has not timed out, so the old prompt stands").isEqualTo(promptedAt);
+        clock.advance(Duration.ofSeconds(90));
+        sessionService.promptTimedOutCalls();
+        assertThat(ticketRow(first, w.a()).get("call_timeout_notified_at")).as("and it is prompted again on its own timeout").isNotEqualTo(promptedAt);
+    }
+
+    @Test
+    void aTicketReturnedAfterATimeoutKeepsItsScoreAdjustmentSoItsPlaceIsRestoredNotMoved() throws Exception {
+        World w = world();
+        UUID desk = counter(w, "Desk 1", w.a(), 1);
+        String first = issueAgo(w.a(), 60);
+        issueAgo(w.a(), 50);
+        issueAgo(w.a(), 40);
+        jdbc.update("UPDATE ticket SET score_adjustment_minutes = 7 WHERE token_number = ? AND service_id = ?", first, w.a());
+        Agent agent = agent(w);
+        UUID session = opened(agent, desk);
+        assertThat(calledToken(agent, session)).isEqualTo(first);
+        clock.advance(Duration.ofSeconds(120));
+
+        MvcResult returned = returnCalled(agent, session, null, null);
+
+        assertThat(status(returned)).as(body(returned)).isEqualTo(200);
+        Map<String, Object> row = ticketRow(first, w.a());
+        assertThat(row.get("score_adjustment_minutes")).isEqualTo(7);
+        assertThat(inPayload(eventsOf(row).getLast(), "$.score_adjustment_minutes")).isEqualTo(7);
+        assertThat(queueOrder(w.a()).getFirst()).isEqualTo(first);
+    }
+
+    @Test
+    void aCalledTicketIsReturnedOnlyByItsOwnAgentOnceItHasTimedOutAndOnlyWhileItIsCalled() throws Exception {
+        World w = world();
+        UUID desk = counter(w, "Desk 1", w.a(), 1);
+        UUID desk2 = counter(w, "Desk 2", w.a(), 1);
+        String token = issueAgo(w.a(), 10);
+        Agent agent = agent(w);
+        Agent other = agent(w);
+        UUID session = opened(agent, desk);
+        UUID otherSession = opened(other, desk2);
+        assertThat(reason(returnCalled(agent, session, null, null))).as("nothing called").isEqualTo("no_ticket_called");
+        calledToken(agent, session);
+        clock.advance(Duration.ofSeconds(200));
+
+        assertThat(status(returnCalled(other, session, null, null))).as("another agent's session").isEqualTo(403);
+        assertThat(status(returnCalled(other, otherSession, null, null))).as("nothing called on their own").isEqualTo(409);
+        assertThat(status(call(post("/api/v1/sessions/" + session + "/return"), null, null))).isEqualTo(401);
+        assertThat(status(call(post("/api/v1/sessions/" + session + "/return"), user(Role.ORG_ADMIN, w.site(), w.group()).token(), null))).as("org admin").isEqualTo(403);
+        assertThat(reason(returnCalled(agent, session, null, 99))).as("a stale version").isEqualTo("version_mismatch");
+        assertThat(ticketRow(token, w.a()).get("state")).as("nothing changed").isEqualTo("called");
+
+        serve(agent, session, null);
+        assertThat(reason(returnCalled(agent, session, null, null))).as("a ticket in service is not returned").isEqualTo("no_ticket_called");
+    }
+
+    @Test
+    void aReturnResolvesAClosingSessionAndTheTimeoutCanBeSwitchedOffByConfiguration() throws Exception {
+        World w = world();
+        UUID desk = counter(w, "Desk 1", w.a(), 1);
+        issueAgo(w.a(), 10);
+        Agent agent = agent(w);
+        UUID session = opened(agent, desk);
+        calledToken(agent, session);
+        assertThat(status(close(agent, session))).as("closing while a ticket is called").isEqualTo(409);
+        clock.advance(Duration.ofSeconds(91));
+
+        MvcResult returned = returnCalled(agent, session, null, null);
+
+        assertThat(status(returned)).as(body(returned)).isEqualTo(200);
+        assertThat((String) field(returned, "$.state")).as("returning the last ticket of a closing session closes it (§19.3)").isEqualTo("closed");
+    }
+
+    // ---- FR-AGT-012, FR-SEC-040: a specific ticket, called out of order -----------------------------------------
+
+    @Test
+    void anAgentCallsASpecificWaitingTicketOutOfOrderWithAReasonAndItIsAuditedAndWrittenToTheTicketsEvents() throws Exception {
+        World w = world();
+        UUID desk = counter(w, "Desk 1", w.a(), 1, w.b(), 2);
+        String oldest = issueAgo(w.a(), 50);
+        String middle = issueAgo(w.a(), 30);
+        String chosen = issueAgo(w.b(), 5);
+        Agent agent = agent(w);
+        UUID session = opened(agent, desk);
+        UUID chosenId = ticketId(chosen, w.b());
+
+        MvcResult result = callSpecific(agent, session, chosenId, "Visitor is frail and asked to be seen");
+
+        assertThat(status(result)).as(body(result)).isEqualTo(200);
+        assertThat((String) field(result, "$.ticket.token_number")).isEqualTo(chosen);
+        assertThat((String) field(result, "$.ticket.state")).isEqualTo("called");
+        assertThat((Boolean) field(result, "$.can_call")).isFalse();
+        Map<String, Object> row = ticketRow(chosen, w.b());
+        assertThat(row.get("state")).isEqualTo("called");
+        assertThat(row.get("counter_session_id")).isEqualTo(session);
+        assertThat(queueOrder(w.a())).as("everyone else keeps their place").containsExactly(oldest, middle);
+
+        Map<String, Object> event = eventsOf(row).getLast();
+        assertThat(event.get("event_type")).isEqualTo("ticket.called");
+        assertThat(event.get("from_state") + ">" + event.get("to_state")).isEqualTo("waiting>called");
+        assertThat(event.get("counter_id")).isEqualTo(desk);
+        assertThat(inPayload(event, "$.out_of_order")).isEqualTo(true);
+        assertThat(inPayload(event, "$.reason")).isEqualTo("Visitor is frail and asked to be seen");
+        assertThat(inPayload(event, "$.announce")).as("the display announces it like any call").isEqualTo(true);
+
+        Map<String, Object> audit = jdbc.queryForMap(
+                "SELECT actor_id, reason, before::text AS before, after::text AS after FROM audit_log WHERE action = 'ticket.called_out_of_order' AND entity_id = ?", chosenId);
+        assertThat(audit.get("actor_id")).isEqualTo(agent.id());
+        assertThat(audit.get("reason")).isEqualTo("Visitor is frail and asked to be seen");
+        assertThat(JsonPath.<Integer>read((String) audit.get("before"), "$.position")).as("where it stood in its queue").isEqualTo(1);
+        assertThat(JsonPath.<String>read((String) audit.get("after"), "$.counter_id")).isEqualTo(desk.toString());
+
+        assertThat(status(serve(agent, session, null))).isEqualTo(200);
+        assertThat(status(complete(agent, session, null, null))).isEqualTo(200);
+        assertThat(calledToken(agent, session)).as("the queue carries on in order").isEqualTo(oldest);
+    }
+
+    @Test
+    void anOutOfOrderCallNeedsATicketAndAReasonAndAnythingTheCounterCannotCallIsRefused() throws Exception {
+        World w = world();
+        UUID desk = counter(w, "Desk 1", w.a(), 1);
+        String waiting = issueAgo(w.a(), 20);
+        String elsewhere = issueAgo(w.b(), 20);
+        String taken = issueAgo(w.a(), 15);
+        String targeted = issueAgo(w.a(), 10);
+        Agent agent = agent(w);
+        Agent colleague = agent(w);
+        jdbc.update("UPDATE ticket SET target_agent_id = ? WHERE token_number = ? AND service_id = ?", colleague.id(), targeted, w.a());
+        UUID session = opened(agent, desk);
+        UUID waitingId = ticketId(waiting, w.a());
+        jdbc.update("UPDATE ticket SET state = 'paused' WHERE id = ?", ticketId(taken, w.a()));
+
+        MvcResult noReason = callSpecific(agent, session, waitingId, null);
+        assertThat(status(noReason)).isEqualTo(400);
+        assertThat((String) field(noReason, "$.error.details.fields[0].field")).isEqualTo("reason");
+        assertThat(status(callSpecific(agent, session, waitingId, "   "))).as("a blank reason").isEqualTo(400);
+        assertThat(status(callSpecific(agent, session, waitingId, "x".repeat(1001)))).as("too long").isEqualTo(400);
+        MvcResult noTicket = callSpecific(agent, session, null, "Because");
+        assertThat(status(noTicket)).isEqualTo(400);
+        assertThat((String) field(noTicket, "$.error.details.fields[0].field")).isEqualTo("ticket_id");
+        assertThat(status(callSpecific(agent, session, UUID.randomUUID(), "Because"))).as("unknown ticket").isEqualTo(404);
+
+        assertThat(reason(callSpecific(agent, session, ticketId(elsewhere, w.b()), "Because"))).as("a Service this counter does not serve").isEqualTo("ticket_not_callable");
+        assertThat(reason(callSpecific(agent, session, ticketId(taken, w.a()), "Because"))).as("a paused ticket").isEqualTo("ticket_not_callable");
+        assertThat(reason(callSpecific(agent, session, ticketId(targeted, w.a()), "Because"))).as("waits in another agent's personal queue").isEqualTo("ticket_not_callable");
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM audit_log WHERE action = 'ticket.called_out_of_order' AND entity_id IN (?, ?, ?, ?)", Integer.class,
+                        waitingId, ticketId(elsewhere, w.b()), ticketId(taken, w.a()), ticketId(targeted, w.a())))
+                .as("no refused call is audited").isZero();
+
+        assertThat(status(callSpecific(agent, session, waitingId, "Because"))).isEqualTo(200);
+        assertThat(reason(callSpecific(agent, session, waitingId, "Again"))).as("a ticket already called").isEqualTo("ticket_not_callable");
+        String more = issueAgo(w.a(), 5);
+        assertThat(reason(callSpecific(agent, session, ticketId(more, w.a()), "Because"))).as("the desk is busy").isEqualTo("ticket_in_progress");
+    }
+
+    @Test
+    void anOutOfOrderCallIsCheckedOnTheServerForPermissionOwnershipSiteAndTheSessionsState() throws Exception {
+        World w = world();
+        World elsewhere = world();
+        UUID desk = counter(w, "Desk 1", w.a(), 1);
+        UUID desk2 = counter(w, "Desk 2", w.a(), 1);
+        String token = issueAgo(w.a(), 10);
+        String foreign = issueAgo(elsewhere.a(), 10);
+        Agent owner = agent(w);
+        Agent other = agent(w);
+        UUID session = opened(owner, desk);
+        opened(other, desk2);
+        UUID ticket = ticketId(token, w.a());
+        Agent admin = user(Role.ORG_ADMIN, w.site(), w.group());
+        Agent reception = user(Role.RECEPTION_OPERATOR, w.site(), w.group());
+
+        assertThat(status(callSpecific(other, session, ticket, "Because"))).as("another agent's session").isEqualTo(403);
+        assertThat(status(callSpecific(admin, session, ticket, "Because"))).as("org admin").isEqualTo(403);
+        assertThat(status(callSpecific(reception, session, ticket, "Because"))).as("reception").isEqualTo(403);
+        assertThat(status(call(post("/api/v1/sessions/" + session + "/call"), null, "{}"))).as("unauthenticated").isEqualTo(401);
+        assertThat(status(callSpecific(owner, UUID.randomUUID(), ticket, "Because"))).as("unknown session").isEqualTo(404);
+        assertThat(status(callSpecific(owner, session, ticketId(foreign, elsewhere.a()), "Because"))).as("a ticket of another site").isEqualTo(403);
+        assertThat(ticketRow(token, w.a()).get("state")).as("nothing changed").isEqualTo("waiting");
+
+        UUID lunch = UUID.randomUUID();
+        jdbc.update("INSERT INTO break_type (id, name_i18n, created_at, updated_at) VALUES (?, '{\"en\":\"Lunch\"}'::jsonb, now(), now())", lunch);
+        assertThat(status(call(post("/api/v1/sessions/" + session + "/break"), owner.token(), "{\"break_type_id\":\"" + lunch + "\"}"))).isEqualTo(200);
+        assertThat(reason(callSpecific(owner, session, ticket, "Because"))).as("on a break").isEqualTo("session_not_open");
+    }
+
+    // ---- FR-AGT-010, FR-AGT-011: parallel serving ----------------------------------------------------------------
+
+    @Test
+    void aParallelServiceLetsACounterHaveUpToItsMaximumInProgressAndEachIsServedAndCompletedByName() throws Exception {
+        World w = world();
+        UUID desk = counter(w, "Desk 1", w.a(), 1);
+        makeParallel(w.a(), 2);
+        String t1 = issueAgo(w.a(), 30);
+        String t2 = issueAgo(w.a(), 20);
+        String t3 = issueAgo(w.a(), 10);
+        Agent agent = agent(w);
+        UUID session = opened(agent, desk);
+
+        MvcResult one = next(agent, session);
+        assertThat((Boolean) field(one, "$.can_call")).as("room for a second").isTrue();
+        MvcResult two = next(agent, session);
+        assertThat(status(two)).as(body(two)).isEqualTo(200);
+        assertThat((List<String>) field(two, "$.tickets[*].token_number")).containsExactly(t1, t2);
+        assertThat((String) field(two, "$.ticket.token_number")).as("ticket is the one called first").isEqualTo(t1);
+        assertThat((Boolean) field(two, "$.can_call")).as("the maximum is reached").isFalse();
+        MvcResult third = next(agent, session);
+        assertThat(status(third)).isEqualTo(409);
+        assertThat(reason(third)).isEqualTo("ticket_in_progress");
+
+        UUID second = ticketId(t2, w.a());
+        MvcResult served = call(post("/api/v1/sessions/" + session + "/serve?ticket_id=" + second), agent.token(), null);
+        assertThat(status(served)).as(body(served)).isEqualTo(200);
+        assertThat(ticketRow(t2, w.a()).get("state")).isEqualTo("serving");
+        assertThat(ticketRow(t1, w.a()).get("state")).as("the other is still only called").isEqualTo("called");
+        assertThat(status(complete(agent, session, null, null))).as("without a name, the ticket in service is the only one that can complete").isEqualTo(200);
+        assertThat(ticketRow(t2, w.a()).get("state")).isEqualTo("completed");
+        assertThat(ticketRow(t1, w.a()).get("state")).isEqualTo("called");
+
+        MvcResult again = next(agent, session);
+        assertThat((List<String>) field(again, "$.tickets[*].token_number")).as("room again").containsExactly(t1, t3);
+        assertThat(reason(next(agent, session))).isEqualTo("ticket_in_progress");
+    }
+
+    @Test
+    void aDeskWithAServiceThatIsNotParallelStaysOneAtATimeAndSkipsTheHeadsItCannotTakeYet() throws Exception {
+        World w = world();
+        UUID desk = counter(w, "Desk 1", w.a(), 1, w.b(), 1);
+        makeParallel(w.a(), 2);
+        String a1 = issueAgo(w.a(), 60);
+        String b1 = issueAgo(w.b(), 30);
+        String a2 = issueAgo(w.a(), 5);
+        Agent agent = agent(w);
+        UUID session = opened(agent, desk);
+
+        assertThat(calledToken(agent, session)).isEqualTo(a1);
+        assertThat(lastCalledToken(agent, session)).as("B's ticket scores higher but B is not parallel, so it waits its turn").isEqualTo(a2);
+        assertThat(reason(next(agent, session))).as("full for A, and B cannot join").isEqualTo("ticket_in_progress");
+        assertThat(ticketRow(b1, w.b()).get("state")).isEqualTo("waiting");
+        for (int i = 0; i < 2; i++) {
+            assertThat(status(serve(agent, session, null))).isEqualTo(200);
+            assertThat(status(complete(agent, session, null, null))).isEqualTo(200);
+        }
+        assertThat(calledToken(agent, session)).isEqualTo(b1);
+        assertThat(reason(next(agent, session))).as("B is not parallel: one at a time").isEqualTo("ticket_in_progress");
+    }
+
+    @Test
+    void anOutOfOrderCallAndAResumeRespectTheSameConcurrencyLimit() throws Exception {
+        World w = world();
+        UUID desk = counter(w, "Desk 1", w.a(), 1);
+        makeParallel(w.a(), 2);
+        String t1 = issueAgo(w.a(), 30);
+        issueAgo(w.a(), 20);
+        String t3 = issueAgo(w.a(), 10);
+        Agent agent = agent(w);
+        UUID session = opened(agent, desk);
+        assertThat(calledToken(agent, session)).isEqualTo(t1);
+        serve(agent, session, null);
+        MvcResult held = hold(agent, session, null, null);
+        assertThat(status(held)).as(body(held)).isEqualTo(200);
+        UUID heldId = ticketId(t1, w.a());
+
+        assertThat(status(callSpecific(agent, session, ticketId(t3, w.a()), "Because"))).as("one in progress, room for another").isEqualTo(200);
+        assertThat(status(next(agent, session))).as("two in progress: the maximum").isEqualTo(200);
+        assertThat(reason(hold(agent, session, heldId, null))).as("the desk is full, so a held ticket waits").isEqualTo("ticket_in_progress");
+    }
+
+    @Test
+    void aServiceThatIsNotParallelKeepsTheOneAtATimeDeskAndTheSessionReportsIt() throws Exception {
+        World w = world();
+        UUID desk = counter(w, "Desk 1", w.a(), 1);
+        issueAgo(w.a(), 20);
+        Agent agent = agent(w);
+        UUID session = opened(agent, desk);
+        assertThat((Boolean) field(current(agent), "$.can_call")).isTrue();
+        MvcResult called = next(agent, session);
+        assertThat((List<Object>) field(called, "$.tickets")).hasSize(1);
+        assertThat((Boolean) field(called, "$.can_call")).isFalse();
     }
 
     // ---- NFR-PERF-003: console actions acknowledge within 500 ms at P95 ----------------------------------------

@@ -19,7 +19,7 @@ final class SessionViews {
         return new SessionResponse.ServiceRef(s.serviceId(), s.names(), s.weight());
     }
 
-    static SessionResponse.SessionTicket ticket(BoundTicket t, List<OutcomeRow> outcomes, int announceLimit, int missLimit) {
+    static SessionResponse.SessionTicket ticket(BoundTicket t, List<OutcomeRow> outcomes, int announceLimit, int missLimit, boolean callTimedOut) {
         return new SessionResponse.SessionTicket(
                 t.id(),
                 t.tokenNumber(),
@@ -36,6 +36,7 @@ final class SessionViews {
                 announceLimit,
                 t.missCount(),
                 missLimit,
+                callTimedOut,
                 outcomes.stream().map(o -> new SessionResponse.Outcome(o.id(), o.code(), o.labels())).toList());
     }
 }

@@ -49,6 +49,8 @@ export interface SessionTicket {
   /** How many times it has been missed, of the most it may be before the next Miss closes it as a no-show (FR-QUE-050). */
   miss_count: number;
   miss_limit: number;
+  /** A called ticket that has waited for its Agent longer than the call timeout: the Agent may now return it to the queue (FR-QUE-032). */
+  call_timed_out: boolean;
   outcomes: SessionOutcome[];
 }
 
@@ -67,14 +69,20 @@ export interface CounterSession {
   opened_at: string;
   closed_at: string | null;
   services: SessionService[];
-  /** The ticket in progress. */
+  /** The first ticket in progress; `tickets` has all of them. */
   ticket: SessionTicket | null;
+  /** Every ticket called or serving: more than one only when the Services allow parallel serving (FR-AGT-010, FR-AGT-011). */
+  tickets: SessionTicket[];
   /** The agent's "held by me" list, to be cleared before the session can close (FR-AGT-013). */
   held: SessionTicket[];
   /** The most tickets this session may hold at once. */
   hold_limit: number;
   /** The break the session is on, or null. */
   break: SessionBreak | null;
+  /** Whether a call would be taken now: the session is open and the counter has room for another ticket (FR-AGT-010). */
+  can_call: boolean;
+  /** How long a called ticket waits for its Agent before they are prompted (FR-QUE-032); 0 means never. */
+  call_timeout_seconds: number;
 }
 
 /** A counter the caller may occupy, with the Services it would let them serve (FR-AGT-001, FR-AGT-003). */

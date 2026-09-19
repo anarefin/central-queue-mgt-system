@@ -73,6 +73,11 @@ function ifMatch(version: number | undefined): Record<string, string> | undefine
   return version === undefined ? undefined : { "If-Match": `"${version}"` };
 }
 
+/** A session action path, naming the ticket it acts on when the session has several in progress (FR-AGT-011). */
+function sessionAction(id: string, action: string, ticketId: string | undefined): string {
+  return `/sessions/${id}/${action}${ticketId === undefined ? "" : `?ticket_id=${encodeURIComponent(ticketId)}`}`;
+}
+
 function numberingPath(scope: NumberingScope, id: string): string {
   return `/${scope === "service" ? "services" : "service-groups"}/${id}`;
 }
@@ -203,7 +208,8 @@ export class ApiClient {
    * complete with an outcome, close; or, for a called ticket, re-announce it or miss it; or hold the ticket in service and resume it
    * later. The server holds all the state, so `current` rebuilds the console after a refresh
    * (FR-AGT-004); `current` answers `not_found` when the caller has no live session. `serve` and `complete` send the
-   * ticket's `version` as `If-Match` when given, and a stale one is a `conflict` (SRS §20.1).
+   * ticket's `version` as `If-Match` when given, and a stale one is a `conflict` (SRS §20.1). A session with several tickets in
+   * progress (parallel serving, FR-AGT-011) says which one an action is for with `ticketId`.
    */
   readonly sessions = {
     options: () => this.request<Items<SessionCounterOption>>("GET", "/sessions/options"),
@@ -212,14 +218,23 @@ export class ApiClient {
     close: (id: string) => this.request<CounterSession>("DELETE", `/sessions/${id}`),
     next: (id: string) => this.request<CounterSession>("POST", `/sessions/${id}/next`),
     /** F3: replay the call of the called ticket; it stays called (FR-DSP-028). */
-    reannounce: (id: string, version?: number) =>
-      this.request<CounterSession>("POST", `/sessions/${id}/reannounce`, undefined, { headers: ifMatch(version) }),
+    reannounce: (id: string, version?: number, ticketId?: string) =>
+      this.request<CounterSession>("POST", sessionAction(id, "reannounce", ticketId), undefined, { headers: ifMatch(version) }),
     /** F6: the visitor is absent; the ticket returns to the queue, or closes as a no-show past the limit (FR-QUE-050). */
-    miss: (id: string, version?: number) =>
-      this.request<CounterSession>("POST", `/sessions/${id}/miss`, undefined, { headers: ifMatch(version) }),
+    miss: (id: string, version?: number, ticketId?: string) =>
+      this.request<CounterSession>("POST", sessionAction(id, "miss", ticketId), undefined, { headers: ifMatch(version) }),
+    /**
+     * The answer to the call timeout prompt: the called ticket goes back to the queue with its original wait and its place restored,
+     * and no Miss is counted. Refused with `call_not_timed_out` before the timeout has passed (FR-QUE-032).
+     */
+    returnToQueue: (id: string, version?: number, ticketId?: string) =>
+      this.request<CounterSession>("POST", sessionAction(id, "return", ticketId), undefined, { headers: ifMatch(version) }),
+    /** Call a specific waiting ticket out of order. The reason is mandatory and the call is audited (FR-AGT-012, FR-SEC-040). */
+    callTicket: (id: string, ticketId: string, reason: string) =>
+      this.request<CounterSession>("POST", `/sessions/${id}/call`, { ticket_id: ticketId, reason }),
     /** F8: park the ticket in service; it stays bound to the session and the counter is free to call next (FR-AGT-013). */
-    hold: (id: string, version?: number) =>
-      this.request<CounterSession>("POST", `/sessions/${id}/hold`, undefined, { headers: ifMatch(version) }),
+    hold: (id: string, version?: number, ticketId?: string) =>
+      this.request<CounterSession>("POST", sessionAction(id, "hold", ticketId), undefined, { headers: ifMatch(version) }),
     /** The Services, counters and agents of the session's site the ticket in service may be transferred to (F7). */
     transferTargets: (id: string) => this.request<TransferTargets>("GET", `/sessions/${id}/transfer-targets`),
     /** Put a held ticket back in service; only the session that holds it can. */
@@ -232,10 +247,10 @@ export class ApiClient {
     /** An Org or Team Admin closes a stale session; its tickets return to the front of their queues, with an audit entry (FR-AGT-002). */
     forceClose: (id: string, reason?: string) =>
       this.request<CounterSession>("POST", `/sessions/${id}/force-close`, reason ? { reason } : undefined),
-    serve: (id: string, version?: number) =>
-      this.request<CounterSession>("POST", `/sessions/${id}/serve`, undefined, { headers: ifMatch(version) }),
-    complete: (id: string, input: CompleteInput, version?: number) =>
-      this.request<CounterSession>("POST", `/sessions/${id}/complete`, input, { headers: ifMatch(version) }),
+    serve: (id: string, version?: number, ticketId?: string) =>
+      this.request<CounterSession>("POST", sessionAction(id, "serve", ticketId), undefined, { headers: ifMatch(version) }),
+    complete: (id: string, input: CompleteInput, version?: number, ticketId?: string) =>
+      this.request<CounterSession>("POST", sessionAction(id, "complete", ticketId), input, { headers: ifMatch(version) }),
   };
 
   /**

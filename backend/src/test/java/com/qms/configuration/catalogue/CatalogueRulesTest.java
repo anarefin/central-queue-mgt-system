@@ -70,4 +70,16 @@ class CatalogueRulesTest {
         assertThat(CatalogueRules.choice("booking_mode", "walk_in_only", CatalogueRules.BOOKING_MODE)).isEqualTo("walk_in_only");
         assertInvalid(() -> CatalogueRules.choice("visitor_identifier", "always", CatalogueRules.VISITOR_IDENTIFIER), "visitor_identifier", "Pattern");
     }
+
+    @Test
+    void theParallelMaximumIsKeptOrDefaultedAndAlwaysWithinItsRange() {
+        assertThat(CatalogueRules.parallelLimit(null, false, 1)).as("one at a time").isEqualTo(1);
+        assertThat(CatalogueRules.parallelLimit(null, false, 4)).as("kept while parallel serving is off").isEqualTo(4);
+        assertThat(CatalogueRules.parallelLimit(null, true, 1)).as("two when just switched on").isEqualTo(2);
+        assertThat(CatalogueRules.parallelLimit(null, true, 5)).isEqualTo(5);
+        assertThat(CatalogueRules.parallelLimit(20, true, 1)).isEqualTo(20);
+        assertInvalid(() -> CatalogueRules.parallelLimit(0, false, 1), "parallel_limit", "Range");
+        assertInvalid(() -> CatalogueRules.parallelLimit(21, true, 1), "parallel_limit", "Range");
+        assertInvalid(() -> CatalogueRules.parallelLimit(1, true, 1), "parallel_limit", "Range");
+    }
 }

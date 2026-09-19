@@ -46,6 +46,7 @@ export function ServicesCard({ site, group }: { site: Site; group: ServiceGroup 
                     identifier: t(`catalogue.visitorIdentifier.${s.visitor_identifier}`),
                     booking: t(`catalogue.bookingMode.${s.booking_mode}`),
                   }),
+                  ...(s.parallel_serving ? [t("catalogue.service.parallel", { limit: s.parallel_limit })] : []),
                   ...(s.icon ? [t("catalogue.service.icon", { icon: s.icon })] : []),
                 ]}
                 warnings={

@@ -22,6 +22,8 @@ const REFUSALS = new Set([
   "transfer_target_mismatch",
   "already_on_break",
   "not_on_break",
+  "ticket_not_callable",
+  "call_not_timed_out",
 ]);
 
 /** A localised sentence for a failed call; the code and reason, never the server's text, choose it (SRS §20.3). */
@@ -71,18 +73,22 @@ export function counterMovedOn(update: RealtimeUpdate, session: CounterSession):
     return (ticket?.id ?? null) !== (shown?.id ?? null) || (ticket?.state ?? null) !== (shown?.state ?? null) || (ticket?.version ?? null) !== (shown?.version ?? null);
   }
   if (update.type === "session.opened") return update.data.session_id !== session.id;
+  // The Agent has not acted on a call for the call timeout: the screen is behind until it shows the prompt (FR-QUE-032).
+  if (update.type === "ticket.call_timeout") return session.tickets.some((t) => t.id === update.data.ticket_id && !t.call_timed_out);
   if (update.type === "session.closed") return update.data.session_id === session.id;
   // A break started or ended by someone else (an admin sets availability, FR-AGT-024) leaves the screen behind the server.
   if (update.type === "session.break_started" || update.type === "session.break_ended") return update.data.session_id === session.id && update.data.state !== session.state;
   const state = update.data.state;
   const ticketId = update.data.ticket_id;
-  if (state === "called" && shown && shown.id === ticketId && shown.state === "called") {
+  // With parallel serving several tickets are in progress at once (FR-AGT-011); this one is among them or it is not.
+  const inProgress = session.tickets.find((t) => t.id === ticketId);
+  if (state === "called" && inProgress?.state === "called") {
     // A Re-announce made elsewhere leaves the ticket where it is but moves its announce count (FR-QUE-083).
     const count = update.data.announce_count;
-    return typeof count === "number" && count !== shown.announce_count;
+    return typeof count === "number" && count !== inProgress.announce_count;
   }
   if (state === "held") return !session.held.some((held) => held.id === ticketId); // parked elsewhere: the held list is behind
-  if (state === "called" || state === "serving") return shown?.id !== ticketId || shown?.state !== state;
+  if (state === "called" || state === "serving") return inProgress?.state !== state;
   // The ticket left service (completed, missed, transferred…) but the screen still holds it, in service or held (FR-AGT-013).
-  return shown?.id === ticketId || session.held.some((held) => held.id === ticketId);
+  return inProgress !== undefined || session.held.some((held) => held.id === ticketId);
 }

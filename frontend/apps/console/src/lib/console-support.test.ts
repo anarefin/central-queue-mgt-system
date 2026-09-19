@@ -23,17 +23,19 @@ function ticket(over: Partial<SessionTicket> = {}): SessionTicket {
     announce_limit: 3,
     miss_count: 0,
     miss_limit: 2,
+    call_timed_out: false,
     outcomes: [],
     ...over,
   };
 }
 
+/** `tickets` is the ticket in progress unless told otherwise. */
 function session(over: Partial<CounterSession> = {}): CounterSession {
-  return {
+  const base = {
     id: "s1",
     counter: { id: "c1", label: "Desk 1", zone_id: "z1", zone_name: "Hall", site_id: "x" },
     agent_id: "u1",
-    state: "open",
+    state: "open" as const,
     opened_at: STAMP,
     closed_at: null,
     services: [],
@@ -43,6 +45,7 @@ function session(over: Partial<CounterSession> = {}): CounterSession {
     break: null,
     ...over,
   };
+  return { ...base, tickets: over.tickets ?? (base.ticket ? [base.ticket] : []), can_call: over.can_call ?? base.ticket === null, call_timeout_seconds: 90 };
 }
 
 const snapshot = (data: Record<string, unknown>, resync = false): RealtimeUpdate => ({ kind: "snapshot", topic: "counter:c1", seq: 3, data, resync });
@@ -142,6 +145,24 @@ describe("counterMovedOn: is the console behind the server?", () => {
     expect(counterMovedOn(event("session.break_ended", { session_id: "s1", state: "open" }), session({ state: "on_break" }))).toBe(true);
     expect(counterMovedOn(event("session.break_ended", { session_id: "s1", state: "open" }), session())).toBe(false);
     expect(counterMovedOn(event("session.break_started", { session_id: "older", state: "on_break" }), session())).toBe(false);
+  });
+
+  it("is behind when a call timed out and the screen does not yet show the prompt, and not when it does (FR-QUE-032)", () => {
+    const timeout = event("ticket.call_timeout", { ticket_id: "t1", state: "called", version: 1 });
+    expect(counterMovedOn(timeout, session({ ticket: ticket() }))).toBe(true);
+    expect(counterMovedOn(timeout, session({ ticket: ticket({ call_timed_out: true }) }))).toBe(false);
+    expect(counterMovedOn(event("ticket.call_timeout", { ticket_id: "other", state: "called" }), session({ ticket: ticket() }))).toBe(false);
+  });
+
+  it("follows every ticket in progress, not only the first, when several are (FR-AGT-011)", () => {
+    const first = ticket();
+    const second = ticket({ id: "t2", token_number: "S-043" });
+    const shown = session({ ticket: first, tickets: [first, second] });
+    expect(counterMovedOn(event("ticket.called", { ticket_id: "t2", state: "called" }), shown), "shown in progress already").toBe(false);
+    expect(counterMovedOn(event("ticket.called", { ticket_id: "t3", state: "called" }), shown), "another ticket the screen lacks").toBe(true);
+    expect(counterMovedOn(event("ticket.serving", { ticket_id: "t2", state: "serving" }), shown), "the second is now in service").toBe(true);
+    expect(counterMovedOn(event("ticket.completed", { ticket_id: "t2", state: "completed" }), shown), "the second left service").toBe(true);
+    expect(counterMovedOn(event("ticket.completed", { ticket_id: "t9", state: "completed" }), shown), "one the screen never showed").toBe(false);
   });
 
   it("is not moved by a refusal", () => {

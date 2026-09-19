@@ -43,6 +43,8 @@ const SERVICE: ServiceEntry = {
   display_order: 3,
   visitor_identifier: "mandatory",
   booking_mode: "walk_in_only",
+  parallel_serving: false,
+  parallel_limit: 1,
   active: true,
   created_at: STAMP,
   updated_at: STAMP,
@@ -257,7 +259,33 @@ describe("service catalogue screen", () => {
       display_order: 3,
       visitor_identifier: "mandatory",
       booking_mode: "walk_in_only",
+      parallel_serving: false,
     });
+    expect(screen.queryByText(/visitors at once per counter/)).not.toBeInTheDocument();
+  });
+
+  it("makes a service parallel with the most visitors a counter serves at once, and says so in the list (FR-AGT-010, FR-AGT-011)", async () => {
+    const state = freshState({ groups: [GROUP] });
+    const calls = fakeApi(state);
+    renderApp(<CatalogueAdmin />);
+    const card = await openServices();
+    await screen.findByText("This service group has no services yet.");
+
+    await userEvent.type(within(card).getByLabelText("Name (Bangla)"), "পরামর্শ");
+    await userEvent.type(within(card).getByLabelText("Name (English)"), "Consultation");
+    await userEvent.type(within(card).getByLabelText("Token prefix"), "CON");
+    await userEvent.type(within(card).getByLabelText("Expected handling time (minutes)"), "12");
+    await userEvent.type(within(card).getByLabelText("SLA wait target (minutes)"), "30");
+    expect(within(card).queryByLabelText("Most visitors a counter serves at once")).not.toBeInTheDocument();
+    await userEvent.click(within(card).getByLabelText("A counter serves several visitors of this service at once"));
+    const limit = within(card).getByLabelText("Most visitors a counter serves at once");
+    expect(limit).toHaveValue(2);
+    await userEvent.clear(limit);
+    await userEvent.type(limit, "4");
+    await userEvent.click(within(card).getByRole("button", { name: "Add a service" }));
+
+    expect(await screen.findByText("Up to 4 visitors at once per counter")).toBeInTheDocument();
+    expect(bodyOf(calls.find((c) => c.method === "POST" && c.path === "/service-groups/g1/services"))).toMatchObject({ parallel_serving: true, parallel_limit: 4 });
   });
 
   it("links counters to a service with a preference weight and unlinks them (FR-CFG-011)", async () => {

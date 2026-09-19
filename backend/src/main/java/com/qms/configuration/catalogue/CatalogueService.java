@@ -172,6 +172,7 @@ public class CatalogueService {
         var site = requireSite(group.siteId());
         Instant now = clock.instant();
         Map<String, String> names = CatalogueRules.names("name_i18n", request.nameI18n(), site.defaultLanguage(), site.enabled());
+        boolean parallel = Boolean.TRUE.equals(request.parallelServing());
         ServiceEntry service = new ServiceEntry(
                 UUID.randomUUID(),
                 groupId,
@@ -186,6 +187,8 @@ public class CatalogueService {
                 CatalogueRules.displayOrder(request.displayOrder()),
                 request.visitorIdentifier() == null ? "not_required" : CatalogueRules.choice("visitor_identifier", request.visitorIdentifier(), CatalogueRules.VISITOR_IDENTIFIER),
                 request.bookingMode() == null ? "both" : CatalogueRules.choice("booking_mode", request.bookingMode(), CatalogueRules.BOOKING_MODE),
+                parallel,
+                CatalogueRules.parallelLimit(request.parallelLimit(), parallel, 1),
                 true,
                 now,
                 now);
@@ -203,6 +206,7 @@ public class CatalogueService {
         Map<String, String> names = change.nameI18n() == null
                 ? before.nameI18n()
                 : CatalogueRules.names("name_i18n", change.nameI18n(), site.defaultLanguage(), site.enabled());
+        boolean parallel = change.parallelServing() == null ? before.parallelServing() : change.parallelServing();
         ServiceEntry after = new ServiceEntry(
                 id,
                 before.serviceGroupId(),
@@ -217,6 +221,8 @@ public class CatalogueService {
                 change.displayOrder() == null ? before.displayOrder() : CatalogueRules.displayOrder(change.displayOrder()),
                 change.visitorIdentifier() == null ? before.visitorIdentifier() : CatalogueRules.choice("visitor_identifier", change.visitorIdentifier(), CatalogueRules.VISITOR_IDENTIFIER),
                 change.bookingMode() == null ? before.bookingMode() : CatalogueRules.choice("booking_mode", change.bookingMode(), CatalogueRules.BOOKING_MODE),
+                parallel,
+                CatalogueRules.parallelLimit(change.parallelLimit(), parallel, before.parallelLimit()),
                 before.active(),
                 before.createdAt(),
                 clock.instant());
@@ -464,6 +470,8 @@ public class CatalogueService {
         values.put("display_order", service.displayOrder());
         values.put("visitor_identifier", service.visitorIdentifier());
         values.put("booking_mode", service.bookingMode());
+        values.put("parallel_serving", service.parallelServing());
+        values.put("parallel_limit", service.parallelLimit());
         values.put("active", service.active());
         return values;
     }

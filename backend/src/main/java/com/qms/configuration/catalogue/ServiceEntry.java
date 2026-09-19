@@ -9,7 +9,8 @@ import java.util.UUID;
 /**
  * The thing a visitor queues for (FR-CFG-010, FR-CFG-012..014). {@code siteId} is derived from the service group.
  * {@code visitorIdentifier} is {@code not_required}, {@code optional} or {@code mandatory}; {@code bookingMode} is
- * {@code appointment_only}, {@code walk_in_only} or {@code both}.
+ * {@code appointment_only}, {@code walk_in_only} or {@code both}. A Service with {@code parallelServing} lets a counter have up to
+ * {@code parallelLimit} of its tickets called or serving at once (FR-AGT-010, FR-AGT-011); otherwise a counter serves one at a time.
  */
 public record ServiceEntry(
         UUID id,
@@ -25,6 +26,8 @@ public record ServiceEntry(
         @JsonProperty("display_order") int displayOrder,
         @JsonProperty("visitor_identifier") String visitorIdentifier,
         @JsonProperty("booking_mode") String bookingMode,
+        @JsonProperty("parallel_serving") boolean parallelServing,
+        @JsonProperty("parallel_limit") int parallelLimit,
         boolean active,
         @JsonProperty("created_at") Instant createdAt,
         @JsonProperty("updated_at") Instant updatedAt) {}

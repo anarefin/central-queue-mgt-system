@@ -19,6 +19,8 @@ const CATALOGUE_FIELDS = new Set([
   "icon",
   "visitor_identifier",
   "booking_mode",
+  "parallel_serving",
+  "parallel_limit",
   "preference_weight",
   "counter_id",
   "code",
