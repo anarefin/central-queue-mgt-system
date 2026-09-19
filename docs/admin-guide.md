@@ -167,7 +167,45 @@ need `team_member:approve`. Names are objects keyed by language, `{"bn": "…", 
 languages still missing under `missing_translations`. `PATCH` leaves absent fields unchanged and replaces `name_i18n`
 and `label_i18n` as a whole.
 
-## 9. Rotating the signing key
+## 9. Token numbering
+
+An Organisation Admin (or System Admin) opens **Token numbering** from the home screen, picks a site, and sets a rule
+for a service group or for one service. A service's own rule wins over its group's; with neither, the default applies
+(the service's prefix, separator `-`, 3 digits, restarting every day at 00:00). Each rule has:
+
+- **Prefix comes from**: the service, the service group, the priority class (until priority classes exist this
+  shows the service's prefix) or a fixed text of up to 8 letters and digits.
+- **Separator**: any text up to 8 characters, or none. **Digits**: the least number of digits, 0 to 6; a longer number
+  is never cut. **First number**: where each new sequence begins.
+- **Restart the sequence**: every day, every week (Monday), every month, or never, at a **reset time** in the site's
+  own time zone. A daily rule at 04:00 keeps counting past midnight and starts over at 04:00.
+
+Two prefixes that produce the same text share one counter, so a Token number is never repeated within a site and reset
+period. Token numbers always use Western Arabic digits, in every language.
+
+- **Changing a rule never renumbers a ticket that was already issued.** The screen says how many tickets are waiting;
+  they keep their numbers and only tickets issued afterwards follow the new rule. Removing a rule sends the scope back
+  to its group's rule or the default. A change to the boundary or reset time made part-way through a period continues
+  after the numbers already used in it.
+- **Preview next number** shows what the next ticket would be called, and when the sequence next starts over,
+  without issuing anything or using a number up.
+- **Resets.** The backend checks every minute, on every node, and the node that takes the database lock opens the new
+  period at the site-local reset time and writes a `numbering.reset` audit entry. If the backend was down at that
+  moment, the next check opens the period late and records it as replayed; even with no check at all, the first ticket
+  after the reset time opens the period, so a sequence never carries on into a new day. Earlier days' tickets and
+  numbers are untouched.
+- **Sequence blocks.** Each site reserves numbers for a sequence in blocks of 100, and asks for the next block once 80
+  of the current one are used.
+- **Audit.** Every rule change is recorded as `numbering_rule.created`, `.updated` or `.deleted` with before and after
+  values.
+
+API, all under `/api/v1` and needing the `config:service_catalogue` permission: `GET /sites/{id}/numbering-rules`,
+`GET|PUT|DELETE /services/{id}/numbering-rule`, `GET|PUT|DELETE /service-groups/{id}/numbering-rule`,
+`GET /services/{id}/numbering-preview` and `GET /service-groups/{id}/numbering-preview`. `PUT` replaces the rule as a
+whole (a field left out takes its default: prefix from the service group, first number 1, 3 digits, daily, 00:00, `-`),
+and `PUT` and `DELETE` answer with `affected_waiting_tickets`.
+
+## 10. Rotating the signing key
 
 ```
 docker compose -f deploy/compose.yaml run --rm backend --spring.profiles.active=rotate-keys

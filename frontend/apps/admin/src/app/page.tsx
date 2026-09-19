@@ -36,6 +36,7 @@ export default function Home() {
           <div className="qms-row">
             <Link href="/sites/">{t("admin.home.sites")}</Link>
             <Link href="/catalogue/">{t("admin.home.catalogue")}</Link>
+            <Link href="/numbering/">{t("admin.home.numbering")}</Link>
           </div>
         )}
         {user?.roles.includes("reception_operator") && (

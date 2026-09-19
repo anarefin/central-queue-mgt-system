@@ -40,6 +40,8 @@ dependencies {
 // Tests that boot the application must not write signing keys into the source tree.
 tasks.withType<Test>().configureEach {
     systemProperty("qms.security.key-dir", layout.buildDirectory.dir("test-keys").get().asFile.absolutePath)
+    // The scheduled numbering reset is driven by hand in tests; a clock-driven one would race with them.
+    systemProperty("qms.numbering.scheduler.cron", "-")
 }
 
 // Unit and slice tests run without Docker; `*IT` classes use Testcontainers against real PostgreSQL.

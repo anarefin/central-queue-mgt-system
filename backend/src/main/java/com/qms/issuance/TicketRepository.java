@@ -27,6 +27,7 @@ class TicketRepository {
             UUID groupId,
             UUID siteId,
             String tokenPrefix,
+            String groupPrefix,
             List<String> channels,
             String bookingMode,
             boolean active,
@@ -84,7 +85,7 @@ class TicketRepository {
 
     Optional<ServiceTarget> serviceTarget(UUID serviceId) {
         return jdbc.query(
-                        "SELECT v.id, v.service_group_id, g.site_id, v.token_prefix, v.channels, v.booking_mode,"
+                        "SELECT v.id, v.service_group_id, g.site_id, v.token_prefix, g.token_prefix AS group_prefix, v.channels, v.booking_mode,"
                                 + " (v.active AND g.active AND s.active) AS active, s.timezone"
                                 + " FROM service v JOIN service_group g ON g.id = v.service_group_id JOIN site s ON s.id = g.site_id WHERE v.id = ?",
                         (rs, i) -> new ServiceTarget(
@@ -92,6 +93,7 @@ class TicketRepository {
                                 rs.getObject("service_group_id", UUID.class),
                                 rs.getObject("site_id", UUID.class),
                                 rs.getString("token_prefix"),
+                                rs.getString("group_prefix"),
                                 strings(rs.getString("channels")),
                                 rs.getString("booking_mode"),
                                 rs.getBoolean("active"),

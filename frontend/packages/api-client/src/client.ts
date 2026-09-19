@@ -13,6 +13,7 @@ import type {
 } from "./catalogue";
 import type { Counter, CounterInput, Items, Site, SiteInput, Zone, ZoneInput } from "./hierarchy";
 import type { Channel } from "./catalogue";
+import type { NumberingPreview, NumberingRule, NumberingRuleChange, NumberingRuleInput, NumberingScope } from "./numbering";
 import type { IssueTicketInput, QueueSnapshot, SiteServices, Ticket } from "./tickets";
 
 export const API_BASE_PATH = "/api/v1";
@@ -62,6 +63,10 @@ export type DependencyState = "up" | "down" | "not_configured";
 export interface DependencyHealth {
   status: "up" | "down";
   dependencies: Record<string, { status: DependencyState }>;
+}
+
+function numberingPath(scope: NumberingScope, id: string): string {
+  return `/${scope === "service" ? "services" : "service-groups"}/${id}`;
 }
 
 export class ApiClient {
@@ -174,6 +179,18 @@ export class ApiClient {
   readonly queues = {
     snapshot: (serviceId: string, limit?: number) =>
       this.request<QueueSnapshot>("GET", `/queues/${serviceId}${limit === undefined ? "" : `?limit=${limit}`}`),
+  };
+
+  /**
+   * Token numbering per Service or Service group (FR-CFG-018). `setRule` replaces the rule; changing or removing one never
+   * renumbers a ticket already issued (FR-CFG-041). `preview` shows the next Token number without using it up.
+   */
+  readonly numbering = {
+    rules: (siteId: string) => this.request<Items<NumberingRule>>("GET", `/sites/${siteId}/numbering-rules`),
+    setRule: (scope: NumberingScope, id: string, input: NumberingRuleInput) =>
+      this.request<NumberingRuleChange>("PUT", `${numberingPath(scope, id)}/numbering-rule`, input),
+    removeRule: (scope: NumberingScope, id: string) => this.request<NumberingRuleChange>("DELETE", `${numberingPath(scope, id)}/numbering-rule`),
+    preview: (scope: NumberingScope, id: string) => this.request<NumberingPreview>("GET", `${numberingPath(scope, id)}/numbering-preview`),
   };
 
   readonly users = {

@@ -23,6 +23,13 @@ const CATALOGUE_FIELDS = new Set([
   "counter_id",
   "code",
   "user_id",
+  "prefix_source",
+  "fixed_prefix",
+  "sequence_start",
+  "padding",
+  "reset_boundary",
+  "reset_time",
+  "separator",
 ]);
 
 /** A localised sentence for a failed call; a validation failure also names the fields to check (SRS §20.3). */

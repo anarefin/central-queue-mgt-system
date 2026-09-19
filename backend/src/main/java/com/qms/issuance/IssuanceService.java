@@ -4,6 +4,7 @@ import com.qms.audit.AuditEvent;
 import com.qms.audit.AuditWriter;
 import com.qms.issuance.TicketRepository.NewTicket;
 import com.qms.issuance.TicketRepository.ServiceTarget;
+import com.qms.issuance.TokenNumbering.Period;
 import com.qms.platform.ApiException;
 import com.qms.platform.ErrorCode;
 import com.qms.platform.Profiles;
@@ -30,6 +31,9 @@ import org.springframework.transaction.annotation.Transactional;
  * is beyond the actor recorded on the event; whoever adapts a channel has already authorised the caller
  * (FR-CFG-103). A staff actor is further limited to the sites in their token (FR-CFG-106).
  *
+ * <p>The Token number follows the numbering rule of the Service, else of its group, else the built-in default
+ * (FR-CFG-018). A rule applies to tickets issued after it changes; issued tickets are never renumbered (FR-CFG-041).
+ *
  * <p>One transaction covers everything (FR-ISS-001): the sequence number, the visit, the ticket row (which is its place
  * in the queue), the ticket event and the audit entry. If any step fails none of them remain, and the number is not
  * consumed.
@@ -45,15 +49,28 @@ public class IssuanceService {
 
     private final TicketRepository tickets;
     private final SequenceBlocks sequences;
+    private final NumberingRepository numbering;
+    private final NumberingResets resets;
     private final TicketEvents events;
     private final TicketViews views;
     private final AuditWriter audit;
     private final ScopeGuard scope;
     private final Clock clock;
 
-    IssuanceService(TicketRepository tickets, SequenceBlocks sequences, TicketEvents events, TicketViews views, AuditWriter audit, ScopeGuard scope, Clock clock) {
+    IssuanceService(
+            TicketRepository tickets,
+            SequenceBlocks sequences,
+            NumberingRepository numbering,
+            NumberingResets resets,
+            TicketEvents events,
+            TicketViews views,
+            AuditWriter audit,
+            ScopeGuard scope,
+            Clock clock) {
         this.tickets = tickets;
         this.sequences = sequences;
+        this.numbering = numbering;
+        this.resets = resets;
         this.events = events;
         this.views = views;
         this.audit = audit;
@@ -68,9 +85,13 @@ public class IssuanceService {
         requireIssuable(target, command.originChannel());
 
         Instant now = clock.instant();
-        String resetKey = TokenNumbering.resetKey(now, ZoneId.of(target.timezone()));
-        long sequence = sequences.next(target.siteId(), target.tokenPrefix(), resetKey);
-        String tokenNumber = TokenNumbering.format(target.tokenPrefix(), sequence);
+        NumberingSpec rule = numbering.effective(target.serviceId(), target.groupId());
+        String prefix = rule.prefix(target.tokenPrefix(), target.groupPrefix());
+        Period period = TokenNumbering.period(now, ZoneId.of(target.timezone()), rule.boundary(), rule.resetTime());
+        resets.open(target.siteId(), prefix, period, rule, NumberingResets.ISSUANCE, now);
+        String resetKey = period.key();
+        long sequence = sequences.next(target.siteId(), prefix, resetKey, rule.start());
+        String tokenNumber = rule.format(prefix, sequence);
         String secret = newSecret();
 
         UUID visitId = UUID.randomUUID();

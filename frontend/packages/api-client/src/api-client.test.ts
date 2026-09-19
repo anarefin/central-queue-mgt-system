@@ -258,6 +258,30 @@ describe("ApiClient service catalogue", () => {
     expect(JSON.parse(String((fetchImpl.mock.calls[0]?.[1] as RequestInit).body))).toEqual({ service_id: "v1", origin_channel: "reception" });
   });
 
+  it("sets, removes, lists and previews numbering rules per service or service group", async () => {
+    const fetchImpl = vi.fn().mockImplementation(async () => json(200, { items: [], rule: null, affected_waiting_tickets: 0 }));
+    const client = new ApiClient({ apiOrigin: "", fetch: fetchImpl as unknown as typeof fetch });
+
+    await client.numbering.rules("s1");
+    await client.numbering.setRule("service_group", "g1", { prefix_source: "fixed", fixed_prefix: "VIP", padding: 0, separator: "" });
+    await client.numbering.setRule("service", "v1", { reset_boundary: "weekly", reset_time: "04:30" });
+    await client.numbering.removeRule("service", "v1");
+    await client.numbering.preview("service_group", "g1");
+    await client.numbering.preview("service", "v1");
+
+    const calls = fetchImpl.mock.calls.map(([url, init]) => `${(init as RequestInit).method} ${String(url).replace("/api/v1", "")}`);
+    expect(calls).toEqual([
+      "GET /sites/s1/numbering-rules",
+      "PUT /service-groups/g1/numbering-rule",
+      "PUT /services/v1/numbering-rule",
+      "DELETE /services/v1/numbering-rule",
+      "GET /service-groups/g1/numbering-preview",
+      "GET /services/v1/numbering-preview",
+    ]);
+    expect(JSON.parse(String((fetchImpl.mock.calls[1]?.[1] as RequestInit).body))).toEqual({ prefix_source: "fixed", fixed_prefix: "VIP", padding: 0, separator: "" });
+    expect(JSON.parse(String((fetchImpl.mock.calls[2]?.[1] as RequestInit).body))).toEqual({ reset_boundary: "weekly", reset_time: "04:30" });
+  });
+
   it("makes a new idempotency key each time", () => {
     expect(newIdempotencyKey()).not.toBe(newIdempotencyKey());
   });
