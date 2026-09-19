@@ -38,8 +38,11 @@ and a message under `error.<code>` / `errors.<code>` in both language packs (tes
 | `internal_error` | 500 | Unexpected failure. The message never contains internal detail; use `trace_id` to find it in the logs. |
 | `unavailable` | 503 | A dependency is down; `details.dependency` names it. |
 
-The SRS names one further code, `service_closed` (§20.3 example, FR-ISS-003), which belongs to token issuance and is
-added by ticket 07 with the rest of the issuance rejection reasons.
+The SRS names one further code, `service_closed` (§20.3 example, FR-ISS-003), which belongs to the issuance rules
+(ticket 21). Until then `POST /tickets` refuses with `conflict` and `details.reason` set to `service_inactive`,
+`channel_not_allowed` or `appointment_only`. `POST /tickets` also requires an `Idempotency-Key` header (`validation_failed`
+naming `Idempotency-Key` when it is missing); reusing a key for a different request is a `conflict` with
+`details.reason` `idempotency_key_reused`.
 
 The client library also synthesises two codes that never come from the server: `network_error` (no response) and
 `unexpected_response` (a reply that is not a §20.3 envelope, such as a proxy error page).

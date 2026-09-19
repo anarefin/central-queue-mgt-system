@@ -12,6 +12,8 @@ import type {
   UserPage,
 } from "./catalogue";
 import type { Counter, CounterInput, Items, Site, SiteInput, Zone, ZoneInput } from "./hierarchy";
+import type { Channel } from "./catalogue";
+import type { IssueTicketInput, QueueSnapshot, SiteServices, Ticket } from "./tickets";
 
 export const API_BASE_PATH = "/api/v1";
 
@@ -32,6 +34,8 @@ export interface ApiClientOptions {
 export interface RequestOptions {
   anonymous?: boolean;
   retried?: boolean;
+  /** Extra request headers, such as `Idempotency-Key`. */
+  headers?: Record<string, string>;
 }
 
 export interface TokenResponse {
@@ -100,6 +104,9 @@ export class ApiClient {
     activate: (id: string) => this.request<Site>("POST", `/sites/${id}/activate`),
     zones: (siteId: string) => this.request<Items<Zone>>("GET", `/sites/${siteId}/zones`),
     createZone: (siteId: string, input: ZoneInput) => this.request<Zone>("POST", `/sites/${siteId}/zones`, input),
+    /** The services a site offers with their live queue lengths; `channel` keeps only those that issue on that channel. */
+    services: (siteId: string, channel?: Channel) =>
+      this.request<SiteServices>("GET", `/sites/${siteId}/services${channel ? `?channel=${channel}` : ""}`),
   };
 
   readonly zones = {
@@ -154,6 +161,21 @@ export class ApiClient {
     removeMember: (groupId: string, userId: string) => this.request<Team>("DELETE", `/service-groups/${groupId}/team/members/${userId}`),
   };
 
+  /**
+   * Issuing needs an `Idempotency-Key` (SRS §20.1): replaying a key within 24 hours returns the original ticket, secret
+   * included, and issues nothing, so retrying after a lost response is safe. `get` never returns the secret.
+   */
+  readonly tickets = {
+    issue: (input: IssueTicketInput, idempotencyKey: string) =>
+      this.request<Ticket>("POST", "/tickets", input, { headers: { "Idempotency-Key": idempotencyKey } }),
+    get: (id: string) => this.request<Ticket>("GET", `/tickets/${id}`),
+  };
+
+  readonly queues = {
+    snapshot: (serviceId: string, limit?: number) =>
+      this.request<QueueSnapshot>("GET", `/queues/${serviceId}${limit === undefined ? "" : `?limit=${limit}`}`),
+  };
+
   readonly users = {
     list: (limit = 200) => this.request<UserPage>("GET", `/users?limit=${limit}`),
   };
@@ -163,7 +185,7 @@ export class ApiClient {
    * bearer token and never trigger the refresh-and-retry, which would otherwise wait on itself.
    */
   async request<T>(method: string, path: string, body?: unknown, options: RequestOptions = {}): Promise<T> {
-    const headers: Record<string, string> = { Accept: "application/json" };
+    const headers: Record<string, string> = { Accept: "application/json", ...options.headers };
     const token = options.anonymous ? null : this.getAccessToken();
     if (token) headers.Authorization = `Bearer ${token}`;
     const language = this.getLanguage();
@@ -189,7 +211,7 @@ export class ApiClient {
     const error = await toError(response);
     // An expired access token: refresh once and retry, but never loop and never for a request that sent no token.
     if (error.code === "token_invalid" && token && !options.retried && this.onTokenInvalid && (await this.onTokenInvalid())) {
-      return this.request<T>(method, path, body, { retried: true });
+      return this.request<T>(method, path, body, { ...options, retried: true });
     }
     throw error;
   }

@@ -1,7 +1,7 @@
 # Traceability matrix
 
 SRS §27.1: every requirement ID maps to at least one automated test or documented UAT step, and a requirement with no
-test is treated as not implemented. Covers tickets 01–06; later tickets append rows.
+test is treated as not implemented. Covers tickets 01–07; later tickets append rows.
 
 **Test types:** unit, integration (real PostgreSQL through Testcontainers, or a full Spring context), E2E, UAT, load,
 manual. **Status:** `passing` (the test ran green in the last full run), `partial` (only part of the requirement is
@@ -126,6 +126,30 @@ Paths: `B` = `backend/src/test/java/com/qms`, `F` = `frontend`.
 | FR-CFG-106 a site-scoped admin is limited to their own sites' catalogue | §5.3 | integration | `IT#aSiteScopedAdminManagesTheCatalogueOfTheirOwnSitesOnly` | passing |
 | Definition of done §27.5 item 3, strings in both packs | §27.5 | unit | `F/packages/i18n/src/i18n.test.ts` (`English and Bangla have exactly the same keys`); `UI` (`renders every label in Bangla…`) | passing |
 | Definition of done §27.5 item 6, administrator guide | §27.5 | manual | `docs/admin-guide.md` section 8 | passing |
+
+## Ticket 07, reception issues a walk-in ticket
+
+`IT` = `B/issuance/IssuanceIT`, `Unit` = `B/issuance/TokenNumberingTest`, `UI` = `F/apps/admin/src/components/ReceptionDesk.test.tsx`, `Client` = `F/packages/api-client/src/api-client.test.ts`.
+
+| Requirement ID | Section | Test type | Test reference | Status |
+|---|---|---|---|---|
+| §20.1 `POST /tickets` requires an `Idempotency-Key`; a replay within 24 hours returns the original result | §20.1 | integration, unit | `IT#issuingWithoutAnIdempotencyKeyIsRefusedAndIssuesNothing`, `IT#replayingAKeyWithinTwentyFourHoursReturnsTheOriginalTicketAndIssuesNothingMore` (same body, secret included, one ticket, one event), `IT#aKeyIsPerCallerAndCannotBeReusedForADifferentRequest`, `IT#aKeyOlderThanTwentyFourHoursIssuesAgain`, `IT#simultaneousRequestsWithOneKeyIssueExactlyOneTicket`; `Client` (`issues a ticket with an Idempotency-Key that survives a token refresh retry…`); `UI` (`keeps one idempotency key across a retry after a lost response…`) | passing |
+| FR-ISS-001 sequence allocation, ticket row and queue insertion succeed or fail together | §8 | integration | `IT#aFailureAfterTheNumberIsDrawnLeavesNoTicketVisitNumberOrKeyBehind` (a failure after the number is drawn leaves no ticket, visit, sequence block or idempotency claim, and the retry gets the same number), `IT#simultaneousIssuesGetDistinctConsecutiveTokenNumbers` | passing |
+| FR-QUE-201 token numbers drawn from a per-site sequence block; §4.4 default rule `{prefix}-{padded sequence}` with a daily reset key | §4.4, §6.3 | integration, unit | `IT#theDefaultRuleIsPrefixDashPaddedSequenceWithADailyResetKeyInTheSiteTimezone`, `IT#sequencesRestartForANewResetKeyAndNewBlocksOpenWhenOneIsUsedUp`, `IT#simultaneousIssuesGetDistinctConsecutiveTokenNumbers`; `Unit` (all: format, Western digits, site-local reset day). Re-requesting a block at 80% consumption, configurable rules and scheduled resets belong to ticket 08 | partial |
+| §18.4, ADR-0006 partial unique on (site, reset key, token number) for chain heads | §18.4 | integration | `IT#tokenNumbersAreUniquePerSiteAndResetKeyForChainHeadsOnly` (a second head is refused, a successor may reuse the number, the same number on another day is allowed) | passing |
+| ADR-0007 a Visit is created implicitly with the first ticket; `visit_id` NOT NULL | §18.3 | integration | `IT#everyTicketBelongsToAVisitCreatedWithItsFirstTicket` (row created, schema column is NOT NULL) | passing |
+| §18.5 a ticket denormalises service group, site and zone at issue | §18.5 | integration | `IT#aTicketCopiesItsGroupSiteAndZoneAtIssueAndLaterReconfigurationLeavesItAlone`, `IT#aServiceNoCounterServesYetStillIssuesWithoutAZone` | passing |
+| Invariant 3, FR-QUE-070, ADR-0001 exactly one `ticket_event` per transition with device time, server time and a per-ticket sequence number | §19.1, §21 | integration | `IT#issuingWritesExactlyOneEventWithDeviceAndServerTimeAndSequenceNumberOne`, `IT#ticketEventsAreAppendOnly`. Only the issue transition exists so far; later transitions extend the same writer (`TicketEvents`) | partial |
+| FR-ISS-002, §20.5 response carries token number, service, zone, building, floor, position, estimate placeholder and the ticket secret, hashed at rest | §8, §20.5 | integration, unit | `IT#theResponseCarriesEverythingTheVisitorNeedsAndTheSecretOnlyOnce` (the estimate is null until wait estimation, ticket 19; only the SHA-256 of the secret is stored and it cannot be read back); `UI` (`issues a walk-in ticket and shows token, service, waiting area, position, estimate and secret…`, `says where to wait without a building`, `says so when no counter serves the service yet…`) | passing |
+| §8.5 `origin_channel` is recorded; the issuance service is channel-agnostic | §8.5 | integration | `IT#theIssuanceServiceIsChannelAgnosticAndRecordsTheChannelAndActor` (kiosk and reception through one path, one sequence), `IT#theHttpEndpointIssuesAtReceptionOnly`, `IT#anInactiveServiceOrOneNotIssuedAtReceptionCannotBeIssuedFor` (the refusal reasons of ticket 21 are not built; `conflict` names one) | passing |
+| §20.4 `GET /tickets/{id}` for staff and `GET /queues/{service_id}` snapshot; `GET /sites/{id}/services` | §20.4 | integration | `IT#theIssuedTicketAppearsInTheServicesQueueSnapshotInOrder`, `IT#theSiteServiceListShowsWhatReceptionCanIssueWithLiveQueueLengths`, `IT#theResponseCarriesEverythingTheVisitorNeedsAndTheSecretOnlyOnce` (`GET` has no secret) | passing |
+| Reception screen: choose service, issue, show the result, see the queue | §8.3 | unit | `UI` (`lists the services reception can issue…`, `issues a walk-in ticket…`, `explains a refusal in words…`, `tells a user with no site…`, `links to the desk from the home screen for a Reception Operator only…`) | passing |
+| §5.2 `ticket:issue` (Reception only) checked server-side; readers are staff | §5.2 | integration | `IT#onlyReceptionMayIssueAndEveryStaffRoleMayReadTicketsAndQueues`; `B/identity/ControllerSecurityTest#everyControllerMethodIsSecuredOrExplicitlyPublic` | passing |
+| FR-CFG-106 a Reception Operator is limited to their site; a Team Admin to their service groups | §5.3 | integration | `IT#aReceptionOperatorIsLimitedToTheirOwnSite`, `IT#aTeamAdminSeesOnlyTheQueuesOfTheirServiceGroups` | passing |
+| FR-SEC-040 issuing is audited | §25.5 | integration | `IT#issuingIsAuditedWithTheActorAndTheTicketDetails` (`ticket.issued`) | passing |
+| FR-CFG-015 a service with tickets cannot be deleted | §7.2 | integration | `IT#aServiceThatHasTicketsCanNoLongerBeDeleted` (against the real `ticket` table now that it exists) | passing |
+| FR-I18N-001, FR-I18N-020 strings in both packs; Token numbers stay Western Arabic | §17 | unit | `F/packages/i18n/src/i18n.test.ts` (`English and Bangla have exactly the same keys`); `UI` (`shows Bangla labels and keeps the token number in Western Arabic digits…`); `Unit#aTokenNumberIsPrefixSeparatorAndPaddedSequenceInWesternArabicDigits` | passing |
+| FR-OPS-020 the V6 migration is forward-only and re-runnable | §26 | integration | `B/platform/MigrationIT#everyMigrationScriptCanBeReExecutedAgainstAnAlreadyMigratedDatabase`, `#onlyCorePostgresqlIsUsedNoExtensionsBeyondPlpgsql` | passing |
 
 ## Notes
 

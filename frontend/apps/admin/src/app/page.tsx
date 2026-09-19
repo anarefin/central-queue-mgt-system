@@ -38,6 +38,11 @@ export default function Home() {
             <Link href="/catalogue/">{t("admin.home.catalogue")}</Link>
           </div>
         )}
+        {user?.roles.includes("reception_operator") && (
+          <div className="qms-row">
+            <Link href="/reception/">{t("admin.home.reception")}</Link>
+          </div>
+        )}
         <HealthPanel />
       </RequireAuth>
     </Page>

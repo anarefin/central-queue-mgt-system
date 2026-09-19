@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { ApiClient, ApiRequestError, loadRuntimeConfig, RuntimeConfigError } from "./index";
+import { ApiClient, ApiRequestError, loadRuntimeConfig, newIdempotencyKey, RuntimeConfigError } from "./index";
 
 function json(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
@@ -216,5 +216,49 @@ describe("ApiClient service catalogue", () => {
     expect(body(13)).toEqual({ preference_weight: 2 });
     expect((fetchImpl.mock.calls[14]?.[1] as RequestInit).body).toBeUndefined();
     expect(body(22)).toEqual({ user_id: "u1" });
+  });
+  it("issues a ticket with an Idempotency-Key that survives a token refresh retry, and reads tickets, queues and site services", async () => {
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValueOnce(json(401, { error: { code: "token_invalid", message: "x", trace_id: "t" } }))
+      .mockImplementation(async () => json(201, { id: "t1" }));
+    let token = "old";
+    const client = new ApiClient({
+      apiOrigin: "",
+      fetch: fetchImpl as unknown as typeof fetch,
+      getAccessToken: () => token,
+      onTokenInvalid: async () => {
+        token = "new";
+        return true;
+      },
+    });
+
+    await client.tickets.issue({ service_id: "v1", origin_channel: "reception" }, "key-1");
+    await client.tickets.get("t1");
+    await client.queues.snapshot("v1");
+    await client.queues.snapshot("v1", 5);
+    await client.sites.services("s1");
+    await client.sites.services("s1", "reception");
+
+    const calls = fetchImpl.mock.calls.map(([url, init]) => `${(init as RequestInit).method} ${String(url).replace("/api/v1", "")}`);
+    expect(calls).toEqual([
+      "POST /tickets",
+      "POST /tickets",
+      "GET /tickets/t1",
+      "GET /queues/v1",
+      "GET /queues/v1?limit=5",
+      "GET /sites/s1/services",
+      "GET /sites/s1/services?channel=reception",
+    ]);
+    const headers = (index: number) => (fetchImpl.mock.calls[index]?.[1] as RequestInit).headers as Record<string, string>;
+    expect(headers(0)["Idempotency-Key"]).toBe("key-1");
+    expect(headers(1)["Idempotency-Key"]).toBe("key-1");
+    expect(headers(1).Authorization).toBe("Bearer new");
+    expect(headers(2)["Idempotency-Key"]).toBeUndefined();
+    expect(JSON.parse(String((fetchImpl.mock.calls[0]?.[1] as RequestInit).body))).toEqual({ service_id: "v1", origin_channel: "reception" });
+  });
+
+  it("makes a new idempotency key each time", () => {
+    expect(newIdempotencyKey()).not.toBe(newIdempotencyKey());
   });
 });
