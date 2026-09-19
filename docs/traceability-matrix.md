@@ -475,6 +475,33 @@ ticket's `purpose_note` when Reception subsequently calls `POST /tickets`, which
 accepts `purpose_note`. A walk-in's pass reference is written into `visitor.external_code` (now unique), so a returning walk-in is
 a known visitor on their next visit, consistent with FR-INT-011's "upsert by external code" language for a later CSV import.
 
+## Ticket 23, visitor CSV import
+
+`Parser` = `B/issuance/VisitorCsvParserTest`, `IT` = `B/issuance/VisitorCsvImportIT`.
+
+| Requirement ID | Section | Test type | Test reference | Status |
+|---|---|---|---|---|
+| FR-INT-010 CSV import is the second v1 `VisitorDirectory` source, alongside the local `visitor` table | §22.2 | integration | `IT#aCsvImportedVisitorIsFoundThroughTheSameVisitorDirectoryLookupAWalkInIs` (an imported visitor resolves through the very `GET /visitors/lookup` a walk-in does, by code and by phone) | passing |
+| FR-INT-011 manual upload and scheduled folder pickup, with column mapping, a validation report, and upsert by external code | §22.2 | unit, integration | `Parser` (the CSV reader itself: quoting, escaped quotes, CRLF, short rows, blank lines); `IT#theDefaultMappingMatchesTheTargetFieldNamesUntilAnAdminSavesOneOfTheirOwn`, `#anAdminCanRemapCsvHeadersThatDoNotMatchTheTargetFieldNames`, `#anExternalCodeColumnAndANameColumnAreRequiredToSaveAMapping`, `#aManualUploadInsertsNewVisitorsAndReportsTheCounts`, `#importingTheSameExternalCodeAgainUpdatesTheExistingVisitorInsteadOfDuplicatingIt`, `#rowsMissingTheRequiredColumnsAreSkippedAndListedInTheValidationReportWhileValidRowsStillImport`, `#aCsvMissingAMappedColumnInItsHeaderIsRefusedBeforeAnyRowIsProcessed`, `#emptyContentIsValidationFailed`, `#theSchedulerImportsEveryCsvFileWaitingInThePickupDirectoryAndMovesItAsideAfterward`, `#aFileThatFailsToImportIsMovedToTheFailedSubfolderInstead`, `#aBlankPickupDirLeavesTheSchedulerDoingNothing`; `F/apps/admin/src/components/VisitorImportAdmin.test.tsx` (mapping form, file upload, validation report, run history, in the admin UI) | passing |
+| §5.2 CSV import needs `visitor_pii:view`, the closest fit already in the closed permission set (§5.2 has no row of its own for it); an Agent's own-records scope never qualifies | §5.2 | integration | `IT#anAgentCannotImportOrSeeTheMappingOrRunsOnlyItsOwnRecordsScopeOfVisitorPiiViewNeverQualifies`, `#anOrgAdminCanImportToo` | passing |
+| FR-SEC-042 a completed import and a mapping change write audit entries | §18.3 | integration | `IT#aManualUploadInsertsNewVisitorsAndReportsTheCounts` (asserts one `visitor.import.completed` audit row) | passing |
+| Past runs, including a scheduled one nobody was present for, stay visible as a report | §22.2 | integration | `IT#pastRunsAreListedMostRecentFirstAndOneIsRetrievableInFull`, `#anUnknownRunIdIsNotFound` | passing |
+| FR-I18N-001 the new strings are in both packs | §17 | unit | `F/packages/i18n/src/i18n.test.ts` (pack parity; `visitorImport.*`, `admin.home.visitorImport` resolve in en and bn) | passing |
+| §18.2 the V19 migration is forward-only and re-runnable | §18, §26 | integration | `B/platform/MigrationIT#everyMigrationScriptCanBeReExecutedAgainstAnAlreadyMigratedDatabase` (V19) | passing |
+| Definition of done §27.5 item 6, administrator guide | §27.5 | manual | `docs/admin-guide.md` section 17 | passing |
+
+**Notes on this ticket's interpretation.** CSV import is deliberately not a second `VisitorDirectory` Java implementation: it
+upserts by `external_code` into the exact same `visitor` table `LocalVisitorDirectory` already reads (ticket 22's V18 comment
+anticipated this: "the same column is what a future remote directory adapter would upsert by"), so an imported visitor is found
+through the one existing implementation rather than a second bean racing it for the same rows. §5.2's permission matrix is a
+closed, SRS-defined set (FR-CFG-101); it has no row for CSV import, so `visitor_pii:view` — the same permission the visitor
+directory's own search already needs — is reused as the closest fit, consistent with ticket 22 reusing `ticket:issue` for
+registration. This is broader than "admin" (it also admits Team Admin and Reception, matching that permission's existing §5.2
+row), but excludes an Agent, who only ever holds the directory's own-records scope, never the plain authority a bulk import
+needs; the admin app's own navigation link is still shown only to System Administrator and Org Admin. Column mapping is a
+single, global setting (not per-site), matching the visitor directory's own scope (§16: "the directory is not a per-site
+record"). A run's validation errors are capped at 500 per file as a defensive limit; `failed_count` itself is never capped.
+
 ## Notes
 
 - **Compose.** Verified by hand on 2026-09-19 with OrbStack Docker, from a clean build: `migrate` exited 0, then Postgres,

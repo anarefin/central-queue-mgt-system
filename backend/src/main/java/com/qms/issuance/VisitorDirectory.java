@@ -11,6 +11,11 @@ import java.util.UUID;
  * interface, ahead of the local one in the wired list (FR-INT-012). Every implementation MUST answer promptly:
  * {@link VisitorDirectoryGateway} wraps each call in a hard timeout so a slow or unreachable directory can never hold
  * up a caller, and falls through to the next directory instead (FR-INT-013).
+ *
+ * <p>FR-INT-010's second v1 source, CSV import ({@link VisitorImportService}, FR-INT-011), is not a second {@code
+ * VisitorDirectory} bean: it upserts by {@code external_code} into the very same {@code visitor} table this
+ * interface's one implementation already reads, so an imported visitor is found through this same {@code lookup} —
+ * the row it wrote is indistinguishable from one a walk-in registration wrote.
  */
 public interface VisitorDirectory {
 

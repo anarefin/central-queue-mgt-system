@@ -19,7 +19,14 @@ import type { NumberingPreview, NumberingRule, NumberingRuleChange, NumberingRul
 import type { AgentDay, CompleteInput, CounterSession, OpenSessionInput, SessionCounterOption, TransferInput, TransferResult, TransferTargets } from "./sessions";
 import type { TopicSnapshot } from "./stream";
 import type { IssueTicketInput, QueueSnapshot, ReprioritiseInput, SiteServices, Ticket, TicketChange } from "./tickets";
-import type { RegisterVisitorInput, VisitorMatch, VisitorRegistration } from "./visitors";
+import type {
+  RegisterVisitorInput,
+  VisitorImportMapping,
+  VisitorImportReport,
+  VisitorImportUploadInput,
+  VisitorMatch,
+  VisitorRegistration,
+} from "./visitors";
 
 export const API_BASE_PATH = "/api/v1";
 
@@ -213,6 +220,19 @@ export class ApiClient {
   readonly visitors = {
     lookup: (query: string) => this.request<VisitorMatch>("GET", `/visitors/lookup?q=${encodeURIComponent(query)}`),
     register: (input: RegisterVisitorInput) => this.request<VisitorRegistration>("POST", "/visitors", input),
+  };
+
+  /**
+   * Visitor master-data CSV import (FR-INT-010, FR-INT-011): the admin-set column mapping both a manual upload and
+   * the scheduled folder pickup use, a manual upload's own validation report, and the run history — including a
+   * scheduled run's report, which nobody was present to see synchronously.
+   */
+  readonly visitorImport = {
+    mapping: () => this.request<VisitorImportMapping>("GET", "/visitors/import/mapping"),
+    setMapping: (input: VisitorImportMapping) => this.request<VisitorImportMapping>("PUT", "/visitors/import/mapping", input),
+    upload: (input: VisitorImportUploadInput) => this.request<VisitorImportReport>("POST", "/visitors/import", input),
+    runs: () => this.request<Items<VisitorImportReport>>("GET", "/visitors/import/runs"),
+    run: (id: string) => this.request<VisitorImportReport>("GET", `/visitors/import/runs/${id}`),
   };
 
   readonly queues = {

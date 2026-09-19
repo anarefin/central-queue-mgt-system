@@ -558,3 +558,41 @@ can never hold up issuing a ticket.
 ```
 qms.visitor.directory-timeout=1500ms
 ```
+
+## 17. Visitor CSV import
+
+FR-INT-010's second v1 source for the visitor directory, alongside walk-in registration, is a CSV import of the client's
+visitor master data (SRS §22.2, FR-INT-011). It needs `visitor_pii:view` — the same permission the directory's own search
+already needs (§16); §5.2 has no row of its own for CSV import, and this is the closest fit already in the closed set. A
+CSV import writes into the exact same `visitor` table a walk-in's pass reference does, upserted by `external_code`, so an
+imported visitor is found through the same `GET /visitors/lookup` a walk-in is — CSV import is not a second
+`VisitorDirectory` implementation, it is a second way rows reach the one table the existing implementation reads.
+
+**Column mapping** (`GET`/`PUT /visitors/import/mapping`) is a single, admin-set mapping from the CSV's own header names
+to the visitor fields: `external_code` and `name` are mandatory (an upsert needs a key, and every visitor has a name);
+`phone`, `email` and `category` are optional — leaving one unmapped means that CSV carries no such column. The same
+mapping is used by every manual upload and every scheduled pickup, since a scheduled run has no admin present to map
+columns for it. Out of the box the mapping is `external_code`, `name`, `phone`, `email`, `category` — a CSV whose headers
+already match needs no admin action at all.
+
+**Manual upload** (`POST /visitors/import`, at `/admin/visitor-import/`) sends the file's raw text and runs it
+immediately with the saved mapping, upserting each row and returning a validation report on the spot: how many rows were
+seen, how many became a fresh visitor, how many updated one already known by its `external_code`, and every row skipped
+for missing its `external_code` or `name`, by line number. Importing the same `external_code` again updates that visitor
+in place; it is never duplicated.
+
+**Scheduled folder pickup** (FR-INT-011) needs no manual action at all: any `*.csv` file waiting in
+`qms.visitor.import.pickup-dir` is picked up, imported with the saved mapping exactly like a manual upload — only with
+`source` `scheduled` and no actor — and then moved aside into a `processed/` or `failed/` subfolder next to it, so it is
+never imported twice. It is off by default; how often the folder is checked is `qms.visitor.import.pickup-cron`, a cron
+expression defaulting to `-` (disabled), the same convention `qms.numbering.scheduler.cron` uses.
+
+```
+qms.visitor.import.pickup-dir=/var/qms/visitor-imports
+qms.visitor.import.pickup-cron=0 */15 * * * *
+```
+
+**Every run's report stays on record** (`GET /visitors/import/runs`, most recent first, and `GET
+/visitors/import/runs/{id}` for one in full), since a scheduled run has nobody present to see its report synchronously.
+A completed import writes a `visitor.import.completed` audit entry with its counts; changing the mapping writes
+`visitor.import.mapping_updated`.

@@ -47,6 +47,28 @@ class VisitorRepository {
         return id;
     }
 
+    /** One CSV row's outcome: {@code inserted} is false when a visitor with that {@code external_code} already existed and was updated instead. */
+    record UpsertResult(UUID id, boolean inserted) {}
+
+    /**
+     * CSV import's upsert (FR-INT-011): a fresh visitor is inserted, and one already known by this {@code
+     * external_code} (V18's unique index) is updated in place instead, never duplicated. This is what makes a
+     * CSV-imported visitor findable through the exact same {@link VisitorDirectory} a walk-in's pass reference already
+     * is (FR-INT-010) — both are rows of the one table {@link LocalVisitorDirectory} reads.
+     */
+    UpsertResult upsertByExternalCode(String externalCode, String name, String phone, String email, String category, Instant now) {
+        return jdbc.query(
+                        "INSERT INTO visitor (id, external_code, name, category, phone, email, created_at) VALUES (?, ?, ?, ?, ?, ?, ?) "
+                                + "ON CONFLICT (external_code) WHERE external_code IS NOT NULL DO UPDATE SET "
+                                + "name = EXCLUDED.name, phone = EXCLUDED.phone, email = EXCLUDED.email, category = EXCLUDED.category "
+                                + "RETURNING id, (xmax = 0) AS inserted",
+                        (rs, i) -> new UpsertResult(rs.getObject("id", UUID.class), rs.getBoolean("inserted")),
+                        UUID.randomUUID(), externalCode, name, category, phone, email, ts(now))
+                .stream()
+                .findFirst()
+                .orElseThrow();
+    }
+
     private static OffsetDateTime ts(Instant instant) {
         return instant.truncatedTo(ChronoUnit.MICROS).atOffset(ZoneOffset.UTC);
     }

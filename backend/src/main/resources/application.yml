@@ -48,6 +48,12 @@ qms:
     # FR-SEC-023: which OPTIONAL walk-in fields POST /visitors captures: email, category, purpose. name and phone are
     # always captured; they are the minimum record itself. A field left out is neither captured nor retained.
     registration-fields: ${QMS_VISITOR_REGISTRATION_FIELDS:email,category,purpose}
+    import:
+      # FR-INT-011: a folder VisitorImportScheduler polls for *.csv files to import unattended. Empty (the default)
+      # switches scheduled pickup off entirely; a manual upload through the API works either way. How often the
+      # folder is checked is qms.visitor.import.pickup-cron, a cron expression defaulting to "-" (disabled), the
+      # same convention as qms.numbering.scheduler.cron and qms.queue.call-timeout-check-cron.
+      pickup-dir: ${QMS_VISITOR_IMPORT_PICKUP_DIR:}
   # FR-AGT-034: which visitor fields the console shows a role, by role wire name, e.g.
   #   qms.console.visitor-fields.agent=code,category,purpose_note   (fields: code, name, category, purpose_note)
   # A role with no entry sees all of them; an entry with no fields shows none. Set it with properties or environment.
