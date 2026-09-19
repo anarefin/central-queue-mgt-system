@@ -14,11 +14,11 @@ import type {
 import type { Counter, CounterInput, Items, Site, SiteInput, Zone, ZoneInput } from "./hierarchy";
 import type { Channel } from "./catalogue";
 import type { AgentAvailability, AvailabilityInput, BreakReport, BreakReportQuery, BreakType, BreakTypeInput } from "./breaks";
-import type { PriorityClass, PriorityClassInput, QueueDryRun, QueueStrategy, RoutingStrategy } from "./priority";
+import type { PriorityClass, PriorityClassInput, PriorityDefaults, QueueDryRun, QueueStrategy, RoutingStrategy } from "./priority";
 import type { NumberingPreview, NumberingRule, NumberingRuleChange, NumberingRuleInput, NumberingScope } from "./numbering";
 import type { CompleteInput, CounterSession, OpenSessionInput, SessionCounterOption, TransferInput, TransferResult, TransferTargets } from "./sessions";
 import type { TopicSnapshot } from "./stream";
-import type { IssueTicketInput, QueueSnapshot, SiteServices, Ticket } from "./tickets";
+import type { IssueTicketInput, QueueSnapshot, ReprioritiseInput, SiteServices, Ticket, TicketChange } from "./tickets";
 
 export const API_BASE_PATH = "/api/v1";
 
@@ -193,6 +193,15 @@ export class ApiClient {
      */
     transfer: (id: string, input: TransferInput, version?: number) =>
       this.request<TransferResult>("POST", `/tickets/${id}/transfer`, input, { headers: ifMatch(version) }),
+    /**
+     * Give a waiting ticket another Priority class, with a mandatory reason recorded in the audit log (FR-QUE-012). The queue is
+     * ordered on every read, so the change is in the next snapshot.
+     */
+    setPriority: (id: string, input: ReprioritiseInput, version?: number) =>
+      this.request<TicketChange>("POST", `/tickets/${id}/priority`, input, { headers: ifMatch(version) }),
+    /** Cancel an active ticket (§19.1). The reason is optional; an agent may cancel only their own ticket (§5.2). */
+    cancel: (id: string, reason?: string, version?: number) =>
+      this.request<TicketChange>("POST", `/tickets/${id}/cancel`, reason ? { reason } : undefined, { headers: ifMatch(version) }),
   };
 
   readonly queues = {
@@ -293,6 +302,13 @@ export class ApiClient {
     strategy: (groupId: string) => this.request<RoutingStrategy>("GET", `/service-groups/${groupId}/routing-strategy`),
     setStrategy: (groupId: string, strategy: QueueStrategy) =>
       this.request<RoutingStrategy>("PUT", `/service-groups/${groupId}/routing-strategy`, { strategy }),
+    /** Where a new ticket's class comes from when staff choose none: a default per channel and per Service (FR-QUE-011). */
+    defaults: () => this.request<PriorityDefaults>("GET", "/priority-defaults"),
+    /** Set, or with `null` clear, the class a channel gives its tickets by default. It never changes a ticket already issued (FR-CFG-041). */
+    setChannelDefault: (channel: Channel, classId: string | null) =>
+      this.request<PriorityDefaults["channels"][number]>("PUT", `/priority-defaults/channels/${channel}`, { priority_class_id: classId }),
+    setServiceDefault: (serviceId: string, classId: string | null) =>
+      this.request<PriorityDefaults["services"][number]>("PUT", `/priority-defaults/services/${serviceId}`, { priority_class_id: classId }),
   };
 
   /**

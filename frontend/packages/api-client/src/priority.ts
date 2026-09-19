@@ -1,4 +1,4 @@
-import type { LocalisedText } from "./catalogue";
+import type { Channel, LocalisedText } from "./catalogue";
 import type { NameRef, TicketState } from "./tickets";
 
 /** Priority classes, ordering strategies and the queue dry-run (SRS §10.2, §10.3; FR-QUE-010, FR-QUE-021, FR-QUE-023). */
@@ -72,4 +72,14 @@ export interface QueueDryRun {
   computed_at: string;
   waiting_count: number;
   tickets: DryRunTicket[];
+}
+
+/**
+ * The classes tickets get when staff choose none and nothing more specific applies (FR-QUE-011): one entry per issuing channel
+ * (`priority_class_id` null where none is set) and the Services that have a default of their own. A default applies to tickets
+ * issued from then on; tickets already issued keep their class (FR-CFG-041).
+ */
+export interface PriorityDefaults {
+  channels: { channel: Channel; priority_class_id: string | null }[];
+  services: { service_id: string; priority_class_id: string }[];
 }

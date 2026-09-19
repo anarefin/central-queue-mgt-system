@@ -1,7 +1,7 @@
 # Traceability matrix
 
 SRS §27.1: every requirement ID maps to at least one automated test or documented UAT step, and a requirement with no
-test is treated as not implemented. Covers tickets 01–17; later tickets append rows.
+test is treated as not implemented. Covers tickets 01–18; later tickets append rows.
 
 **Test types:** unit, integration (real PostgreSQL through Testcontainers, or a full Spring context), E2E, UAT, load,
 manual. **Status:** `passing` (the test ran green in the last full run), `partial` (only part of the requirement is
@@ -371,6 +371,27 @@ with the requirements they extend (FR-QUE-080 here, FR-CFG-104 under ticket 04).
 | FR-I18N-001 the new strings are in both packs | §17 | unit | `F/packages/i18n/src/i18n.test.ts` (pack parity); `Console#shows the prompt in Bangla` | passing |
 | §18.2, §18.3 the V13 migration is forward-only and re-runnable | §18, §26 | integration | `B/platform/MigrationIT#everyMigrationScriptCanBeReExecutedAgainstAnAlreadyMigratedDatabase` (V13) | passing |
 | Definition of done §27.5 item 6, administrator guide | §27.5 | manual | `docs/admin-guide.md` section 12 | passing |
+
+## Ticket 18, re-prioritise and staff cancel
+
+`Engine` = `B/queue/ReprioritiseAndCancelTest`, `IT` = `B/session/TicketActionsIT`, `Client` = `F/packages/api-client/src/api-client.test.ts`,
+`Desk` = `F/apps/admin/src/components/ReceptionDesk.test.tsx` (describe "change of priority and cancel from the queue…"),
+`Priority` = `F/apps/admin/src/components/PriorityAdmin.test.tsx` (describe "default classes…").
+
+| Requirement ID | Section | Test type | Test reference | Status |
+|---|---|---|---|---|
+| FR-QUE-011 a ticket's class comes from manual assignment, appointment class, visitor category mapping, channel default, service default, in that order | §10.2 | unit, integration | `Engine#theSourcesAreConsultedInTheOrderStaffAppointmentVisitorCategoryChannelService`, `#aLowerSourceNeverOverridesAHigherOneWhateverIsBelowIt`, `#whenNoSourceNamesAClassTheTicketBelongsToTheDefaultClass`; `IT#aNewTicketTakesItsClassFromTheFirstSourceThatNamesOne`, `IT#aDefaultWhoseClassHasBeenSwitchedOffIsPassedOver`. Staff, channel and service are wired; the appointment and visitor category sources arrive with the tickets that build appointments and visitor categories | partial |
+| FR-QUE-011 the default class of a channel and of a Service is set in Admin, on the server, audited and scoped to the caller's sites | §10.2, §5.2 | integration, unit | `IT#defaultsAreSetOnTheServerAuditedAndCheckedForTheClassAndThePermission` (`priority_default.channel_updated`, `priority_default.service_updated`); `Priority#shows the default of each channel and service…`, `#saves a channel default and a service default, and clears one…`, `#says in words why the API refused a default`; `Client#maps the default classes onto /priority-defaults…` | passing |
+| FR-QUE-012, FR-SEC-040, UAT U9 a supervisor or reception changes a waiting ticket's class with a mandatory reason; the queue shows it at once; the reason is in the audit log | §10.2, §25.5 | unit, integration | `Engine#aTicketGivenAClassWithAHeadStartPassesTheTicketsItsHeadStartCoversAndKeepsItsWait`, `#theOtherTicketsKeepTheirOrderWhenOneChangesClass`, `#movingATicketBackToTheNormalClassTakesItsHeadStartAway`, `#onlyAWaitingTicketCanChangeClass`; `IT#aSupervisorMovesAWaitingTicketAheadAndTheQueueShowsItAtOnceWithTheReasonInTheAuditLog` (`ticket.priority_changed`, `ticket.position_changed`), `IT#receptionCanChangeTheClassBackToNormalAndTheDefaultClassIsStoredAsNoClass`, `IT#aChangeNeedsAReasonAnActiveClassAndAWaitingTicketThatIsNotAlreadyInThatClass` | passing |
+| FR-QUE-012 the desk asks for the reason, sends class and reason, reads the queue again and says why the API refused | §10.2 | unit | `Desk#changes a waiting ticket's class with a reason…`, `#asks for a reason before it asks the API…`, `#offers the normal class to move a ticket back…`, `#says in words why the API refused a change…`; `Client#maps a change of class and a cancel onto POST /tickets/{id}/priority and /cancel…` | passing |
+| FR-CFG-041 a configuration change never reprioritises an issued ticket | §7.6 | integration, unit | `IT#changingADefaultNeverMovesATicketThatWasAlreadyIssued`; `Priority#shows the default of each channel and service and says a default never changes a ticket that is already waiting` | passing |
+| §5.2, §19.1 staff cancel an active ticket (`POST /tickets/{id}/cancel`), `ticket.cancelled`, wait and service time stored, binding cleared, a closing session closes | §5.2, §19.1 | integration | `IT#receptionCancelsAWaitingTicketWhichLeavesTheQueueWithItsWaitStoredAndOneEvent`, `IT#aCancelIsAllowedFromEveryActiveStateAndAReasonIsOptional`, `IT#cancellingATicketInServiceClearsItsBindingStoresBothDurationsAndLeavesTheAgentFree`, `IT#cancellingTheTicketAClosingSessionWaitsOnClosesTheSession` | passing |
+| §5.2 agents cancel their own tickets only; every action is permission-, ownership- and site-checked on the server (FR-CFG-103, FR-CFG-105, FR-CFG-106) | §5.2 | integration | `IT#anAgentCancelsOnlyTheirOwnTickets`, `IT#aCancelIsCheckedOnTheServerForAuthenticationAndSite`, `IT#aChangeIsCheckedOnTheServerForThePermissionAndTheSite`; `B/identity/ControllerSecurityTest` (every new handler carries `@PreAuthorize`), `B/platform/security/PermissionMatrixTest` | passing |
+| NFR-MNT-004, §19.1 the engine suite covers waiting → cancelled and cancel from every active state | §24, §19.1 | unit | `Engine#cancellingAWaitingTicketClosesItAsCancelledAndWritesTicketCancelled`, `#anyActiveTicketCanBeCancelled`, `#aTicketThatHasAlreadyClosedCannotBeCancelled`, `#cancelIsNotOneOfTheTransitionsThatLeaveFromOneState` | passing |
+| Invariant 1, Invariant 3 a cancelled ticket's wait stops at the cancel, and every change writes exactly one event | §19.1 | unit, integration | `Engine#aCancelledWaitingTicketsWaitRunsUntilTheCancel`, `#aTicketCancelledWhileCalledOrServingWaitedOnlyUntilItsCall`, `#aChangeOfClassDoesNotBreakTheWaitTheTicketHasAccrued`; `IT` (event lists in the two tests above) | passing |
+| FR-I18N-001 the new strings are in both packs; Token numbers stay Western Arabic | §17 | unit | `F/packages/i18n/src/i18n.test.ts` (pack parity); `Desk#shows the actions in Bangla…`, `Priority#is in Bangla too` | passing |
+| §18.2, §18.3 the V14 migration is forward-only and re-runnable | §18, §26 | integration | `B/platform/MigrationIT#everyMigrationScriptCanBeReExecutedAgainstAnAlreadyMigratedDatabase` (V14) | passing |
+| Definition of done §27.5 item 6, administrator guide | §27.5 | manual | `docs/admin-guide.md` section 10 | passing |
 
 ## Notes
 

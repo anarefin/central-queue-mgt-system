@@ -382,3 +382,138 @@ describe("reception desk (SRS §8.3)", () => {
     expect(screen.queryByRole("link", { name: "Reception desk" })).not.toBeInTheDocument();
   });
 });
+
+describe("change of priority and cancel from the queue (FR-QUE-012, §5.2)", () => {
+  const waitingTicket = (id: string, token: string, klass = { id: "c0", name_i18n: { bn: "সাধারণ", en: "Normal" } }): Ticket => ({
+    ...ticket({ id, token_number: token, priority_class: klass }),
+    secret: undefined,
+  });
+  const twoWaiting = (): Desk => ({ ...fresh(), waiting: [waitingTicket("t1", "S-042"), waitingTicket("t2", "S-043")] });
+
+  const priorityCalls = (calls: Recorded[]) => calls.filter((c) => c.method === "POST" && c.path.endsWith("/priority"));
+  const cancelCalls = (calls: Recorded[]) => calls.filter((c) => c.method === "POST" && c.path.endsWith("/cancel"));
+  const queueReads = (calls: Recorded[]) => calls.filter((c) => c.path === "/queues/v1");
+
+  it("changes a waiting ticket's class with a reason, sends both to the API and reads the queue again", async () => {
+    const desk = twoWaiting();
+    const calls = fakeApi(desk, {
+      "POST /tickets/t2/priority": (init) => {
+        const input = JSON.parse(String(init.body)) as { priority_class_id: string };
+        expect(input.priority_class_id).toBe("c1");
+        // The queue is ordered on every read: the next snapshot has the ticket first.
+        desk.waiting = [{ ...desk.waiting[1]!, priority_class: { id: "c1", name_i18n: { en: "Senior citizen", bn: "বয়স্ক নাগরিক" } } }, desk.waiting[0]!];
+        return json(200, { id: "t2", token_number: "S-043", state: "waiting", priority_class_id: "c1", position: 1, version: 1 });
+      },
+    });
+    renderApp(<ReceptionDesk />);
+    await chooseConsultation();
+    await userEvent.click(await screen.findByRole("button", { name: "Change priority of S-043" }));
+
+    const form = screen.getByRole("form", { name: "Change priority of S-043" });
+    const select = within(form).getByLabelText("New priority class");
+    expect(within(select).getAllByRole("option").map((o) => o.textContent)).toEqual(["Senior citizen (head start 20 min)"]);
+    await userEvent.type(within(form).getByLabelText("Reason (kept in the audit log)"), "  Elderly visitor, long wait  ");
+    const before = queueReads(calls).length;
+    await userEvent.click(within(form).getByRole("button", { name: "Change priority" }));
+
+    expect(await screen.findByText("S-043 now queues as Senior citizen, position 1.")).toBeInTheDocument();
+    expect(priorityCalls(calls)).toHaveLength(1);
+    expect(priorityCalls(calls)[0]!.path).toBe("/tickets/t2/priority");
+    expect(JSON.parse(String(priorityCalls(calls)[0]!.init.body))).toEqual({ priority_class_id: "c1", reason: "Elderly visitor, long wait" });
+    await waitFor(() => expect(queueReads(calls).length).toBeGreaterThan(before));
+    const list = screen.getByRole("list", { name: "Queue for Consultation" });
+    expect(within(list).getAllByRole("listitem").map((li) => li.querySelector("strong")?.textContent)).toEqual(["S-043", "S-042"]);
+    expect(screen.queryByRole("form", { name: "Change priority of S-043" })).not.toBeInTheDocument();
+  });
+
+  it("asks for a reason before it asks the API, and never offers a class the ticket already has or a switched-off one", async () => {
+    const calls = fakeApi(twoWaiting());
+    renderApp(<ReceptionDesk />);
+    await chooseConsultation();
+    await userEvent.click(await screen.findByRole("button", { name: "Change priority of S-042" }));
+
+    const form = screen.getByRole("form", { name: "Change priority of S-042" });
+    expect(within(form).queryByRole("option", { name: "Retired class (head start 90 min)" })).not.toBeInTheDocument();
+    await userEvent.click(within(form).getByRole("button", { name: "Change priority" }));
+
+    expect(await within(form).findByRole("alert")).toHaveTextContent("Give a reason.");
+    expect(priorityCalls(calls)).toHaveLength(0);
+  });
+
+  it("offers the normal class to move a ticket back, by its plain name", async () => {
+    const senior = { id: "c1", name_i18n: { en: "Senior citizen", bn: "বয়স্ক নাগরিক" } };
+    fakeApi({ ...fresh(), waiting: [waitingTicket("t1", "S-042", senior)] });
+    renderApp(<ReceptionDesk />);
+    await chooseConsultation();
+    await userEvent.click(await screen.findByRole("button", { name: "Change priority of S-042" }));
+
+    const select = within(screen.getByRole("form", { name: "Change priority of S-042" })).getByLabelText("New priority class");
+    expect(within(select).getAllByRole("option").map((o) => o.textContent)).toEqual(["Normal"]);
+  });
+
+  it("says in words why the API refused a change and leaves the panel open", async () => {
+    const calls = fakeApi(twoWaiting(), {
+      "POST /tickets/t1/priority": () => json(409, { error: { code: "conflict", message: "x", details: { reason: "ticket_not_waiting" }, trace_id: "t" } }),
+    });
+    renderApp(<ReceptionDesk />);
+    await chooseConsultation();
+    await userEvent.click(await screen.findByRole("button", { name: "Change priority of S-042" }));
+    const form = screen.getByRole("form", { name: "Change priority of S-042" });
+    await userEvent.type(within(form).getByLabelText("Reason (kept in the audit log)"), "Urgent");
+    await userEvent.click(within(form).getByRole("button", { name: "Change priority" }));
+
+    expect(await within(form).findByRole("alert")).toHaveTextContent("This ticket is no longer waiting, so its class cannot be changed.");
+    expect(priorityCalls(calls)).toHaveLength(1);
+    await userEvent.click(within(form).getByRole("button", { name: "Close" }));
+    expect(screen.queryByRole("form", { name: "Change priority of S-042" })).not.toBeInTheDocument();
+  });
+
+  it("cancels a ticket with an optional reason and reads the queue again", async () => {
+    const desk = twoWaiting();
+    const calls = fakeApi(desk, {
+      "POST /tickets/t1/cancel": () => {
+        desk.waiting = desk.waiting.slice(1);
+        return json(200, { id: "t1", token_number: "S-042", state: "cancelled", priority_class_id: "c0", position: null, version: 1 });
+      },
+    });
+    renderApp(<ReceptionDesk />);
+    await chooseConsultation();
+    await userEvent.click(await screen.findByRole("button", { name: "Cancel S-042" }));
+
+    const form = screen.getByRole("form", { name: "Cancel S-042?" });
+    await userEvent.type(within(form).getByLabelText("Reason (optional)"), "Visitor left");
+    await userEvent.click(within(form).getByRole("button", { name: "Cancel this ticket" }));
+
+    expect(await screen.findByText("S-042 was cancelled.")).toBeInTheDocument();
+    expect(cancelCalls(calls)).toHaveLength(1);
+    expect(JSON.parse(String(cancelCalls(calls)[0]!.init.body))).toEqual({ reason: "Visitor left" });
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Cancel S-042" })).not.toBeInTheDocument());
+    expect(screen.getByRole("button", { name: "Cancel S-043" })).toBeInTheDocument();
+  });
+
+  it("cancels without a reason, and says when the ticket has already closed", async () => {
+    const calls = fakeApi(twoWaiting(), {
+      "POST /tickets/t2/cancel": () => json(409, { error: { code: "conflict", message: "x", details: { reason: "ticket_not_active" }, trace_id: "t" } }),
+    });
+    renderApp(<ReceptionDesk />);
+    await chooseConsultation();
+    await userEvent.click(await screen.findByRole("button", { name: "Cancel S-043" }));
+    const form = screen.getByRole("form", { name: "Cancel S-043?" });
+    await userEvent.click(within(form).getByRole("button", { name: "Cancel this ticket" }));
+
+    expect(await within(form).findByRole("alert")).toHaveTextContent("This ticket has already closed.");
+    expect(cancelCalls(calls)[0]!.init.body).toBeUndefined();
+  });
+
+  it("shows the actions in Bangla with the token number in Western Arabic digits (FR-I18N-020, §27.5)", async () => {
+    fakeApi(twoWaiting());
+    renderApp(<ReceptionDesk />, ["bn-BD"]);
+    await userEvent.click(await screen.findByRole("radio", { name: /পরামর্শ/ }));
+
+    await userEvent.click(await screen.findByRole("button", { name: "S-042-এর অগ্রাধিকার বদলান" }));
+    const form = screen.getByRole("form", { name: "S-042-এর অগ্রাধিকার বদলান" });
+    expect(within(form).getByLabelText("নতুন অগ্রাধিকার শ্রেণি")).toBeInTheDocument();
+    expect(within(form).getByLabelText("কারণ (নিরীক্ষা লগে সংরক্ষিত থাকবে)")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "S-043 বাতিল করুন" })).toBeInTheDocument();
+  });
+});

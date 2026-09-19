@@ -155,6 +155,77 @@ public class PriorityService {
         return view(groupId, Optional.of(chosen.wire()));
     }
 
+    // ---- defaults ----------------------------------------------------------------------------------------------
+
+    /** The class each channel gives its tickets, and the Services that give their own, within the caller's sites. */
+    @PreAuthorize(PERMISSION)
+    @Transactional(readOnly = true)
+    public PriorityDefaults defaults() {
+        Map<String, UUID> channels = repository.channelDefaults();
+        var sites = scope.sites(List.of());
+        var groups = scope.groups(List.of());
+        List<PriorityDefaults.Channel> channelViews = PriorityRules.CHANNELS.stream().map(c -> new PriorityDefaults.Channel(c, channels.get(c))).toList();
+        List<PriorityDefaults.Service> serviceViews = repository.serviceDefaults().stream()
+                .filter(v -> sites.isEmpty() || sites.contains(v.siteId()))
+                .filter(v -> groups.isEmpty() || groups.contains(v.groupId()))
+                .map(v -> new PriorityDefaults.Service(v.id(), v.defaultClassId()))
+                .toList();
+        return new PriorityDefaults(channelViews, serviceViews);
+    }
+
+    /**
+     * Sets or, with no class, clears the class the tickets of an issuing channel get by default (FR-QUE-011). It applies to tickets
+     * issued from now on and never moves one already issued (FR-CFG-041). Audited with before and after values (FR-SEC-040).
+     */
+    @PreAuthorize(PERMISSION)
+    @Transactional
+    public PriorityDefaults.Channel setChannelDefault(String channel, PriorityDefaultRequest request) {
+        if (!PriorityRules.CHANNELS.contains(channel)) throw new ApiException(ErrorCode.NOT_FOUND);
+        UUID classId = defaultClass(request);
+        UUID before = repository.channelDefaults().get(channel);
+        if (!java.util.Objects.equals(before, classId)) {
+            if (classId == null) repository.clearChannelDefault(channel);
+            else repository.setChannelDefault(channel, classId, clock.instant());
+            audit.record(AuditEvent.of("priority_default.channel_updated", "channel", null)
+                    .withBefore(defaultSnapshot("channel", channel, before))
+                    .withAfter(defaultSnapshot("channel", channel, classId)));
+        }
+        return new PriorityDefaults.Channel(channel, classId);
+    }
+
+    /** As {@link #setChannelDefault} for one Service, which is limited to the caller's sites and groups (FR-CFG-106). */
+    @PreAuthorize(PERMISSION)
+    @Transactional
+    public PriorityDefaults.Service setServiceDefault(UUID serviceId, PriorityDefaultRequest request) {
+        PriorityRepository.ServiceRef service = repository.service(serviceId).orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND));
+        scope.requireSite(service.siteId());
+        scope.requireGroup(service.groupId());
+        UUID classId = defaultClass(request);
+        if (!java.util.Objects.equals(service.defaultClassId(), classId)) {
+            repository.setServiceDefault(serviceId, classId, clock.instant());
+            audit.record(AuditEvent.of("priority_default.service_updated", "service", serviceId)
+                    .withBefore(defaultSnapshot("service", serviceId.toString(), service.defaultClassId()))
+                    .withAfter(defaultSnapshot("service", serviceId.toString(), classId)));
+        }
+        return new PriorityDefaults.Service(serviceId, classId);
+    }
+
+    /** The class a default names: one that exists and is active, or none to clear the default. */
+    private UUID defaultClass(PriorityDefaultRequest request) {
+        UUID id = request == null ? null : request.priorityClassId();
+        if (id == null) return null;
+        PriorityClass chosen = repository.find(id).orElseThrow(() -> PriorityRules.invalid("priority_class_id", "not_found"));
+        if (!chosen.active()) throw PriorityRules.invalid("priority_class_id", "inactive");
+        return id;
+    }
+
+    private static Map<String, Object> defaultSnapshot(String key, String value, UUID classId) {
+        Map<String, Object> values = new LinkedHashMap<>();
+        values.put(key, value);
+        values.put("priority_class_id", classId == null ? null : classId.toString());
+        return values;
+    }
+
     // ---- helpers -----------------------------------------------------------------------------------------------
 
     private static RoutingStrategyView view(UUID groupId, Optional<String> stored) {

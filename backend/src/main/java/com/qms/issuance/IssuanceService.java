@@ -10,6 +10,7 @@ import com.qms.platform.ApiException;
 import com.qms.platform.ErrorCode;
 import com.qms.platform.Profiles;
 import com.qms.platform.security.ScopeGuard;
+import com.qms.queue.PriorityPrecedence;
 import com.qms.queue.TicketEvents;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -85,7 +86,17 @@ public class IssuanceService {
         ServiceTarget target = tickets.serviceTarget(command.serviceId()).orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND));
         if (command.actorType() == ActorType.STAFF) scope.requireSite(target.siteId());
         requireIssuable(target, command.originChannel());
-        PriorityClassRef priority = command.priorityClassId() == null ? null : requireIssuableClass(command.priorityClassId());
+        if (command.priorityClassId() != null) requireIssuableClass(command.priorityClassId());
+        // The class is decided once, here, and stored on the ticket, so a change to a default later cannot move it (FR-CFG-041).
+        // Appointments and visitor categories do not exist yet; their sources are passed as none until they do.
+        PriorityPrecedence.Choice choice = PriorityPrecedence.choose(
+                command.priorityClassId(),
+                null,
+                null,
+                tickets.channelDefaultClass(command.originChannel()).orElse(null),
+                tickets.serviceDefaultClass(target.serviceId()).orElse(null));
+        UUID priorityClassId = choice.classId();
+        PriorityClassRef priority = priorityClassId == null ? null : tickets.priorityClass(priorityClassId).orElseThrow();
 
         Instant now = clock.instant();
         NumberingSpec rule = numbering.effective(target.serviceId(), target.groupId());
@@ -101,7 +112,7 @@ public class IssuanceService {
         tickets.insertVisit(visitId, target.siteId(), now);
         UUID ticketId = UUID.randomUUID();
         tickets.insertTicket(new NewTicket(
-                ticketId, tokenNumber, sequence, resetKey, target, tickets.waitingZone(target.serviceId()), visitId, command.originChannel(), now, hash(secret), command.priorityClassId()));
+                ticketId, tokenNumber, sequence, resetKey, target, tickets.waitingZone(target.serviceId()), visitId, command.originChannel(), now, hash(secret), priorityClassId));
         events.append(new TicketEvents.Transition(
                 ticketId,
                 ISSUED,
@@ -110,10 +121,10 @@ public class IssuanceService {
                 command.actorId(),
                 command.actorType().wire(),
                 null,
-                eventPayload(command, tokenNumber),
+                eventPayload(command, tokenNumber, choice),
                 command.deviceTime() == null ? now : command.deviceTime(),
                 now));
-        audit.record(AuditEvent.of(ISSUED, "ticket", ticketId).withAfter(snapshot(ticketId, tokenNumber, target, command.originChannel(), visitId, command.priorityClassId())));
+        audit.record(AuditEvent.of(ISSUED, "ticket", ticketId).withAfter(snapshot(ticketId, tokenNumber, target, command.originChannel(), visitId, priorityClassId)));
 
         return views.of(tickets.ticket(ticketId).orElseThrow()).withSecret(secret);
     }
@@ -127,11 +138,14 @@ public class IssuanceService {
         return priority;
     }
 
-    private static Map<String, Object> eventPayload(IssueCommand command, String tokenNumber) {
+    private static Map<String, Object> eventPayload(IssueCommand command, String tokenNumber, PriorityPrecedence.Choice choice) {
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("origin_channel", command.originChannel());
         payload.put("token_number", tokenNumber);
-        if (command.priorityClassId() != null) payload.put("priority_class_id", command.priorityClassId().toString());
+        if (choice.classId() != null) {
+            payload.put("priority_class_id", choice.classId().toString());
+            payload.put("priority_source", choice.source().wire());
+        }
         return payload;
     }
 

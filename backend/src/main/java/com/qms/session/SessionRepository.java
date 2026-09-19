@@ -415,6 +415,84 @@ class SessionRepository {
                 transition.to(), scoreAdjustmentMinutes, ticketId, version, transition.from(), sessionId) == 1;
     }
 
+    // ---- staff actions on a ticket: change of class and cancel (FR-QUE-012, SRS §19.1) --------------------------
+
+    /** A ticket as staff act on it: where it is queued or bound, whom it is meant for, and the class it carries (null is the default class). */
+    record ActionTicket(
+            UUID id,
+            String tokenNumber,
+            String state,
+            int version,
+            UUID serviceId,
+            UUID groupId,
+            UUID siteId,
+            UUID sessionId,
+            UUID counterId,
+            UUID targetAgentId,
+            UUID priorityClassId,
+            Instant queuedAt,
+            Instant servedAt) {}
+
+    /** The ticket, locked until the transaction ends when {@code lock} is set, so a call or a second action cannot interleave with a write. */
+    Optional<ActionTicket> actionTicket(UUID ticketId, boolean lock) {
+        return jdbc.query(
+                        "SELECT id, token_number, state, version, service_id, service_group_id, site_id, counter_session_id, counter_id, target_agent_id,"
+                                + " priority_class_id, queued_at, served_at FROM ticket WHERE id = ?" + (lock ? " FOR UPDATE" : ""),
+                        (rs, i) -> new ActionTicket(
+                                rs.getObject("id", UUID.class),
+                                rs.getString("token_number"),
+                                rs.getString("state"),
+                                rs.getInt("version"),
+                                rs.getObject("service_id", UUID.class),
+                                rs.getObject("service_group_id", UUID.class),
+                                rs.getObject("site_id", UUID.class),
+                                rs.getObject("counter_session_id", UUID.class),
+                                rs.getObject("counter_id", UUID.class),
+                                rs.getObject("target_agent_id", UUID.class),
+                                rs.getObject("priority_class_id", UUID.class),
+                                instant(rs, "queued_at"),
+                                instant(rs, "served_at")),
+                        ticketId)
+                .stream().findFirst();
+    }
+
+    /** A Priority class as a change of class needs it. */
+    record ClassRow(UUID id, boolean active, boolean isDefault) {}
+
+    Optional<ClassRow> priorityClass(UUID id) {
+        return jdbc.query(
+                        "SELECT id, active, is_default FROM priority_class WHERE id = ?",
+                        (rs, i) -> new ClassRow(rs.getObject("id", UUID.class), rs.getBoolean("active"), rs.getBoolean("is_default")),
+                        id)
+                .stream().findFirst();
+    }
+
+    /** The default (normal) class: the one a ticket with no class of its own belongs to. */
+    UUID defaultClassId() {
+        return jdbc.queryForObject("SELECT id FROM priority_class WHERE is_default", UUID.class);
+    }
+
+    /**
+     * Gives a waiting ticket another class (null is the default class). Nothing else about the ticket changes: its wait and its
+     * Score adjustment are its own, so it moves by the difference of the Head starts only (ADR-0003, ADR-0004).
+     */
+    boolean reprioritise(UUID ticketId, int version, UUID priorityClassId) {
+        return jdbc.update(
+                "UPDATE ticket SET priority_class_id = ?, version = version + 1 WHERE id = ? AND version = ? AND state = 'waiting'",
+                priorityClassId, ticketId, version) == 1;
+    }
+
+    /**
+     * Closes an active ticket as {@code cancelled}: like any terminal state it clears the binding, and the counter and agent stay as
+     * history. Its wait is stored now and, if service had started, so is its service time (§18.5).
+     */
+    boolean cancel(UUID ticketId, int version, Instant now, int waitSeconds, Integer serviceSeconds) {
+        return jdbc.update(
+                "UPDATE ticket SET state = ?, counter_session_id = NULL, closed_at = ?, wait_seconds = ?, service_seconds = ?, version = version + 1"
+                        + " WHERE id = ? AND version = ? AND state IN ('remote', 'waiting', 'paused', 'called', 'serving', 'held')",
+                TicketTransition.CANCELLED, ts(now), waitSeconds, serviceSeconds, ticketId, version) == 1;
+    }
+
     /** The ticket an agent names for an out-of-order call, wherever it is now; empty when there is no such ticket. */
     Optional<WaitingTicket> waitingTicket(UUID ticketId) {
         return jdbc.query(

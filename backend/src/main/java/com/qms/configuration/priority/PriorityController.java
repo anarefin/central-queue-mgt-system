@@ -68,6 +68,25 @@ public class PriorityController {
         return priority.activate(id);
     }
 
+    /** The classes tickets get by default per channel and per Service when staff choose none (FR-QUE-011). */
+    @PreAuthorize(PERMISSION)
+    @GetMapping("/priority-defaults")
+    public PriorityDefaults defaults() {
+        return priority.defaults();
+    }
+
+    @PreAuthorize(PERMISSION)
+    @PutMapping("/priority-defaults/channels/{channel}")
+    public PriorityDefaults.Channel setChannelDefault(@PathVariable String channel, @RequestBody(required = false) PriorityDefaultRequest request) {
+        return priority.setChannelDefault(channel, request);
+    }
+
+    @PreAuthorize(PERMISSION)
+    @PutMapping("/priority-defaults/services/{serviceId}")
+    public PriorityDefaults.Service setServiceDefault(@PathVariable UUID serviceId, @RequestBody(required = false) PriorityDefaultRequest request) {
+        return priority.setServiceDefault(serviceId, request);
+    }
+
     @PreAuthorize(PERMISSION)
     @GetMapping("/service-groups/{id}/routing-strategy")
     public RoutingStrategyView strategy(@PathVariable UUID id) {

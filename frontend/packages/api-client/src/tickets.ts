@@ -66,6 +66,24 @@ export interface IssueTicketInput {
   priority_class_id?: string;
 }
 
+/** What a staff action on a ticket leaves behind (change of class, cancel). `position` is null once the ticket has left the queue. */
+export interface TicketChange {
+  id: string;
+  token_number: string;
+  state: TicketState;
+  /** The class the ticket now queues under; the default (normal) class is named too. */
+  priority_class_id: string;
+  position: number | null;
+  /** The ticket's version after the change, for the next `If-Match`. */
+  version: number;
+}
+
+/** A change of a waiting ticket's class (FR-QUE-012): the reason is mandatory and goes to the audit log. */
+export interface ReprioritiseInput {
+  priority_class_id: string;
+  reason: string;
+}
+
 export interface QueuedTicket {
   id: string;
   token_number: string;

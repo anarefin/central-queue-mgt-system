@@ -1,6 +1,7 @@
 package com.qms.queue;
 
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * The ticket transitions a counter session drives (SRS §19.1): {@code waiting → called → serving → completed}, and the two
@@ -58,6 +59,28 @@ public enum TicketTransition {
 
     public String eventType() {
         return eventType;
+    }
+
+    /** The state a ticket closes in when it is cancelled, and the event that says so (SRS §19.1: any active state to {@code cancelled}). */
+    public static final String CANCELLED = "cancelled";
+
+    public static final String CANCELLED_EVENT = "ticket.cancelled";
+
+    /** The states in which a ticket is still live: everything but the terminal states. */
+    private static final Set<String> ACTIVE = Set.of("remote", "waiting", "paused", "called", "serving", "held");
+
+    /**
+     * Cancel is not one of the transitions above because it leaves from every active state, not from one (SRS §19.1). It
+     * closes the ticket as {@code cancelled}, which is terminal, so it clears the Session binding like every terminal state
+     * (Invariant 2). Empty from a state that has already closed.
+     */
+    public static Optional<String> cancel(String state) {
+        return ACTIVE.contains(state) ? Optional.of(CANCELLED) : Optional.empty();
+    }
+
+    /** Only a waiting ticket can be given another Priority class (FR-QUE-012); one being served has left the queue. */
+    public static boolean mayReprioritise(String state) {
+        return "waiting".equals(state);
     }
 
     /** The state {@code state} moves to under this transition, or empty when the transition is not allowed from there. */

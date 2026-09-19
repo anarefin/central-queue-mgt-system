@@ -250,6 +250,33 @@ API, all under `/api/v1`: `GET /priority-classes` (also for Reception, `ticket:i
 `GET|PUT /service-groups/{id}/routing-strategy` and `GET /queues/{serviceId}/dry-run[?strategy=]`. `POST /tickets`
 takes an optional `priority_class_id`; an unknown or deactivated class is refused with `validation_failed`.
 
+**Where a new ticket's class comes from** (FR-QUE-011). When staff choose no class, the ticket takes the class of the first of
+these that names one: the appointment's class, the class mapped to the visitor's category, the default of the issuing
+channel, the default of the service; otherwise it is a normal ticket. Staff's own choice beats them all. The channel and
+service defaults are set on the same screen under **Default classes**; the appointment and visitor category sources arrive
+with the tickets that build appointments and visitor categories. A default whose class is later deactivated is passed
+over. A default applies to tickets issued **from then on**: tickets already waiting keep the class they have, however
+a default is changed afterwards (FR-CFG-041).
+
+**Changing a waiting ticket's class** (FR-QUE-012, UAT U9). At the reception desk, beside each waiting ticket in the queue,
+**Change priority** opens a form with the new class and a **mandatory reason**. Reception, Team Admins, Org Admins and System
+Admins have the `ticket:reprioritise` permission, within their sites and service groups; Agents do not. The ticket keeps its
+wait and only its class changes, so it moves by the difference of the head starts and the queue shows the new order from its
+next read; consoles and displays are told by a `ticket.position_changed` event. Only a waiting ticket can change class.
+The change is audited as `ticket.priority_changed` with the old and new class and the reason (FR-SEC-040).
+
+**Cancelling a ticket** (SRS §19.1, §5.2). **Cancel ticket** beside a ticket in the queue closes it as `cancelled` (an
+optional reason is kept in the audit log as `ticket.cancelled`). Any active ticket can be cancelled: waiting, paused, called,
+serving or held. Reception, Team Admins, Org Admins and System Admins may cancel any ticket in their sites and service groups;
+an Agent only their own, meaning a ticket their session has called, is serving or holds, or one meant for them. A ticket
+that was in a session leaves it, and a session that was closing on that ticket closes. The wait, and the service time if
+service had started, are stored on the ticket.
+
+API additions, under `/api/v1`: `POST /tickets/{id}/priority` (body `priority_class_id` and `reason`), `POST /tickets/{id}/cancel`
+(body `reason`, optional), both with an optional `If-Match` ticket version; `GET /priority-defaults`,
+`PUT /priority-defaults/channels/{channel}` and `PUT /priority-defaults/services/{serviceId}` (body `priority_class_id`, `null`
+clears the default), all with `config:priority_routing`.
+
 ## 11. Rotating the signing key
 
 ```

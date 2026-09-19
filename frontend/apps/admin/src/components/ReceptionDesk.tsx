@@ -1,6 +1,6 @@
 "use client";
 
-import { ApiRequestError, newIdempotencyKey, type PriorityClass, type QueueSnapshot, type SiteServices, type Ticket } from "@qms/api-client";
+import { ApiRequestError, newIdempotencyKey, type PriorityClass, type QueuedTicket, type QueueSnapshot, type SiteServices, type Ticket } from "@qms/api-client";
 import { formatTokenNumber } from "@qms/i18n";
 import { useI18n } from "@qms/i18n/react";
 import { Button, Card, ErrorAlert, SelectField } from "@qms/ui";
@@ -8,6 +8,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { describeError, localisedName } from "../lib/admin-support";
 import { useAuth } from "../lib/auth";
 import { useApi } from "../lib/runtime";
+import { TicketActionPanel } from "./TicketActionPanel";
 
 /** Reasons the API gives a refused issue that this screen has a sentence for. */
 const REFUSALS = new Set(["service_inactive", "channel_not_allowed", "appointment_only"]);
@@ -17,7 +18,8 @@ const REFUSALS = new Set(["service_inactive", "channel_not_allowed", "appointmen
  * visitor, and watch the service's queue. The screen only asks; the API checks the permission and the site
  * (FR-CFG-103). Each issuing action has one idempotency key that it keeps until the API has answered, so pressing the
  * button again after a lost response returns the same ticket instead of a second one (SRS §20.1). Reception may give
- * the ticket a Priority class (FR-QUE-011); leaving it on the default is the normal class.
+ * the ticket a Priority class (FR-QUE-011); leaving it on the default is the normal class. From the queue, reception may change
+ * a waiting ticket's class with a reason (FR-QUE-012) or cancel a ticket (§5.2).
  */
 export function ReceptionDesk() {
   const { t, language } = useI18n();
@@ -38,6 +40,9 @@ export function ReceptionDesk() {
   const [issuing, setIssuing] = useState(false);
   const [issueError, setIssueError] = useState<string | null>(null);
   const pending = useRef<{ request: string; key: string } | null>(null);
+  /** The ticket in the queue an action is open for, and what it is. */
+  const [acting, setActing] = useState<{ entry: QueuedTicket; mode: "priority" | "cancel" } | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
 
   const loadServices = useCallback(async () => {
     if (!client || !siteId) return;
@@ -79,8 +84,21 @@ export function ReceptionDesk() {
 
   useEffect(() => {
     setQueue(null);
+    setActing(null);
+    setNotice(null);
     if (selected) void loadQueue(selected);
   }, [selected, loadQueue]);
+
+  function openAction(entry: QueuedTicket, mode: "priority" | "cancel") {
+    setNotice(null);
+    setActing({ entry, mode });
+  }
+
+  async function actionDone(message: string) {
+    setActing(null);
+    setNotice(message);
+    await Promise.all([loadServices(), loadQueue(selected)]);
+  }
 
   async function issue() {
     if (!client || !selected) return;
@@ -194,15 +212,52 @@ export function ReceptionDesk() {
                           {entry.priority_class && entry.priority_class.id !== defaultClassId && <> · {nameOf(entry.priority_class.name_i18n)}</>}
                         </span>
                         {entry.escalated && <span className="qms-warning">{t("reception.queue.escalated")}</span>}
+                        <span className="qms-row">
+                          {entry.state === "waiting" && (
+                            <Button
+                              variant="secondary"
+                              type="button"
+                              aria-label={t("reception.action.priorityOf", { token: formatTokenNumber(entry.token_number) })}
+                              onClick={() => openAction(entry, "priority")}
+                            >
+                              {t("reception.action.priority")}
+                            </Button>
+                          )}
+                          <Button
+                            variant="secondary"
+                            type="button"
+                            aria-label={t("reception.action.cancelOf", { token: formatTokenNumber(entry.token_number) })}
+                            onClick={() => openAction(entry, "cancel")}
+                          >
+                            {t("reception.action.cancel")}
+                          </Button>
+                        </span>
                       </li>
                     ))}
                   </ol>
                 )}
               </>
             )}
+            {notice !== null && (
+              <p role="status" className="qms-muted">
+                {notice}
+              </p>
+            )}
           </>
         )}
       </Card>
+
+      {acting && classes && (
+        <TicketActionPanel
+          key={`${acting.mode}-${acting.entry.id}`}
+          mode={acting.mode}
+          entry={acting.entry}
+          classes={classes}
+          nameOf={nameOf}
+          onClose={() => setActing(null)}
+          onDone={(message) => void actionDone(message)}
+        />
+      )}
     </div>
   );
 }

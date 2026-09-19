@@ -68,5 +68,13 @@ from setting availability, and an admin outside the agent's site or Service grou
 does not offer, a missing or unknown outcome, a missing or blank `reason` or missing `ticket_id` on an out-of-order call, or a malformed `If-Match` is `validation_failed` naming the field;
 a `parallel_limit` outside 1 to 20, or below 2 while `parallel_serving` is on, is `validation_failed` naming `parallel_limit`.
 
+A change of a waiting ticket's class (`POST /tickets/{id}/priority`, ticket 18) refuses with `conflict` and `ticket_not_waiting` (the ticket is
+not waiting), `same_priority_class` (it already has that class) or `version_mismatch` (a stale `If-Match`); a missing `priority_class_id` or
+`reason`, a blank or over-long `reason` (1000 characters), or an unknown or deactivated class is `validation_failed` naming the field; a role
+without `ticket:reprioritise` (an Agent), or a ticket outside the caller's sites or service groups, is `forbidden`. A staff cancel
+(`POST /tickets/{id}/cancel`) refuses with `conflict` and `ticket_not_active` (the ticket has already closed) or `version_mismatch`; an Agent
+cancelling a ticket that is not their own is `forbidden`. The default classes (`PUT /priority-defaults/...`) answer an unknown channel or
+service with `not_found` and an unknown or deactivated class with `validation_failed` naming `priority_class_id`.
+
 The client library also synthesises two codes that never come from the server: `network_error` (no response) and
 `unexpected_response` (a reply that is not a §20.3 envelope, such as a proxy error page).

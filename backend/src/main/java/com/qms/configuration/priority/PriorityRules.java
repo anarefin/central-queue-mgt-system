@@ -11,6 +11,9 @@ final class PriorityRules {
 
     static final int MAX_MINUTES = 1440;
 
+    /** The issuing channels a default can be set for (SRS §8). */
+    static final List<String> CHANNELS = List.of("kiosk", "reception", "mobile", "appointment_checkin");
+
     private PriorityRules() {}
 
     static ApiException invalid(String field, String code) {

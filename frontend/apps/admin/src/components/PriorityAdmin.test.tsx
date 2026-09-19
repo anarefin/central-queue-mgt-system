@@ -1,4 +1,4 @@
-import type { PriorityClass, PriorityClassInput, QueueDryRun, QueueStrategy, ServiceGroup, Site } from "@qms/api-client";
+import type { PriorityClass, PriorityClassInput, PriorityDefaults, QueueDryRun, QueueStrategy, ServiceGroup, Site } from "@qms/api-client";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -78,6 +78,7 @@ afterEach(() => {
 interface State {
   classes: PriorityClass[];
   strategy: { strategy: QueueStrategy; is_default: boolean };
+  defaults: PriorityDefaults;
 }
 
 const AVAILABLE: QueueStrategy[] = ["weighted_wait", "strict_priority", "fifo"];
@@ -116,6 +117,17 @@ function fakeApi(state: State, extra: Routes = {}): Recorded[] {
       state.classes = state.classes.map((c) => (c.id === "c1" ? { ...c, active: true } : c));
       return json(200, state.classes.find((c) => c.id === "c1"));
     },
+    "GET /priority-defaults": () => json(200, state.defaults),
+    "PUT /priority-defaults/channels/kiosk": (init) => {
+      const saved = { channel: "kiosk" as const, priority_class_id: (JSON.parse(String(init.body)) as { priority_class_id: string | null }).priority_class_id };
+      state.defaults = { ...state.defaults, channels: state.defaults.channels.map((c) => (c.channel === "kiosk" ? saved : c)) };
+      return json(200, saved);
+    },
+    "PUT /priority-defaults/services/v1": (init) => {
+      const classId = (JSON.parse(String(init.body)) as { priority_class_id: string | null }).priority_class_id;
+      state.defaults = { ...state.defaults, services: classId ? [{ service_id: "v1", priority_class_id: classId }] : [] };
+      return json(200, { service_id: "v1", priority_class_id: classId });
+    },
     "GET /service-groups/g1/routing-strategy": () => json(200, { service_group_id: "g1", ...state.strategy, available: AVAILABLE }),
     "PUT /service-groups/g1/routing-strategy": (init) => {
       state.strategy = { strategy: (JSON.parse(String(init.body)) as { strategy: QueueStrategy }).strategy, is_default: false };
@@ -125,7 +137,19 @@ function fakeApi(state: State, extra: Routes = {}): Recorded[] {
   });
 }
 
-const fresh = (): State => ({ classes: [NORMAL, SENIOR], strategy: { strategy: "weighted_wait", is_default: true } });
+const fresh = (): State => ({
+  classes: [NORMAL, SENIOR],
+  strategy: { strategy: "weighted_wait", is_default: true },
+  defaults: {
+    channels: [
+      { channel: "kiosk", priority_class_id: null },
+      { channel: "reception", priority_class_id: "c1" },
+      { channel: "mobile", priority_class_id: null },
+      { channel: "appointment_checkin", priority_class_id: null },
+    ],
+    services: [],
+  },
+});
 
 function bodyOf(call: Recorded | undefined): unknown {
   return JSON.parse(String(call?.init.body));
@@ -430,3 +454,64 @@ describe("priority screen", () => {
     expect(screen.queryByRole("link", { name: "Priority and queue ordering" })).not.toBeInTheDocument();
   });
 });
+
+describe("default classes (FR-QUE-011, FR-CFG-041)", () => {
+  it("shows the default of each channel and service and says a default never changes a ticket that is already waiting", async () => {
+    fakeApi(fresh());
+    renderApp(<PriorityAdmin />);
+
+    const card = (await screen.findByRole("heading", { name: "Default classes" })).closest("section")!;
+    expect(within(card).getByText(/tickets already waiting keep the class they have/)).toBeInTheDocument();
+    expect(await within(card).findByLabelText("Default class for Reception")).toHaveValue("c1");
+    expect(within(card).getByLabelText("Default class for Kiosk")).toHaveValue("");
+    expect(within(card).getByLabelText("Default class for Consultation")).toHaveValue("");
+    const options = within(within(card).getByLabelText("Default class for Kiosk")).getAllByRole("option").map((o) => o.textContent);
+    expect(options).toEqual(["No default (normal class)", "Senior citizen"]);
+  });
+
+  it("saves a channel default and a service default, and clears one with the no-default choice", async () => {
+    const calls = fakeApi(fresh());
+    renderApp(<PriorityAdmin />);
+    const card = (await screen.findByRole("heading", { name: "Default classes" })).closest("section")!;
+
+    const kiosk = await within(card).findByLabelText("Default class for Kiosk");
+    expect(within(card).getByRole("button", { name: "Save default Kiosk" })).toBeDisabled();
+    await userEvent.selectOptions(kiosk, "Senior citizen");
+    await userEvent.click(within(card).getByRole("button", { name: "Save default Kiosk" }));
+    expect((await within(card).findAllByText(/Tickets already issued keep the class they have/))[0]).toBeInTheDocument();
+    const put = calls.filter((c) => c.method === "PUT" && c.path.startsWith("/priority-defaults"));
+    expect(put[0]!.path).toBe("/priority-defaults/channels/kiosk");
+    expect(bodyOf(put[0])).toEqual({ priority_class_id: "c1" });
+
+    await userEvent.selectOptions(within(card).getByLabelText("Default class for Consultation"), "Senior citizen");
+    await userEvent.click(within(card).getByRole("button", { name: "Save default Consultation" }));
+    await waitFor(() => expect(calls.filter((c) => c.path === "/priority-defaults/services/v1")).toHaveLength(1));
+    expect(bodyOf(calls.find((c) => c.path === "/priority-defaults/services/v1"))).toEqual({ priority_class_id: "c1" });
+
+    await userEvent.selectOptions(within(card).getByLabelText("Default class for Consultation"), "No default (normal class)");
+    await userEvent.click(within(card).getByRole("button", { name: "Save default Consultation" }));
+    await waitFor(() => expect(calls.filter((c) => c.path === "/priority-defaults/services/v1")).toHaveLength(2));
+    expect(bodyOf(calls.filter((c) => c.path === "/priority-defaults/services/v1")[1])).toEqual({ priority_class_id: null });
+  });
+
+  it("says in words why the API refused a default", async () => {
+    fakeApi(fresh(), {
+      "PUT /priority-defaults/channels/kiosk": () => json(403, { error: { code: "forbidden", message: "x", trace_id: "t" } }),
+    });
+    renderApp(<PriorityAdmin />);
+    const card = (await screen.findByRole("heading", { name: "Default classes" })).closest("section")!;
+    await userEvent.selectOptions(await within(card).findByLabelText("Default class for Kiosk"), "Senior citizen");
+    await userEvent.click(within(card).getByRole("button", { name: "Save default Kiosk" }));
+
+    expect(await within(card).findByRole("alert")).toHaveTextContent("You do not have permission");
+  });
+
+  it("is in Bangla too", async () => {
+    fakeApi(fresh());
+    renderApp(<PriorityAdmin />, ["bn-BD"]);
+
+    const card = (await screen.findByRole("heading", { name: "ডিফল্ট শ্রেণি" })).closest("section")!;
+    expect(await within(card).findByLabelText("অভ্যর্থনা-এর ডিফল্ট শ্রেণি")).toHaveValue("c1");
+  });
+});
+

@@ -465,6 +465,40 @@ describe("ApiClient service catalogue", () => {
     expect((init(1).headers as Record<string, string>)["If-Match"]).toBeUndefined();
   });
 
+  it("maps a change of class and a cancel onto POST /tickets/{id}/priority and /cancel with the reason and the version as If-Match (FR-QUE-012)", async () => {
+    const fetchImpl = vi.fn().mockImplementation(async () => json(200, { id: "t1" }));
+    const client = new ApiClient({ apiOrigin: "", fetch: fetchImpl as unknown as typeof fetch });
+
+    await client.tickets.setPriority("t1", { priority_class_id: "c1", reason: "Patient in distress" }, 2);
+    await client.tickets.cancel("t1", "Visitor left", 3);
+    await client.tickets.cancel("t1");
+
+    const calls = fetchImpl.mock.calls.map(([url, init]) => `${(init as RequestInit).method} ${String(url).replace("/api/v1", "")}`);
+    expect(calls).toEqual(["POST /tickets/t1/priority", "POST /tickets/t1/cancel", "POST /tickets/t1/cancel"]);
+    const init = (index: number) => fetchImpl.mock.calls[index]?.[1] as RequestInit;
+    expect(JSON.parse(String(init(0).body))).toEqual({ priority_class_id: "c1", reason: "Patient in distress" });
+    expect((init(0).headers as Record<string, string>)["If-Match"]).toBe('"2"');
+    expect(JSON.parse(String(init(1).body))).toEqual({ reason: "Visitor left" });
+    expect((init(1).headers as Record<string, string>)["If-Match"]).toBe('"3"');
+    expect(init(2).body).toBeUndefined();
+    expect((init(2).headers as Record<string, string>)["If-Match"]).toBeUndefined();
+  });
+
+  it("maps the default classes onto /priority-defaults, a null class clearing the default (FR-QUE-011)", async () => {
+    const fetchImpl = vi.fn().mockImplementation(async () => json(200, {}));
+    const client = new ApiClient({ apiOrigin: "", fetch: fetchImpl as unknown as typeof fetch });
+
+    await client.priority.defaults();
+    await client.priority.setChannelDefault("kiosk", "c1");
+    await client.priority.setServiceDefault("v1", null);
+
+    const calls = fetchImpl.mock.calls.map(([url, init]) => `${(init as RequestInit).method} ${String(url).replace("/api/v1", "")}`);
+    expect(calls).toEqual(["GET /priority-defaults", "PUT /priority-defaults/channels/kiosk", "PUT /priority-defaults/services/v1"]);
+    const init = (index: number) => fetchImpl.mock.calls[index]?.[1] as RequestInit;
+    expect(JSON.parse(String(init(1).body))).toEqual({ priority_class_id: "c1" });
+    expect(JSON.parse(String(init(2).body))).toEqual({ priority_class_id: null });
+  });
+
   it("asks for a topic's snapshot on the polling path, the topic name escaped (FR-QUE-084)", async () => {
     const snapshot = { topic: "queue:v1", seq: 3, epoch: "e1", data: { waiting_count: 2 } };
     const fetchImpl = vi.fn().mockResolvedValue(json(200, snapshot));

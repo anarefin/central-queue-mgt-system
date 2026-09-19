@@ -709,6 +709,14 @@ public class SessionService {
         announce("session.closed", session.id(), session.counterId(), session.agentId(), "force_closed", now);
     }
 
+    /**
+     * A ticket left the session's hands without the agent acting on it, because staff cancelled it: a session that was closing
+     * because it was unresolved closes now (§19.3). The session's row is already locked by the caller.
+     */
+    void ticketLeft(SessionRow session, Instant now) {
+        if ("closing".equals(session.state()) && sessions.unresolved(session.id()).isEmpty()) finish(session, now);
+    }
+
     private void finish(SessionRow session, Instant now) {
         sessions.setState(session.id(), "closed", now);
         Map<String, Object> after = new LinkedHashMap<>();

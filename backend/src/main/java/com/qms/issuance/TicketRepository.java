@@ -131,6 +131,24 @@ class TicketRepository {
                 .stream().findFirst();
     }
 
+    /** The class the tickets of a channel get by default; empty when none is set or the class has been switched off (FR-QUE-011). */
+    Optional<UUID> channelDefaultClass(String channel) {
+        return jdbc.query(
+                        "SELECT c.id FROM channel_priority_default d JOIN priority_class c ON c.id = d.priority_class_id WHERE d.channel = ? AND c.active",
+                        (rs, i) -> rs.getObject("id", UUID.class),
+                        channel)
+                .stream().findFirst();
+    }
+
+    /** The class the tickets of a service get by default; empty when none is set or the class has been switched off (FR-QUE-011). */
+    Optional<UUID> serviceDefaultClass(UUID serviceId) {
+        return jdbc.query(
+                        "SELECT c.id FROM service v JOIN priority_class c ON c.id = v.default_priority_class_id WHERE v.id = ? AND c.active",
+                        (rs, i) -> rs.getObject("id", UUID.class),
+                        serviceId)
+                .stream().findFirst();
+    }
+
     // ---- writes -----------------------------------------------------------------------------------------------
 
     void insertVisit(UUID id, UUID siteId, Instant startedAt) {

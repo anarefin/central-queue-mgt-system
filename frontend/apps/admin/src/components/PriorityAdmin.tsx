@@ -8,11 +8,13 @@ import { describeError, useList } from "../lib/admin-support";
 import { useApi } from "../lib/runtime";
 import { DryRunCard } from "./DryRunCard";
 import { PriorityClassesCard } from "./PriorityClassesCard";
+import { PriorityDefaultsCard } from "./PriorityDefaultsCard";
 import { StrategyCard } from "./StrategyCard";
 
 /**
- * Priority and queue ordering (FR-QUE-010, FR-QUE-021, FR-QUE-023): the Priority classes of the organisation, then, for
- * one site, the ordering strategy of each Service group and the dry run of a service's queue. Every call is
+ * Priority and queue ordering (FR-QUE-010, FR-QUE-011, FR-QUE-021, FR-QUE-023): the Priority classes of the organisation, then, for
+ * one site, the default class of each channel and Service, the ordering strategy of each Service group and the dry run of a
+ * service's queue. Every call is
  * permission-checked and scoped on the server (FR-CFG-103).
  */
 export function PriorityAdmin() {
@@ -37,6 +39,7 @@ export function PriorityAdmin() {
           options={sites.items.map((s) => ({ value: s.id, label: `${s.name} (${s.code})` }))}
         />
       )}
+      {site && <PriorityDefaultsCard key={`defaults-${site.id}`} site={site} />}
       {site && <StrategyCard key={`strategy-${site.id}`} site={site} />}
       {site && <DryRunCard key={`dryrun-${site.id}`} site={site} />}
     </div>

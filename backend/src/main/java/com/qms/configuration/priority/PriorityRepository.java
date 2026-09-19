@@ -71,6 +71,51 @@ class PriorityRepository {
         jdbc.update("UPDATE priority_class SET active = ?, updated_at = ? WHERE id = ?", active, ts(now), id);
     }
 
+    // ---- defaults (FR-QUE-011) ---------------------------------------------------------------------------------
+
+    /** The class each channel gives its tickets, by channel. */
+    Map<String, UUID> channelDefaults() {
+        Map<String, UUID> defaults = new LinkedHashMap<>();
+        jdbc.query("SELECT channel, priority_class_id FROM channel_priority_default", rs -> {
+            defaults.put(rs.getString("channel"), rs.getObject("priority_class_id", UUID.class));
+        });
+        return defaults;
+    }
+
+    void setChannelDefault(String channel, UUID classId, Instant now) {
+        jdbc.update(
+                "INSERT INTO channel_priority_default (channel, priority_class_id, updated_at) VALUES (?, ?, ?)"
+                        + " ON CONFLICT (channel) DO UPDATE SET priority_class_id = EXCLUDED.priority_class_id, updated_at = EXCLUDED.updated_at",
+                channel, classId, ts(now));
+    }
+
+    void clearChannelDefault(String channel) {
+        jdbc.update("DELETE FROM channel_priority_default WHERE channel = ?", channel);
+    }
+
+    /** A Service with the site and group that decide who may change it and the class it gives its tickets by default. */
+    record ServiceRef(UUID id, UUID siteId, UUID groupId, UUID defaultClassId) {}
+
+    Optional<ServiceRef> service(UUID serviceId) {
+        return jdbc.query(
+                        "SELECT v.id, g.site_id, g.id AS group_id, v.default_priority_class_id FROM service v JOIN service_group g ON g.id = v.service_group_id WHERE v.id = ?",
+                        (rs, i) -> new ServiceRef(rs.getObject("id", UUID.class), rs.getObject("site_id", UUID.class), rs.getObject("group_id", UUID.class), rs.getObject("default_priority_class_id", UUID.class)),
+                        serviceId)
+                .stream().findFirst();
+    }
+
+    /** The Services that have a default of their own. */
+    List<ServiceRef> serviceDefaults() {
+        return jdbc.query(
+                "SELECT v.id, g.site_id, g.id AS group_id, v.default_priority_class_id FROM service v JOIN service_group g ON g.id = v.service_group_id"
+                        + " WHERE v.default_priority_class_id IS NOT NULL ORDER BY v.id",
+                (rs, i) -> new ServiceRef(rs.getObject("id", UUID.class), rs.getObject("site_id", UUID.class), rs.getObject("group_id", UUID.class), rs.getObject("default_priority_class_id", UUID.class)));
+    }
+
+    void setServiceDefault(UUID serviceId, UUID classId, Instant now) {
+        jdbc.update("UPDATE service SET default_priority_class_id = ?, updated_at = ? WHERE id = ?", classId, ts(now), serviceId);
+    }
+
     // ---- routing strategy --------------------------------------------------------------------------------------
 
     Optional<GroupRef> group(UUID groupId) {
