@@ -337,6 +337,7 @@ describe("ApiClient service catalogue", () => {
     await client.sessions.resume("s1", "t1", 3);
     await client.sessions.forceClose("s1", "stale tablet");
     await client.sessions.forceClose("s1");
+    await client.sessions.transferTargets("s1");
 
     const calls = fetchImpl.mock.calls.map(([url, init]) => `${(init as RequestInit).method} ${String(url).replace("/api/v1", "")}`);
     expect(calls).toEqual([
@@ -356,6 +357,7 @@ describe("ApiClient service catalogue", () => {
       "POST /sessions/s1/hold",
       "POST /sessions/s1/force-close",
       "POST /sessions/s1/force-close",
+      "GET /sessions/s1/transfer-targets",
     ]);
     const headers = (index: number) => (fetchImpl.mock.calls[index]?.[1] as RequestInit).headers as Record<string, string>;
     expect(JSON.parse(String((fetchImpl.mock.calls[2]?.[1] as RequestInit).body))).toEqual({ counter_id: "c1", service_ids: ["v1"] });
@@ -373,6 +375,21 @@ describe("ApiClient service catalogue", () => {
     expect(JSON.parse(String((fetchImpl.mock.calls[13]?.[1] as RequestInit).body))).toEqual({ ticket_id: "t1" });
     expect(JSON.parse(String((fetchImpl.mock.calls[14]?.[1] as RequestInit).body))).toEqual({ reason: "stale tablet" });
     expect((fetchImpl.mock.calls[15]?.[1] as RequestInit).body).toBeUndefined();
+  });
+
+  it("maps a transfer onto POST /tickets/{id}/transfer with the note, the target and the ticket version as If-Match (FR-QUE-052)", async () => {
+    const fetchImpl = vi.fn().mockImplementation(async () => json(200, { predecessor: {}, successor: {}, session: {} }));
+    const client = new ApiClient({ apiOrigin: "", fetch: fetchImpl as unknown as typeof fetch });
+
+    await client.tickets.transfer("t1", { service_id: "v2", agent_id: "u2", note: "Second opinion" }, 4);
+    await client.tickets.transfer("t1", { service_id: "v2", note: "Lab" });
+
+    const calls = fetchImpl.mock.calls.map(([url, init]) => `${(init as RequestInit).method} ${String(url).replace("/api/v1", "")}`);
+    expect(calls).toEqual(["POST /tickets/t1/transfer", "POST /tickets/t1/transfer"]);
+    const init = (index: number) => fetchImpl.mock.calls[index]?.[1] as RequestInit;
+    expect(JSON.parse(String(init(0).body))).toEqual({ service_id: "v2", agent_id: "u2", note: "Second opinion" });
+    expect((init(0).headers as Record<string, string>)["If-Match"]).toBe('"4"');
+    expect((init(1).headers as Record<string, string>)["If-Match"]).toBeUndefined();
   });
 
   it("asks for a topic's snapshot on the polling path, the topic name escaped (FR-QUE-084)", async () => {

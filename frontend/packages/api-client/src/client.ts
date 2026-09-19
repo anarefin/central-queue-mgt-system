@@ -15,7 +15,7 @@ import type { Counter, CounterInput, Items, Site, SiteInput, Zone, ZoneInput } f
 import type { Channel } from "./catalogue";
 import type { PriorityClass, PriorityClassInput, QueueDryRun, QueueStrategy, RoutingStrategy } from "./priority";
 import type { NumberingPreview, NumberingRule, NumberingRuleChange, NumberingRuleInput, NumberingScope } from "./numbering";
-import type { CompleteInput, CounterSession, OpenSessionInput, SessionCounterOption } from "./sessions";
+import type { CompleteInput, CounterSession, OpenSessionInput, SessionCounterOption, TransferInput, TransferResult, TransferTargets } from "./sessions";
 import type { TopicSnapshot } from "./stream";
 import type { IssueTicketInput, QueueSnapshot, SiteServices, Ticket } from "./tickets";
 
@@ -181,6 +181,12 @@ export class ApiClient {
     issue: (input: IssueTicketInput, idempotencyKey: string) =>
       this.request<Ticket>("POST", "/tickets", input, { headers: { "Idempotency-Key": idempotencyKey } }),
     get: (id: string) => this.request<Ticket>("GET", `/tickets/${id}`),
+    /**
+     * F7: close the ticket in service as `transferred` and create its successor in the target queue, with the same token number
+     * and visit (FR-QUE-052, ADR-0006). The note is mandatory; `version` goes as `If-Match`.
+     */
+    transfer: (id: string, input: TransferInput, version?: number) =>
+      this.request<TransferResult>("POST", `/tickets/${id}/transfer`, input, { headers: ifMatch(version) }),
   };
 
   readonly queues = {
@@ -213,6 +219,8 @@ export class ApiClient {
     /** F8: park the ticket in service; it stays bound to the session and the counter is free to call next (FR-AGT-013). */
     hold: (id: string, version?: number) =>
       this.request<CounterSession>("POST", `/sessions/${id}/hold`, undefined, { headers: ifMatch(version) }),
+    /** The Services, counters and agents of the session's site the ticket in service may be transferred to (F7). */
+    transferTargets: (id: string) => this.request<TransferTargets>("GET", `/sessions/${id}/transfer-targets`),
     /** Put a held ticket back in service; only the session that holds it can. */
     resume: (id: string, ticketId: string, version?: number) =>
       this.request<CounterSession>("POST", `/sessions/${id}/hold`, { ticket_id: ticketId }, { headers: ifMatch(version) }),

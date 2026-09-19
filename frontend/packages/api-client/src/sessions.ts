@@ -87,3 +87,43 @@ export interface CompleteInput {
   outcome_code_id?: string;
   note?: string;
 }
+
+/**
+ * A transfer (F7, FR-QUE-052). The `note` is mandatory. The target is a Service, optionally narrowed to one of its counters or
+ * agents, not both; leave `service_id` out for a counter or agent of the ticket's own Service.
+ */
+export interface TransferInput {
+  service_id?: string;
+  counter_id?: string;
+  agent_id?: string;
+  note: string;
+}
+
+/**
+ * What a transfer did (ADR-0006): the ticket in service closed as `transferred`, and a successor with the same token number and
+ * visit now waits in the target queue, ahead of later arrivals by `head_start_minutes` of waiting (FR-QUE-053). `session` is the
+ * session as it stands, so the console can redraw itself.
+ */
+export interface TransferResult {
+  predecessor: { id: string; token_number: string; state: "transferred" };
+  successor: {
+    id: string;
+    token_number: string;
+    state: "waiting";
+    service: { id: string; name_i18n: LocalisedText };
+    visit_id: string;
+    predecessor_ticket_id: string;
+    counter_id?: string;
+    agent_id?: string;
+    head_start_minutes: number;
+    position: number | null;
+  };
+  session: CounterSession;
+}
+
+/** Where the ticket in service may go: the active Services of the session's site, and the counters and agents that can take them. */
+export interface TransferTargets {
+  services: Array<{ id: string; name_i18n: LocalisedText }>;
+  counters: Array<{ id: string; label: string; zone_name: string; service_ids: string[] }>;
+  agents: Array<{ id: string; name: string; service_ids: string[] }>;
+}

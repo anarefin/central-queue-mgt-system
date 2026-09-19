@@ -1,4 +1,4 @@
-import type { CounterSession, SessionCounterOption, SessionOutcome, SessionTicket } from "@qms/api-client";
+import type { CounterSession, SessionCounterOption, SessionOutcome, SessionTicket, TransferResult, TransferTargets } from "@qms/api-client";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -482,6 +482,203 @@ describe("hold and held by me (FR-AGT-013, ADR-0008, §19.3)", () => {
 
     expect(await screen.findByRole("alert")).toHaveTextContent("এই সেশনে অনুমোদিত সর্বোচ্চ সংখ্যক টিকিট ইতিমধ্যে ধরে রাখা আছে।");
     expect(count(calls, "GET /sessions/current")).toBe(2);
+  });
+});
+
+describe("transfer to a successor ticket (FR-QUE-052, FR-QUE-053, ADR-0006, UAT U5)", () => {
+  const serving = (over: Partial<SessionTicket> = {}) => ticket({ state: "serving", version: 2, served_at: STAMP, ...over });
+  const TARGETS: TransferTargets = {
+    services: [
+      { id: "v1", name_i18n: { en: "Consultation", bn: "পরামর্শ" } },
+      { id: "v2", name_i18n: { en: "Laboratory", bn: "ল্যাব" } },
+    ],
+    counters: [
+      { id: "c2", label: "Desk 2", zone_name: "Hall", service_ids: ["v2"] },
+      { id: "c3", label: "Desk 3", zone_name: "Hall", service_ids: ["v1"] },
+    ],
+    agents: [
+      { id: "u2", name: "Karim", service_ids: ["v1", "v2"] },
+      { id: "u3", name: "Salma", service_ids: ["v1"] },
+    ],
+  };
+  const done = (over: Partial<TransferResult["successor"]> = {}, next: CounterSession = session()): TransferResult => ({
+    predecessor: { id: "t1", token_number: "S-042", state: "transferred" },
+    successor: {
+      id: "t2",
+      token_number: "S-042",
+      state: "waiting",
+      service: { id: "v2", name_i18n: { en: "Laboratory", bn: "ল্যাব" } },
+      visit_id: "visit1",
+      predecessor_ticket_id: "t1",
+      head_start_minutes: 20,
+      position: 1,
+      ...over,
+    },
+    session: next,
+  });
+  const transferCall = (calls: Recorded[]) => calls.find((c) => c.method === "POST" && c.path === "/tickets/t1/transfer");
+
+  it("transfers the ticket in service to another service with F7, a note and the ticket version, and the counter is free again", async () => {
+    const calls = stubApi({
+      ...AUTH,
+      "GET /sessions/current": () => json(200, session({ ticket: serving() })),
+      "GET /sessions/s1/transfer-targets": () => json(200, TARGETS),
+      "POST /tickets/t1/transfer": () => json(200, done()),
+    });
+    const user = userEvent.setup();
+    renderApp(<Home />);
+    await screen.findByText("In service");
+    expect(screen.queryByLabelText("Send to service")).not.toBeInTheDocument();
+
+    await user.keyboard("{F7}");
+    await user.selectOptions(await screen.findByLabelText("Send to service"), "v2");
+    expect(screen.getByRole("button", { name: "Transfer" }), "the note is required").toBeDisabled();
+    await user.type(screen.getByLabelText("Note for the next agent (required)"), "  Needs a blood test ");
+    await user.click(screen.getByRole("button", { name: "Transfer" }));
+
+    expect(await screen.findByRole("status")).toHaveTextContent("S-042 was transferred to Laboratory. It keeps its token number and its place in the queue.");
+    expect(body(transferCall(calls))).toEqual({ service_id: "v2", note: "Needs a blood test" });
+    expect(ifMatch(transferCall(calls))).toBe('"2"');
+    expect(screen.queryByTestId("current-token")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Send to service")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Call next/ })).toBeEnabled();
+  });
+
+  it("sends the ticket to a specific agent or counter of the chosen service, listing only those that serve it", async () => {
+    const calls = stubApi({
+      ...AUTH,
+      "GET /sessions/current": () => json(200, session({ ticket: serving() })),
+      "GET /sessions/s1/transfer-targets": () => json(200, TARGETS),
+      "POST /tickets/t1/transfer": () => json(200, done({ agent_id: "u2" })),
+    });
+    const user = userEvent.setup();
+    renderApp(<Home />);
+    await screen.findByText("In service");
+    await user.click(screen.getByRole("button", { name: /^Transfer F7/ }));
+    await user.selectOptions(await screen.findByLabelText("Send to service"), "v2");
+
+    await user.click(screen.getByRole("radio", { name: "A specific agent" }));
+    expect(within(screen.getByLabelText("Agent")).queryByRole("option", { name: "Salma" }), "Salma does not serve the laboratory").not.toBeInTheDocument();
+    await user.type(screen.getByLabelText("Note for the next agent (required)"), "Second opinion");
+    expect(screen.getByRole("button", { name: "Transfer" }), "an agent must be chosen").toBeDisabled();
+    await user.selectOptions(screen.getByLabelText("Agent"), "u2");
+    await user.click(screen.getByRole("button", { name: "Transfer" }));
+
+    await screen.findByRole("status");
+    expect(body(transferCall(calls))).toEqual({ service_id: "v2", agent_id: "u2", note: "Second opinion" });
+  });
+
+  it("sends a counter target with the counter and not the agent", async () => {
+    const calls = stubApi({
+      ...AUTH,
+      "GET /sessions/current": () => json(200, session({ ticket: serving() })),
+      "GET /sessions/s1/transfer-targets": () => json(200, TARGETS),
+      "POST /tickets/t1/transfer": () => json(200, done({ counter_id: "c2" })),
+    });
+    const user = userEvent.setup();
+    renderApp(<Home />);
+    await screen.findByText("In service");
+    await user.keyboard("{F7}");
+    await user.selectOptions(await screen.findByLabelText("Send to service"), "v2");
+    await user.click(screen.getByRole("radio", { name: "A specific counter" }));
+    expect(within(screen.getByLabelText("Counter")).getAllByRole("option").map((o) => o.textContent)).toEqual(["Choose…", "Desk 2 — Hall"]);
+    await user.selectOptions(screen.getByLabelText("Counter"), "c2");
+    await user.type(screen.getByLabelText("Note for the next agent (required)"), "Scanner");
+    await user.click(screen.getByRole("button", { name: "Transfer" }));
+
+    await screen.findByRole("status");
+    expect(body(transferCall(calls))).toEqual({ service_id: "v2", counter_id: "c2", note: "Scanner" });
+  });
+
+  it("does not offer a transfer to the same service unless it is narrowed to a counter or an agent", async () => {
+    stubApi({
+      ...AUTH,
+      "GET /sessions/current": () => json(200, session({ ticket: serving() })),
+      "GET /sessions/s1/transfer-targets": () => json(200, TARGETS),
+    });
+    const user = userEvent.setup();
+    renderApp(<Home />);
+    await screen.findByText("In service");
+    await user.keyboard("{F7}");
+    await user.selectOptions(await screen.findByLabelText("Send to service"), "v1");
+    await user.type(screen.getByLabelText("Note for the next agent (required)"), "Specialist");
+
+    expect(screen.getByText("Choose another service, or a specific counter or agent.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Transfer" })).toBeDisabled();
+    await user.click(screen.getByRole("radio", { name: "A specific counter" }));
+    await user.selectOptions(screen.getByLabelText("Counter"), "c3");
+    expect(screen.getByRole("button", { name: "Transfer" })).toBeEnabled();
+  });
+
+  it("is offered only for a ticket in service, and while the panel is open the other keys do not act", async () => {
+    stubApi({ ...AUTH, "GET /sessions/current": () => json(200, session({ ticket: ticket() })) });
+    const user = userEvent.setup();
+    const first = renderApp(<Home />);
+    await screen.findByText("Called, waiting for the visitor");
+    expect(screen.getByRole("button", { name: /^Transfer F7/ })).toBeDisabled();
+    await user.keyboard("{F7}");
+    expect(screen.queryByLabelText("Send to service")).not.toBeInTheDocument();
+    first.unmount();
+
+    const calls = stubApi({
+      ...AUTH,
+      "GET /sessions/current": () => json(200, session({ ticket: serving() })),
+      "GET /sessions/s1/transfer-targets": () => json(200, TARGETS),
+    });
+    renderApp(<Home />);
+    await screen.findByText("In service");
+    expect(screen.getByRole("button", { name: /^Transfer F7/ })).toBeEnabled();
+    await user.keyboard("{F7}");
+    await screen.findByLabelText("Send to service");
+
+    await user.keyboard("{F5}{F8}{F10}");
+    expect(calls.filter((c) => c.method !== "GET" && c.path !== "/auth/refresh"), "nothing was sent").toEqual([]);
+    await user.keyboard("{F7}");
+    expect(screen.queryByLabelText("Send to service")).not.toBeInTheDocument();
+    await user.keyboard("{F7}");
+    await user.type(await screen.findByLabelText("Note for the next agent (required)"), "x{Escape}");
+    expect(screen.queryByLabelText("Send to service")).not.toBeInTheDocument();
+    expect(screen.getByText("In service")).toBeInTheDocument();
+  });
+
+  it("says why the API refused a transfer, in the reader's language, keeps the panel and reads the session again", async () => {
+    const calls = stubApi({
+      ...AUTH,
+      "GET /sessions/current": () => json(200, session({ ticket: serving() })),
+      "GET /sessions/s1/transfer-targets": () => json(200, TARGETS),
+      "POST /tickets/t1/transfer": () => refusal(409, "transfer_target_inactive"),
+    });
+    const user = userEvent.setup();
+    renderApp(<Home />, ["bn-BD"]);
+    await screen.findByTestId("current-token");
+    await user.keyboard("{F7}");
+    await user.selectOptions(await screen.findByLabelText("যে সেবায় পাঠাবেন"), "v2");
+    await user.type(screen.getByLabelText("পরবর্তী এজেন্টের জন্য নোট (আবশ্যক)"), "ল্যাব");
+    await user.click(screen.getByRole("button", { name: "স্থানান্তর করুন" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("সেবা, কাউন্টার বা এজেন্টটি সক্রিয় নয়।");
+    expect(count(calls, "GET /sessions/current")).toBe(2);
+    expect(screen.getByLabelText("যে সেবায় পাঠাবেন")).toBeInTheDocument();
+    expect(screen.getByTestId("current-token")).toHaveTextContent("S-042");
+  });
+
+  it("returns to the counter list once transferring the last ticket closes the session", async () => {
+    stubApi({
+      ...AUTH,
+      "GET /sessions/current": () => json(200, session({ state: "closing", ticket: serving() })),
+      "GET /sessions/s1/transfer-targets": () => json(200, TARGETS),
+      "POST /tickets/t1/transfer": () => json(200, done({}, session({ state: "closed", closed_at: STAMP }))),
+      "GET /sessions/options": () => json(200, { items: OPTIONS }),
+    });
+    const user = userEvent.setup();
+    renderApp(<Home />);
+    await screen.findByText("In service");
+    await user.keyboard("{F7}");
+    await user.selectOptions(await screen.findByLabelText("Send to service"), "v2");
+    await user.type(screen.getByLabelText("Note for the next agent (required)"), "Lab");
+    await user.click(screen.getByRole("button", { name: "Transfer" }));
+
+    expect(await screen.findByText("Open a counter session")).toBeInTheDocument();
   });
 });
 

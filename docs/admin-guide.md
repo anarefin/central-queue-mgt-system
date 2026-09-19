@@ -53,6 +53,7 @@ Everything is an environment variable (or a Spring property). Secrets are never 
 | `QMS_QUEUE_MISS_REENTRY_POSITION` | `after-n` | Where a missed ticket re-enters the queue: `front`, `after-n` or `back`, section 12 |
 | `QMS_QUEUE_MISS_REENTRY_AFTER` | `3` | With `after-n`: how many tickets stay ahead of the missed one (at least 1), section 12 |
 | `QMS_QUEUE_HOLD_LIMIT` | `3` | How many tickets one session may hold (F8) at once; `0` switches Hold off, section 12 |
+| `QMS_QUEUE_TRANSFER_HEADSTART_MINUTES` | empty | The Head start, in minutes, of the successor a transfer (F7) creates; empty means the predecessor's accrued wait, section 12 |
 
 Two limits are enforced at startup and cannot be raised: access tokens last at most 15 minutes, and bcrypt cost is at
 least 12.
@@ -307,7 +308,29 @@ Hold off); one more is refused with `hold_limit_reached`. Hold is only offered o
 **Closing** (F10) needs everything in progress to be resolved: the ticket called or serving, and every held ticket. With any
 of them left the session becomes `closing`, takes no new calls and the request is refused with `ticket_in_progress` (a ticket
 called or serving) or `held_tickets_remaining` (only held tickets left); the agent resumes and completes each one, and the
-last completion closes the session. Transferring tickets and breaks arrive with later tickets.
+last completion closes the session. Breaks arrive with a later ticket.
+
+**Transfer (F7).** An agent sends the visitor being served to another Service, to one of that Service's counters, or to one of
+its agents, with a note the next agent reads; the note is mandatory (`validation_failed` naming `note`). The panel offers the
+active Services of the session's site and, for the Service chosen, the counters that serve it and the agents on its team; a
+counter or agent without a Service means the ticket's own Service. The ticket in service closes as `transferred`, which is
+terminal, with its wait and service time stored and the note kept; its binding is cleared and the counter is free to call
+next. In the same transaction a successor ticket is created in the target queue with the same token number and Visit, the same
+Priority class, channel and ticket secret, and `predecessor_ticket_id` pointing at the ticket it replaces. The visitor never
+sees a new number, and each wait is attributed to its own ticket's Service. The predecessor's wait stops at the transfer; the
+successor's own wait starts there, and it is given a transfer Head start so the visitor is not sent to the back: by default
+the predecessor's accrued wait, rounded to whole minutes and stored as the successor's Score adjustment, or the fixed number of
+minutes in `QMS_QUEUE_TRANSFER_HEADSTART_MINUTES` (0 means no Head start). It stacks with the Priority class's own Head start.
+A ticket sent to an agent waits in that agent's personal queue, and one sent to a counter in that counter's: no other counter
+or agent draws it (call next skips it), and it stays there if the ticket is missed and returns to `waiting`. It is still
+counted in the Service's queue and shown in its order. Reassigning a targeted ticket to someone else is not available yet, so a
+ticket left waiting for an agent who is away stays until that agent calls it. Agents transfer only the ticket their own
+session is serving; an Org or Team Admin, within their site and Service group scope, can transfer any ticket in service.
+Transfers are intra-site: the target Service, counter and agent must belong to the ticket's site and be active, and a counter
+or agent must be able to serve the Service. A refused transfer changes nothing. `ticket.transferred` is written on the
+predecessor and published on its queue and counter, the successor's first event is `ticket.issued` (its payload names the
+predecessor and the Head start) and is published on the target queue, and the audit log records `ticket.transferred` with the
+note as its reason. Reports that count "tickets issued" count chain heads (`predecessor_ticket_id IS NULL`), not rows.
 
 **Force-close.** When a device is stale (an agent walked away, a tablet died) an Org Admin or Team Admin, or a System Admin,
 who holds the "open/close a counter session" permission for everyone's sessions, can force-close the session with
@@ -324,12 +347,15 @@ session. The time a ticket spent held or called never counts as wait (Invariant 
 a restart the console asks `GET /sessions/current` and shows the ticket the agent was serving.
 
 API, all under `/api/v1`: `GET /sessions/options`, `GET /sessions/current` (`not_found` when there is none),
-`POST /sessions` (`counter_id`, optional `service_ids`), `DELETE /sessions/{id}`, and `POST /sessions/{id}/next|reannounce|serve|complete|miss|hold|force-close`.
+`POST /sessions` (`counter_id`, optional `service_ids`), `DELETE /sessions/{id}`, and `POST /sessions/{id}/next|reannounce|serve|complete|miss|hold|force-close`,
+`GET /sessions/{id}/transfer-targets` (where the ticket in service may go) and `POST /tickets/{id}/transfer` (`service_id`, optional
+`counter_id` or `agent_id`, and the mandatory `note`; it answers with the predecessor, the successor and the session).
 `hold` holds the serving ticket, or resumes a held one when given `{"ticket_id": ...}`. The session response carries `ticket`
 (in progress), `held` (the held-by-me list) and `hold_limit`.
-`reannounce`, `serve`, `complete`, `miss` and `hold` take the ticket's `version` as `If-Match`; a stale version is a `conflict` with reason
+`reannounce`, `serve`, `complete`, `miss`, `hold` and `transfer` take the ticket's `version` as `If-Match`; a stale version is a `conflict` with reason
 `version_mismatch`. Conflict reasons: `counter_occupied`, `agent_has_open_session`, `counter_inactive`, `session_not_open`,
 `ticket_in_progress`, `held_tickets_remaining`, `no_ticket_waiting`, `no_ticket_called`, `no_ticket_serving`, `no_ticket_held`,
-`reannounce_limit_reached`, `hold_limit_reached`, `version_mismatch`. Events written per transition: `ticket.called`,
+`reannounce_limit_reached`, `hold_limit_reached`, `transfer_target_inactive`, `transfer_cross_site`, `transfer_target_mismatch`,
+`version_mismatch`. Events written per transition: `ticket.called`,
 `ticket.reannounced`, `ticket.missed`, `ticket.no_show`, `ticket.serving`, `ticket.held`, `ticket.position_changed`,
-`ticket.completed`; audit entries `session.opened`, `session.closed` and `session.force_closed`.
+`ticket.completed`, `ticket.transferred` (and `ticket.issued` for the successor); audit entries `session.opened`, `session.closed`, `session.force_closed` and `ticket.transferred`.

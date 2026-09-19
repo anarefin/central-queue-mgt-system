@@ -7,8 +7,10 @@ import com.qms.platform.ErrorCode;
 import com.qms.platform.Profiles;
 import com.qms.platform.realtime.RealtimePublisher;
 import com.qms.platform.realtime.Topics;
-import com.qms.platform.security.ScopeGuard;
+import com.qms.platform.security.Authz;
 import com.qms.platform.security.CurrentUser;
+import com.qms.platform.security.Permission;
+import com.qms.platform.security.ScopeGuard;
 import com.qms.queue.QueueEngine;
 import com.qms.queue.QueueEngine.Contender;
 import com.qms.queue.QueueProperties;
@@ -17,12 +19,16 @@ import com.qms.queue.ReentryPosition;
 import com.qms.queue.TicketEvents;
 import com.qms.queue.TicketTimings;
 import com.qms.queue.TicketTransition;
+import com.qms.queue.TransferRules;
 import com.qms.session.SessionRepository.BoundTicket;
 import com.qms.session.SessionRepository.CounterRow;
 import com.qms.session.SessionRepository.OutcomeRow;
 import com.qms.session.SessionRepository.ServiceLink;
 import com.qms.session.SessionRepository.ServiceScope;
 import com.qms.session.SessionRepository.SessionRow;
+import com.qms.session.SessionRepository.TransferAgent;
+import com.qms.session.SessionRepository.TransferService;
+import com.qms.session.SessionRepository.TransferSource;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -64,6 +70,10 @@ public class SessionService {
             + " T(com.qms.platform.security.Authorities).TICKET_CALL_SERVE_COMPLETE,"
             + " T(com.qms.platform.security.Authorities).TICKET_CALL_SERVE_COMPLETE + ':own')";
 
+    /** Agents transfer the ticket they are serving (own records only); Org and Team Admins, within their scope, any ticket in service (§5.2). */
+    static final String TRANSFER = "hasAnyAuthority(T(com.qms.platform.security.Authorities).TICKET_TRANSFER,"
+            + " T(com.qms.platform.security.Authorities).TICKET_TRANSFER + ':own')";
+
     private static final String STAFF = "staff";
     private static final String AGENT_INDEX = "counter_session_live_agent_uq";
     /** How often a call retries after losing a ticket to another counter before it reports nothing is waiting. */
@@ -75,6 +85,7 @@ public class SessionService {
     private final TicketEvents events;
     private final AuditWriter audit;
     private final ScopeGuard scope;
+    private final Authz authz;
     private final CurrentUser currentUser;
     private final QueueProperties queueProperties;
     private final RealtimePublisher realtime;
@@ -86,6 +97,7 @@ public class SessionService {
             TicketEvents events,
             AuditWriter audit,
             ScopeGuard scope,
+            Authz authz,
             CurrentUser currentUser,
             QueueProperties queueProperties,
             RealtimePublisher realtime,
@@ -95,6 +107,7 @@ public class SessionService {
         this.events = events;
         this.audit = audit;
         this.scope = scope;
+        this.authz = authz;
         this.currentUser = currentUser;
         this.queueProperties = queueProperties;
         this.realtime = realtime;
@@ -338,6 +351,146 @@ public class SessionService {
         return view(sessions.session(session.id()).orElseThrow());
     }
 
+    // ---- transfer ---------------------------------------------------------------------------------------------
+
+    /**
+     * F7 (FR-QUE-052, ADR-0006). The ticket in service closes as {@code transferred}, and in the same transaction a successor
+     * ticket with the same Visit, token number and Priority class is created in the target queue: a Service, or one of its Counters
+     * or Agents. The predecessor's wait stops here and the successor's starts here, with the transfer Head start added so the
+     * visitor is not sent to the back (FR-QUE-053). A successor targeted at an Agent waits in that Agent's personal queue (FR-QUE-003).
+     * The note is mandatory. The target must be active and in the ticket's own site (§19.1, ADR-0002). An agent transfers only the
+     * ticket their own session is serving; an admin, any ticket in service within their scope. A closing session that this
+     * resolves closes now (§19.3).
+     */
+    @PreAuthorize(TRANSFER)
+    @Transactional
+    public TransferResponse transfer(UUID ticketId, TransferRequest request, Integer ifMatch) {
+        UUID user = currentUser.require().userId();
+        TransferSource source = sessions.transferSource(ticketId).orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND));
+        scope.requireSite(source.siteId());
+        scope.requireGroup(source.groupId());
+        // The session is locked first, like every other action on it, then the ticket is read again under the lock.
+        SessionRow session = source.sessionId() == null ? null : sessions.lock(source.sessionId()).orElse(null);
+        if (!authz.has(Permission.TICKET_TRANSFER) && (session == null || !session.agentId().equals(user))) throw new ApiException(ErrorCode.FORBIDDEN);
+        source = sessions.transferSource(ticketId).orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND));
+
+        if (request == null) throw invalid("note", "required");
+        String note = request.note() == null || request.note().isBlank() ? null : request.note().strip();
+        if (note == null) throw invalid("note", "required");
+        if (note.length() > MAX_NOTE_LENGTH) throw invalid("note", "too_long");
+        if (request.counterId() != null && request.agentId() != null) throw invalid("agent_id", "exclusive");
+        boolean narrowed = request.counterId() != null || request.agentId() != null;
+        if (request.serviceId() == null && !narrowed) throw invalid("service_id", "required");
+        UUID serviceId = request.serviceId() != null ? request.serviceId() : source.serviceId();
+        if (serviceId.equals(source.serviceId()) && !narrowed) throw invalid("service_id", "same_service");
+
+        if (TicketTransition.TRANSFER.apply(source.state()).isEmpty() || session == null) throw refusal("no_ticket_serving");
+        if (!session.live()) throw refusal("session_not_open");
+        if (ifMatch != null && ifMatch != source.version()) throw refusal("version_mismatch");
+
+        TransferService target = sessions.transferService(serviceId).orElseThrow(() -> invalid("service_id", "invalid"));
+        if (!target.siteId().equals(source.siteId())) throw refusal("transfer_cross_site");
+        if (!target.active()) throw refusal("transfer_target_inactive");
+        UUID zoneId = null;
+        if (request.counterId() != null) {
+            CounterRow counter = sessions.counter(request.counterId()).orElseThrow(() -> invalid("counter_id", "invalid"));
+            if (!counter.siteId().equals(source.siteId())) throw refusal("transfer_cross_site");
+            if (!counter.usable()) throw refusal("transfer_target_inactive");
+            if (!sessions.counterServes(counter.id(), serviceId)) throw refusal("transfer_target_mismatch");
+            zoneId = counter.zoneId();
+        }
+        if (request.agentId() != null) {
+            TransferAgent agent = sessions.transferAgent(request.agentId(), source.siteId()).orElseThrow(() -> invalid("agent_id", "invalid"));
+            if (!agent.active()) throw refusal("transfer_target_inactive");
+            // Someone who is not on the team of the Service's group, or who does not work at this site, cannot serve it.
+            if (!agent.atSite() || !sessions.onTeamOf(target.groupId(), agent.id())) throw refusal("transfer_target_mismatch");
+        }
+        if (zoneId == null) zoneId = sessions.waitingZone(serviceId);
+
+        Instant now = clock.instant();
+        // The predecessor's wait stops here and its service time is what it took to serve (Invariant 1, §18.5).
+        int waitSeconds = TicketTimings.accruedWait(source.queuedAt(), events.changes(source.id()));
+        int serviceSeconds = TicketTimings.seconds(source.servedAt(), now);
+        int headStart = TransferRules.headStartMinutes(queueProperties.transferHeadstartMinutes(), waitSeconds);
+        UUID successorId = UUID.randomUUID();
+        if (!sessions.transfer(source.id(), source.version(), session.id(), now, waitSeconds, serviceSeconds, note)) throw refusal("version_mismatch");
+        sessions.insertSuccessor(successorId, source.id(), serviceId, target.groupId(), zoneId, now, headStart, request.counterId(), request.agentId());
+
+        Map<String, Object> closed = new LinkedHashMap<>();
+        closed.put("session_id", session.id().toString());
+        closed.put("note", note);
+        closed.put("successor_ticket_id", successorId.toString());
+        closed.put("service_id", serviceId.toString());
+        if (request.counterId() != null) closed.put("target_counter_id", request.counterId().toString());
+        if (request.agentId() != null) closed.put("target_agent_id", request.agentId().toString());
+        closed.put("wait_seconds", waitSeconds);
+        closed.put("service_seconds", serviceSeconds);
+        closed.put("head_start_minutes", headStart);
+        events.append(new TicketEvents.Transition(source.id(), TicketTransition.TRANSFER.eventType(), TicketTransition.TRANSFER.from(), TicketTransition.TRANSFER.to(), user, STAFF, session.counterId(), closed, now, now));
+
+        // The successor's first event: it joins the target queue, so that queue's consoles and displays hear of it (Invariant 3).
+        Map<String, Object> joined = new LinkedHashMap<>();
+        joined.put("origin", "transfer");
+        joined.put("predecessor_ticket_id", source.id().toString());
+        joined.put("note", note);
+        joined.put("head_start_minutes", headStart);
+        if (request.counterId() != null) joined.put("target_counter_id", request.counterId().toString());
+        if (request.agentId() != null) joined.put("target_agent_id", request.agentId().toString());
+        events.append(new TicketEvents.Transition(successorId, "ticket.issued", null, "waiting", user, STAFF, null, joined, now, now));
+
+        Map<String, Object> before = new LinkedHashMap<>();
+        before.put("state", source.state());
+        before.put("service_id", source.serviceId().toString());
+        before.put("counter_id", session.counterId().toString());
+        Map<String, Object> after = new LinkedHashMap<>();
+        after.put("state", TicketTransition.TRANSFER.to());
+        after.put("successor_ticket_id", successorId.toString());
+        after.put("service_id", serviceId.toString());
+        if (request.counterId() != null) after.put("target_counter_id", request.counterId().toString());
+        if (request.agentId() != null) after.put("target_agent_id", request.agentId().toString());
+        audit.record(AuditEvent.of("ticket.transferred", "ticket", source.id()).withBefore(before).withAfter(after).withReason(note));
+
+        if ("closing".equals(session.state()) && sessions.unresolved(session.id()).isEmpty()) finish(session, now);
+        return new TransferResponse(
+                new TransferResponse.Predecessor(source.id(), source.tokenNumber(), TicketTransition.TRANSFER.to()),
+                new TransferResponse.Successor(
+                        successorId,
+                        source.tokenNumber(),
+                        "waiting",
+                        new SessionResponse.Named(serviceId, target.names()),
+                        sessions.visitOf(successorId),
+                        source.id(),
+                        request.counterId(),
+                        request.agentId(),
+                        headStart,
+                        queues.positionOf(successorId)),
+                view(sessions.session(session.id()).orElseThrow()));
+    }
+
+    /**
+     * The places the ticket in service may go (F7): the active Services of the session's site and the counters and agents that
+     * can take each, so the console can offer them. The session's own counter and agent are left out. Transfers are intra-site
+     * (ADR-0002), so nothing of another site appears.
+     */
+    @PreAuthorize(TRANSFER)
+    @Transactional(readOnly = true)
+    public TransferTargets transferTargets(UUID sessionId) {
+        SessionRow session = sessions.session(sessionId).orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND));
+        CounterRow own = sessions.counter(session.counterId()).orElseThrow();
+        scope.requireSite(own.siteId());
+        if (!authz.has(Permission.TICKET_TRANSFER) && !session.agentId().equals(currentUser.require().userId())) throw new ApiException(ErrorCode.FORBIDDEN);
+        return new TransferTargets(
+                sessions.transferServices(own.siteId()).stream().map(s -> new TransferTargets.Service(s.id(), s.names())).toList(),
+                sessions.targetCounters(own.siteId()).stream()
+                        .filter(c -> !c.id().equals(own.id()))
+                        .map(c -> new TransferTargets.CounterTarget(c.id(), c.label(), c.zoneName(), c.serviceIds()))
+                        .toList(),
+                sessions.targetAgents(own.siteId()).stream()
+                        .filter(a -> !a.id().equals(session.agentId()))
+                        .map(a -> new TransferTargets.AgentTarget(a.id(), a.name(), a.serviceIds()))
+                        .toList());
+    }
+
     // ---- closing ----------------------------------------------------------------------------------------------
 
     /**
@@ -461,7 +614,7 @@ public class SessionService {
     private List<Contender> heads(SessionRow session) {
         List<Contender> heads = new ArrayList<>();
         for (ServiceLink link : sessions.links(session.counterId(), session.services())) {
-            queues.callableHead(link.serviceId()).ifPresent(head -> heads.add(new Contender(link.serviceId(), link.weight(), head.ticketId(), head.queuedAt(), head.terms().score())));
+            queues.callableHead(link.serviceId(), session.counterId(), session.agentId()).ifPresent(head -> heads.add(new Contender(link.serviceId(), link.weight(), head.ticketId(), head.queuedAt(), head.terms().score())));
         }
         return heads;
     }

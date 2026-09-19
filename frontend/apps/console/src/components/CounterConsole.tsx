@@ -1,29 +1,31 @@
 "use client";
 
-import { ApiRequestError, type CounterSession } from "@qms/api-client";
+import { ApiRequestError, type CounterSession, type TransferInput } from "@qms/api-client";
+import { formatTokenNumber } from "@qms/i18n";
 import { useI18n } from "@qms/i18n/react";
 import { Button, ErrorAlert } from "@qms/ui";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { counterMovedOn, counterTopic, describeError, queueTopic, reasonOf, waitingFrom } from "../lib/console-support";
+import { counterMovedOn, counterTopic, describeError, localisedName, queueTopic, reasonOf, waitingFrom } from "../lib/console-support";
 import { useTopics } from "../lib/realtime";
 import { useApi } from "../lib/runtime";
 import { OpenSessionCard } from "./OpenSessionCard";
 import { ServingDesk, type DeskActions } from "./ServingDesk";
 
-/** The function keys of SRS §11.2 that this console answers (F7 transfer and F9 break arrive with later tickets). */
-const KEYS: Record<string, keyof Pick<DeskActions, "call" | "reannounce" | "start" | "complete" | "miss" | "hold" | "close">> = {
+/** The function keys of SRS §11.2 that this console answers (F9 break arrives with a later ticket). */
+const KEYS: Record<string, keyof Pick<DeskActions, "call" | "reannounce" | "start" | "complete" | "miss" | "transfer" | "hold" | "close">> = {
   F2: "call",
   F3: "reannounce",
   F4: "start",
   F5: "complete",
   F6: "miss",
+  F7: "transfer",
   F8: "hold",
   F10: "close",
 };
 
 /**
  * The agent's console (SRS §11): open a session, then call, serve and complete tickets, and close the session, all from the
- * keyboard (F2, F3, F4, F5, F6, F8, F10; NFR-USA-002). The console keeps no state the server does not: on load, on coming back
+ * keyboard (F2, F3, F4, F5, F6, F7, F8, F10; NFR-USA-002). The console keeps no state the server does not: on load, on coming back
  * online and after any refused or lost action it asks the server for the session again, so a refresh, a short network loss
  * or a device restart puts the agent back at the ticket they were serving (FR-AGT-004). Whether an action is allowed is
  * shown here for convenience only; the API checks each one (FR-CFG-103, FR-CFG-105).
@@ -33,7 +35,7 @@ const KEYS: Record<string, keyof Pick<DeskActions, "call" | "reannounce" | "star
  * counter's session or ticket changed under it. Whether it is live or polling is the client's business, not the screen's.
  */
 export function CounterConsole() {
-  const { t } = useI18n();
+  const { t, language } = useI18n();
   const { client } = useApi();
   /** `undefined` until the server has been asked; `null` when the agent has no live session. */
   const [session, setSession] = useState<CounterSession | null | undefined>(undefined);
@@ -44,6 +46,8 @@ export function CounterConsole() {
   const [waiting, setWaiting] = useState<Record<string, number>>({});
   const [outcome, setOutcome] = useState("");
   const [note, setNote] = useState("");
+  /** Whether the transfer panel (F7) is open. */
+  const [transferring, setTransferring] = useState(false);
   const working = useRef(false);
   /** Counts the actions begun, so a read of the session that an action overtook is thrown away rather than shown. */
   const generation = useRef(0);
@@ -81,6 +85,8 @@ export function CounterConsole() {
   useEffect(() => {
     setOutcome("");
     setNote("");
+    // The panel is for the ticket in service; once that ticket moves on, the panel has nothing to send.
+    setTransferring(false);
   }, [ticketId, ticketState]);
 
   /** Runs one action at a time, so a key held down or pressed twice cannot send the same action twice. */
@@ -124,6 +130,7 @@ export function CounterConsole() {
   const canStart = ticket?.state === "called";
   const canComplete = ticket?.state === "serving";
   const canMiss = ticket?.state === "called";
+  const canTransfer = ticket?.state === "serving";
   const heldTickets = session?.held ?? [];
   const canHold = session?.state === "open" && ticket?.state === "serving" && heldTickets.length < (session?.hold_limit ?? 0);
   /** A held ticket comes back only when the desk has nothing else in progress (FR-AGT-010). */
@@ -135,6 +142,7 @@ export function CounterConsole() {
     canStart,
     canComplete,
     canMiss,
+    canTransfer,
     canHold,
     canResume,
     canClose,
@@ -153,6 +161,10 @@ export function CounterConsole() {
         // Missing the ticket of a closing session resolves it, and the session closes (SRS §19.3).
         setSession(next.state === "closed" ? null : next);
       });
+    },
+    transfer() {
+      if (!canTransfer) return;
+      setTransferring((open) => !open);
     },
     hold() {
       if (!client || !session || !ticket || !canHold) return;
@@ -192,9 +204,24 @@ export function CounterConsole() {
     },
   };
 
+  /** Sends the ticket in service to its target (FR-QUE-052); the answer carries the session as it stands, and the successor's place. */
+  function transfer(input: TransferInput) {
+    if (!client || !session || !ticket || !canTransfer) return;
+    void perform(async () => {
+      const result = await client.tickets.transfer(ticket.id, input, ticket.version);
+      // Transferring the ticket of a closing session closes it (SRS §19.3).
+      setSession(result.session.state === "closed" ? null : result.session);
+      setTransferring(false);
+      const service = localisedName(result.successor.service.name_i18n, language);
+      setNotice(t("console.transfer.done", { token: formatTokenNumber(result.successor.token_number), service }));
+    });
+  }
+
   // The keys act on the latest render's actions without re-registering the listener on every render.
   const latest = useRef(actions);
   latest.current = actions;
+  const openPanel = useRef(false);
+  openPanel.current = transferring;
   const active = Boolean(session);
   useEffect(() => {
     if (!active) return;
@@ -204,6 +231,8 @@ export function CounterConsole() {
       // F5 reloads the page and F10 opens a menu in some browsers; here they are the agent's actions.
       event.preventDefault();
       if (event.repeat) return;
+      // While the transfer panel is open the keys are the panel's: typing a note must not complete the ticket. F7 closes it again.
+      if (openPanel.current && action !== "transfer") return;
       latest.current[action]();
     }
     window.addEventListener("keydown", onKeyDown);
@@ -226,7 +255,21 @@ export function CounterConsole() {
       )}
       {notice !== null && <p role="status">{notice}</p>}
       {session === null && <OpenSessionCard onOpened={setSession} />}
-      {session && <ServingDesk session={session} actions={actions} busy={busy} waiting={waiting} outcome={outcome} onOutcome={setOutcome} note={note} onNote={setNote} />}
+      {session && (
+        <ServingDesk
+          session={session}
+          actions={actions}
+          busy={busy}
+          waiting={waiting}
+          outcome={outcome}
+          onOutcome={setOutcome}
+          note={note}
+          onNote={setNote}
+          transferring={transferring}
+          onTransfer={transfer}
+          onCancelTransfer={() => setTransferring(false)}
+        />
+      )}
     </div>
   );
 }

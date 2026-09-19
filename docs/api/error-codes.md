@@ -52,7 +52,12 @@ with only held tickets left, ticket 13); `no_ticket_waiting` (nothing to call);
 serving); `reannounce_limit_reached` (a ticket already re-announced as often as allowed, ticket 12); `hold_limit_reached` (the session holds as
 many tickets as allowed) and `no_ticket_held` (resume a ticket this session does not hold), ticket 13; `session_not_open` also refuses
 a force-close of a session that is already closed; `version_mismatch` (a
-stale `If-Match`). A session that is not the caller's is `forbidden`, an unknown one `not_found`; a chosen service the counter
+stale `If-Match`). A transfer (`POST /tickets/{id}/transfer`, ticket 15) also refuses with `conflict` and `no_ticket_serving` (the ticket is not in
+service), `transfer_target_inactive` (the Service, its group or site, the counter or the agent is not active), `transfer_cross_site`
+(a Service or counter of another site; transfers are intra-site, ADR-0002) or `transfer_target_mismatch` (the counter does not serve the
+Service, or the agent is not on its team or does not work at the site). A missing or blank `note`, no target, the ticket's own Service
+without a counter or agent, a counter and an agent together, an unknown target, or a note over 1000 characters is `validation_failed`
+naming the field; another agent's ticket, or a role without the permission, is `forbidden`. A session that is not the caller's is `forbidden`, an unknown one `not_found`; a chosen service the counter
 does not offer, a missing or unknown outcome, or a malformed `If-Match` is `validation_failed` naming the field.
 
 The client library also synthesises two codes that never come from the server: `network_error` (no response) and

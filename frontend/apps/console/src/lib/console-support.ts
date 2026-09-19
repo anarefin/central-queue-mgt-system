@@ -17,6 +17,9 @@ const REFUSALS = new Set([
   "counter_occupied",
   "agent_has_open_session",
   "counter_inactive",
+  "transfer_target_inactive",
+  "transfer_cross_site",
+  "transfer_target_mismatch",
 ]);
 
 /** A localised sentence for a failed call; the code and reason, never the server's text, choose it (SRS §20.3). */

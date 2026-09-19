@@ -12,6 +12,8 @@ import org.springframework.boot.context.properties.bind.DefaultValue;
  * @param missReentryPosition where a missed ticket re-enters the queue (FR-QUE-051)
  * @param missReentryAfter for {@link ReentryPosition#AFTER_N}: how many tickets stay ahead of the missed one
  * @param holdLimit how many tickets one session may hold at once (FR-AGT-013); 0 switches Hold off
+ * @param transferHeadstartMinutes the Head start a Successor ticket gets when it is transferred, in minutes; not set means the
+ *     predecessor's accrued wait, so the visitor is not sent to the back (FR-QUE-053)
  */
 @ConfigurationProperties("qms.queue")
 public record QueueProperties(
@@ -20,7 +22,8 @@ public record QueueProperties(
         @DefaultValue("2") int missLimit,
         @DefaultValue("after-n") ReentryPosition missReentryPosition,
         @DefaultValue("3") int missReentryAfter,
-        @DefaultValue("3") int holdLimit) {
+        @DefaultValue("3") int holdLimit,
+        Integer transferHeadstartMinutes) {
 
     public QueueProperties {
         if (primaryLinkToleranceMinutes < 0) throw new IllegalArgumentException("qms.queue.primary-link-tolerance-minutes must not be negative");
@@ -28,5 +31,6 @@ public record QueueProperties(
         if (missLimit < 0) throw new IllegalArgumentException("qms.queue.miss-limit must not be negative");
         if (missReentryAfter < 1) throw new IllegalArgumentException("qms.queue.miss-reentry-after must be at least 1");
         if (holdLimit < 0) throw new IllegalArgumentException("qms.queue.hold-limit must not be negative");
+        if (transferHeadstartMinutes != null && transferHeadstartMinutes < 0) throw new IllegalArgumentException("qms.queue.transfer-headstart-minutes must not be negative");
     }
 }

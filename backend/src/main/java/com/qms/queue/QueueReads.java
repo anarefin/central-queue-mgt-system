@@ -35,7 +35,8 @@ public class QueueReads {
             UUID priorityClassId,
             Map<String, String> priorityClassNames,
             Integer maxWaitMinutes,
-            Terms terms) {
+            Terms terms,
+            TransferRules.Target target) {
 
         /** Past its class's maximum wait, so it is served before every ticket that is not (FR-QUE-022). */
         public boolean escalated() {
@@ -78,7 +79,7 @@ public class QueueReads {
         Instant now = clock.instant();
         List<Row> rows = jdbc.query(
                 "SELECT t.id, t.token_number, t.state, t.origin_channel, t.issued_at, t.queued_at, t.score_adjustment_minutes,"
-                        + " pc.id AS class_id, pc.name_i18n AS class_names, pc.headstart_minutes, pc.max_wait_minutes"
+                        + " t.target_counter_id, t.target_agent_id, pc.id AS class_id, pc.name_i18n AS class_names, pc.headstart_minutes, pc.max_wait_minutes"
                         + " FROM ticket t LEFT JOIN priority_class pc ON pc.id = coalesce(t.priority_class_id, (SELECT id FROM priority_class WHERE is_default))"
                         + " WHERE t.service_id = ? AND t." + WAITING,
                 (rs, i) -> {
@@ -92,7 +93,8 @@ public class QueueReads {
                             0, // the appointment bonus arrives with appointment check-in (FR-APT-032)
                             rs.getInt("score_adjustment_minutes"));
                     return new Row(candidate, rs.getString("token_number"), rs.getString("state"), rs.getString("origin_channel"),
-                            rs.getObject("class_id", UUID.class), names(rs.getString("class_names")));
+                            rs.getObject("class_id", UUID.class), names(rs.getString("class_names")),
+                            new TransferRules.Target(rs.getObject("target_counter_id", UUID.class), rs.getObject("target_agent_id", UUID.class)));
                 },
                 serviceId);
         Map<UUID, Row> byId = new LinkedHashMap<>();
@@ -103,11 +105,14 @@ public class QueueReads {
     }
 
     /**
-     * The ticket a counter would be given next from this service: the first in order that is {@code waiting}. A
-     * {@code paused} ticket keeps its place in the queue but cannot be called (§19.1).
+     * The ticket a counter would be given next from this service: the first in order that is {@code waiting} and that this
+     * counter and agent may draw. A {@code paused} ticket keeps its place in the queue but cannot be called (§19.1); one
+     * targeted at another agent or counter waits in that agent's personal queue and is not drawn here (FR-QUE-003).
      */
-    public Optional<Entry> callableHead(UUID serviceId) {
-        return ordered(serviceId, null).entries().stream().filter(e -> "waiting".equals(e.state())).findFirst();
+    public Optional<Entry> callableHead(UUID serviceId, UUID counterId, UUID agentId) {
+        return ordered(serviceId, null).entries().stream()
+                .filter(e -> "waiting".equals(e.state()) && e.target().drawableBy(counterId, agentId))
+                .findFirst();
     }
 
     /**
@@ -154,7 +159,7 @@ public class QueueReads {
         return entries.size() <= limit ? entries : entries.subList(0, limit);
     }
 
-    private record Row(Candidate candidate, String tokenNumber, String state, String originChannel, UUID classId, Map<String, String> classNames) {}
+    private record Row(Candidate candidate, String tokenNumber, String state, String originChannel, UUID classId, Map<String, String> classNames, TransferRules.Target target) {}
 
     private static Entry entry(Row row, Scored scored) {
         return new Entry(
@@ -167,7 +172,8 @@ public class QueueReads {
                 row.classId(),
                 row.classNames(),
                 row.candidate().maxWaitMinutes(),
-                scored.terms());
+                scored.terms(),
+                row.target());
     }
 
     @SuppressWarnings("unchecked")

@@ -370,6 +370,33 @@ class RealtimeIT {
     }
 
     @Test
+    void aTransferIsAnnouncedOnTheQueueAndTheCounterAndTheSuccessorJoinsTheQueue() throws Exception {
+        World w = world();
+        Person agent = person(Role.AGENT, w.site(), w.group());
+        Person colleague = person(Role.AGENT, w.site(), w.group());
+        issue(w.service());
+        Socket console = connect(agent);
+        console.subscribe("queue:" + w.service(), "counter:" + w.counter());
+        UUID session = openSession(agent, w.counter());
+        send("POST", "/sessions/" + session + "/next", agent.token(), null);
+        Map<String, Object> serving = json(send("POST", "/sessions/" + session + "/serve", agent.token(), null));
+        console.event("ticket.serving");
+        console.event("ticket.serving");
+        String ticket = (String) ((Map<String, Object>) serving.get("ticket")).get("id");
+
+        Map<String, Object> transferred = json(send("POST", "/tickets/" + ticket + "/transfer", agent.token(), "{\"agent_id\":\"" + colleague.id() + "\",\"note\":\"Second opinion\"}"));
+
+        Map<String, Object> onQueue = console.event("ticket.transferred");
+        assertThat(onQueue).containsEntry("topic", "queue:" + w.service());
+        assertThat(data(onQueue)).containsEntry("state", "transferred").containsEntry("ticket_id", ticket).containsEntry("counter_id", w.counter().toString()).containsEntry("waiting_count", 1);
+        assertThat(console.event("ticket.transferred")).containsEntry("topic", "counter:" + w.counter());
+        Map<String, Object> joined = console.event("ticket.issued");
+        assertThat(joined).containsEntry("topic", "queue:" + w.service());
+        assertThat(data(joined)).containsEntry("state", "waiting").containsEntry("token_number", ((Map<String, Object>) transferred.get("successor")).get("token_number"));
+        assertThat(data(joined).get("ticket_id")).as("the successor, not the predecessor").isEqualTo(((Map<String, Object>) transferred.get("successor")).get("id"));
+    }
+
+    @Test
     void aSnapshotShowsTheSessionAndTheTicketInProgress() throws Exception {
         World w = world();
         Person agent = person(Role.AGENT, w.site(), w.group());

@@ -1,11 +1,12 @@
 "use client";
 
-import type { CounterSession, SessionTicket } from "@qms/api-client";
+import type { CounterSession, SessionTicket, TransferInput } from "@qms/api-client";
 import { formatTokenNumber } from "@qms/i18n";
 import { useI18n } from "@qms/i18n/react";
 import { Button, Card, SelectField } from "@qms/ui";
 import { useEffect } from "react";
 import { localisedName } from "../lib/console-support";
+import { TransferPanel } from "./TransferPanel";
 
 /** What the desk lets the agent do right now; the server checks every one of these again (FR-CFG-103). */
 export interface DeskActions {
@@ -14,6 +15,7 @@ export interface DeskActions {
   canStart: boolean;
   canComplete: boolean;
   canMiss: boolean;
+  canTransfer: boolean;
   canHold: boolean;
   canResume: boolean;
   canClose: boolean;
@@ -22,6 +24,8 @@ export interface DeskActions {
   start: () => void;
   complete: () => void;
   miss: () => void;
+  /** F7: opens the transfer panel, or closes it when it is already open. */
+  transfer: () => void;
   hold: () => void;
   resume: (held: SessionTicket) => void;
   close: () => void;
@@ -37,18 +41,23 @@ interface Props {
   onOutcome: (id: string) => void;
   note: string;
   onNote: (note: string) => void;
+  /** Whether the transfer panel (F7) is open, and what it sends. */
+  transferring: boolean;
+  onTransfer: (input: TransferInput) => void;
+  onCancelTransfer: () => void;
 }
 
 /**
  * The counter desk (SRS §11.2): the ticket in progress and its actions, each on a function key so a whole day's work needs
  * no mouse (NFR-USA-002). Call next is off while a ticket is called or serving (FR-AGT-010). A called ticket can be
  * re-announced (F3, up to the limit) or missed (F6); the desk says so beforehand when the next Miss would close it as a
- * no-show, since that cannot be undone (FR-QUE-050). A ticket in service can be held (F8) so the counter can call the next one;
+ * no-show, since that cannot be undone (FR-QUE-050). A ticket in service can be transferred (F7) to another Service, counter or agent
+ * with a note (FR-QUE-052), or held (F8) so the counter can call the next one;
  * the held tickets are listed here and each is resumed from the list, and they must all be cleared before the session can close
  * (FR-AGT-013). The outcome
  * takes focus when service starts, so the keys, an arrow and F5 are all it takes to finish a ticket.
  */
-export function ServingDesk({ session, actions, busy, waiting, outcome, onOutcome, note, onNote }: Props) {
+export function ServingDesk({ session, actions, busy, waiting, outcome, onOutcome, note, onNote, transferring, onTransfer, onCancelTransfer }: Props) {
   const { t, language, formatNumber } = useI18n();
   const ticket = session.ticket;
   const serving = ticket?.state === "serving";
@@ -139,6 +148,8 @@ export function ServingDesk({ session, actions, busy, waiting, outcome, onOutcom
         )}
       </Card>
 
+      {transferring && ticket && serving && <TransferPanel sessionId={session.id} ticket={ticket} busy={busy} onSubmit={onTransfer} onCancel={onCancelTransfer} />}
+
       {held.length > 0 && (
         <Card>
           <h3 className="qms-label">{t("console.held.title", { count: formatNumber(held.length), limit: formatNumber(session.hold_limit) })}</h3>
@@ -172,6 +183,7 @@ export function ServingDesk({ session, actions, busy, waiting, outcome, onOutcom
           {button(t("console.action.serve"), "F4", actions.canStart, actions.start)}
           {button(t("console.action.complete"), "F5", actions.canComplete, actions.complete)}
           {button(t("console.action.miss"), "F6", actions.canMiss, actions.miss, "secondary")}
+          {button(t("console.action.transfer"), "F7", actions.canTransfer, actions.transfer, "secondary")}
           {button(t("console.action.hold"), "F8", actions.canHold, actions.hold, "secondary")}
           {button(t("console.action.close"), "F10", actions.canClose, actions.close, "secondary")}
         </div>

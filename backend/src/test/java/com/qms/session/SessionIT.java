@@ -1522,6 +1522,415 @@ class SessionIT {
         assertThat(ticketRow(token, w.a()).get("wait_seconds")).as("Invariant 1: 300 + 300, not counting time held").isEqualTo(600);
     }
 
+    // ---- ticket 15: transfer to a Successor ticket (FR-QUE-052, FR-QUE-053, FR-QUE-003, ADR-0006, §19.1, Invariant 4) -----------------
+
+    private MvcResult transfer(Agent by, UUID ticketId, Integer version, String json) throws Exception {
+        MockHttpServletRequestBuilder request = post("/api/v1/tickets/" + ticketId + "/transfer");
+        if (version != null) request.header("If-Match", "\"" + version + "\"");
+        return call(request, by.token(), json);
+    }
+
+    private static String transferJson(UUID service, UUID counter, UUID agent, String note) {
+        List<String> parts = new ArrayList<>();
+        if (service != null) parts.add("\"service_id\":\"" + service + "\"");
+        if (counter != null) parts.add("\"counter_id\":\"" + counter + "\"");
+        if (agent != null) parts.add("\"agent_id\":\"" + agent + "\"");
+        if (note != null) parts.add("\"note\":\"" + note + "\"");
+        return "{" + String.join(",", parts) + "}";
+    }
+
+    private UUID idOf(String token, UUID service) {
+        return (UUID) ticketRow(token, service).get("id");
+    }
+
+    private Instant instantOf(UUID ticket, String column) {
+        return jdbc.queryForObject("SELECT " + column + " FROM ticket WHERE id = ?", java.time.OffsetDateTime.class, ticket).toInstant();
+    }
+
+    private Map<String, Object> successorOf(UUID predecessor) {
+        return jdbc.queryForMap("SELECT * FROM ticket WHERE predecessor_ticket_id = ?", predecessor);
+    }
+
+    private UUID newClass(int headstartMinutes) {
+        UUID id = UUID.randomUUID();
+        jdbc.update(
+                "INSERT INTO priority_class (id, name_i18n, headstart_minutes, is_default, active, created_at, updated_at) VALUES (?, '{\"en\":\"Senior\"}'::jsonb, ?, false, true, now(), now())",
+                id, headstartMinutes);
+        return id;
+    }
+
+    /** Asserts a refused transfer and that it changed nothing: the ticket is still being served and no successor exists. */
+    private void assertNotTransferred(MvcResult result, int status, String reason, String token, UUID service) throws Exception {
+        assertThat(status(result)).as(body(result)).isEqualTo(status);
+        if (reason != null) assertThat(reason(result)).isEqualTo(reason);
+        assertThat(ticketRow(token, service).get("state")).as("still in service").isEqualTo("serving");
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM ticket WHERE predecessor_ticket_id = ?", Integer.class, idOf(token, service))).as("no successor").isZero();
+    }
+
+    @Test
+    void aTransferClosesTheServedTicketAndOpensASuccessorInTheTargetQueueWithTheSameTokenVisitAndClassAheadOfLaterArrivals() throws Exception {
+        World w = world();
+        UUID deskA = counter(w, "Desk 1", w.a(), 1);
+        UUID senior = newClass(15);
+        clock.set(BASE.minus(Duration.ofMinutes(20)));
+        String token = issuance.issue(new IssueCommand(w.a(), Channels.RECEPTION, UUID.randomUUID(), ActorType.SYSTEM, null, senior)).tokenNumber();
+        clock.set(BASE);
+        String laterInA = issueAgo(w.a(), 1);
+        String b1 = issueAgo(w.b(), 10);
+        String b2 = issueAgo(w.b(), 5);
+        Agent agent = agent(w);
+        UUID session = opened(agent, deskA);
+        assertThat(calledToken(agent, session)).as("the class puts it first").isEqualTo(token); // BASE: 1200 s of waiting
+        clock.set(BASE.plusSeconds(120));
+        assertThat(status(serve(agent, session, null))).isEqualTo(200);
+        Map<String, Object> served = ticketRow(token, w.a());
+        clock.set(BASE.plusSeconds(300));
+
+        MvcResult result = transfer(agent, (UUID) served.get("id"), (Integer) served.get("version"), transferJson(w.b(), null, null, "Needs a blood test"));
+
+        assertThat(status(result)).as(body(result)).isEqualTo(200);
+        assertThat((String) field(result, "$.predecessor.state")).isEqualTo("transferred");
+        assertThat((String) field(result, "$.successor.token_number")).as("the visitor keeps the token number").isEqualTo(token);
+        assertThat((String) field(result, "$.successor.state")).isEqualTo("waiting");
+        assertThat((String) field(result, "$.successor.service.name_i18n.en")).isEqualTo("Laboratory");
+        assertThat((Integer) field(result, "$.successor.head_start_minutes")).as("the predecessor's accrued wait, 20 minutes").isEqualTo(20);
+        assertThat((Integer) field(result, "$.successor.position")).isEqualTo(1);
+        assertThat((Object) field(result, "$.session.ticket")).as("the counter is free").isNull();
+
+        Map<String, Object> closed = ticketRow(token, w.a());
+        assertThat(closed.get("state")).as("Invariant 4: terminal").isEqualTo("transferred");
+        assertThat(closed.get("counter_session_id")).as("Invariant 2: the binding is cleared").isNull();
+        assertThat(closed.get("wait_seconds")).as("its wait stopped when it was called").isEqualTo(1200);
+        assertThat(closed.get("service_seconds")).isEqualTo(180);
+        assertThat(closed.get("note")).isEqualTo("Needs a blood test");
+        assertThat(instantOf(idOf(token, w.a()), "closed_at")).isEqualTo(BASE.plusSeconds(300));
+
+        Map<String, Object> successor = successorOf((UUID) served.get("id"));
+        assertThat(successor.get("id").toString()).isEqualTo(field(result, "$.successor.id"));
+        assertThat(successor.get("state")).isEqualTo("waiting");
+        assertThat(successor.get("service_id")).isEqualTo(w.b());
+        assertThat(successor.get("token_number")).isEqualTo(served.get("token_number"));
+        assertThat(successor.get("sequence_no")).isEqualTo(served.get("sequence_no"));
+        assertThat(successor.get("reset_key")).isEqualTo(served.get("reset_key"));
+        assertThat(successor.get("visit_id")).as("the same Visit").isEqualTo(served.get("visit_id"));
+        assertThat(successor.get("predecessor_ticket_id")).isEqualTo(served.get("id"));
+        assertThat(successor.get("priority_class_id")).as("the class is inherited").isEqualTo(senior);
+        assertThat(successor.get("origin_channel")).isEqualTo(served.get("origin_channel"));
+        assertThat(successor.get("counter_session_id")).isNull();
+        assertThat(successor.get("target_counter_id")).isNull();
+        assertThat(successor.get("target_agent_id")).isNull();
+        assertThat(successor.get("score_adjustment_minutes")).as("the transfer Head start, 20 minutes of waiting").isEqualTo(20);
+        assertThat(instantOf((UUID) successor.get("id"), "queued_at")).as("its wait starts at the transfer").isEqualTo(BASE.plusSeconds(300));
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM ticket WHERE token_number = ? AND site_id = ? AND predecessor_ticket_id IS NULL", Integer.class, token, w.site()))
+                .as("one chain head").isEqualTo(1);
+
+        assertThat(queueOrder(w.b())).as("not sent to the back: 20 + 15 minutes of head start against the 15 and 10 minutes the others waited")
+                .containsExactly(token, b1, b2);
+        assertThat(queueOrder(w.a())).containsExactly(laterInA);
+
+        List<Map<String, Object>> events = eventsOf(closed);
+        assertThat(events.getLast().get("event_type")).isEqualTo("ticket.transferred");
+        assertThat(events.getLast().get("from_state") + ">" + events.getLast().get("to_state")).isEqualTo("serving>transferred");
+        assertThat(inPayload(events.getLast(), "$.note")).isEqualTo("Needs a blood test");
+        assertThat(inPayload(events.getLast(), "$.successor_ticket_id")).isEqualTo(successor.get("id").toString());
+        assertThat(events.getLast().get("counter_id")).isEqualTo(deskA);
+        List<Map<String, Object>> first = eventsOf(successor);
+        assertThat(first).as("Invariant 3: one event for the new ticket").hasSize(1);
+        assertThat(first.getFirst().get("seq")).isEqualTo(1);
+        assertThat(first.getFirst().get("event_type")).isEqualTo("ticket.issued");
+        assertThat(first.getFirst().get("from_state")).isNull();
+        assertThat(first.getFirst().get("to_state")).isEqualTo("waiting");
+        assertThat(inPayload(first.getFirst(), "$.predecessor_ticket_id")).isEqualTo(served.get("id").toString());
+        Map<String, Object> audit = jdbc.queryForMap("SELECT actor_id, reason, after::text AS after FROM audit_log WHERE action = 'ticket.transferred' AND entity_id = ?", served.get("id"));
+        assertThat(audit.get("actor_id")).isEqualTo(agent.id());
+        assertThat(audit.get("reason")).isEqualTo("Needs a blood test");
+        assertThat(JsonPath.<String>read((String) audit.get("after"), "$.successor_ticket_id")).isEqualTo(successor.get("id").toString());
+
+        assertThat(calledToken(agent, session)).as("the counter calls its next ticket").isEqualTo(laterInA);
+    }
+
+    @Test
+    void aSuccessorIsFirstOnlyAsFarAsItsAccruedWaitCarriesIt() throws Exception {
+        World w = world();
+        UUID deskA = counter(w, "Desk 1", w.a(), 1);
+        String token = issueAgo(w.a(), 5); // waits 300 s: a 5-minute head start
+        String longWaiting = issueAgo(w.b(), 30);
+        String shortWaiting = issueAgo(w.b(), 2);
+        Agent agent = agent(w);
+        UUID session = opened(agent, deskA);
+        servingToken(agent, session);
+
+        MvcResult result = transfer(agent, idOf(token, w.a()), null, transferJson(w.b(), null, null, "Lab"));
+
+        assertThat(status(result)).as(body(result)).isEqualTo(200);
+        assertThat((Integer) field(result, "$.successor.head_start_minutes")).isEqualTo(5);
+        assertThat(queueOrder(w.b())).as("ahead of the visitor who arrived after it, behind the one who has waited longer").containsExactly(longWaiting, token, shortWaiting);
+    }
+
+    @Test
+    void aTransferNeedsANoteAndATarget() throws Exception {
+        World w = world();
+        UUID deskA = counter(w, "Desk 1", w.a(), 1);
+        UUID deskB = counter(w, "Desk 2", w.b(), 1);
+        String token = issueAgo(w.a(), 5);
+        Agent agent = agent(w);
+        Agent colleague = agent(w);
+        UUID session = opened(agent, deskA);
+        servingToken(agent, session);
+        UUID id = idOf(token, w.a());
+
+        assertThat(status(transfer(agent, id, null, null))).as("no body").isEqualTo(400);
+        for (String note : new String[] {null, "", "   "}) {
+            MvcResult result = transfer(agent, id, null, transferJson(w.b(), null, null, note));
+            assertNotTransferred(result, 400, null, token, w.a());
+            assertThat((String) field(result, "$.error.code")).isEqualTo("validation_failed");
+            assertThat((String) field(result, "$.error.details.fields[0].field")).isEqualTo("note");
+        }
+        assertNotTransferred(transfer(agent, id, null, transferJson(w.b(), null, null, "x".repeat(1001))), 400, null, token, w.a());
+        MvcResult noTarget = transfer(agent, id, null, transferJson(null, null, null, "Lab"));
+        assertNotTransferred(noTarget, 400, null, token, w.a());
+        assertThat((String) field(noTarget, "$.error.details.fields[0].field")).isEqualTo("service_id");
+        assertNotTransferred(transfer(agent, id, null, transferJson(w.a(), null, null, "Same queue")), 400, null, token, w.a());
+        assertNotTransferred(transfer(agent, id, null, transferJson(w.b(), deskB, colleague.id(), "Both")), 400, null, token, w.a());
+        assertNotTransferred(transfer(agent, id, null, transferJson(UUID.randomUUID(), null, null, "Unknown service")), 400, null, token, w.a());
+        assertNotTransferred(transfer(agent, id, null, transferJson(w.b(), UUID.randomUUID(), null, "Unknown counter")), 400, null, token, w.a());
+        assertNotTransferred(transfer(agent, id, null, transferJson(w.b(), null, UUID.randomUUID(), "Unknown agent")), 400, null, token, w.a());
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM audit_log WHERE action = 'ticket.transferred' AND entity_id = ?", Integer.class, id)).isZero();
+    }
+
+    @Test
+    void aTicketTargetedAtAnAgentWaitsInThatAgentsPersonalQueueAndNoOtherCounterDrawsIt() throws Exception {
+        World w = world();
+        UUID deskA = counter(w, "Desk 1", w.a(), 1);
+        UUID deskB1 = counter(w, "Desk B1", w.b(), 1);
+        UUID deskB2 = counter(w, "Desk B2", w.b(), 1);
+        String token = issueAgo(w.a(), 20);
+        String general = issueAgo(w.b(), 1);
+        Agent sender = agent(w);
+        Agent other = agent(w);
+        Agent target = agent(w);
+        UUID senderSession = opened(sender, deskA);
+        servingToken(sender, senderSession);
+
+        MvcResult result = transfer(sender, idOf(token, w.a()), null, transferJson(w.b(), null, target.id(), "For Dr. Rahman"));
+
+        assertThat(status(result)).as(body(result)).isEqualTo(200);
+        assertThat((String) field(result, "$.successor.agent_id")).isEqualTo(target.id().toString());
+        Map<String, Object> successor = successorOf(idOf(token, w.a()));
+        assertThat(successor.get("target_agent_id")).isEqualTo(target.id());
+        assertThat(successor.get("target_counter_id")).isNull();
+        assertThat(queueOrder(w.b())).as("it is first in order, and still in the Service's queue count").containsExactly(token, general);
+
+        UUID otherSession = opened(other, deskB1);
+        UUID targetSession = opened(target, deskB2);
+        assertThat(calledToken(other, otherSession)).as("the ticket ahead of it in order is not theirs to draw").isEqualTo(general);
+        assertThat(status(serve(other, otherSession, null))).isEqualTo(200);
+        assertThat(status(complete(other, otherSession, null, null))).isEqualTo(200);
+        MvcResult none = next(other, otherSession);
+        assertThat(status(none)).isEqualTo(409);
+        assertThat(reason(none)).as("only the personal queue is left").isEqualTo("no_ticket_waiting");
+
+        assertThat(calledToken(target, targetSession)).as("its own agent draws it").isEqualTo(token);
+        MvcResult missed = miss(target, targetSession, null);
+        assertThat(status(missed)).as(body(missed)).isEqualTo(200);
+        assertThat(ticketRow(token, w.b()).get("target_agent_id")).as("a Miss keeps it in the personal queue").isEqualTo(target.id());
+        assertThat(reason(next(other, otherSession))).isEqualTo("no_ticket_waiting");
+        assertThat(calledToken(target, targetSession)).isEqualTo(token);
+    }
+
+    @Test
+    void aTicketTargetedAtACounterIsDrawnByThatCounterAlone() throws Exception {
+        World w = world();
+        UUID deskA = counter(w, "Desk 1", w.a(), 1);
+        UUID deskB1 = counter(w, "Desk B1", w.b(), 1);
+        UUID deskB2 = counter(w, "Desk B2", w.b(), 1);
+        String token = issueAgo(w.a(), 10);
+        Agent sender = agent(w);
+        Agent atB1 = agent(w);
+        Agent atB2 = agent(w);
+        UUID senderSession = opened(sender, deskA);
+        servingToken(sender, senderSession);
+
+        MvcResult result = transfer(sender, idOf(token, w.a()), null, transferJson(w.b(), deskB2, null, "Second desk has the scanner"));
+
+        assertThat(status(result)).as(body(result)).isEqualTo(200);
+        assertThat((String) field(result, "$.successor.counter_id")).isEqualTo(deskB2.toString());
+        assertThat(ticketRow(token, w.b()).get("zone_id")).as("it waits where that counter is").isEqualTo(w.zone());
+        UUID sessionB1 = opened(atB1, deskB1);
+        UUID sessionB2 = opened(atB2, deskB2);
+        assertThat(reason(next(atB1, sessionB1))).isEqualTo("no_ticket_waiting");
+        assertThat(calledToken(atB2, sessionB2)).isEqualTo(token);
+    }
+
+    @Test
+    void aCounterOrAgentTargetWithoutAServiceMeansTheTicketsOwnService() throws Exception {
+        World w = world();
+        UUID desk1 = counter(w, "Desk 1", w.a(), 1);
+        UUID desk2 = counter(w, "Desk 2", w.a(), 1);
+        String token = issueAgo(w.a(), 10);
+        Agent sender = agent(w);
+        UUID session = opened(sender, desk1);
+        servingToken(sender, session);
+        UUID id = idOf(token, w.a());
+
+        MvcResult result = transfer(sender, id, null, transferJson(null, desk2, null, "Specialist desk"));
+
+        assertThat(status(result)).as(body(result)).isEqualTo(200);
+        Map<String, Object> successor = successorOf(id);
+        assertThat(successor.get("service_id")).isEqualTo(w.a());
+        assertThat(successor.get("state")).isEqualTo("waiting");
+        assertThat(successor.get("target_counter_id")).isEqualTo(desk2);
+        assertThat(queues.ordered(w.a(), null).entries().getFirst().target().counterId()).isEqualTo(desk2);
+    }
+
+    @Test
+    void theTargetMustBeActiveOnTheTicketsOwnSiteAndAbleToServeIt() throws Exception {
+        World w = world();
+        UUID deskA = counter(w, "Desk 1", w.a(), 1);
+        UUID deskB = counter(w, "Desk B", w.b(), 1);
+        UUID retired = newService(w.group(), "C", "Retired");
+        jdbc.update("UPDATE service SET active = false WHERE id = ?", retired);
+        UUID closedDesk = counter(w, "Closed desk", w.b(), 1);
+        jdbc.update("UPDATE counter SET active = false WHERE id = ?", closedDesk);
+        World elsewhere = world();
+        UUID farDesk = counter(elsewhere, "Far desk", elsewhere.a(), 1);
+        Agent sender = agent(w);
+        Agent disabled = agent(w);
+        jdbc.update("UPDATE users SET active = false WHERE id = ?", disabled.id());
+        Agent offTeam = user(Role.AGENT, w.site(), null);
+        Agent farAgent = agent(elsewhere);
+        String token = issueAgo(w.a(), 5);
+        UUID session = opened(sender, deskA);
+        servingToken(sender, session);
+        UUID id = idOf(token, w.a());
+
+        assertNotTransferred(transfer(sender, id, null, transferJson(retired, null, null, "n")), 409, "transfer_target_inactive", token, w.a());
+        assertNotTransferred(transfer(sender, id, null, transferJson(elsewhere.a(), null, null, "n")), 409, "transfer_cross_site", token, w.a());
+        assertNotTransferred(transfer(sender, id, null, transferJson(w.b(), closedDesk, null, "n")), 409, "transfer_target_inactive", token, w.a());
+        assertNotTransferred(transfer(sender, id, null, transferJson(w.b(), farDesk, null, "n")), 409, "transfer_cross_site", token, w.a());
+        assertNotTransferred(transfer(sender, id, null, transferJson(w.b(), deskA, null, "n")), 409, "transfer_target_mismatch", token, w.a());
+        assertNotTransferred(transfer(sender, id, null, transferJson(w.b(), null, disabled.id(), "n")), 409, "transfer_target_inactive", token, w.a());
+        assertNotTransferred(transfer(sender, id, null, transferJson(w.b(), null, offTeam.id(), "n")), 409, "transfer_target_mismatch", token, w.a());
+        assertNotTransferred(transfer(sender, id, null, transferJson(w.b(), null, farAgent.id(), "n")), 409, "transfer_target_mismatch", token, w.a());
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM audit_log WHERE action = 'ticket.transferred' AND entity_id = ?", Integer.class, id)).isZero();
+        assertThat(status(transfer(sender, id, null, transferJson(w.b(), deskB, null, "Fine")))).as("a valid target still works").isEqualTo(200);
+    }
+
+    @Test
+    void onlyTheAgentServingTheTicketOrAnAdminInScopeMayTransferIt() throws Exception {
+        World w = world();
+        UUID deskA = counter(w, "Desk 1", w.a(), 1);
+        String token = issueAgo(w.a(), 5);
+        String second = issueAgo(w.a(), 3);
+        Agent owner = agent(w);
+        UUID session = opened(owner, deskA);
+        calledToken(owner, session);
+        UUID id = idOf(token, w.a());
+        String body = transferJson(w.b(), null, null, "Lab");
+
+        assertThat(reason(transfer(owner, id, null, body))).as("called, not yet in service").isEqualTo("no_ticket_serving");
+        assertThat(status(serve(owner, session, null))).isEqualTo(200);
+        assertThat(status(transfer(agent(w), id, null, body))).as("another agent's ticket").isEqualTo(403);
+        assertThat(status(transfer(user(Role.RECEPTION_OPERATOR, w.site(), w.group()), id, null, body))).as("reception cannot transfer").isEqualTo(403);
+        assertThat(status(call(post("/api/v1/tickets/" + id + "/transfer"), null, body))).isEqualTo(401);
+        assertThat(status(transfer(owner, UUID.randomUUID(), null, body))).isEqualTo(404);
+        World elsewhere = world();
+        assertThat(status(transfer(user(Role.TEAM_ADMIN, elsewhere.site(), elsewhere.group()), id, null, body))).as("an admin of another site").isEqualTo(403);
+        UUID otherGroup = otherGroup(w);
+        assertThat(status(transfer(user(Role.TEAM_ADMIN, w.site(), otherGroup, new UUID[] {otherGroup}), id, null, body))).as("an admin of another Service group").isEqualTo(403);
+        assertNotTransferred(transfer(owner, id, 99, body), 409, "version_mismatch", token, w.a());
+        assertThat(status(transfer(owner, id, null, "{\"note\":\"x\"}"))).as("no target").isEqualTo(400);
+
+        Agent admin = user(Role.TEAM_ADMIN, w.site(), w.group());
+        int version = (Integer) ticketRow(token, w.a()).get("version");
+        MvcResult result = transfer(admin, id, version, body);
+        assertThat(status(result)).as(body(result)).isEqualTo(200);
+        assertThat(jdbc.queryForObject("SELECT actor_id FROM audit_log WHERE action = 'ticket.transferred' AND entity_id = ?", UUID.class, id)).as("the admin is the actor").isEqualTo(admin.id());
+        assertThat(reason(transfer(admin, id, null, body))).as("terminal: it cannot be transferred twice").isEqualTo("no_ticket_serving");
+        assertThat(status(transfer(owner, id, null, body))).as("and it is no longer the agent's").isEqualTo(403);
+        assertThat(calledToken(owner, session)).as("the agent's desk is free").isEqualTo(second);
+    }
+
+    @Test
+    void aSessionThatWasClosingBecauseOfTheTicketClosesOnceItIsTransferred() throws Exception {
+        World w = world();
+        UUID deskA = counter(w, "Desk 1", w.a(), 1);
+        String token = issueAgo(w.a(), 5);
+        Agent agent = agent(w);
+        UUID session = opened(agent, deskA);
+        servingToken(agent, session);
+        assertThat(reason(close(agent, session))).isEqualTo("ticket_in_progress");
+
+        MvcResult result = transfer(agent, idOf(token, w.a()), null, transferJson(w.b(), null, null, "Lab"));
+
+        assertThat(status(result)).as(body(result)).isEqualTo(200);
+        assertThat((String) field(result, "$.session.state")).isEqualTo("closed");
+        assertThat(status(current(agent))).isEqualTo(404);
+        assertThat(status(open(agent, deskA))).as("the counter is free").isEqualTo(201);
+    }
+
+    @Test
+    void aSuccessorCanBeTransferredInTurnAndTheVisitKeepsOneTokenAcrossTheChain() throws Exception {
+        World w = world();
+        UUID deskA = counter(w, "Desk 1", w.a(), 1);
+        UUID deskB = counter(w, "Desk B", w.b(), 1);
+        String token = issueAgo(w.a(), 10);
+        Agent one = agent(w);
+        Agent two = agent(w);
+        UUID sessionOne = opened(one, deskA);
+        UUID sessionTwo = opened(two, deskB);
+        servingToken(one, sessionOne);
+        UUID first = idOf(token, w.a());
+        clock.set(BASE.plusSeconds(300));
+        assertThat(status(transfer(one, first, null, transferJson(w.b(), null, null, "To the lab")))).isEqualTo(200);
+        clock.set(BASE.plusSeconds(600));
+        assertThat(servingToken(two, sessionTwo)).as("it waited 300 s in the lab queue").isEqualTo(token);
+        UUID second = (UUID) successorOf(first).get("id");
+        clock.set(BASE.plusSeconds(700));
+
+        MvcResult back = transfer(two, second, null, transferJson(w.a(), null, null, "Back to the doctor"));
+
+        assertThat(status(back)).as(body(back)).isEqualTo(200);
+        assertThat((Integer) field(back, "$.successor.head_start_minutes")).as("the second ticket's own accrued wait, 5 minutes").isEqualTo(5);
+        Map<String, Object> third = successorOf(second);
+        assertThat(third.get("predecessor_ticket_id")).isEqualTo(second);
+        assertThat(third.get("visit_id")).isEqualTo(jdbc.queryForObject("SELECT visit_id FROM ticket WHERE id = ?", UUID.class, first));
+        assertThat(jdbc.queryForObject("SELECT count(DISTINCT visit_id) FROM ticket WHERE token_number = ? AND site_id = ?", Integer.class, token, w.site())).isEqualTo(1);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM ticket WHERE token_number = ? AND site_id = ?", Integer.class, token, w.site())).isEqualTo(3);
+        assertThat(jdbc.queryForObject("SELECT wait_seconds FROM ticket WHERE id = ?", Integer.class, first)).as("each wait belongs to its own ticket").isEqualTo(600);
+        assertThat(jdbc.queryForObject("SELECT wait_seconds FROM ticket WHERE id = ?", Integer.class, second)).isEqualTo(300);
+    }
+
+    @Test
+    void theTransferTargetsListTheActiveServicesCountersAndAgentsOfTheSessionsSiteOnly() throws Exception {
+        World w = world();
+        UUID deskA = counter(w, "Desk 1", w.a(), 1);
+        UUID deskB = counter(w, "Desk B", w.b(), 1);
+        UUID retired = newService(w.group(), "C", "Retired");
+        jdbc.update("UPDATE service SET active = false WHERE id = ?", retired);
+        World elsewhere = world();
+        counter(elsewhere, "Far desk", elsewhere.a(), 1);
+        Agent me = agent(w);
+        Agent colleague = agent(w);
+        Agent disabled = agent(w);
+        jdbc.update("UPDATE users SET active = false WHERE id = ?", disabled.id());
+        agent(elsewhere);
+        UUID session = opened(me, deskA);
+
+        MvcResult result = call(get("/api/v1/sessions/" + session + "/transfer-targets"), me.token(), null);
+
+        assertThat(status(result)).as(body(result)).isEqualTo(200);
+        assertThat((List<String>) field(result, "$.services[*].id")).containsExactlyInAnyOrder(w.a().toString(), w.b().toString());
+        assertThat((List<String>) field(result, "$.counters[*].id")).as("not its own counter, nor another site's").containsExactly(deskB.toString());
+        assertThat((List<String>) field(result, "$.counters[0].service_ids")).containsExactly(w.b().toString());
+        assertThat((List<String>) field(result, "$.agents[*].id")).as("active colleagues of the site, not the agent themselves").containsExactly(colleague.id().toString());
+        assertThat((List<String>) field(result, "$.agents[0].service_ids")).containsExactlyInAnyOrder(w.a().toString(), w.b().toString());
+        assertThat(status(call(get("/api/v1/sessions/" + session + "/transfer-targets"), colleague.token(), null))).as("another agent's session").isEqualTo(403);
+        assertThat(status(call(get("/api/v1/sessions/" + UUID.randomUUID() + "/transfer-targets"), me.token(), null))).isEqualTo(404);
+        assertThat(status(call(get("/api/v1/sessions/" + session + "/transfer-targets"), user(Role.RECEPTION_OPERATOR, w.site(), w.group()).token(), null))).isEqualTo(403);
+        assertThat(status(call(get("/api/v1/sessions/" + session + "/transfer-targets"), user(Role.TEAM_ADMIN, w.site(), w.group()).token(), null))).isEqualTo(200);
+    }
+
     // ---- NFR-PERF-003: console actions acknowledge within 500 ms at P95 ----------------------------------------
 
     @Test

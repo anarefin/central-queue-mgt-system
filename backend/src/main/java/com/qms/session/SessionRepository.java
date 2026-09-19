@@ -61,6 +61,32 @@ class SessionRepository {
 
     record OutcomeRow(UUID id, String code, Map<String, String> labels) {}
 
+    /** A ticket as a transfer sees it: its state, its Session binding (null unless it is bound) and where it is queued. */
+    record TransferSource(
+            UUID id,
+            String tokenNumber,
+            String state,
+            int version,
+            UUID sessionId,
+            UUID counterId,
+            UUID serviceId,
+            UUID groupId,
+            UUID siteId,
+            Instant queuedAt,
+            Instant servedAt) {}
+
+    /** A Service a ticket may be transferred to. {@code active} means the Service, its group and its site are all active. */
+    record TransferService(UUID id, Map<String, String> names, UUID groupId, UUID siteId, boolean active) {}
+
+    /** An Agent a ticket may be targeted at: {@code activeAtSite} is false when the account is disabled or not allowed at the site. */
+    record TransferAgent(UUID id, String name, boolean active, boolean atSite) {}
+
+    /** A counter in the site with the Services it serves, for the transfer target list. */
+    record TargetCounter(UUID id, String label, String zoneName, List<UUID> serviceIds) {}
+
+    /** An agent of the site with the Services of the groups whose team they are on, for the transfer target list. */
+    record TargetAgent(UUID id, String name, List<UUID> serviceIds) {}
+
     private static final String BOUND =
             "SELECT t.id, t.token_number, t.state, t.version, t.service_id, v.name_i18n AS service_names, t.origin_channel,"
                     + " pc.id AS class_id, pc.name_i18n AS class_names, t.queued_at, t.called_at, t.served_at,"
@@ -213,8 +239,10 @@ class SessionRepository {
     boolean call(UUID ticketId, int version, UUID sessionId, UUID counterId, UUID agentId, Instant now) {
         return jdbc.update(
                 "UPDATE ticket SET state = ?, counter_session_id = ?, counter_id = ?, agent_id = ?, called_at = ?, version = version + 1"
-                        + " WHERE id = ? AND version = ? AND state = ? AND counter_session_id IS NULL",
-                TicketTransition.CALL.to(), sessionId, counterId, agentId, ts(now), ticketId, version, TicketTransition.CALL.from()) == 1;
+                        + " WHERE id = ? AND version = ? AND state = ? AND counter_session_id IS NULL"
+                        // A ticket targeted at another counter or agent is not this session's to draw (FR-QUE-003).
+                        + " AND (target_counter_id IS NULL OR target_counter_id = ?) AND (target_agent_id IS NULL OR target_agent_id = ?)",
+                TicketTransition.CALL.to(), sessionId, counterId, agentId, ts(now), ticketId, version, TicketTransition.CALL.from(), counterId, agentId) == 1;
     }
 
     boolean startService(UUID ticketId, int version, UUID sessionId, Instant now) {
@@ -295,6 +323,140 @@ class SessionRepository {
                 "SELECT id, code, label_i18n FROM outcome_code WHERE service_id = ? AND active ORDER BY display_order, lower(code), id",
                 (rs, i) -> new OutcomeRow(rs.getObject("id", UUID.class), rs.getString("code"), names(rs.getString("label_i18n"))),
                 serviceId);
+    }
+
+    // ---- transfer (ticket 15) ---------------------------------------------------------------------------------
+
+    Optional<TransferSource> transferSource(UUID ticketId) {
+        return jdbc.query(
+                        "SELECT id, token_number, state, version, counter_session_id, counter_id, service_id, service_group_id, site_id, queued_at, served_at"
+                                + " FROM ticket WHERE id = ?",
+                        (rs, i) -> new TransferSource(
+                                rs.getObject("id", UUID.class),
+                                rs.getString("token_number"),
+                                rs.getString("state"),
+                                rs.getInt("version"),
+                                rs.getObject("counter_session_id", UUID.class),
+                                rs.getObject("counter_id", UUID.class),
+                                rs.getObject("service_id", UUID.class),
+                                rs.getObject("service_group_id", UUID.class),
+                                rs.getObject("site_id", UUID.class),
+                                instant(rs, "queued_at"),
+                                instant(rs, "served_at")),
+                        ticketId)
+                .stream().findFirst();
+    }
+
+    UUID visitOf(UUID ticketId) {
+        return jdbc.queryForObject("SELECT visit_id FROM ticket WHERE id = ?", UUID.class, ticketId);
+    }
+
+    Optional<TransferService> transferService(UUID serviceId) {
+        return jdbc.query(
+                        "SELECT v.id, v.name_i18n, g.id AS group_id, g.site_id, (v.active AND g.active AND s.active) AS active"
+                                + " FROM service v JOIN service_group g ON g.id = v.service_group_id JOIN site s ON s.id = g.site_id WHERE v.id = ?",
+                        (rs, i) -> new TransferService(
+                                rs.getObject("id", UUID.class), names(rs.getString("name_i18n")), rs.getObject("group_id", UUID.class), rs.getObject("site_id", UUID.class), rs.getBoolean("active")),
+                        serviceId)
+                .stream().findFirst();
+    }
+
+    boolean counterServes(UUID counterId, UUID serviceId) {
+        Boolean serves = jdbc.queryForObject("SELECT EXISTS (SELECT 1 FROM counter_service WHERE counter_id = ? AND service_id = ?)", Boolean.class, counterId, serviceId);
+        return Boolean.TRUE.equals(serves);
+    }
+
+    /** The account of an Agent and whether a role of theirs lets them work at the site (an assignment with no sites covers all of them). */
+    Optional<TransferAgent> transferAgent(UUID userId, UUID siteId) {
+        return jdbc.query(
+                        "SELECT u.id, coalesce(u.display_name, u.username) AS name, u.active,"
+                                + " EXISTS (SELECT 1 FROM role_assignments r WHERE r.user_id = u.id AND r.role = 'agent'"
+                                + " AND (cardinality(r.site_ids) = 0 OR ? = ANY (r.site_ids))) AS at_site"
+                                + " FROM users u WHERE u.id = ?",
+                        (rs, i) -> new TransferAgent(rs.getObject("id", UUID.class), rs.getString("name"), rs.getBoolean("active"), rs.getBoolean("at_site")),
+                        siteId, userId)
+                .stream().findFirst();
+    }
+
+    /** Services a ticket of a site may be transferred to: active Services of active groups, in display order. */
+    List<TransferService> transferServices(UUID siteId) {
+        return jdbc.query(
+                "SELECT v.id, v.name_i18n, g.id AS group_id, g.site_id, true AS active FROM service v JOIN service_group g ON g.id = v.service_group_id"
+                        + " WHERE g.site_id = ? AND v.active AND g.active ORDER BY g.display_order, g.token_prefix, v.display_order, v.token_prefix, v.id",
+                (rs, i) -> new TransferService(
+                        rs.getObject("id", UUID.class), names(rs.getString("name_i18n")), rs.getObject("group_id", UUID.class), rs.getObject("site_id", UUID.class), true),
+                siteId);
+    }
+
+    /** Usable counters of a site with the active Services each serves. */
+    List<TargetCounter> targetCounters(UUID siteId) {
+        record Row(UUID id, String label, String zone, UUID service) {}
+        List<Row> rows = jdbc.query(
+                "SELECT c.id, c.label, z.name AS zone_name, cs.service_id FROM counter c JOIN zone z ON z.id = c.zone_id JOIN site s ON s.id = z.site_id"
+                        + " JOIN counter_service cs ON cs.counter_id = c.id JOIN service v ON v.id = cs.service_id JOIN service_group g ON g.id = v.service_group_id"
+                        + " WHERE z.site_id = ? AND c.active AND z.active AND s.active AND v.active AND g.active"
+                        + " ORDER BY lower(z.name), z.id, lower(c.label), c.id, cs.preference_weight, v.display_order, v.id",
+                (rs, i) -> new Row(rs.getObject("id", UUID.class), rs.getString("label"), rs.getString("zone_name"), rs.getObject("service_id", UUID.class)),
+                siteId);
+        Map<UUID, TargetCounter> counters = new LinkedHashMap<>();
+        for (Row row : rows) {
+            counters.computeIfAbsent(row.id(), id -> new TargetCounter(id, row.label(), row.zone(), new ArrayList<>())).serviceIds().add(row.service());
+        }
+        return List.copyOf(counters.values());
+    }
+
+    /** Active agents who work at the site and are on the team of an active group of it, with that group's active Services. */
+    List<TargetAgent> targetAgents(UUID siteId) {
+        record Row(UUID id, String name, UUID service) {}
+        List<Row> rows = jdbc.query(
+                "SELECT u.id, coalesce(u.display_name, u.username) AS name, v.id AS service_id FROM users u"
+                        + " JOIN team_member m ON m.user_id = u.id JOIN team t ON t.id = m.team_id JOIN service_group g ON g.id = t.service_group_id"
+                        + " JOIN service v ON v.service_group_id = g.id"
+                        + " WHERE g.site_id = ? AND u.active AND g.active AND v.active"
+                        + " AND EXISTS (SELECT 1 FROM role_assignments r WHERE r.user_id = u.id AND r.role = 'agent' AND (cardinality(r.site_ids) = 0 OR g.site_id = ANY (r.site_ids)))"
+                        + " ORDER BY lower(coalesce(u.display_name, u.username)), u.id, v.display_order, v.id",
+                (rs, i) -> new Row(rs.getObject("id", UUID.class), rs.getString("name"), rs.getObject("service_id", UUID.class)),
+                siteId);
+        Map<UUID, TargetAgent> agents = new LinkedHashMap<>();
+        for (Row row : rows) {
+            agents.computeIfAbsent(row.id(), id -> new TargetAgent(id, row.name(), new ArrayList<>())).serviceIds().add(row.service());
+        }
+        return List.copyOf(agents.values());
+    }
+
+    /** The zone a ticket for this Service waits in: that of its primary active counter, or null when no active counter serves it (as at issue). */
+    UUID waitingZone(UUID serviceId) {
+        return jdbc.query(
+                        "SELECT z.id FROM counter_service cs JOIN counter c ON c.id = cs.counter_id JOIN zone z ON z.id = c.zone_id"
+                                + " WHERE cs.service_id = ? AND c.active AND z.active ORDER BY cs.preference_weight, z.display_order, z.id LIMIT 1",
+                        (rs, i) -> rs.getObject("id", UUID.class),
+                        serviceId)
+                .stream().findFirst().orElse(null);
+    }
+
+    /**
+     * Closes the ticket being served as {@code transferred}: like any terminal state it clears the binding, and the counter and
+     * agent stay as history. Its wait and service time are stored now (§18.5) and the transfer note is kept with it.
+     */
+    boolean transfer(UUID ticketId, int version, UUID sessionId, Instant now, int waitSeconds, int serviceSeconds, String note) {
+        return jdbc.update(
+                "UPDATE ticket SET state = ?, counter_session_id = NULL, closed_at = ?, wait_seconds = ?, service_seconds = ?, note = ?,"
+                        + " version = version + 1 WHERE id = ? AND version = ? AND state = ? AND counter_session_id = ?",
+                TicketTransition.TRANSFER.to(), ts(now), waitSeconds, serviceSeconds, note, ticketId, version, TicketTransition.TRANSFER.from(), sessionId) == 1;
+    }
+
+    /**
+     * Creates the successor of a transferred ticket (ADR-0006): the same Visit, Token number, sequence and reset period, Priority
+     * class, channel and secret, linked by {@code predecessor_ticket_id}. Its wait starts at {@code now}; the transfer Head start
+     * is its Score adjustment (FR-QUE-053). It may be targeted at a Counter or an Agent (FR-QUE-003).
+     */
+    void insertSuccessor(UUID id, UUID predecessorId, UUID serviceId, UUID groupId, UUID zoneId, Instant now, int headStartMinutes, UUID targetCounterId, UUID targetAgentId) {
+        jdbc.update(
+                "INSERT INTO ticket (id, token_number, sequence_no, reset_key, service_id, service_group_id, site_id, zone_id, visit_id, predecessor_ticket_id,"
+                        + " origin_channel, state, issued_at, queued_at, secret_hash, priority_class_id, score_adjustment_minutes, target_counter_id, target_agent_id)"
+                        + " SELECT ?, token_number, sequence_no, reset_key, ?, ?, site_id, ?, visit_id, id, origin_channel, 'waiting', ?, ?, secret_hash,"
+                        + " priority_class_id, ?, ?, ? FROM ticket WHERE id = ?",
+                id, serviceId, groupId, zoneId, ts(now), ts(now), headStartMinutes, targetCounterId, targetAgentId, predecessorId);
     }
 
     // ---- mapping ----------------------------------------------------------------------------------------------

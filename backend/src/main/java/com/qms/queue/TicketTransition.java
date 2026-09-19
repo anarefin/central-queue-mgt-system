@@ -31,7 +31,12 @@ public enum TicketTransition {
      */
     RETURN_FROM_CALLED("called", "waiting", "ticket.position_changed"),
     RETURN_FROM_SERVING("serving", "waiting", "ticket.position_changed"),
-    RETURN_FROM_HELD("held", "waiting", "ticket.position_changed");
+    RETURN_FROM_HELD("held", "waiting", "ticket.position_changed"),
+    /**
+     * F7: the ticket being served closes as {@code transferred}, terminal, and the visit continues on a successor ticket with the
+     * same token number (ADR-0006, Invariant 4). The binding is cleared with the terminal state.
+     */
+    TRANSFER("serving", "transferred", "ticket.transferred");
 
     private final String from;
     private final String to;
