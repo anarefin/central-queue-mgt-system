@@ -4,7 +4,7 @@
 
 **Blocked by:** 25 — Kiosk common path; 22 — Visitor directory and walk-in registration
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [x] Identification by typed code, camera-based QR, mobile number, or none where the Service allows (FR-ISS-013, §22.6)
 - [x] Resolved code shows only name and category for confirmation (FR-ISS-014)
