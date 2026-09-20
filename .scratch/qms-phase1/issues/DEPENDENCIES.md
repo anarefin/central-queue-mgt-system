@@ -42,7 +42,7 @@
 38-notification-pipeline-in-app            11,02           done     67m      54 files, +3480 −20 cbaf65c..22c0e00
 39-web-push-channel                        38,37           done     35m      33 files, +1927 −16 bb5fb5f..9b06532
 40-email-channel-and-appointment-messages  38,34           done     n/a*     29 files, +1206 −40 fde12f4..ed2b619
-41-visitor-otp-login-self-service          37,40,34        todo     —        —                   —
+41-visitor-otp-login-self-service          37,40,34        done     42m      50 files, +2980 −57 187eea8..ba82c7b
 42-remote-join                             37,21           todo     —        —                   —
 43-remote-arrival-and-forfeit              42,39,12        todo     —        —                   —
 44-internet-loss-degradation               43              todo     —        —                   —

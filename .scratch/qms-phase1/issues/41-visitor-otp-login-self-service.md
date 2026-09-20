@@ -4,7 +4,7 @@
 
 **Blocked by:** 37 — Visitor ticket page (PWA); 40 — Email channel and appointment messages; 34 — Appointment reschedule, cancellation and waitlist
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [x] Email + OTP login issuing a visitor-role JWT; anonymous reference + secret still supported (FR-MOB-001, §20.2)
 - [x] OTPs never logged (API-018); refresh token handled per API-017
