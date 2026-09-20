@@ -683,8 +683,8 @@ function JourneySection({
   );
 }
 
-/** Refusals of `POST /appointments` this screen has a sentence for (ticket 33). */
-const APPOINTMENT_REFUSALS = new Set(["slot_full", "slot_not_available", "max_active_appointments"]);
+/** Refusals of `POST /appointments` this screen has a sentence for (ticket 33; `no_show_policy` added by ticket 36, FR-APT-042). */
+const APPOINTMENT_REFUSALS = new Set(["slot_full", "slot_not_available", "max_active_appointments", "no_show_policy"]);
 
 const APPOINTMENT_SOURCES: AppointmentSource[] = ["staff", "phone", "walk_in"];
 

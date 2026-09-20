@@ -1030,6 +1030,42 @@ it really is an ordinary walk-in the moment the appointment declines to cover it
 Ticket being served") is proven structurally rather than by a special rule: the queue engine orders only `waiting`
 Tickets, so a Ticket already `serving` is never in its input at all, whatever a checked-in appointment's score is.
 
+## Ticket 36, appointment no-shows
+
+`NoShow(IT)` = `B/appointment/AppointmentNoShowIT` (properties at their real defaults); `NoShowPolicy(IT)` =
+`B/appointment/AppointmentNoShowPolicyIT` (`qms.appointment.no-show-policy-enabled=true`).
+
+| Requirement ID | Section | Test type | Test reference | Status |
+|---|---|---|---|---|
+| FR-APT-040 an appointment not checked in by slot time plus grace is marked `no_show` automatically | §9.5, §19.2 | integration | `AppointmentNoShowScheduler` (`qms.appointment.no-show-check-cron`, off by default in tests, the same convention as `qms.appointment.hold-expiry-check-cron`); `AppointmentBookingService#markOverdueNoShows`; `AppointmentBookingRepository#sweepOverdueNoShows` (one guarded `UPDATE ... WHERE state = 'booked' ... RETURNING`, joined out to each appointment's own Site time zone so every Site's local grace period is honoured, not just the server's); `NoShow(IT)#aBookedAppointmentPastSlotPlusGraceIsAutomaticallyMarkedNoShowAndFreesItsCapacityImmediately`, `#anAppointmentExactlyAtTheEndOfItsGraceWindowIsNotSweptYet` (the same inclusive window edge `AppointmentCheckInIT#checkInIsAcceptedAtBothEdgesOfTheDefaultWindow` already covers, so a slot exactly on time is never swept out from under a check-in landing at that same instant) | passing |
+| FR-APT-041 a no-show frees its capacity immediately | §9.5, §19.2 | integration | `AppointmentBookingRepository#activeCountForSlot`'s `IN` list already excludes `no_show` (ticket 33's own migration); `NoShow(IT)#aBookedAppointmentPastSlotPlusGraceIsAutomaticallyMarkedNoShowAndFreesItsCapacityImmediately` (`activeCountForSlot` reads 1 before the sweep, 0 the instant after) | passing |
+| FR-APT-042 an optional policy blocks a visitor after N no-shows in a rolling window (default disabled; 3 in 90 days when on), but never blocks walk-in | §9.5 | integration | `AppointmentProperties#noShowPolicyEnabled`/`#noShowPolicyThreshold`/`#noShowPolicyWindowDays` (defaults `false`/3/90); `AppointmentBookingRepository#noShowCountForVisitor`; `AppointmentBookingService#book` (checked right after the visitor is resolved: refused with `no_show_policy` when the policy is on and the source is anything but `walk_in` and the visitor's own `no_show` count in the window has reached the threshold); `NoShowPolicy(IT)#aVisitorWithThreeRecentNoShowsIsRefusedBookingByPhone`, `#aVisitorWithThreeRecentNoShowsCanStillBeBookedAsAWalkIn`, `#aVisitorWithOnlyTwoRecentNoShowsIsBelowTheDefaultThresholdOfThree`, `#aNoShowOutsideTheNinetyDayRollingWindowDoesNotCountTowardsTheThreshold`; `NoShow(IT)#withThePolicyDisabledByDefaultRepeatNoShowsNeverBlockBooking` proves the "default disabled" half at the real default | passing |
+| Definition of done §27.5 item 3 (strings in both packs) | §27.5 | unit | `appointment.refused.no_show_policy` in `messages_en.properties`/`messages_bn.properties` (`MessagesTest#shippedPacksAreCompleteAndNonBlank`, pack parity); `reception.appointment.refused.no_show_policy` in `F/packages/i18n/src/packs/en.json`/`bn.json`, read by `ReceptionDesk.tsx`'s `APPOINTMENT_REFUSALS` set the same way ticket 33's own refusal reasons are (`F/packages/i18n/src/i18n.test.ts` pack parity) | passing |
+| Definition of done §27.5 item 4 (permission-checked server-side) | §20.3 | integration | No new endpoint: the sweep is a background job with no HTTP surface, and the FR-APT-042 check runs inside the existing `POST /appointments` (`appointment:book`, already covered by `Booking(IT)#bookingRequiresThePermissionAndIsScopedToTheServicesSite`); `ControllerSecurityTest`/`PermissionMatrixTest` see no new controller method or permission to re-check | passing |
+| Definition of done §27.5 item 5 (events and audit entries) | §18.3 | integration | `appointment.no_show` (before: reference code, state) — the sweep's audit entry matches `AppointmentNoShowMarker#markAndAudit`'s own action and shape exactly (ticket 35's reactive mark), so a no-show reads the same in the audit log whichever path found it; `NoShow(IT)#aBookedAppointmentPastSlotPlusGraceIsAutomaticallyMarkedNoShowAndFreesItsCapacityImmediately` asserts it by `action`/`entity_id`. A refusal (FR-APT-042) is not itself audited, the same convention every other booking refusal (`slot_full`, `max_active_appointments`, ...) already follows — only state changes are | passing |
+| Definition of done §27.5 item 6 (documented) | §27.5 | manual | covered by this table; `docs/admin-guide.md` is not updated (the same gap tickets 25-35 left) | partial |
+| §18, §26 the V31 migration is forward-only and re-runnable | §18, §26 | integration | `B/platform/MigrationIT#everyMigrationScriptCanBeReExecutedAgainstAnAlreadyMigratedDatabase` (V31) | passing |
+
+**Notes on this ticket's interpretation.** No new column or state: `no_show` and every column the sweep or the policy
+reads (`state`, `slot_date`, `slot_start`, `visitor_id`, `updated_at`) already existed (`V28`); `V31` adds only two
+partial indexes, the same convention `appointment_hold_expiry_idx` already uses for `AppointmentHoldExpiryScheduler`'s
+own sweep. FR-APT-040's sweep is deliberately a separate scheduler from ticket 35's reactive mark
+(`AppointmentNoShowMarker`), exactly as ticket 35's own notes anticipated: "ticket 36 adds the *background* sweep for
+an appointment nobody ever tries to check in for" — the two never race for the same row in a way that matters, since
+both are guarded on `state = 'booked'` and whichever commits first simply leaves the other nothing to do. FR-APT-042
+names "online booking" as what gets blocked and "walk-in" as what never does, but today `AppointmentSource` only has
+`phone`, `walk_in` and `staff` (FR-APT-013) — there is no online/self-service channel yet (ticket 41 builds visitor
+sign-in and, per ticket 34's own notes, "reuses these same [booking] endpoints" rather than adding new ones). The
+policy is therefore written as its exemption, not its trigger: refuse every source except `walk_in`, so the channel
+ticket 41 adds later is covered automatically, without touching this ticket's code again, the moment it starts
+setting a fourth `source` value. Today that reads as "phone and staff bookings are also subject to the policy", which
+matches the SRS text literally (only `walk_in` is named as exempt) and this ticket's own acceptance criteria (no
+staff-override clause is written for FR-APT-042, unlike FR-APT-020's explicit one) — a future ticket that wants staff
+to override this policy the way they already override the reschedule/cancel cutoff would need its own acceptance
+criterion to say so. The rolling window is counted from `appointment.updated_at` at the moment a row is marked
+`no_show` (by either path), not from the slot date, since that is the instant the visitor's no-show history actually
+grew. Reporting the no-show rate itself (FR-APT-043) is out of this ticket's acceptance criteria and left to ticket 48.
+
 ## Notes
 
 - **Compose.** Verified by hand on 2026-09-19 with OrbStack Docker, from a clean build: `migrate` exited 0, then Postgres,

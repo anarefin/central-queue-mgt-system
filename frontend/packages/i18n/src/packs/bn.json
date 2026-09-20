@@ -724,6 +724,7 @@
   "reception.appointment.refused.slot_full": "এই স্লটে আর কোনো জায়গা খালি নেই। অন্য একটি বাছুন।",
   "reception.appointment.refused.slot_not_available": "এই স্লটটি আর পাওয়া যাচ্ছে না। আবার খুঁজুন।",
   "reception.appointment.refused.max_active_appointments": "এই দর্শনার্থীর ইতিমধ্যে সর্বোচ্চ সংখ্যক সক্রিয় অ্যাপয়েন্টমেন্ট আছে।",
+  "reception.appointment.refused.no_show_policy": "এই দর্শনার্থীর সম্প্রতি অনুপস্থিতি অনেক বেশি, তাই এভাবে আবার বুক করা যাবে না; সরাসরি এসে সেবা নেওয়া যাবে।",
   "reception.appointment.result.title": "অ্যাপয়েন্টমেন্ট বুক হয়েছে",
   "reception.appointment.result.reference": "রেফারেন্স কোড: {code}",
   "reception.appointment.result.slot": "{date} {start}–{end}",

@@ -5,6 +5,7 @@ import com.qms.appointment.AppointmentBookingFields.Parsed;
 import com.qms.appointment.AppointmentBookingFields.RescheduleParsed;
 import com.qms.appointment.AppointmentBookingRepository.AppointmentRow;
 import com.qms.appointment.AppointmentBookingRepository.ExpiredHold;
+import com.qms.appointment.AppointmentBookingRepository.OverdueAppointment;
 import com.qms.appointment.AppointmentBookingRepository.WaitlistEntry;
 import com.qms.appointment.AppointmentBookingViews.AppointmentResponse;
 import com.qms.appointment.AppointmentBookingViews.BookAppointmentRequest;
@@ -115,6 +116,19 @@ public class AppointmentBookingService {
         UUID visitorId = parsed.hasExistingVisitor()
                 ? parsed.visitorId()
                 : repository.insertContactVisitor(parsed.contactName(), parsed.contactPhone(), parsed.contactEmail(), now);
+
+        // FR-APT-042: an optional policy blocks further booking once a visitor has repeated no-shows in the rolling
+        // window, but never a walk-in (someone standing in front of staff right now, the one source this can never
+        // apply to) — off by default. `source` is a closed set today (FR-APT-013: phone, walk_in, staff), all of them
+        // staff-mediated; the exemption is written as "every source but walk_in", not "phone or staff", so the visitor
+        // self-service channel ticket 41 adds later (reusing this same method, per ticket 34's own notes) is covered
+        // by this same rule without changing it.
+        if (properties.noShowPolicyEnabled() && !AppointmentSource.WALK_IN.equals(parsed.source())) {
+            Instant windowStart = now.minus(Duration.ofDays(properties.noShowPolicyWindowDays()));
+            if (repository.noShowCountForVisitor(visitorId, windowStart) >= properties.noShowPolicyThreshold()) {
+                throw conflict("no_show_policy", Map.of("threshold", properties.noShowPolicyThreshold(), "window_days", properties.noShowPolicyWindowDays()));
+            }
+        }
 
         // FR-APT-016: serialised the same way IssuanceGate serialises a Service's daily cap — lock, then count, so two
         // requests for the same visitor can never both slip under the limit.
@@ -280,6 +294,27 @@ public class AppointmentBookingService {
             audit.record(AuditEvent.of("appointment.hold_expired", "appointment", hold.id()).withBefore(expiredSnapshot(hold)));
         }
         return released.size();
+    }
+
+    /**
+     * FR-APT-040, FR-APT-041, §19.2 {@code booked -> no_show: grace elapsed}: the background sweep for an
+     * appointment nobody ever tries to check in for, complementary to {@link AppointmentNoShowMarker} (which only
+     * fires from an actual late check-in attempt, ticket 35). Every node fires the same sweep; the guarded update
+     * ({@code state = 'booked'}) means whichever node's write lands first marks a given row and the rest find
+     * nothing, the same ADR-0010 pattern {@link #releaseExpiredHolds} already uses. The audit entry's action and
+     * shape match {@link AppointmentNoShowMarker#markAndAudit} exactly, so every no-show reads the same in the audit
+     * log whichever path found it.
+     */
+    @Transactional
+    public int markOverdueNoShows() {
+        Instant now = clock.instant();
+        Instant graceDeadline = now.minus(Duration.ofMinutes(properties.checkinGraceMinutes()));
+        var marked = repository.sweepOverdueNoShows(graceDeadline, now);
+        for (OverdueAppointment appointment : marked) {
+            audit.record(AuditEvent.of("appointment.no_show", "appointment", appointment.id())
+                    .withBefore(Map.of("reference_code", appointment.referenceCode(), "state", "booked")));
+        }
+        return marked.size();
     }
 
     private String slotKey(UUID serviceId, LocalDate date, LocalTime start) {

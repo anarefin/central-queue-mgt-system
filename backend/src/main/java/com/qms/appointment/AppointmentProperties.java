@@ -18,6 +18,14 @@ import org.springframework.boot.context.properties.bind.DefaultValue;
  * @param checkinWindowBeforeMinutes how early before the slot check-in is allowed (FR-ISS-031, default 30 minutes)
  * @param checkinGraceMinutes how late after the slot check-in is still allowed, and the same grace period past which
  *     an appointment is a no-show (FR-ISS-031, FR-ISS-033, FR-APT-040, default 15 minutes)
+ * @param noShowCheckCron when {@link AppointmentNoShowScheduler} sweeps booked appointments past their slot plus
+ *     grace period into {@code no_show} (FR-APT-040); {@code -} disables it so a test can drive the sweep itself, the
+ *     same convention {@link AppointmentHoldExpiryScheduler}'s own cron property uses
+ * @param noShowPolicyEnabled whether repeat no-shows restrict further booking at all (FR-APT-042, default disabled)
+ * @param noShowPolicyThreshold how many no-shows in {@code noShowPolicyWindowDays} trigger the restriction once
+ *     {@code noShowPolicyEnabled} is on (FR-APT-042, default 3)
+ * @param noShowPolicyWindowDays the rolling window {@code noShowPolicyThreshold} is counted over (FR-APT-042,
+ *     default 90 days)
  */
 @ConfigurationProperties("qms.appointment")
 public record AppointmentProperties(
@@ -27,4 +35,8 @@ public record AppointmentProperties(
         @DefaultValue("120") int visitorCutoffMinutes,
         @DefaultValue("30") int waitlistHoldMinutes,
         @DefaultValue("30") int checkinWindowBeforeMinutes,
-        @DefaultValue("15") int checkinGraceMinutes) {}
+        @DefaultValue("15") int checkinGraceMinutes,
+        @DefaultValue("*/5 * * * * *") String noShowCheckCron,
+        @DefaultValue("false") boolean noShowPolicyEnabled,
+        @DefaultValue("3") int noShowPolicyThreshold,
+        @DefaultValue("90") int noShowPolicyWindowDays) {}

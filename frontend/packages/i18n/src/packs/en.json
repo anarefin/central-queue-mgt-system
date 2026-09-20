@@ -724,6 +724,7 @@
   "reception.appointment.refused.slot_full": "This slot has no remaining capacity. Choose another.",
   "reception.appointment.refused.slot_not_available": "This slot is no longer available. Search again.",
   "reception.appointment.refused.max_active_appointments": "This visitor already has the maximum number of active appointments.",
+  "reception.appointment.refused.no_show_policy": "This visitor has too many recent no-shows to book again this way; a walk-in is still welcome.",
   "reception.appointment.result.title": "Appointment booked",
   "reception.appointment.result.reference": "Reference code: {code}",
   "reception.appointment.result.slot": "{date} {start}–{end}",

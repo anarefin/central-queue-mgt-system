@@ -39,6 +39,9 @@ class AppointmentBookingRepository {
     /** A held_slot row swept past its hold (FR-APT-012), enough to audit what was released. */
     record ExpiredHold(UUID id, String referenceCode, UUID serviceId, LocalDate slotDate, LocalTime slotStart, LocalTime slotEnd, UUID visitorId) {}
 
+    /** A booked row swept into {@code no_show} because nobody ever checked in for it (FR-APT-040), enough to audit what was marked. */
+    record OverdueAppointment(UUID id, String referenceCode, UUID serviceId, LocalDate slotDate, LocalTime slotStart, LocalTime slotEnd, UUID visitorId) {}
+
     /** A visitor waiting on a full slot (FR-APT-023), enough to offer it to them once it frees. */
     record WaitlistEntry(
             UUID id, UUID serviceId, UUID visitorId, LocalDate slotDate, LocalTime slotStart, LocalTime slotEnd, String source, String purposeNote, String language) {}
@@ -53,6 +56,15 @@ class AppointmentBookingRepository {
             rs.getString("source"),
             rs.getString("purpose_note"),
             rs.getString("language"));
+
+    private static final RowMapper<OverdueAppointment> OVERDUE_ROW = (rs, i) -> new OverdueAppointment(
+            rs.getObject("id", UUID.class),
+            rs.getString("reference_code"),
+            rs.getObject("service_id", UUID.class),
+            rs.getObject("slot_date", LocalDate.class),
+            rs.getObject("slot_start", LocalTime.class),
+            rs.getObject("slot_end", LocalTime.class),
+            rs.getObject("visitor_id", UUID.class));
 
     private static final RowMapper<AppointmentRow> ROW = (rs, i) -> new AppointmentRow(
             rs.getObject("id", UUID.class),
@@ -235,6 +247,35 @@ class AppointmentBookingRepository {
     /** {@code booked -> no_show} (§19.2, FR-APT-033, FR-APT-040): a late check-in past the grace period follows the no-show policy instead of converting. */
     int markNoShow(UUID id, Instant now) {
         return jdbc.update("UPDATE appointment SET state = 'no_show', updated_at = ? WHERE id = ? AND state = 'booked'", ts(now), id);
+    }
+
+    /**
+     * {@code booked -> no_show} (§19.2, FR-APT-040, FR-APT-041): every appointment still {@code booked} whose slot,
+     * in its own Site's time zone, is strictly before {@code graceDeadline} (the caller passes {@code now - grace
+     * period}) — the same "strictly past the window's end" line {@link AppointmentCheckInService}'s own late check
+     * draws (its window end is still on time), so a slot exactly at the boundary is never swept out from under a
+     * check-in landing at that same instant. The background sweep for an appointment nobody ever attempts to check
+     * in for, complementary to {@link #markNoShow} which only ever fires from an actual late check-in attempt
+     * (ticket 35). One statement finds and marks every row, so capacity ({@link #activeCountForSlot} already
+     * excludes {@code no_show}) is freed the instant this commits; guarded on {@code state = 'booked'} the same way
+     * {@link #releaseExpiredHolds} is, so a concurrent check-in of the same row can only ever win one of the two
+     * races, never both.
+     */
+    List<OverdueAppointment> sweepOverdueNoShows(Instant graceDeadline, Instant now) {
+        return jdbc.query(
+                "UPDATE appointment a SET state = 'no_show', updated_at = ? WHERE a.state = 'booked' AND a.id IN ("
+                        + "SELECT a2.id FROM appointment a2"
+                        + " JOIN service sv ON sv.id = a2.service_id JOIN service_group sg ON sg.id = sv.service_group_id JOIN site st ON st.id = sg.site_id"
+                        + " WHERE a2.state = 'booked' AND ((a2.slot_date + a2.slot_start) AT TIME ZONE st.timezone) < ?)"
+                        + " RETURNING a.id, a.reference_code, a.service_id, a.slot_date, a.slot_start, a.slot_end, a.visitor_id",
+                OVERDUE_ROW, ts(now), ts(graceDeadline));
+    }
+
+    /** How many of a visitor's appointments were marked {@code no_show} since {@code since} (FR-APT-042): what the optional repeat-no-show policy counts against its configured threshold. */
+    int noShowCountForVisitor(UUID visitorId, Instant since) {
+        Integer count = jdbc.queryForObject(
+                "SELECT count(*) FROM appointment WHERE visitor_id = ? AND state = 'no_show' AND updated_at >= ?", Integer.class, visitorId, ts(since));
+        return count == null ? 0 : count;
     }
 
     /** {@code held_slot -> [*]: hold expired} (§19.2): deletes every hold whose window has passed, freeing the capacity it held. */
