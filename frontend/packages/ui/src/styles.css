@@ -236,6 +236,13 @@ body {
   max-block-size: 4rem;
 }
 
+/** The visitor ticket page's optional per-zone wayfinding image (FR-MOB-032, ticket 37). */
+.qms-wayfinding {
+  max-inline-size: 100%;
+  max-block-size: 20rem;
+  border-radius: var(--qms-radius);
+}
+
 .qms-print-slip-accent {
   block-size: 0.25rem;
   inline-size: 100%;

@@ -71,7 +71,7 @@ class TicketRepository {
     /** A Priority class as issuance needs it: whether it can be given to a new ticket and the prefix it may impose. */
     record PriorityClassRef(UUID id, Map<String, String> names, boolean active, String prefixOverride) {}
 
-    /** A ticket joined to the names it shows. */
+    /** A ticket joined to the names it shows. {@code wayfindingImageUrl} is the ticket's own Zone's optional image (FR-MOB-032, ticket 37). */
     record TicketRecord(
             UUID id,
             String tokenNumber,
@@ -85,6 +85,7 @@ class TicketRepository {
             String zoneName,
             String buildingLabel,
             String floorLabel,
+            String wayfindingImageUrl,
             UUID visitId,
             String originChannel,
             Instant issuedAt,
@@ -95,7 +96,7 @@ class TicketRepository {
 
     private static final String TICKET =
             "SELECT t.id, t.token_number, t.state, t.service_id, v.name_i18n AS service_names, t.service_group_id, g.name_i18n AS group_names,"
-                    + " t.site_id, t.zone_id, z.name AS zone_name, z.building_label, z.floor_label, t.visit_id, t.origin_channel, t.issued_at,"
+                    + " t.site_id, t.zone_id, z.name AS zone_name, z.building_label, z.floor_label, z.wayfinding_image_url, t.visit_id, t.origin_channel, t.issued_at,"
                     + " t.queued_at, t.version, pc.id AS priority_class_id, pc.name_i18n AS priority_class_names"
                     + " FROM ticket t JOIN service v ON v.id = t.service_id JOIN service_group g ON g.id = t.service_group_id"
                     + " LEFT JOIN zone z ON z.id = t.zone_id"
@@ -267,6 +268,7 @@ class TicketRepository {
                         rs.getString("zone_name"),
                         rs.getString("building_label"),
                         rs.getString("floor_label"),
+                        rs.getString("wayfinding_image_url"),
                         rs.getObject("visit_id", UUID.class),
                         rs.getString("origin_channel"),
                         rs.getObject("issued_at", OffsetDateTime.class).toInstant(),
@@ -276,6 +278,43 @@ class TicketRepository {
                         rs.getString("priority_class_names") == null ? Map.of() : names(rs.getString("priority_class_names"))),
                 id)
                 .stream().findFirst();
+    }
+
+    // ---- visitor ticket page (ticket 37, §20.2, FR-SEC-033, FR-MOB-013, FR-MOB-030) ------------------------------
+
+    /** The stored hash of a ticket's secret, to check what a visitor presents against (§18.3); empty when the ticket does not exist. */
+    Optional<String> secretHash(UUID id) {
+        return jdbc.query("SELECT secret_hash FROM ticket WHERE id = ?", (rs, i) -> rs.getString("secret_hash"), id).stream().findFirst();
+    }
+
+    /**
+     * The token most recently called into service for a Service, for "the token now being served" a visitor is shown
+     * (FR-MOB-013): the ticket whose most recent {@code serving} transition is the latest of any ticket still in that
+     * state. Several counters may serve the same Service at once; this names only the last one to start.
+     */
+    Optional<String> nowServingToken(UUID serviceId) {
+        return jdbc.query(
+                        "SELECT t.token_number FROM ticket t"
+                                + " JOIN ticket_event e ON e.ticket_id = t.id AND e.to_state = 'serving'"
+                                + " WHERE t.service_id = ? AND t.state = 'serving'"
+                                + " ORDER BY e.occurred_at DESC, e.seq DESC LIMIT 1",
+                        (rs, i) -> rs.getString("token_number"),
+                        serviceId)
+                .stream().findFirst();
+    }
+
+    /**
+     * A visitor's own cancel (FR-MOB-030): closes the ticket as {@code cancelled} only while it is still in one of the
+     * given states, the same guarded conditional update every other action here uses instead of a separate lock read.
+     * Returns whether it changed a row; false means the ticket had already moved on (called, or cancelled twice).
+     */
+    boolean cancelIfIn(UUID id, List<String> states) {
+        String placeholders = states.stream().map(s -> "?").collect(java.util.stream.Collectors.joining(","));
+        Object[] args = new Object[states.size() + 1];
+        args[0] = id;
+        for (int i = 0; i < states.size(); i++) args[i + 1] = states.get(i);
+        int updated = jdbc.update("UPDATE ticket SET state = 'cancelled', version = version + 1 WHERE id = ? AND state IN (" + placeholders + ")", args);
+        return updated == 1;
     }
 
     record SiteInfo(UUID id, String defaultLanguage) {}

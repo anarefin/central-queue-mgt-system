@@ -25,6 +25,8 @@ export interface TicketZone {
   name: string;
   building_label: string | null;
   floor_label: string;
+  /** An optional static image an admin set for the zone (FR-MOB-032, ticket 37); null means none. */
+  wayfinding_image_url: string | null;
 }
 
 /** A rounded range in minutes, never an exact promise ("about 15–20 minutes"); show it as a range, never as one figure. */
@@ -129,6 +131,40 @@ export interface SiteServices {
 /** A fresh key for one issuing action; keep it until the action succeeds or is refused, so a retry cannot issue twice. */
 export function newIdempotencyKey(): string {
   return globalThis.crypto.randomUUID();
+}
+
+/** The header an anonymous visitor's mobile web page sends instead of a bearer token (§20.2, FR-SEC-033, ticket 37). */
+export const TICKET_CREDENTIAL_HEADER = "X-Ticket-Secret";
+
+/** Where the visitor waits, plus its optional wayfinding image (FR-MOB-032, ticket 37). */
+export interface VisitorTicketZone {
+  id: string;
+  name: string;
+  building_label: string | null;
+  floor_label: string;
+  wayfinding_image_url: string | null;
+}
+
+/**
+ * What the visitor ticket page shows (§20.2, §21.2, ticket 37): live position, estimate range, the token currently being
+ * served for the same Service (FR-MOB-013), and where to go (FR-MOB-032). The same shape arrives from
+ * `GET /tickets/{id}/visitor`, `POST /tickets/{id}/visitor-cancel` and the {@code ticket:} realtime topic, so one type
+ * covers all three.
+ */
+export interface VisitorTicketView {
+  ticket_id: string;
+  token_number: string;
+  state: TicketState;
+  service_id: string;
+  /** Null once the ticket has left the queue. */
+  position: number | null;
+  /** Null once the ticket has left the queue. */
+  estimated_wait_minutes: EstimatedWait | null;
+  /** Null when nothing of this Service is being served right now. */
+  now_serving_token_number: string | null;
+  zone: VisitorTicketZone | null;
+  /** When this view was computed (server time, ISO 8601): show it as "as of" whenever the page is not live (FR-MOB-040). */
+  updated_at: string;
 }
 
 /**

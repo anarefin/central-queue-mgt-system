@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="QMS">
+  <rect width="512" height="512" rx="96" fill="#0b5fff" />
+  <path
+    d="M144 176c0-17.7 14.3-32 32-32h160c17.7 0 32 14.3 32 32v160c0 17.7-14.3 32-32 32H176c-17.7 0-32-14.3-32-32z"
+    fill="none"
+    stroke="#ffffff"
+    stroke-width="24"
+  />
+  <circle cx="216" cy="240" r="14" fill="#ffffff" />
+  <rect x="252" y="228" width="96" height="24" rx="12" fill="#ffffff" />
+  <rect x="184" y="288" width="144" height="24" rx="12" fill="#ffffff" />
+</svg>

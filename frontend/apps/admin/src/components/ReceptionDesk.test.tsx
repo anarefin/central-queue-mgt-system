@@ -77,7 +77,7 @@ function ticket(over: Partial<Ticket> = {}): Ticket {
     service: { id: "v1", name_i18n: { bn: "পরামর্শ", en: "Consultation" } },
     service_group: { id: "g1", name_i18n: { bn: "বহির্বিভাগ", en: "Outpatient" } },
     site_id: "s1",
-    zone: { id: "z1", name: "Ground waiting", building_label: "Block A", floor_label: "1st" },
+    zone: { id: "z1", name: "Ground waiting", building_label: "Block A", floor_label: "1st", wayfinding_image_url: null },
     visit_id: "vis1",
     origin_channel: "reception",
     priority_class: { id: "c0", name_i18n: { bn: "সাধারণ", en: "Normal" } },
@@ -285,7 +285,8 @@ describe("reception desk (SRS §8.3)", () => {
 
   it("says where to wait without a building", async () => {
     fakeApi(fresh(), {
-      "POST /tickets": () => json(201, ticket({ zone: { id: "z1", name: "Hall", building_label: null, floor_label: "2nd" } })),
+      "POST /tickets": () =>
+        json(201, ticket({ zone: { id: "z1", name: "Hall", building_label: null, floor_label: "2nd", wayfinding_image_url: null } })),
     });
     renderApp(<ReceptionDesk />);
     await chooseConsultation();

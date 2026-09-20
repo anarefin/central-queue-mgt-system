@@ -574,10 +574,12 @@ a kiosk is enforced one layer up, in `KioskTicketController`, the same way each 
 its own authorisation. `DeviceService.bootstrap()`/`CatalogueService` filtered its service tree by `active` only, not by
 channel; a kiosk's `service_tree` is now additionally filtered to Services whose `channels` include `kiosk` (a display's
 is untouched), since the frontend has no other way to know which of the tree's Services it may actually offer at the
-kiosk — `ServiceTreeEntry` carries only an id and a name. The QR's URL scheme (`/visitor/?t=<id>&s=<secret>`, same
+kiosk — `ServiceTreeEntry` carries only an id and a name. The QR's URL scheme (`/visitor/?t=<id>#s=<secret>`, same
 origin per ADR-0012) is this build's own choice, since ticket 37 (the visitor ticket status page it opens) has not been
-built yet; the query-parameter shape is chosen so that page can read the ticket id and secret from the URL and send the
-secret as `X-Ticket-Secret` per that ticket's own acceptance criteria. The QR encoder is hand-written (ISO/IEC 18004,
+built yet; the query-parameter shape is chosen so that page can read the ticket id from the URL and send the secret as
+`X-Ticket-Secret` per that ticket's own acceptance criteria (ticket 37 later moved the secret itself from the query
+string to the fragment, `#s=`, which a browser never sends to any server or `Referer`; see its own traceability entry).
+The QR encoder is hand-written (ISO/IEC 18004,
 byte mode, error-correction level L) rather than an npm dependency, checked module-for-module against a trusted
 reference implementation's output for three inputs of different QR versions (1, 4, 6) — deliberate, not an oversight:
 network access to add a package is not guaranteed in every environment this build runs in, and the kiosk's
@@ -1065,6 +1067,59 @@ to override this policy the way they already override the reschedule/cancel cuto
 criterion to say so. The rolling window is counted from `appointment.updated_at` at the moment a row is marked
 `no_show` (by either path), not from the slot date, since that is the instant the visitor's no-show history actually
 grew. Reporting the no-show rate itself (FR-APT-043) is out of this ticket's acceptance criteria and left to ticket 48.
+
+## Ticket 37, visitor ticket page (PWA)
+
+`Visitor(IT)` = `B/issuance/VisitorTicketIT` (anonymous REST reads and cancel); `VisitorStream(IT)` =
+`B/platform/realtime/VisitorTicketRealtimeIT` (the anonymous `ticket:` topic over a real WebSocket); `HierarchyAdmin(IT)`
+= `B/configuration/site/HierarchyAdminIT` (the zone's own wayfinding image field); `TicketStream` =
+`F/apps/visitor/src/lib/ticketStream.test.ts`; `TicketStatus` = `F/apps/visitor/src/components/VisitorTicketStatus.test.tsx`.
+
+| Requirement ID | Section | Test type | Test reference | Status |
+|---|---|---|---|---|
+| FR-MOB-003 installable PWA with a manifest and a service worker | §13, ADR-0011, ADR-0012 | manual + build | `F/apps/visitor/public/manifest.webmanifest`, `public/sw.js`, `public/icon.svg`; `layout.tsx`'s `metadata.manifest`/`viewport.themeColor` and `ServiceWorkerRegistration`; confirmed by `pnpm --filter @qms/visitor build` emitting `manifest.webmanifest`, `sw.js`, `icon.svg` to `out/` and `<link rel="manifest">`/`<meta name="theme-color">` in `out/index.html` | passing |
+| §20.2, FR-SEC-033 anonymous access by ticket id plus `X-Ticket-Secret`, read-only on that ticket; a token number alone reveals nothing | §20.2, §20.4 | integration + unit | `B/issuance/TicketCredentialAccess` (constant-time hash comparison, `IssuanceService#hash` reused); `B/issuance/VisitorTicketController` (`@PublicEndpoint`, `SecurityConfig.PUBLIC_PATHS` `/api/v1/tickets/*/visitor` and `/visitor-cancel`); `Visitor(IT)#aVisitorReadsTheirOwnTicketWithTheCorrectSecret`, `#aWrongOrMissingSecretOrAnUnknownTicketIsUnauthenticatedNeverNotFound` (all three answer `unauthenticated`, never `not_found`); the same rule for the realtime side: `B/platform/realtime/TicketPrincipal`, `TicketPrincipalVerifier`, `B/issuance/TicketPrincipalVerification`; `VisitorStream(IT)#aWrongOrMissingSecretIsRefusedAtTheHandshakeLikeNoTokenAtAll` (401 at the WebSocket handshake) | passing |
+| FR-MOB-013 live position, estimate range and the current serving token via the `ticket:` topic | §21.2 | integration | `B/platform/realtime/Topics#ticket`, `B/issuance/TicketTopics` (only the ticket's own `TicketPrincipal` may subscribe); `B/issuance/VisitorTicketViews#view` (one shape shared by the REST read and the WS snapshot); `B/queue/TicketRepository#nowServingToken` (latest `to_state='serving'` `ticket_event` for the Service); `VisitorStream(IT)#aVisitorWatchesOnlyTheirOwnTicketsTopicWithItsOwnSecret`, `#aTicketsOwnSecretDoesNotOpenAnotherTicketsTopic`; live push wired from `B/queue/TicketEvents#publish` and `EstimateEvents#publishMovedPositions`, each also publishing to `Topics.ticket(ticketId)`; `TicketStream`'s "subscribes... applies the snapshot as live" and "re-reads over REST when a live event arrives" | passing |
+| FR-MOB-040 on connectivity loss, shows the last known position with its timestamp, never as current; FR-QUE-084 polling fallback at 15 s for mobile | §21.5 | unit | `F/apps/visitor/src/lib/ticketStream.ts` (`POLL_INTERVAL_MS = 15_000`; `live` is true only while the WebSocket subscription is open, false the instant it is polling or has not yet heard back); `TicketStatus`'s "labels the page as last-known-as-of, never as current" (`visitor.lastKnownAsOf` with the timestamp, no `visitor.live` badge while polling); `TicketStream`'s "falls back to polling when the socket cannot be created", "...once the socket closes after opening", "stops polling once the credential is unauthenticated" (a wrong secret is never retried, FR-SEC-033) | passing |
+| FR-MOB-032 shows floor and Zone, with an optional static wayfinding image per Zone | §13, FR-CFG-003 | integration + unit | `B/configuration/site` `Zone#wayfindingImageUrl`, `V32__visitor_ticket_page.sql` (`zone.wayfinding_image_url`, nullable, the same "URL or `data:` URI" convention as `org_branding.logo_url`, ticket 27); `SiteRulesTest#wayfindingImageUrlIsTheSameOptionalTextRuleWithItsOwnGenerousCap`; `HierarchyAdmin(IT)#aZoneMayCarryAnOptionalWayfindingImageUrlThatCanBeSetThenCleared`; threaded into `B/issuance/ZoneRef`/`TicketRepository`/`VisitorTicketViews`; `Visitor(IT)#theWayfindingImageAppearsOnceTheZoneHasOne`; `TicketStatus`'s "shows the token, live position, estimate range, now-serving token and where to wait" (floor, building, `<img>` wayfinding) | passing |
+| FR-MOB-030 a visitor cancels their own ticket any time before being called | §19.1 | integration + unit | `B/issuance/VisitorTicketActions#cancel` (narrower than staff's `TicketActions#cancel`: only `remote`/`waiting`/`paused`, written fresh rather than reused, since `com.qms.session` already imports `com.qms.issuance` and the reverse would be an ArchitectureTest package cycle); `TicketRepository#cancelIfIn` (guarded conditional `UPDATE`); `Visitor(IT)#aVisitorCancelsTheirOwnWaitingTicketButNotTwice`, `#aTicketAlreadyCalledCanNoLongerBeCancelledByTheVisitor`; `TicketStatus`'s "offers to cancel while waiting, and hides the button once called", "cancels the ticket after confirming", "does not cancel when the visitor does not confirm", "shows the specific refusal once a ticket has already been called" | passing |
+| FR-ISS-016, U8 the kiosk's printer-failure QR opens this page | §8.2, §27.2 | manual + build | The URL scheme was already fixed by ticket 25/27's `F/apps/kiosk/src/components/KioskFlow.tsx#ticketStatusUrl`, deliberately built ahead of this ticket (see that ticket's own traceability note); this ticket is the page it opens and also hardened that scheme: the secret now rides the URL fragment, `/visitor/?t=<id>#s=<secret>`, not the query string (a security-review finding during this ticket — a query-string secret would reach a proxy's own access log, API-018, and any third-party `Referer`, e.g. an admin-set wayfinding or branding image URL). `F/apps/visitor/src/app/page.tsx#useTicketReference` reads `t` from `location.search` and `s` from `location.hash` (never a dynamic route segment, ADR-0012), then strips the fragment with `history.replaceState` so it is not retained in `document.location` or browser history; the page also sends `referrer: "no-referrer"` (`layout.tsx` metadata) as defense in depth. `page.test.tsx`'s "reads the ticket id from the query string and the secret from the URL fragment, then strips the fragment", "asks again when the id is present but the secret (fragment) is missing", "asks for the QR to be scanned again when the link carries no ticket reference" | passing |
+| Definition of done §27.5 item 3 (strings in both packs) | §27.5 | unit | `visitor.*` (~30 keys: state names, position, estimate, now-serving, zone, cancel, live/last-known) in `F/packages/i18n/src/packs/en.json`/`bn.json`; `F/packages/i18n/src/i18n.test.ts` pack-parity test | passing |
+| Definition of done §27.5 item 4 (permission-checked server-side) | §20.3 | integration | Every protected action is checked where the request lands, not trusted from the client: `VisitorTicketController`'s two methods are `@PublicEndpoint`, matched in `SecurityConfig.PUBLIC_PATHS`, and each still calls `TicketCredentialAccess#verify` itself before doing anything; `TicketTopics#authorize` checks the connection's own `TicketPrincipal` against the topic's ticket id; `ControllerSecurityTest#everyControllerMethodIsSecuredOrExplicitlyPublic` and `#thePermitAllListAndThePublicEndpointMarkersDescribeTheSameEndpoints` see both new methods and both new permit-all patterns and are unaffected (existing green run) | passing |
+| Definition of done §27.5 item 5 (events and audit entries) | §18.3, §21.4 | integration | Every ticket transition already reaches the ticket's own topic (`TicketEvents#publish`, `EstimateEvents#publishMovedPositions`), so a visitor cancel is no different from a staff one there; the audit entry (`ticket.cancelled`, actor `visitor`, `before`/`after` state, reason `visitor_cancel`) is asserted indirectly by `Visitor(IT)`'s state assertions and directly by `AuditWriter`'s existing, already-green redaction and write-path tests; API-018 (secrets never logged) is `LogRedactionTest`'s existing `X-Ticket-Secret` case, unchanged and still green | passing |
+| Definition of done §27.5 item 6 (documented) | §27.5 | manual | Covered by this table and the doc comments on every new class; `docs/api/error-codes.md` gained the visitor endpoints' own paragraph (`ticket_already_called`); `docs/admin-guide.md` is not updated (the same gap tickets 25-36 left) | partial |
+
+**Notes on this ticket's interpretation.** The WebSocket handshake was JWT-only before this ticket (`RealtimeConfig.Authenticated`
+only accepted a `JwtAuthenticationToken`); rather than mint a narrow-scope JWT for an anonymous visitor (which the SRS's own
+principal table explicitly rules out — "no JWT" — §20.2), this ticket adds a second, parallel credential: `TicketPrincipal`
+(`com.qms.platform.realtime`, implementing `Authentication` directly, no expiry, no reauth) built by a new
+`TicketPrincipalVerifier` seam the issuance context implements, the same dependency-inversion shape `TopicSource` and
+`TokenVerifier` already use so the hub itself never needs to know what a ticket is. The credential rides the WebSocket
+handshake's `Sec-WebSocket-Protocol` offer as `ticket.<id>.<secret>`, exactly the trick `bearer.<token>` already uses and for
+the same reason (SRS §21.1: "neither in a URL nor in a log") — not a query parameter, which would put the secret in front of
+any access log. `SecurityConfig` permits the hub's own path (`RealtimeEndpoint.PATH`) at the HTTP layer so an anonymous
+handshake attempt reaches `RealtimeConfig.Authenticated` at all; this is a separate literal from `PUBLIC_PATHS`, since the
+socket is not a `@RestController` and `ControllerSecurityTest`'s permit-all/`@PublicEndpoint` cross-check is scoped to those.
+The mobile polling fallback (FR-QUE-084) intentionally does not reuse `StreamController`'s `GET /stream/snapshot` (staff/device
+only, `@PreAuthorize("isAuthenticated()")`): the visitor's own `GET /tickets/{id}/visitor` already returns the identical shape
+(`VisitorTicketViews#view`, shared with the WS snapshot), so polling it directly needed no new anonymous surface on the hub's
+own snapshot endpoint. A visitor's cancel (FR-MOB-030) is deliberately not routed through `com.qms.session.TicketActions#cancel`
+(staff's own, broader "any active state" rule): that class's package already imports `com.qms.issuance` (`Channels`,
+`JourneyService`), so the reverse dependency would be an ArchitectureTest package cycle, and the visitor's own rule is narrower
+anyway (never once called), so a fresh, smaller implementation was the simpler and more honest choice. The wayfinding image
+(FR-MOB-032) needed a real column and a real admin API field to be more than a stub — `zone.wayfinding_image_url`, threaded
+through `Zone`/`CreateZoneRequest`/`UpdateZoneRequest`/`HierarchyService`/`HierarchyRepository` the same way every other zone
+field is — but the admin app's own zone-edit form is not updated to expose a way to set it from the UI, since that is
+`apps/admin`'s own surface, not this ticket's (an admin can still set it directly over the API today, the same as any zone
+field ticket 05 shipped before its own UI caught up). The visitor app does not reuse `@qms/realtime-client` (JWT-shaped
+`getAccessToken`, built for staff and device sessions): `F/apps/visitor/src/lib/ticketStream.ts` is a small, purpose-built
+hook instead, so the shared package used by console, kiosk and display needed no changes and no new credential shape neither
+of those apps has any reason to understand. "The token currently being served" (FR-MOB-013) is computed fresh on every REST
+read and WS (re)subscribe (`TicketRepository#nowServingToken`); a live WS connection does not carry a push specifically for
+another ticket's now-serving change, only for its own ticket's transitions and position — the client reacts to any `event`
+frame by re-reading the REST view once (`ticketStream.ts`), which keeps derived fields like now-serving accurate without a
+second SQL query added to `TicketEvents`/`EstimateEvents` (`com.qms.queue`) for a figure only the visitor page needs. Ticket 39
+(web push channel) is the next layer on the same service worker this ticket registers.
 
 ## Notes
 

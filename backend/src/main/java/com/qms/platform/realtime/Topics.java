@@ -9,6 +9,7 @@ public final class Topics {
     public static final String COUNTER = "counter:";
     public static final String DEVICE = "device:";
     public static final String ZONE = "zone:";
+    public static final String TICKET = "ticket:";
 
     private Topics() {}
 
@@ -28,5 +29,10 @@ public final class Topics {
     /** A zone's display board(s): the serving table and next-token strip of every counter in it (§21.2, ticket 28, FR-DSP-010). */
     public static String zone(UUID zoneId) {
         return ZONE + zoneId;
+    }
+
+    /** One Ticket's own state, position and estimate: the visitor ticket page (§21.2, ticket 37, FR-MOB-013). */
+    public static String ticket(UUID ticketId) {
+        return TICKET + ticketId;
     }
 }

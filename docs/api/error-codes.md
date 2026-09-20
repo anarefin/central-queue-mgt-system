@@ -100,5 +100,12 @@ without `ticket:reprioritise` (an Agent), or a ticket outside the caller's sites
 cancelling a ticket that is not their own is `forbidden`. The default classes (`PUT /priority-defaults/...`) answer an unknown channel or
 service with `not_found` and an unknown or deactivated class with `validation_failed` naming `priority_class_id`.
 
+The visitor ticket page's own anonymous reads and cancel (`GET /tickets/{id}/visitor`, `POST /tickets/{id}/visitor-cancel`, §20.2, ticket 37)
+are reached by ticket id plus the `X-Ticket-Secret` header, never a bearer token (FR-SEC-033): a missing or wrong secret, and an unknown ticket
+id, both answer `unauthenticated`, never `not_found` or `forbidden`, so a guess cannot tell an unknown ticket from a wrong secret on a real one.
+`POST /tickets/{id}/visitor-cancel` (FR-MOB-030) refuses with `conflict` and `ticket_already_called` once the ticket has left `remote`,
+`waiting` or `paused` (called, serving, held, or already closed) — a narrower rule than a staff cancel's `ticket_not_active`, since a visitor
+may never cancel a ticket once someone has started calling it.
+
 The client library also synthesises two codes that never come from the server: `network_error` (no response) and
 `unexpected_response` (a reply that is not a §20.3 envelope, such as a proxy error page).

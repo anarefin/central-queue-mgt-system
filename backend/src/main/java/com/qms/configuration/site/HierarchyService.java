@@ -189,6 +189,7 @@ public class HierarchyService {
         LocalTime quietStart = SiteRules.quietTime("quiet_start", quietStartWire, null);
         LocalTime quietEnd = SiteRules.quietTime("quiet_end", quietEndWire, null);
         SiteRules.quietPeriodComplete(quietStart, quietEnd);
+        String wayfindingImageUrl = request == null ? null : request.wayfindingImageUrl();
         Zone zone = new Zone(
                 UUID.randomUUID(),
                 siteId,
@@ -203,6 +204,7 @@ public class HierarchyService {
                 quietEnd,
                 SiteRules.announcementLanguages(announcementLanguages, languages.languages()),
                 SiteRules.maxAnnounceQueueDepth(maxAnnounceQueueDepth),
+                SiteRules.optional("wayfinding_image_url", wayfindingImageUrl, SiteRules.MAX_WAYFINDING_IMAGE_URL),
                 now,
                 now);
         repository.insert(zone);
@@ -232,6 +234,9 @@ public class HierarchyService {
                 quietEnd,
                 change.announcementLanguages() == null ? before.announcementLanguages() : SiteRules.announcementLanguages(change.announcementLanguages(), languages.languages()),
                 change.maxAnnounceQueueDepth() == null ? before.maxAnnounceQueueDepth() : SiteRules.maxAnnounceQueueDepth(change.maxAnnounceQueueDepth()),
+                change.wayfindingImageUrl() == null
+                        ? before.wayfindingImageUrl()
+                        : SiteRules.optional("wayfinding_image_url", change.wayfindingImageUrl(), SiteRules.MAX_WAYFINDING_IMAGE_URL),
                 before.createdAt(),
                 clock.instant());
         if (snapshot(after).equals(snapshot(before))) return before;
@@ -427,6 +432,7 @@ public class HierarchyService {
         values.put("quiet_end", zone.quietEnd() == null ? null : zone.quietEnd().toString());
         values.put("announcement_languages", zone.announcementLanguages());
         values.put("max_announce_queue_depth", zone.maxAnnounceQueueDepth());
+        values.put("wayfinding_image_url", zone.wayfindingImageUrl());
         return values;
     }
 

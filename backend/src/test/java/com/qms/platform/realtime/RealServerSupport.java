@@ -6,6 +6,7 @@ import com.qms.issuance.ActorType;
 import com.qms.issuance.Channels;
 import com.qms.issuance.IssuanceService;
 import com.qms.issuance.IssueCommand;
+import com.qms.issuance.TicketResponse;
 import com.qms.platform.security.Role;
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -126,6 +127,12 @@ abstract class RealServerSupport {
         issuance.issue(new IssueCommand(service, Channels.RECEPTION, UUID.randomUUID(), ActorType.SYSTEM, null));
     }
 
+    /** Issues a ticket the way {@link #issue} does, but returns it, id and secret included, for the visitor ticket page
+     * tests (ticket 37, §20.2). */
+    TicketResponse issueTicket(UUID service) {
+        return issuance.issue(new IssueCommand(service, Channels.RECEPTION, UUID.randomUUID(), ActorType.SYSTEM, null));
+    }
+
     /** The {@code exp} of an access token, in epoch seconds. */
     static long expiryOf(String token) {
         Map<?, ?> claims = MAPPER.readValue(new String(Base64.getUrlDecoder().decode(token.split("\\.")[1]), StandardCharsets.UTF_8), Map.class);
@@ -195,6 +202,18 @@ abstract class RealServerSupport {
         Socket socket = new Socket();
         socket.socket = http.newWebSocketBuilder()
                 .subprotocols(RealtimeEndpoint.PROTOCOL, "bearer." + token)
+                .buildAsync(URI.create("ws://localhost:" + port + RealtimeEndpoint.PATH), socket)
+                .get(5, TimeUnit.SECONDS);
+        sockets.add(socket);
+        return socket;
+    }
+
+    /** Connects the way the visitor ticket page does (ticket 37, §20.2, FR-SEC-033): the ticket id and its own secret ride
+     * the subprotocol offer instead of a token, the same trick for the same reason (SRS §21.1). */
+    Socket connectTicket(UUID ticketId, String credential) throws Exception {
+        Socket socket = new Socket();
+        socket.socket = http.newWebSocketBuilder()
+                .subprotocols(RealtimeEndpoint.PROTOCOL, "ticket." + ticketId + "." + credential)
                 .buildAsync(URI.create("ws://localhost:" + port + RealtimeEndpoint.PATH), socket)
                 .get(5, TimeUnit.SECONDS);
         sockets.add(socket);

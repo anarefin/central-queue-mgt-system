@@ -58,6 +58,18 @@ class SiteRulesTest {
         assertThatThrownBy(() -> SiteRules.optional("building_label", "x".repeat(11), 10)).isInstanceOf(ApiException.class);
     }
 
+    // ---- wayfinding image (ticket 37, FR-MOB-032) ----------------------------------------------------------------
+
+    @Test
+    void wayfindingImageUrlIsTheSameOptionalTextRuleWithItsOwnGenerousCap() {
+        assertThat(SiteRules.optional("wayfinding_image_url", "  ", SiteRules.MAX_WAYFINDING_IMAGE_URL)).isNull();
+        assertThat(SiteRules.optional("wayfinding_image_url", " https://cdn.example.org/zone-a.png ", SiteRules.MAX_WAYFINDING_IMAGE_URL))
+                .isEqualTo("https://cdn.example.org/zone-a.png");
+        assertThat(SiteRules.MAX_WAYFINDING_IMAGE_URL).isEqualTo(500_000);
+        assertThatThrownBy(() -> SiteRules.optional("wayfinding_image_url", "x".repeat(SiteRules.MAX_WAYFINDING_IMAGE_URL + 1), SiteRules.MAX_WAYFINDING_IMAGE_URL))
+                .isInstanceOf(ApiException.class);
+    }
+
     @Test
     void codeAndDisplayOrderAreBounded() {
         assertThat(SiteRules.code(" MAIN_1-a ")).isEqualTo("MAIN_1-a");

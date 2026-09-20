@@ -1,0 +1,14 @@
+{
+  "name": "QMS visitor ticket",
+  "short_name": "QMS ticket",
+  "description": "Track your live position in the queue, get called and find your way, all from your own phone.",
+  "start_url": "/visitor/",
+  "scope": "/visitor/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#0b5fff",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "maskable" }
+  ]
+}

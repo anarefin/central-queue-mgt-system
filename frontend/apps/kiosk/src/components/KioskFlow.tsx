@@ -141,11 +141,17 @@ function customOrConfirmStep(selection: Selection, group: GroupVM): Step {
   return { kind: "custom", selection, options: level.options };
 }
 
-/** The URL the printer-failure QR opens (FR-ISS-016): the visitor's mobile ticket-status page (ticket 37), same origin as this kiosk (ADR-0012). */
+/**
+ * The URL the printer-failure QR opens (FR-ISS-016): the visitor's mobile ticket-status page (ticket 37), same origin
+ * as this kiosk (ADR-0012). The Ticket id is not sensitive on its own (FR-SEC-033) and rides the query string; the
+ * secret rides the URL fragment instead (`#s=`), which a browser never sends to any server and always strips from the
+ * `Referer` it gives another origin (such as an admin-configured wayfinding or branding image URL, ticket 27/37) —
+ * a query string does neither, and would otherwise put the secret in a proxy's own access log (API-018).
+ */
 function ticketStatusUrl(ticket: Ticket): string {
   const origin = typeof window === "undefined" ? "" : window.location.origin;
-  const params = new URLSearchParams({ t: ticket.id, s: ticket.secret ?? "" });
-  return `${origin}/visitor/?${params.toString()}`;
+  const params = new URLSearchParams({ t: ticket.id });
+  return `${origin}/visitor/?${params.toString()}#s=${encodeURIComponent(ticket.secret ?? "")}`;
 }
 
 function qrScanningSupported(): boolean {

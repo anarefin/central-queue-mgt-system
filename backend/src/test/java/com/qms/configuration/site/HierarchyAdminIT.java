@@ -315,6 +315,29 @@ class HierarchyAdminIT {
         assertThat((String) editAudit.get("after")).contains("1st");
     }
 
+    /** FR-MOB-032, ticket 37: an optional static wayfinding image per Zone, absent by default and clearable like {@code building_label}. */
+    @Test
+    void aZoneMayCarryAnOptionalWayfindingImageUrlThatCanBeSetThenCleared() throws Exception {
+        String token = tokenFor(Role.ORG_ADMIN);
+        UUID site = createSite(token);
+        UUID zone = createZone(token, site);
+        assertThat((Object) field(call(get("/api/v1/zones/" + zone), token, null), "$.wayfinding_image_url")).isNull();
+
+        MvcResult withImage = call(
+                patch("/api/v1/zones/" + zone), token, "{\"wayfinding_image_url\":\"https://cdn.example.org/zone-a.png\"}");
+        assertThat((String) field(withImage, "$.wayfinding_image_url")).isEqualTo("https://cdn.example.org/zone-a.png");
+        assertThat((String) audit("zone.updated", zone).get("after")).contains("zone-a.png");
+
+        MvcResult cleared = call(patch("/api/v1/zones/" + zone), token, "{\"wayfinding_image_url\":\"\"}");
+        assertThat((Object) field(cleared, "$.wayfinding_image_url")).isNull();
+
+        MvcResult created = call(
+                post("/api/v1/sites/" + site + "/zones"), token,
+                "{\"name\":\"Annex\",\"floor_label\":\"2nd\",\"wayfinding_image_url\":\"https://cdn.example.org/annex.png\"}");
+        assertThat(status(created)).as(body(created)).isEqualTo(201);
+        assertThat((String) field(created, "$.wayfinding_image_url")).isEqualTo("https://cdn.example.org/annex.png");
+    }
+
     @Test
     void aCounterHasAShortLabelAZoneAndAnOptionalLocationNote() throws Exception {
         String token = tokenFor(Role.ORG_ADMIN);

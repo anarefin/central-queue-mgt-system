@@ -32,16 +32,18 @@ import type { PriorityClass, PriorityClassInput, PriorityDefaults, QueueDryRun, 
 import type { NumberingPreview, NumberingRule, NumberingRuleChange, NumberingRuleInput, NumberingScope } from "./numbering";
 import type { AgentDay, CompleteInput, CounterSession, OpenSessionInput, SessionCounterOption, TransferInput, TransferResult, TransferTargets } from "./sessions";
 import type { TopicSnapshot } from "./stream";
-import type {
-  IssueTicketInput,
-  KioskAgentOption,
-  KioskIssueTicketInput,
-  KioskVisitorIdentity,
-  QueueSnapshot,
-  ReprioritiseInput,
-  SiteServices,
-  Ticket,
-  TicketChange,
+import {
+  TICKET_CREDENTIAL_HEADER,
+  type IssueTicketInput,
+  type KioskAgentOption,
+  type KioskIssueTicketInput,
+  type KioskVisitorIdentity,
+  type QueueSnapshot,
+  type ReprioritiseInput,
+  type SiteServices,
+  type Ticket,
+  type TicketChange,
+  type VisitorTicketView,
 } from "./tickets";
 import type {
   RegisterVisitorInput,
@@ -236,6 +238,18 @@ export class ApiClient {
     /** Cancel an active ticket (§19.1). The reason is optional; an agent may cancel only their own ticket (§5.2). */
     cancel: (id: string, reason?: string, version?: number) =>
       this.request<TicketChange>("POST", `/tickets/${id}/cancel`, reason ? { reason } : undefined, { headers: ifMatch(version) }),
+    /**
+     * The visitor ticket page's own anonymous reads and actions (§20.2, FR-SEC-033, ticket 37): the ticket id plus its own
+     * secret, never a bearer token. `visitorCancel` refuses once the ticket has been called (FR-MOB-030, `conflict` /
+     * `ticket_already_called`); a wrong or missing secret is `unauthenticated`, the same as an unknown ticket id.
+     */
+    visitorView: (id: string, credential: string) =>
+      this.request<VisitorTicketView>("GET", `/tickets/${id}/visitor`, undefined, { anonymous: true, headers: { [TICKET_CREDENTIAL_HEADER]: credential } }),
+    visitorCancel: (id: string, credential: string) =>
+      this.request<VisitorTicketView>("POST", `/tickets/${id}/visitor-cancel`, undefined, {
+        anonymous: true,
+        headers: { [TICKET_CREDENTIAL_HEADER]: credential },
+      }),
     /**
      * A paired kiosk issues for itself (ticket 25, §8.2): the device's own access token names the actor and the
      * channel is always `kiosk`, scoped to the device's own site server-side. Same idempotency guarantee as `issue`.

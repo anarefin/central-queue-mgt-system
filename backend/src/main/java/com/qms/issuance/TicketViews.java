@@ -18,7 +18,7 @@ class TicketViews {
     }
 
     TicketResponse of(TicketRecord t) {
-        ZoneRef zone = t.zoneId() == null ? null : new ZoneRef(t.zoneId(), t.zoneName(), t.buildingLabel(), t.floorLabel());
+        ZoneRef zone = t.zoneId() == null ? null : new ZoneRef(t.zoneId(), t.zoneName(), t.buildingLabel(), t.floorLabel(), t.wayfindingImageUrl());
         Integer position = queues.positionOf(t.id());
         return new TicketResponse(
                 t.id(),

@@ -162,6 +162,8 @@ public class TicketEvents {
             for (String key : List.of("announce", "announce_count")) if (payload.containsKey(key)) data.put(key, payload.get(key));
         }
         realtime.publish(Topics.queue(serviceId), transition.eventType(), transition.deviceTime(), data);
+        // The visitor ticket page's own topic (ticket 37, §21.2, FR-MOB-013): every transition of the ticket, live.
+        realtime.publish(Topics.ticket(transition.ticketId()), transition.eventType(), transition.deviceTime(), data);
         if (transition.counterId() != null) {
             realtime.publish(Topics.counter(transition.counterId()), transition.eventType(), transition.deviceTime(), data);
             UUID zoneId = jdbc.query("SELECT zone_id FROM counter WHERE id = ?", (rs, i) -> rs.getObject("zone_id", UUID.class), transition.counterId())

@@ -19,6 +19,8 @@ final class SiteRules {
     static final int DEFAULT_CHIME_VOLUME = 80;
     static final List<String> DEFAULT_ANNOUNCEMENT_LANGUAGES = List.of("en");
     static final int DEFAULT_MAX_ANNOUNCE_QUEUE_DEPTH = 5;
+    /** Generous enough for a small embedded {@code data:} URI image, the same cap {@code BrandingRules.MAX_LOGO_URL} uses (FR-MOB-032, ticket 37). */
+    static final int MAX_WAYFINDING_IMAGE_URL = 500_000;
 
     private SiteRules() {}
 

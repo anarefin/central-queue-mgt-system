@@ -42,7 +42,9 @@ class SecurityConfig {
         "/api/v1/auth/refresh",
         "/api/v1/auth/logout",
         "/api/v1/devices/pair",
-        "/api/v1/devices/refresh"
+        "/api/v1/devices/refresh",
+        "/api/v1/tickets/*/visitor",
+        "/api/v1/tickets/*/visitor-cancel"
     };
 
     @Bean
@@ -100,7 +102,12 @@ class SecurityConfig {
                 .httpBasic(AbstractHttpConfigurer::disable)
                 .formLogin(AbstractHttpConfigurer::disable)
                 .logout(AbstractHttpConfigurer::disable)
-                .authorizeHttpRequests(requests -> requests.requestMatchers(PUBLIC_PATHS).permitAll().anyRequest().authenticated())
+                .authorizeHttpRequests(requests -> requests
+                        .requestMatchers(PUBLIC_PATHS).permitAll()
+                        // The hub's own handshake gates an anonymous ticket-secret visitor itself (RealtimeConfig.Authenticated,
+                        // ticket 37, FR-SEC-033); it is not a @RestController, so it is kept out of PUBLIC_PATHS on purpose.
+                        .requestMatchers(RealtimeEndpoint.PATH).permitAll()
+                        .anyRequest().authenticated())
                 .oauth2ResourceServer(oauth -> oauth
                         .bearerTokenResolver(bearerTokens)
                         .jwt(jwt -> jwt.decoder(decoder).jwtAuthenticationConverter(converter))

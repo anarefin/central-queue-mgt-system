@@ -112,6 +112,8 @@ public class EstimateEvents {
             data.put("position", entry.position());
             data.put("estimated_wait_minutes", basis.ahead(entry.position() - 1));
             realtime.publish(Topics.queue(serviceId), "ticket.position_changed", at, data);
+            // The visitor's own topic hears its ticket's new place too (ticket 37, §21.2, FR-MOB-013).
+            realtime.publish(Topics.ticket(entry.ticketId()), "ticket.position_changed", at, data);
         }
     }
 }

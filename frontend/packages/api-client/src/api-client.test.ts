@@ -540,6 +540,23 @@ describe("ApiClient service catalogue", () => {
     expect((init(2).headers as Record<string, string>)["If-Match"]).toBeUndefined();
   });
 
+  it("sends the visitor ticket page's own reads and cancel anonymously, with X-Ticket-Secret instead of a bearer token (§20.2, ticket 37)", async () => {
+    const fetchImpl = vi.fn().mockImplementation(async () => json(200, { ticket_id: "t1" }));
+    const client = new ApiClient({ apiOrigin: "", fetch: fetchImpl as unknown as typeof fetch, getAccessToken: () => "staff-token" });
+
+    await client.tickets.visitorView("t1", "s3cr3t");
+    await client.tickets.visitorCancel("t1", "s3cr3t");
+
+    const calls = fetchImpl.mock.calls.map(([url, init]) => `${(init as RequestInit).method} ${String(url).replace("/api/v1", "")}`);
+    expect(calls).toEqual(["GET /tickets/t1/visitor", "POST /tickets/t1/visitor-cancel"]);
+    const headers = (index: number) => (fetchImpl.mock.calls[index]?.[1] as RequestInit).headers as Record<string, string>;
+    expect(headers(0)["X-Ticket-Secret"]).toBe("s3cr3t");
+    expect(headers(1)["X-Ticket-Secret"]).toBe("s3cr3t");
+    // Anonymous: the ambient staff access token never rides along with a ticket credential.
+    expect(headers(0).Authorization).toBeUndefined();
+    expect(headers(1).Authorization).toBeUndefined();
+  });
+
   it("maps the default classes onto /priority-defaults, a null class clearing the default (FR-QUE-011)", async () => {
     const fetchImpl = vi.fn().mockImplementation(async () => json(200, {}));
     const client = new ApiClient({ apiOrigin: "", fetch: fetchImpl as unknown as typeof fetch });
