@@ -4,7 +4,7 @@
 
 **Blocked by:** 11 — Realtime hub; 19 — Wait estimation
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [x] Installable PWA with manifest and service worker (FR-MOB-003, ADR-0011, ADR-0012)
 - [x] Anonymous access by ticket id + `X-Ticket-Secret`, read-only on that Ticket; token number alone reveals nothing (§20.2, FR-SEC-033)

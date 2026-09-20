@@ -38,7 +38,7 @@
 34-reschedule-cancel-waitlist              33              done     n/a*     17 files, +899 −32  5b75e34..dcd7e75
 35-appointment-check-in                    33,26,09        done     n/a*     24 files, +1138 −47 9663f40..dd54b60
 36-appointment-no-shows                    33              done     n/a*     14 files, +768 −7   8ab59a0..b8db6a9
-37-visitor-ticket-page-pwa                 11,19           todo     —        —                   —
+37-visitor-ticket-page-pwa                 11,19           done     n/a*     59 files, +2060 −65 ab00088..cc2e211
 38-notification-pipeline-in-app            11,02           todo     —        —                   —
 39-web-push-channel                        38,37           todo     —        —                   —
 40-email-channel-and-appointment-messages  38,34           todo     —        —                   —
@@ -71,3 +71,6 @@
 # * 30: commit landed but the run was interrupted before bookkeeping; confirmed done and
 #   backfilled on resume, elapsed wall-clock not recorded.
 # * 36: worker stalled (no progress 600s) mid-verification; resumed to finish and commit.
+# * 37: mid-flight background security review flagged a secret-in-URL issue (ticket secret in
+#   query string); relayed to the worker before commit, fixed (fragment + replaceState +
+#   no-referrer) and verified in the landed diff.
