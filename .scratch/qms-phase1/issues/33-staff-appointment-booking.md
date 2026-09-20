@@ -4,7 +4,7 @@
 
 **Blocked by:** 32 — Appointment availability; 22 — Visitor directory and walk-in registration
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [x] Transactional booking against remaining capacity; last-seat race yields exactly one success (FR-APT-011)
 - [x] Slot held for a configurable period (default 5 min) during booking, then released by a job (FR-APT-012, §19.2)

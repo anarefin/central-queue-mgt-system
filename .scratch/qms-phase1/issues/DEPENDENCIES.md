@@ -34,7 +34,7 @@
 30-display-layouts-and-notice-board        28              done     n/a*     82 files, +3891 −123 1eb6a0c..8fcf281
 31-journeys-and-multi-stop-visits          22,10           done     42m      36 files, +2276 −16 8edcae0..4969763
 32-appointment-availability                21              done     n/a*     17 files, +1909 −7  2529305..b5c2b99
-33-staff-appointment-booking               32,22           todo     —        —                   —
+33-staff-appointment-booking               32,22           done     35m      22 files, +1614 −33 e5556ed..ca16543
 34-reschedule-cancel-waitlist              33              todo     —        —                   —
 35-appointment-check-in                    33,26,09        todo     —        —                   —
 36-appointment-no-shows                    33              todo     —        —                   —
