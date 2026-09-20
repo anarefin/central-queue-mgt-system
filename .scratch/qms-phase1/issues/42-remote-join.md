@@ -4,7 +4,7 @@
 
 **Blocked by:** 37 — Visitor ticket page (PWA); 21 — Issuance rules
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [x] Remote join only where the Service's virtual-queue flag is on (FR-MOB-010)
 - [x] Policy per Service: max distance (10 km or off), max remote share (40%), join window before opening (30 min), arrival deadline (15 min) (FR-MOB-011)
