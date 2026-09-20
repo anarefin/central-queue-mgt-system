@@ -7,6 +7,7 @@ import com.qms.platform.ApiException;
 import com.qms.platform.ErrorCode;
 import com.qms.platform.security.Role;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 
@@ -51,11 +52,42 @@ class DeviceRulesTest {
     // ---- display board configuration (ticket 28, FR-DSP-001..005, FR-DSP-007, FR-SEC-020) ---------------------------
 
     @Test
-    void layoutDefaultsToNowServingTableAndRejectsAnythingElse() {
+    void layoutDefaultsToNowServingTableAndAcceptsTheShippedSetOnly() {
         assertThat(DeviceRules.layout(null)).isEqualTo("now_serving_table");
         assertThat(DeviceRules.layout("now_serving_table")).isEqualTo("now_serving_table");
-        assertThatThrownBy(() -> DeviceRules.layout("split_media")).isInstanceOf(ApiException.class)
+        assertThat(DeviceRules.layout("split_media")).isEqualTo("split_media");
+        assertThat(DeviceRules.layout("single_counter")).isEqualTo("single_counter");
+        assertThat(DeviceRules.layout("summary_board")).isEqualTo("summary_board");
+        assertThatThrownBy(() -> DeviceRules.layout("lobby_carousel")).isInstanceOf(ApiException.class)
                 .satisfies(e -> assertThat(((ApiException) e).code()).isEqualTo(ErrorCode.VALIDATION_FAILED));
+    }
+
+    // ---- display layouts and the notice board (ticket 30, FR-DSP-003, FR-I18N-005) ------------------------------
+
+    @Test
+    void layoutConfigDefaultsAndValidatesPerLayout() {
+        assertThat(DeviceRules.layoutConfig("now_serving_table", null)).isEmpty();
+        assertThat(DeviceRules.layoutConfig("summary_board", Map.of("whatever", "ignored"))).isEmpty();
+
+        assertThat(DeviceRules.layoutConfig("split_media", null)).containsEntry("split_percent", 60);
+        assertThat(DeviceRules.layoutConfig("split_media", Map.of("split_percent", 40))).containsEntry("split_percent", 40);
+        assertThatThrownBy(() -> DeviceRules.layoutConfig("split_media", Map.of("split_percent", 5))).isInstanceOf(ApiException.class);
+        assertThatThrownBy(() -> DeviceRules.layoutConfig("split_media", Map.of("split_percent", 95))).isInstanceOf(ApiException.class);
+
+        UUID counter = UUID.randomUUID();
+        assertThat(DeviceRules.layoutConfig("single_counter", Map.of("counter_id", counter.toString())))
+                .containsEntry("counter_id", counter.toString());
+        assertThatThrownBy(() -> DeviceRules.layoutConfig("single_counter", null)).isInstanceOf(ApiException.class);
+        assertThatThrownBy(() -> DeviceRules.layoutConfig("single_counter", Map.of("counter_id", "not-a-uuid"))).isInstanceOf(ApiException.class);
+    }
+
+    @Test
+    void languageCycleSecondsDefaultsAndAllowsZeroForSideBySide() {
+        assertThat(DeviceRules.languageCycleSeconds(null)).isEqualTo(10);
+        assertThat(DeviceRules.languageCycleSeconds(0)).isZero();
+        assertThat(DeviceRules.languageCycleSeconds(60)).isEqualTo(60);
+        assertThatThrownBy(() -> DeviceRules.languageCycleSeconds(-1)).isInstanceOf(ApiException.class);
+        assertThatThrownBy(() -> DeviceRules.languageCycleSeconds(301)).isInstanceOf(ApiException.class);
     }
 
     @Test

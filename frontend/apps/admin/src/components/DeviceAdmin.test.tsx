@@ -30,7 +30,9 @@ const KIOSK: DeviceView = {
   last_app_version: null,
   connectivity: "offline",
   layout: "now_serving_table",
+  layout_config: {},
   language_cycle: ["en"],
+  language_cycle_seconds: 10,
   next_n: 4,
   highlight_seconds: 10,
   columns: ["token", "counter"],
@@ -72,7 +74,9 @@ function fakeApi(state: { sites: Site[]; devices: DeviceView[] }, extra: Routes 
       json(200, {
         id: "d2",
         layout: "now_serving_table",
+        layout_config: {},
         language_cycle: ["en"],
+        language_cycle_seconds: 10,
         next_n: 6,
         highlight_seconds: 10,
         columns: ["token", "counter", "staff"],
@@ -175,10 +179,55 @@ describe("device administration screen", () => {
 
     expect(await within(form).findByText("Display settings saved.")).toBeInTheDocument();
     expect(bodyOf(calls.find((c) => c.method === "PUT" && c.path === "/devices/d2/display-config"))).toEqual({
+      layout: "now_serving_table",
+      layout_config: {},
+      language_cycle_seconds: 10,
       columns: ["token", "counter", "staff"],
       next_n: 6,
       highlight_seconds: 10,
       assignment: { scope: "counters", ids: ["c1"] },
     });
+  });
+
+  it("offers the split_media and single_counter layouts with their own zone-proportion config (ticket 30, FR-DSP-003)", async () => {
+    const state = { sites: [SITE], devices: [KIOSK, DISPLAY] };
+    const calls = fakeApi(state, {
+      "PUT /devices/d2/display-config": () =>
+        json(200, {
+          id: "d2",
+          layout: "split_media",
+          layout_config: { split_percent: 40 },
+          language_cycle: ["en"],
+          language_cycle_seconds: 10,
+          next_n: 4,
+          highlight_seconds: 10,
+          columns: ["token", "counter"],
+          assignment: { scope: "zone", ids: [] },
+        }),
+    });
+    renderApp(<DeviceAdmin />);
+    await screen.findByText("Front desk kiosk (Kiosk, Main campus)");
+
+    await userEvent.click(screen.getAllByRole("button", { name: "Display settings" })[0]!);
+    const form = screen.getByRole("form", { name: "Display settings" });
+    await userEvent.selectOptions(within(form).getByLabelText("Layout"), "split_media");
+    await userEvent.clear(within(form).getByLabelText("Serving table width (%)"));
+    await userEvent.type(within(form).getByLabelText("Serving table width (%)"), "40");
+    await userEvent.click(within(form).getByRole("button", { name: "Save display settings" }));
+
+    await within(form).findByText("Display settings saved.");
+    expect(bodyOf(calls.find((c) => c.method === "PUT" && c.path === "/devices/d2/display-config"))).toEqual({
+      layout: "split_media",
+      layout_config: { split_percent: 40 },
+      language_cycle_seconds: 10,
+      columns: ["token", "counter"],
+      next_n: 4,
+      highlight_seconds: 10,
+      assignment: { scope: "zone", ids: [] },
+    });
+
+    await userEvent.selectOptions(within(form).getByLabelText("Layout"), "single_counter");
+    expect(within(form).getByLabelText("Counter to show")).toBeInTheDocument();
+    expect(within(form).queryByLabelText("Serving table width (%)")).not.toBeInTheDocument();
   });
 });

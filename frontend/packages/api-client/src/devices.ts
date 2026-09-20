@@ -35,7 +35,9 @@ export interface DeviceView {
   last_app_version: string | null;
   connectivity: DeviceConnectivity;
   layout: DisplayLayout;
+  layout_config: DisplayLayoutConfig;
   language_cycle: string[];
+  language_cycle_seconds: number;
   next_n: number;
   highlight_seconds: number;
   columns: DisplayColumn[];
@@ -123,8 +125,8 @@ export interface KioskServiceTreeGroup {
 
 // ---- display board (ticket 28, SRS §12, FR-DSP-001..005, FR-DSP-007, FR-DSP-012) -----------------------------------
 
-/** The only shipped layout this build implements; ticket 30 adds `split_media`, `single_counter` and `summary_board`. */
-export type DisplayLayout = "now_serving_table";
+/** The shipped layout set (ticket 28's `now_serving_table`, ticket 30's `split_media`, `single_counter`, `summary_board`). */
+export type DisplayLayout = "now_serving_table" | "split_media" | "single_counter" | "summary_board";
 export type DisplayColumn = "token" | "counter" | "service" | "staff";
 export type DisplayAssignmentScope = "zone" | "counters" | "queues";
 
@@ -133,10 +135,23 @@ export interface DisplayAssignment {
   ids: string[];
 }
 
+/**
+ * The zone-proportion configuration a layout needs without a code change (ticket 30, FR-DSP-003): `split_media`'s
+ * serving/notice panel split, given to the serving side as a percentage; `single_counter`'s chosen Counter. Every
+ * other layout carries none of these.
+ */
+export interface DisplayLayoutConfig {
+  split_percent?: number;
+  counter_id?: string;
+}
+
 /** Body of `PUT /devices/{id}/display-config` (staff, `config:org_sites_zones`); a field left out keeps its default. */
 export interface DisplayConfigInput {
   layout?: DisplayLayout;
+  layout_config?: DisplayLayoutConfig;
   language_cycle?: string[];
+  /** How often the display rotates through `language_cycle`, in seconds (FR-I18N-005); 0 renders it side by side instead. */
+  language_cycle_seconds?: number;
   next_n?: number;
   highlight_seconds?: number;
   columns?: DisplayColumn[];
@@ -146,7 +161,9 @@ export interface DisplayConfigInput {
 export interface DisplayConfig {
   id: string;
   layout: DisplayLayout;
+  layout_config: DisplayLayoutConfig;
   language_cycle: string[];
+  language_cycle_seconds: number;
   next_n: number;
   highlight_seconds: number;
   columns: DisplayColumn[];
@@ -205,20 +222,76 @@ export interface DisplayNextGroup {
   tokens: DisplayNextToken[];
 }
 
+// ---- more display layouts and the notice board (ticket 30, FR-DSP-003, FR-DSP-006, FR-I18N-005) --------------------
+
+export type NoticeType = "image" | "video" | "rich_text";
+
+/** One scheduled notice-board item (FR-DSP-006), already filtered to the zone, active, and inside its date window. */
+export interface DisplayNotice {
+  id: string;
+  type: NoticeType;
+  /** One entry per language (FR-I18N-032): an absolute URL/`data:` URI for `image`/`video`, plain text for `rich_text`. */
+  content_i18n: Record<string, string>;
+  sort_order: number;
+}
+
+/** One Service's lobby summary for the `summary_board` layout (FR-DSP-003): how many are waiting and the estimated
+ * wait range for a visitor joining now (SRS §10.5), never an exact promise. */
+export interface DisplaySummaryEntry {
+  service_id: string;
+  service_names: Record<string, string>;
+  waiting_count: number;
+  estimate_low_minutes: number;
+  estimate_high_minutes: number;
+}
+
 /**
  * Body of `GET /devices/{id}/display-state` (device-authenticated, FR-DSP-012): everything a display needs to
  * resume its assigned zone and layout with no login. `serving` and `next` are always the whole zone's live state;
  * a display assigned to fewer Counters or queues than the whole zone (`assignment.scope` other than `zone`) filters
  * this down to its own assignment itself -- the same filter it applies to every `zone:` topic update afterwards.
+ * `notices` and `summary` (ticket 30) feed the `split_media` and `summary_board` layouts respectively; every layout
+ * carries both, harmlessly unused by a layout that does not render them.
  */
 export interface DisplayState {
   zone: DisplayZoneRef;
   layout: DisplayLayout;
+  layout_config: DisplayLayoutConfig;
   language_cycle: string[];
+  language_cycle_seconds: number;
   columns: DisplayColumn[];
   next_n: number;
   highlight_seconds: number;
   assignment: DisplayAssignment;
   serving: DisplayServingEntry[];
   next: DisplayNextGroup[];
+  notices: DisplayNotice[];
+  summary: DisplaySummaryEntry[];
+}
+
+// ---- notice-board management (ticket 30, FR-DSP-006, SRS §5.2 `notice_board:manage`) --------------------------------
+
+/** A notice-board item as staff manage it (as opposed to `DisplayNotice`, a display's own filtered read). */
+export interface Notice {
+  id: string;
+  zone_id: string;
+  type: NoticeType;
+  content_i18n: Record<string, string>;
+  starts_at: string;
+  ends_at: string;
+  sort_order: number;
+  active: boolean;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+}
+
+/** The whole editable content of a notice, for create and for replace. */
+export interface NoticeInput {
+  zone_id: string;
+  type: NoticeType;
+  content_i18n: Record<string, string>;
+  starts_at: string;
+  ends_at: string;
+  sort_order?: number;
 }

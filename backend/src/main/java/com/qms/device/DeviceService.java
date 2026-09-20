@@ -6,6 +6,8 @@ import com.qms.configuration.branding.BrandingService;
 import com.qms.configuration.catalogue.CatalogueService;
 import com.qms.configuration.catalogue.ServiceEntry;
 import com.qms.configuration.catalogue.ServiceGroup;
+import com.qms.configuration.notice.Notice;
+import com.qms.configuration.notice.NoticeService;
 import com.qms.configuration.site.Counter;
 import com.qms.configuration.site.HierarchyService;
 import com.qms.configuration.site.Site;
@@ -70,6 +72,7 @@ public class DeviceService {
     private final CatalogueService catalogue;
     private final BrandingService branding;
     private final DisplayStateReads displayReads;
+    private final NoticeService notices;
     private final DeviceProperties properties;
     private final AuditWriter audit;
     private final CurrentUser currentUser;
@@ -86,6 +89,7 @@ public class DeviceService {
             CatalogueService catalogue,
             BrandingService branding,
             DisplayStateReads displayReads,
+            NoticeService notices,
             DeviceProperties properties,
             AuditWriter audit,
             CurrentUser currentUser,
@@ -100,6 +104,7 @@ public class DeviceService {
         this.catalogue = catalogue;
         this.branding = branding;
         this.displayReads = displayReads;
+        this.notices = notices;
         this.properties = properties;
         this.audit = audit;
         this.currentUser = currentUser;
@@ -132,8 +137,10 @@ public class DeviceService {
                 null,
                 null,
                 DeviceRules.DEFAULT_LAYOUT,
+                Map.of(),
                 List.of("en"), // pairing is public and unauthenticated, so the site's own default language cannot be read here (ticket 28); an
                 // administrator sets a real language cycle with PUT /devices/{id}/display-config once paired.
+                DeviceRules.DEFAULT_LANGUAGE_CYCLE_SECONDS,
                 DeviceRules.DEFAULT_NEXT_N,
                 DeviceRules.DEFAULT_HIGHLIGHT_SECONDS,
                 DeviceRules.DEFAULT_COLUMNS,
@@ -320,7 +327,13 @@ public class DeviceService {
         Site site = hierarchy.site(before.siteId());
 
         String layout = DeviceRules.layout(request.layout());
+        Map<String, Object> layoutConfig = DeviceRules.layoutConfig(layout, request.layoutConfig());
+        if (DeviceRules.LAYOUT_SINGLE_COUNTER.equals(layout)) {
+            UUID counterId = UUID.fromString((String) layoutConfig.get("counter_id"));
+            if (!devices.counterInZone(counterId, before.zoneId())) throw DeviceRules.invalid("layout_config.counter_id", "counter_not_in_zone");
+        }
         List<String> languageCycle = DeviceRules.languageCycle(request.languageCycle(), site.defaultLanguage(), site.enabledLanguages());
+        int languageCycleSeconds = DeviceRules.languageCycleSeconds(request.languageCycleSeconds());
         int nextN = DeviceRules.positiveInt("next_n", request.nextN(), DeviceRules.DEFAULT_NEXT_N, DeviceRules.MAX_NEXT_N);
         int highlightSeconds = DeviceRules.positiveInt(
                 "highlight_seconds", request.highlightSeconds(), DeviceRules.DEFAULT_HIGHLIGHT_SECONDS, DeviceRules.MAX_HIGHLIGHT_SECONDS);
@@ -341,7 +354,7 @@ public class DeviceService {
         Device after = new Device(
                 before.id(), before.kind(), before.siteId(), before.zoneId(), before.label(), before.active(),
                 before.pairedAt(), before.lastHeartbeatAt(), before.lastAppVersion(),
-                layout, languageCycle, nextN, highlightSeconds, columns, assignmentScope, assignmentIds,
+                layout, layoutConfig, languageCycle, languageCycleSeconds, nextN, highlightSeconds, columns, assignmentScope, assignmentIds,
                 before.createdAt(), clock.instant());
         if (configSnapshot(after).equals(configSnapshot(before))) return DisplayConfigResponse.from(before);
         devices.updateDisplayConfig(after);
@@ -373,13 +386,17 @@ public class DeviceService {
                         zone.announcementLanguages(),
                         zone.maxAnnounceQueueDepth()),
                 device.layout(),
+                device.layoutConfig(),
                 device.languageCycle(),
+                device.languageCycleSeconds(),
                 device.columns(),
                 device.nextN(),
                 device.highlightSeconds(),
                 new DisplayStateResponse.Assignment(device.assignmentScope(), device.assignmentIds()),
                 displayReads.serving(zone.id()).stream().map(DeviceService::servingEntry).toList(),
-                displayReads.next(zone.id()).stream().map(DeviceService::nextGroupEntry).toList());
+                displayReads.next(zone.id()).stream().map(DeviceService::nextGroupEntry).toList(),
+                notices.activeForZone(zone.id(), clock.instant()).stream().map(DeviceService::noticeEntry).toList(),
+                displayReads.summary(zone.id()).stream().map(DeviceService::summaryEntry).toList());
     }
 
     // ---- internals -----------------------------------------------------------------------------------------------
@@ -419,7 +436,9 @@ public class DeviceService {
                 device.lastAppVersion(),
                 connectivity(device, clock.instant()),
                 device.layout(),
+                device.layoutConfig(),
                 device.languageCycle(),
+                device.languageCycleSeconds(),
                 device.nextN(),
                 device.highlightSeconds(),
                 device.columns(),
@@ -448,7 +467,9 @@ public class DeviceService {
     private static Map<String, Object> configSnapshot(Device device) {
         Map<String, Object> values = new LinkedHashMap<>();
         values.put("layout", device.layout());
+        values.put("layout_config", device.layoutConfig());
         values.put("language_cycle", device.languageCycle());
+        values.put("language_cycle_seconds", device.languageCycleSeconds());
         values.put("next_n", device.nextN());
         values.put("highlight_seconds", device.highlightSeconds());
         values.put("columns", device.columns());
@@ -468,6 +489,15 @@ public class DeviceService {
                 group.serviceId(),
                 group.serviceNames(),
                 group.tokens().stream().map(t -> new DisplayStateResponse.NextTicketEntry(t.tokenNumber(), t.position())).toList());
+    }
+
+    private static DisplayStateResponse.NoticeEntry noticeEntry(Notice notice) {
+        return new DisplayStateResponse.NoticeEntry(notice.id(), notice.type(), notice.contentI18n(), notice.sortOrder());
+    }
+
+    private static DisplayStateResponse.SummaryEntry summaryEntry(DisplayStateReads.SummaryRow row) {
+        return new DisplayStateResponse.SummaryEntry(
+                row.serviceId(), row.serviceNames(), row.waitingCount(), row.estimate().low(), row.estimate().high());
     }
 
     static String hash(String rawToken) {

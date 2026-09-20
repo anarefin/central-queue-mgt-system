@@ -7,6 +7,7 @@ import type {
   DeviceView,
   DisplayAssignmentScope,
   DisplayColumn,
+  DisplayLayout,
   PairingCodeResponse,
   Site,
   Zone,
@@ -21,6 +22,8 @@ import { useApi } from "../lib/runtime";
 const DISPLAY_COLUMNS: DisplayColumn[] = ["token", "counter", "service", "staff"];
 const REQUIRED_COLUMNS = new Set<DisplayColumn>(["token", "counter"]);
 const ASSIGNMENT_SCOPES: DisplayAssignmentScope[] = ["zone", "counters", "queues"];
+/** The shipped layout set (ticket 28's `now_serving_table`, ticket 30's `split_media`, `single_counter`, `summary_board`), FR-DSP-003. */
+const DISPLAY_LAYOUTS: DisplayLayout[] = ["now_serving_table", "split_media", "single_counter", "summary_board"];
 
 const CONNECTIVITY_STATUS: Record<DeviceView["connectivity"], StatusKind> = {
   online: "up",
@@ -218,6 +221,10 @@ function DisplayConfigForm({ device, onSaved }: { device: DeviceView; onSaved: (
   const { client } = useApi();
   const id = useId();
   const { busy, error, run } = useSubmit();
+  const [layout, setLayout] = useState<DisplayLayout>(device.layout);
+  const [splitPercent, setSplitPercent] = useState(String(device.layout_config.split_percent ?? 60));
+  const [singleCounterId, setSingleCounterId] = useState(device.layout_config.counter_id ?? "");
+  const [languageCycleSeconds, setLanguageCycleSeconds] = useState(String(device.language_cycle_seconds));
   const [columns, setColumns] = useState<DisplayColumn[]>(device.columns);
   const [nextN, setNextN] = useState(String(device.next_n));
   const [highlightSeconds, setHighlightSeconds] = useState(String(device.highlight_seconds));
@@ -235,6 +242,14 @@ function DisplayConfigForm({ device, onSaved }: { device: DeviceView; onSaved: (
     setSaved(false);
     const ok = await run(async () => {
       const result = await client!.devices.updateDisplayConfig(device.id, {
+        layout,
+        layout_config:
+          layout === "split_media"
+            ? { split_percent: Number(splitPercent) }
+            : layout === "single_counter"
+              ? { counter_id: singleCounterId.trim() }
+              : {},
+        language_cycle_seconds: Number(languageCycleSeconds),
         columns,
         next_n: Number(nextN),
         highlight_seconds: Number(highlightSeconds),
@@ -243,6 +258,10 @@ function DisplayConfigForm({ device, onSaved }: { device: DeviceView; onSaved: (
           ids: scope === "zone" ? [] : ids.split(",").map((raw) => raw.trim()).filter((raw) => raw !== ""),
         },
       });
+      setLayout(result.layout);
+      setSplitPercent(String(result.layout_config.split_percent ?? 60));
+      setSingleCounterId(result.layout_config.counter_id ?? "");
+      setLanguageCycleSeconds(String(result.language_cycle_seconds));
       setColumns(result.columns);
       setNextN(String(result.next_n));
       setHighlightSeconds(String(result.highlight_seconds));
@@ -255,6 +274,40 @@ function DisplayConfigForm({ device, onSaved }: { device: DeviceView; onSaved: (
 
   return (
     <form className="qms-stack" onSubmit={submit} aria-label={t("devices.display.settings")}>
+      <SelectField
+        id={`${id}-layout`}
+        label={t("devices.display.layout")}
+        value={layout}
+        onChange={(e) => setLayout(e.target.value as DisplayLayout)}
+        options={DISPLAY_LAYOUTS.map((value) => ({ value, label: t(`devices.display.layout.${value}`) }))}
+      />
+      {layout === "split_media" && (
+        <TextField
+          id={`${id}-split-percent`}
+          type="number"
+          min={10}
+          max={90}
+          label={t("devices.display.splitPercent")}
+          value={splitPercent}
+          onChange={(e) => setSplitPercent(e.target.value)}
+        />
+      )}
+      {layout === "single_counter" && (
+        <TextField
+          id={`${id}-single-counter-id`}
+          label={t("devices.display.singleCounterId")}
+          value={singleCounterId}
+          onChange={(e) => setSingleCounterId(e.target.value)}
+        />
+      )}
+      <TextField
+        id={`${id}-language-cycle-seconds`}
+        type="number"
+        min={0}
+        label={t("devices.display.languageCycleSeconds")}
+        value={languageCycleSeconds}
+        onChange={(e) => setLanguageCycleSeconds(e.target.value)}
+      />
       <fieldset className="qms-stack">
         <legend className="qms-label">{t("devices.display.columnsLegend")}</legend>
         {DISPLAY_COLUMNS.map((column) => (

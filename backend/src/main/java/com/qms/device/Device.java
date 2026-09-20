@@ -4,6 +4,7 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import com.qms.platform.security.Role;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -13,9 +14,11 @@ import java.util.UUID;
  *
  * <p>The display-board fields (ticket 28, FR-DSP-001, FR-DSP-002) are meaningless for a kiosk and simply keep their
  * defaults there, the same way {@code zoneId} is null and unused for one. {@code layout} is one of the shipped set
- * ({@code now_serving_table} is the only one this build implements; ticket 30 adds the rest). {@code assignmentScope}
- * is {@code zone}, {@code counters} or {@code queues}; {@code assignmentIds} is empty for {@code zone} and a list of
- * Counter or Service ids otherwise.
+ * (ticket 30 adds {@code split_media}, {@code single_counter} and {@code summary_board} to ticket 28's
+ * {@code now_serving_table}); {@code layoutConfig} is the zone-proportion setting the chosen layout needs, if any
+ * (FR-DSP-003). {@code assignmentScope} is {@code zone}, {@code counters} or {@code queues}; {@code assignmentIds} is
+ * empty for {@code zone} and a list of Counter or Service ids otherwise. {@code languageCycleSeconds} is how often
+ * the display rotates through {@code languageCycle} (ticket 30, FR-I18N-005); 0 renders the cycle side by side.
  */
 public record Device(
         UUID id,
@@ -28,7 +31,9 @@ public record Device(
         @JsonProperty("last_heartbeat_at") Instant lastHeartbeatAt,
         @JsonProperty("last_app_version") String lastAppVersion,
         String layout,
+        @JsonProperty("layout_config") Map<String, Object> layoutConfig,
         @JsonProperty("language_cycle") List<String> languageCycle,
+        @JsonProperty("language_cycle_seconds") int languageCycleSeconds,
         @JsonProperty("next_n") int nextN,
         @JsonProperty("highlight_seconds") int highlightSeconds,
         List<String> columns,

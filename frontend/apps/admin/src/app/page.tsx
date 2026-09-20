@@ -47,6 +47,7 @@ export default function Home() {
         {user?.roles.some((role) => role === "system_admin" || role === "org_admin" || role === "team_admin") && (
           <div className="qms-row">
             <Link href="/availability/">{t("admin.home.availability")}</Link>
+            <Link href="/notice-board/">{t("admin.home.noticeBoard")}</Link>
           </div>
         )}
         {user?.roles.includes("reception_operator") && (

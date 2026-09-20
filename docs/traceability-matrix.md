@@ -794,6 +794,51 @@ waiting area (a Zone), not one display screen. This is a deliberate difference f
 `language_cycle` (ticket 28, still just a registration attribute with no on-screen rotation, per that ticket's own
 notes): announcement language order is a Zone-wide audio setting, screen language cycling is a per-device visual one.
 
+## Ticket 30, more display layouts and the notice board
+
+`Rules` = `B/device/DeviceRulesTest`, `Fleet` = `B/device/DeviceFleetIT`, `NoticeRules` = `B/configuration/notice/NoticeRulesTest`,
+`F/DisplayBoard` = `F/apps/display/src/components/DisplayBoard.test.tsx`, `F/LangCycle` = `F/apps/display/src/lib/languageCycle.test.ts`,
+`F/DeviceAdmin` = `F/apps/admin/src/components/DeviceAdmin.test.tsx`, `F/NoticeBoardAdmin` = `F/apps/admin/src/components/NoticeBoardAdmin.test.tsx`.
+
+| Requirement ID | Section | Test type | Test reference | Status |
+|---|---|---|---|---|
+| FR-DSP-003 `split_media`, `single_counter`, `summary_board` layouts; zone proportions configurable without code | §12.1 | unit, integration, unit(F) | `Rules#layoutDefaultsToNowServingTableAndAcceptsTheShippedSetOnly`, `#layoutConfigDefaultsAndValidatesPerLayout`; `Fleet#theShippedLayoutSetGrowsToSplitMediaSingleCounterAndSummaryBoardWithTheirZoneProportionConfig`; `F/DisplayBoard` (dispatches to each layout; `split_percent` becomes the `--qms-split-percent` CSS custom property, never a fixed ratio; `summary_board` renders waiting counts and estimated waits); `F/DeviceAdmin#offersTheSplitMediaAndSingleCounterLayoutsWithTheirOwnZoneProportionConfig` | passing |
+| FR-DSP-006 notice panel renders images, video or rich text uploaded by an authorised user, in a scheduled playlist with per-item start/end dates; SRS §5.2 `notice_board:manage` | §12.1, §5.2 | unit, integration, unit(F) | `NoticeRules` (type, per-language content, the date window, playlist order); `Fleet#displayStateCarriesTheZonesActiveNoticesAndThePerServiceLobbySummary` (only a notice inside its own `starts_at`/`ends_at` window rides `display-state`), `#onlyNoticeBoardManagersMayManageNoticesAndAZoneScopedActorCannotReachAnotherSite`; `F/NoticeBoardAdmin` (create/list/deactivate a zone's notices); `F/DisplayBoard` (the notice panel renders `rich_text` and shows the empty-playlist message; `NoticePanel`'s image/video branches render the same `content_i18n` value the API returns) | passing |
+| FR-I18N-005 displays cycle through enabled languages at a configurable interval, or render side by side where the layout allows | §17.1 | unit, integration, unit(F) | `Rules#languageCycleSecondsDefaultsAndAllowsZeroForSideBySide`; `Fleet#theShippedLayoutSetGrowsToSplitMediaSingleCounterAndSummaryBoardWithTheirZoneProportionConfig` (`language_cycle_seconds` 0 accepted, negative refused); `F/LangCycle` (cycles at the configured interval, wraps, renders side by side at 0); `F/DisplayBoard#rendersSideBySideInEveryConfiguredLanguageWhenLanguageCycleSecondsIs0` | passing |
+| FR-I18N-032 text in images avoided; where unavoidable, one asset per language | §17.4 | unit, integration | `NoticeRulesTest#contentMustCoverTheDefaultLanguageAndKeepsOneEntryPerEnabledLanguage`; `Fleet#displayStateCarriesTheZonesActiveNoticesAndThePerServiceLobbySummary` (`content_i18n.en` differs from the same notice's `bn` asset and both ride `display-state` unmodified) | passing |
+| Definition of done §27.5 item 3 (strings in both packs) | §17 | unit | `F/packages/i18n/src/i18n.test.ts` (pack parity; `display.*`, `devices.display.layout*`/`splitPercent`/`singleCounterId`/`languageCycleSeconds`, `noticeBoard.*` and the new `sites.fields.*` error-field labels resolve in en and bn) | passing |
+| Definition of done §27.5 item 4 (permission-checked server-side) | §20.3 | integration | `notice_board:manage` enforced in `NoticeService`/`NoticeController`, not just hidden in the UI (`Fleet#onlyNoticeBoardManagersMayManageNoticesAndAZoneScopedActorCannotReachAnotherSite`, an Agent gets 403); `layout`/`layout_config`/`language_cycle_seconds` reuse `config:org_sites_zones` exactly as ticket 28's other display-config fields | passing |
+| Definition of done §27.5 item 5 (events and audit entries) | §18.3 | integration | `notice.created`/`notice.updated`/`notice.deactivated`/`notice.activated` audited with before/after (`NoticeService`, asserted in `Fleet`); `device.display_config_updated` (ticket 28's own audit event) now also carries `layout_config` and `language_cycle_seconds` in its before/after snapshot | passing |
+| Definition of done §27.5 item 6 (documented) | §27.5 | manual | covered by this table; `docs/admin-guide.md` is not updated (the same gap tickets 25-29 left) | partial |
+| §18, §26 the V25 migration is forward-only and re-runnable | §18, §26 | integration | `B/platform/MigrationIT#everyMigrationScriptCanBeReExecutedAgainstAnAlreadyMigratedDatabase` (V25) | passing |
+
+**Notes on this ticket's interpretation.** Notice-board content follows the same convention `org_branding.logo_url`
+already established (ticket 27): `content_i18n`'s value for `image`/`video` is an absolute URL or a `data:` URI, an
+authorised user's own upload target (an object store, a CMS, a `data:` URI pasted in) sitting outside this repository,
+exactly like a logo. There is no multipart-file-upload/binary-storage pipeline anywhere in this codebase to extend,
+and building one is a materially different, infrastructure-shaped change this ticket's acceptance criteria do not
+name a storage location for; "uploaded by an authorised user" is satisfied by the permission-checked, audited write
+path (`notice_board:manage`) and the per-language content it accepts, not by a new file-storage subsystem. `rich_text`
+content is rendered as plain text (`<p>{content}</p>`, not `dangerouslySetInnerHTML`) rather than raw HTML: nothing in
+FR-DSP-006 asks for HTML, and rendering staff-authored markup unsanitised on a public display would be a new XSS
+surface this ticket has no reason to open.
+
+FR-I18N-005's language cycling is implemented display-app-local (`languageCycle.ts`), not as a change to the shared
+`@qms/i18n` package: `I18nProvider` still resolves one fixed UI language per page load (FR-I18N-003's device/site/user
+resolution, unchanged), and this ticket's cycling instead decides which language a board reads *out of* the
+already-multilingual data the API returns (`service_names`, notice `content_i18n`) via the same `localised`/
+`localisedAll` seam `NowServingBoard` already used for one language. This is a deliberate, narrower reading of ticket
+28's own note that a shared-package `setLanguage` is "wider than this ticket's own layout" -- true here too, and
+avoided the same way. `now_serving_table` (ticket 28/29) itself does not cycle: its own component and tests are left
+exactly as ticket 29 built them, so its voice-announcement wiring stays intact; cycling and side-by-side rendering
+apply to `split_media`, `single_counter` and `summary_board`, the three layouts this ticket adds.
+
+`summary_board`'s "estimated waits" reuse `WaitEstimator`/`WaitEstimates` unmodified (SRS §10.5, ticket 15): the range
+for a visitor joining the back of each Service's queue right now (`ahead(serviceId, waitingCount)`), the same rounded,
+never-exact figure a kiosk already shows. `single_counter` falls back to the zone's first active Counter when
+`layout_config.counter_id` is not yet set (a display just switched to that layout before an admin picked one), rather
+than rendering nothing.
+
 ## Notes
 
 - **Compose.** Verified by hand on 2026-09-19 with OrbStack Docker, from a clean build: `migrate` exited 0, then Postgres,

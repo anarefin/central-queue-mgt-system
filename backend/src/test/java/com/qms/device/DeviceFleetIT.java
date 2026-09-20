@@ -487,7 +487,7 @@ class DeviceFleetIT {
         UUID otherZone = createZone(admin, site);
         UUID id = UUID.fromString(field(pair(pairingCode(admin, "display", site, zone)), "$.device_id"));
 
-        assertThat(status(call(put("/api/v1/devices/" + id + "/display-config"), admin, "{\"layout\":\"summary_board\"}"))).isEqualTo(400);
+        assertThat(status(call(put("/api/v1/devices/" + id + "/display-config"), admin, "{\"layout\":\"lobby_carousel\"}"))).isEqualTo(400);
         assertThat(status(call(put("/api/v1/devices/" + id + "/display-config"), admin, "{\"columns\":[\"staff\"]}")))
                 .as("token and counter are the floor").isEqualTo(400);
         assertThat(status(call(put("/api/v1/devices/" + id + "/display-config"), admin, "{\"next_n\":0}"))).isEqualTo(400);
@@ -570,5 +570,117 @@ class DeviceFleetIT {
         assertThat((String) field(state, "$.zone.quiet_end")).isEqualTo("06:00");
         assertThat((List<String>) field(state, "$.zone.announcement_languages")).containsExactly("bn", "en");
         assertThat((Integer) field(state, "$.zone.max_announce_queue_depth")).isEqualTo(3);
+    }
+
+    // ---- more display layouts and the notice board (ticket 30, FR-DSP-003, FR-DSP-006, FR-I18N-005) ---------------
+
+    @Test
+    void theShippedLayoutSetGrowsToSplitMediaSingleCounterAndSummaryBoardWithTheirZoneProportionConfig() throws Exception {
+        String admin = tokenFor(Role.ORG_ADMIN);
+        UUID site = createSite(admin);
+        UUID zone = createZone(admin, site);
+        UUID otherZone = createZone(admin, site);
+        UUID counter = createCounter(admin, zone);
+        UUID id = UUID.fromString(field(pair(pairingCode(admin, "display", site, zone)), "$.device_id"));
+
+        MvcResult splitMedia = call(put("/api/v1/devices/" + id + "/display-config"), admin,
+                "{\"layout\":\"split_media\",\"layout_config\":{\"split_percent\":45}}");
+        assertThat(status(splitMedia)).as(body(splitMedia)).isEqualTo(200);
+        assertThat((String) field(splitMedia, "$.layout")).isEqualTo("split_media");
+        assertThat((Integer) field(splitMedia, "$.layout_config.split_percent")).isEqualTo(45);
+
+        assertThat(status(call(put("/api/v1/devices/" + id + "/display-config"), admin,
+                        "{\"layout\":\"split_media\",\"layout_config\":{\"split_percent\":5}}")))
+                .as("outside 10-90").isEqualTo(400);
+
+        MvcResult singleCounter = call(put("/api/v1/devices/" + id + "/display-config"), admin,
+                "{\"layout\":\"single_counter\",\"layout_config\":{\"counter_id\":\"" + counter + "\"}}");
+        assertThat(status(singleCounter)).as(body(singleCounter)).isEqualTo(200);
+        assertThat((String) field(singleCounter, "$.layout_config.counter_id")).isEqualTo(counter.toString());
+
+        UUID counterElsewhere = createCounter(admin, otherZone);
+        assertThat(status(call(put("/api/v1/devices/" + id + "/display-config"), admin,
+                        "{\"layout\":\"single_counter\",\"layout_config\":{\"counter_id\":\"" + counterElsewhere + "\"}}")))
+                .as("the chosen counter must be in the display's own zone").isEqualTo(400);
+
+        MvcResult summaryBoard = call(put("/api/v1/devices/" + id + "/display-config"), admin, "{\"layout\":\"summary_board\"}");
+        assertThat(status(summaryBoard)).as(body(summaryBoard)).isEqualTo(200);
+        assertThat((String) field(summaryBoard, "$.layout")).isEqualTo("summary_board");
+
+        MvcResult sideBySide = call(put("/api/v1/devices/" + id + "/display-config"), admin, "{\"language_cycle_seconds\":0}");
+        assertThat(status(sideBySide)).as(body(sideBySide)).isEqualTo(200);
+        assertThat((Integer) field(sideBySide, "$.language_cycle_seconds")).isZero();
+        assertThat(status(call(put("/api/v1/devices/" + id + "/display-config"), admin, "{\"language_cycle_seconds\":-1}"))).isEqualTo(400);
+    }
+
+    @Test
+    void displayStateCarriesTheZonesActiveNoticesAndThePerServiceLobbySummary() throws Exception {
+        String admin = tokenFor(Role.ORG_ADMIN);
+        UUID site = createSite(admin);
+        UUID zone = createZone(admin, site);
+        UUID counter = createCounter(admin, zone);
+        UUID group = newGroup(site, "GN");
+        jdbc.update("INSERT INTO team (id, service_group_id, name) VALUES (?, ?, 'Team')", UUID.randomUUID(), group);
+        UUID service = newService(group, "AN", "[\"reception\"]");
+        jdbc.update("INSERT INTO counter_service (counter_id, service_id, preference_weight) VALUES (?, ?, 1)", counter, service);
+        MvcResult paired = pair(pairingCode(admin, "display", site, zone));
+        String displayToken = field(paired, "$.access_token");
+
+        // a notice outside its window and one active now (FR-DSP-006's per-item start and end dates)
+        String activeWindow = "\"starts_at\":\"2020-01-01T00:00:00Z\",\"ends_at\":\"2999-01-01T00:00:00Z\"";
+        MvcResult notice = call(post("/api/v1/notices"), admin,
+                "{\"zone_id\":\"" + zone + "\",\"type\":\"image\",\"content_i18n\":{\"bn\":\"https://example.org/bn.png\",\"en\":\"https://example.org/en.png\"},"
+                        + activeWindow + "}");
+        assertThat(status(notice)).as(body(notice)).isEqualTo(201);
+        MvcResult expired = call(post("/api/v1/notices"), admin,
+                "{\"zone_id\":\"" + zone + "\",\"type\":\"rich_text\",\"content_i18n\":{\"bn\":\"old\"},"
+                        + "\"starts_at\":\"2000-01-01T00:00:00Z\",\"ends_at\":\"2000-02-01T00:00:00Z\"}");
+        assertThat(status(expired)).as(body(expired)).isEqualTo(201);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM audit_log WHERE action = 'notice.created'", Integer.class)).isEqualTo(2);
+
+        issuance.issue(new IssueCommand(service, Channels.RECEPTION, UUID.randomUUID(), ActorType.SYSTEM, null));
+        issuance.issue(new IssueCommand(service, Channels.RECEPTION, UUID.randomUUID(), ActorType.SYSTEM, null));
+
+        MvcResult state = call(get("/api/v1/devices/" + UUID.fromString(field(paired, "$.device_id")) + "/display-state"), displayToken, null);
+        assertThat(status(state)).as(body(state)).isEqualTo(200);
+        assertThat((List<String>) field(state, "$.notices[*].id")).containsExactly((String) field(notice, "$.id"));
+        assertThat((String) field(state, "$.notices[0].type")).isEqualTo("image");
+        assertThat((String) field(state, "$.notices[0].content_i18n.en")).isEqualTo("https://example.org/en.png");
+        assertThat((String) field(state, "$.summary[0].service_id")).isEqualTo(service.toString());
+        assertThat((Integer) field(state, "$.summary[0].waiting_count")).isEqualTo(2);
+        assertThat((Integer) field(state, "$.summary[0].estimate_low_minutes")).isNotNull();
+        assertThat((Integer) field(state, "$.summary[0].estimate_high_minutes")).isNotNull();
+    }
+
+    @Test
+    void onlyNoticeBoardManagersMayManageNoticesAndAZoneScopedActorCannotReachAnotherSite() throws Exception {
+        String admin = tokenFor(Role.ORG_ADMIN);
+        UUID site = createSite(admin);
+        UUID zone = createZone(admin, site);
+        String agent = tokenFor(Role.AGENT, site);
+        String reason = "{\"zone_id\":\"" + zone + "\",\"type\":\"rich_text\",\"content_i18n\":{\"bn\":\"x\"},"
+                + "\"starts_at\":\"2020-01-01T00:00:00Z\",\"ends_at\":\"2999-01-01T00:00:00Z\"}";
+
+        assertThat(status(call(post("/api/v1/notices"), agent, reason))).as("an agent has no notice_board:manage").isEqualTo(403);
+
+        MvcResult created = call(post("/api/v1/notices"), admin, reason);
+        assertThat(status(created)).as(body(created)).isEqualTo(201);
+        UUID id = UUID.fromString(field(created, "$.id"));
+
+        MvcResult deactivated = call(post("/api/v1/notices/" + id + "/deactivate"), admin, null);
+        assertThat(status(deactivated)).as(body(deactivated)).isEqualTo(200);
+        assertThat((Boolean) field(deactivated, "$.active")).isFalse();
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM audit_log WHERE action = 'notice.deactivated' AND entity_id = ?", Integer.class, id))
+                .isEqualTo(1);
+
+        MvcResult listed = call(get("/api/v1/zones/" + zone + "/notices"), admin, null);
+        assertThat(status(listed)).as(body(listed)).isEqualTo(200);
+        assertThat((List<String>) field(listed, "$.items[*].id")).contains(id.toString());
+
+        MvcResult badDates = call(post("/api/v1/notices"), admin,
+                "{\"zone_id\":\"" + zone + "\",\"type\":\"rich_text\",\"content_i18n\":{\"bn\":\"x\"},"
+                        + "\"starts_at\":\"2999-01-01T00:00:00Z\",\"ends_at\":\"2020-01-01T00:00:00Z\"}");
+        assertThat(status(badDates)).isEqualTo(400);
+        assertThat(errorCode(badDates)).isEqualTo("validation_failed");
     }
 }

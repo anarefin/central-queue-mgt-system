@@ -4,6 +4,7 @@ import com.qms.platform.ApiException;
 import com.qms.platform.ErrorCode;
 import com.qms.platform.security.Role;
 import java.security.SecureRandom;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -19,9 +20,13 @@ final class DeviceRules {
 
     // ---- display board defaults and rules (ticket 28, FR-DSP-001..005, FR-DSP-007, FR-SEC-020) ---------------------
 
-    /** The shipped layout set of FR-DSP-003; only {@code now_serving_table} is implemented by this ticket, the rest by ticket 30. */
+    /** The shipped layout set of FR-DSP-003: the now-serving table (ticket 28) plus split media, a single big counter
+     * and a lobby summary board (ticket 30). */
     static final String DEFAULT_LAYOUT = "now_serving_table";
-    static final List<String> LAYOUTS = List.of(DEFAULT_LAYOUT);
+    static final String LAYOUT_SPLIT_MEDIA = "split_media";
+    static final String LAYOUT_SINGLE_COUNTER = "single_counter";
+    static final String LAYOUT_SUMMARY_BOARD = "summary_board";
+    static final List<String> LAYOUTS = List.of(DEFAULT_LAYOUT, LAYOUT_SPLIT_MEDIA, LAYOUT_SINGLE_COUNTER, LAYOUT_SUMMARY_BOARD);
     /** FR-SEC-020's public-display default: token number and counter only. */
     static final List<String> DEFAULT_COLUMNS = List.of("token", "counter");
     static final List<String> COLUMN_OPTIONS = List.of("token", "counter", "service", "staff");
@@ -31,10 +36,62 @@ final class DeviceRules {
     static final int MAX_HIGHLIGHT_SECONDS = 300;
     static final List<String> ASSIGNMENT_SCOPES = List.of("zone", "counters", "queues");
 
+    /** `split_media`'s serving/notice panel split, as a percentage given to the serving side. */
+    static final int DEFAULT_SPLIT_PERCENT = 60;
+    static final int MIN_SPLIT_PERCENT = 10;
+    static final int MAX_SPLIT_PERCENT = 90;
+    static final int DEFAULT_LANGUAGE_CYCLE_SECONDS = 10;
+    static final int MAX_LANGUAGE_CYCLE_SECONDS = 300;
+
     static String layout(String wire) {
         if (wire == null) return DEFAULT_LAYOUT;
         if (!LAYOUTS.contains(wire)) throw invalid("layout", "unknown_layout");
         return wire;
+    }
+
+    /**
+     * The zone-proportion configuration FR-DSP-003 requires without a code change: `split_media` needs a
+     * `split_percent` between {@link #MIN_SPLIT_PERCENT} and {@link #MAX_SPLIT_PERCENT} (default
+     * {@link #DEFAULT_SPLIT_PERCENT}); `single_counter` needs a `counter_id`, checked against the display's own zone
+     * by the caller (the same way `assignmentIds`'s Counter/Service ids are); every other layout ignores its config
+     * and stores an empty object.
+     */
+    static Map<String, Object> layoutConfig(String layout, Map<String, Object> wire) {
+        Map<String, Object> value = wire == null ? Map.of() : wire;
+        if (LAYOUT_SPLIT_MEDIA.equals(layout)) {
+            Map<String, Object> config = new LinkedHashMap<>();
+            config.put("split_percent", splitPercent(value.get("split_percent")));
+            return config;
+        }
+        if (LAYOUT_SINGLE_COUNTER.equals(layout)) {
+            Map<String, Object> config = new LinkedHashMap<>();
+            config.put("counter_id", singleCounterId(value.get("counter_id")).toString());
+            return config;
+        }
+        return Map.of();
+    }
+
+    private static int splitPercent(Object wire) {
+        if (wire == null) return DEFAULT_SPLIT_PERCENT;
+        int value = ((Number) wire).intValue();
+        if (value < MIN_SPLIT_PERCENT || value > MAX_SPLIT_PERCENT) throw invalid("layout_config.split_percent", "out_of_range");
+        return value;
+    }
+
+    private static UUID singleCounterId(Object wire) {
+        if (wire == null) throw invalid("layout_config.counter_id", "NotNull");
+        try {
+            return UUID.fromString(wire.toString());
+        } catch (IllegalArgumentException e) {
+            throw invalid("layout_config.counter_id", "invalid_uuid");
+        }
+    }
+
+    /** FR-I18N-005: how often the display rotates through `language_cycle`; 0 renders the cycle side by side instead. */
+    static int languageCycleSeconds(Integer wire) {
+        int value = wire == null ? DEFAULT_LANGUAGE_CYCLE_SECONDS : wire;
+        if (value < 0 || value > MAX_LANGUAGE_CYCLE_SECONDS) throw invalid("language_cycle_seconds", "out_of_range");
+        return value;
     }
 
     /** A non-empty, ordered, duplicate-free list of codes the site has enabled; defaults to the site's own default language. */

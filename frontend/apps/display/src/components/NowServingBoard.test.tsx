@@ -119,7 +119,9 @@ const STATE: DisplayState = {
     max_announce_queue_depth: 5,
   },
   layout: "now_serving_table",
+  layout_config: {},
   language_cycle: ["en"],
+  language_cycle_seconds: 10,
   columns: ["token", "counter", "service"],
   next_n: 4,
   highlight_seconds: 10,
@@ -139,6 +141,8 @@ const STATE: DisplayState = {
     },
   ],
   next: [{ service_id: "s1", service_names: { en: "Consultation" }, tokens: [{ token_number: "A-002", position: 1 }] }],
+  notices: [],
+  summary: [],
 };
 
 beforeEach(() => {

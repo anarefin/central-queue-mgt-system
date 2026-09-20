@@ -5,7 +5,7 @@ import { useI18n } from "@qms/i18n/react";
 import { Button, Card, ErrorAlert, Page, TextField } from "@qms/ui";
 import { useEffect, useId, useState, type FormEvent } from "react";
 import { useApi } from "../lib/runtime";
-import { NowServingBoard } from "./NowServingBoard";
+import { DisplayBoard } from "./DisplayBoard";
 
 /** How often a paired device reports in (FR-OPS-041); the SRS gives no number, this build's own choice. */
 const HEARTBEAT_INTERVAL_MS = 60_000;
@@ -154,7 +154,7 @@ function PairedView({
           </header>
         )}
         {/* FR-DSP-001: only a display is paired to a zone; a kiosk's bootstrap.layout is null and has no board to show. */}
-        {bootstrap?.layout && deviceId && <NowServingBoard deviceId={deviceId} />}
+        {bootstrap?.layout && deviceId && <DisplayBoard deviceId={deviceId} />}
       </div>
     </Page>
   );

@@ -20,6 +20,8 @@ import type {
   DisplayConfig,
   DisplayConfigInput,
   DisplayState,
+  Notice,
+  NoticeInput,
   PairingCodeResponse,
 } from "./devices";
 import type { Counter, CounterInput, Items, Site, SiteInput, Zone, ZoneInput } from "./hierarchy";
@@ -426,9 +428,22 @@ export class ApiClient {
     command: (id: string, command: DeviceCommand) => this.request<void>("POST", `/devices/${id}/commands`, { command }),
     /** The display board's own resume-after-power-loss read (device-authenticated, ticket 28, FR-DSP-012). */
     displayState: (id: string) => this.request<DisplayState>("GET", `/devices/${id}/display-state`),
-    /** Sets a display's layout, language cycle, columns, next-N depth, highlight period and zone assignment (staff, ticket 28). */
+    /** Sets a display's layout (and its zone-proportion config), language cycle (and its interval), columns, next-N
+     * depth, highlight period and zone assignment (staff, ticket 28/30). */
     updateDisplayConfig: (id: string, input: DisplayConfigInput) =>
       this.request<DisplayConfig>("PUT", `/devices/${id}/display-config`, input),
+  };
+
+  /**
+   * Notice-board content (ticket 30, FR-DSP-006, `notice_board:manage`): images, video or rich text, scheduled per
+   * item, scoped to a Zone. Notices are deactivated, never deleted, so a scheduled item already shown keeps its history.
+   */
+  readonly notices = {
+    forZone: (zoneId: string) => this.request<Items<Notice>>("GET", `/zones/${zoneId}/notices`),
+    create: (input: NoticeInput) => this.request<Notice>("POST", "/notices", input),
+    update: (id: string, input: NoticeInput) => this.request<Notice>("PUT", `/notices/${id}`, input),
+    deactivate: (id: string) => this.request<Notice>("POST", `/notices/${id}/deactivate`),
+    activate: (id: string) => this.request<Notice>("POST", `/notices/${id}/activate`),
   };
 
   /**

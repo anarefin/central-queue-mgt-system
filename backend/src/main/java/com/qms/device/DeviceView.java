@@ -3,6 +3,7 @@ package com.qms.device;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -24,7 +25,9 @@ record DeviceView(
         @JsonProperty("last_app_version") String lastAppVersion,
         String connectivity,
         String layout,
+        @JsonProperty("layout_config") Map<String, Object> layoutConfig,
         @JsonProperty("language_cycle") List<String> languageCycle,
+        @JsonProperty("language_cycle_seconds") int languageCycleSeconds,
         @JsonProperty("next_n") int nextN,
         @JsonProperty("highlight_seconds") int highlightSeconds,
         List<String> columns,

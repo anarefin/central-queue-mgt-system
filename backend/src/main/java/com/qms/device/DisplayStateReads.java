@@ -1,6 +1,8 @@
 package com.qms.device;
 
 import com.qms.queue.QueueReads;
+import com.qms.queue.WaitEstimate;
+import com.qms.queue.WaitEstimates;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.LinkedHashMap;
@@ -32,11 +34,13 @@ class DisplayStateReads {
 
     private final JdbcTemplate jdbc;
     private final QueueReads queues;
+    private final WaitEstimates waitEstimates;
     private final JsonMapper mapper;
 
-    DisplayStateReads(JdbcTemplate jdbc, QueueReads queues, JsonMapper mapper) {
+    DisplayStateReads(JdbcTemplate jdbc, QueueReads queues, WaitEstimates waitEstimates, JsonMapper mapper) {
         this.jdbc = jdbc;
         this.queues = queues;
+        this.waitEstimates = waitEstimates;
         this.mapper = mapper;
     }
 
@@ -55,6 +59,10 @@ class DisplayStateReads {
     record NextTicket(String tokenNumber, int position) {}
 
     record NextGroup(UUID serviceId, Map<String, String> serviceNames, List<NextTicket> tokens) {}
+
+    /** One Service's lobby summary (ticket 30, FR-DSP-003): how many are waiting and the estimated wait for a visitor
+     * joining the back of the queue right now. */
+    record SummaryRow(UUID serviceId, Map<String, String> serviceNames, int waitingCount, WaitEstimate estimate) {}
 
     /** The site a zone belongs to, or empty when the zone does not exist. */
     Optional<UUID> siteIdOfZone(UUID zoneId) {
@@ -84,6 +92,17 @@ class DisplayStateReads {
     /** The next-N strip of every Service any active Counter of the zone serves, in no particular order between groups. */
     List<NextGroup> next(UUID zoneId) {
         return serviceIdsOfZone(zoneId).stream().map(this::nextGroup).toList();
+    }
+
+    /** The `summary_board` layout's per-Service lobby summary (FR-DSP-003): every Service any active Counter of the
+     * zone serves, with how many are waiting and the estimated wait for a new arrival (SRS §10.5, FR-QUE-040..042). */
+    List<SummaryRow> summary(UUID zoneId) {
+        return serviceIdsOfZone(zoneId).stream().map(this::summaryRow).toList();
+    }
+
+    private SummaryRow summaryRow(UUID serviceId) {
+        int waiting = queues.waitingCount(serviceId);
+        return new SummaryRow(serviceId, serviceNames(serviceId), waiting, waitEstimates.ahead(serviceId, waiting));
     }
 
     private List<UUID> serviceIdsOfZone(UUID zoneId) {

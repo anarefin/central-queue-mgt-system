@@ -5,6 +5,7 @@ import { useI18n } from "@qms/i18n/react";
 import { ErrorAlert } from "@qms/ui";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AnnouncementQueue, type Speaker, type ZoneAudioConfig } from "../lib/announcementQueue";
+import { filterNext, filterServing, localised } from "../lib/displayFilters";
 import { createSpeaker } from "../lib/speaker";
 import { useApi } from "../lib/runtime";
 
@@ -204,31 +205,3 @@ function patchCounter(state: DisplayState, counterId: string, data: Record<strin
   };
 }
 
-/**
- * A display assigned to fewer Counters than its whole zone (FR-DSP-002) narrows the zone's live feed down to its own
- * assignment; `zone`-scoped displays (this build's common case, and the only one exercised end to end by the backend
- * IT suite) show everything the zone publishes.
- */
-function filterServing(state: DisplayState): DisplayServingEntry[] {
-  if (state.assignment.scope === "counters") {
-    const ids = new Set(state.assignment.ids);
-    return state.serving.filter((row) => ids.has(row.counter_id));
-  }
-  if (state.assignment.scope === "queues") {
-    const ids = new Set(state.assignment.ids);
-    return state.serving.filter((row) => row.service_id !== null && ids.has(row.service_id));
-  }
-  return state.serving;
-}
-
-function filterNext(state: DisplayState): DisplayNextGroup[] {
-  if (state.assignment.scope === "queues") {
-    const ids = new Set(state.assignment.ids);
-    return state.next.filter((group) => ids.has(group.service_id));
-  }
-  return state.next;
-}
-
-function localised(names: Record<string, string>, language: string): string | null {
-  return names[language] ?? names.en ?? Object.values(names)[0] ?? null;
-}

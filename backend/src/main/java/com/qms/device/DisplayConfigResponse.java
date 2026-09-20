@@ -2,13 +2,16 @@ package com.qms.device;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 /** Body of {@code PUT /devices/{id}/display-config}'s response: the display's configuration as it now stands. */
 record DisplayConfigResponse(
         UUID id,
         String layout,
+        @JsonProperty("layout_config") Map<String, Object> layoutConfig,
         @JsonProperty("language_cycle") List<String> languageCycle,
+        @JsonProperty("language_cycle_seconds") int languageCycleSeconds,
         @JsonProperty("next_n") int nextN,
         @JsonProperty("highlight_seconds") int highlightSeconds,
         List<String> columns,
@@ -20,7 +23,9 @@ record DisplayConfigResponse(
         return new DisplayConfigResponse(
                 device.id(),
                 device.layout(),
+                device.layoutConfig(),
                 device.languageCycle(),
+                device.languageCycleSeconds(),
                 device.nextN(),
                 device.highlightSeconds(),
                 device.columns(),

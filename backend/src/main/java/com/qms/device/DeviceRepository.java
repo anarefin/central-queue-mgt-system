@@ -20,7 +20,8 @@ import tools.jackson.databind.json.JsonMapper;
 class DeviceRepository {
 
     private static final String COLUMNS = "id, kind, site_id, zone_id, label, active, paired_at, last_heartbeat_at, last_app_version,"
-            + " layout, language_cycle, next_n, highlight_seconds, columns, assignment_scope, assignment_ids, created_at, updated_at";
+            + " layout, layout_config, language_cycle, language_cycle_seconds, next_n, highlight_seconds, columns, assignment_scope,"
+            + " assignment_ids, created_at, updated_at";
 
     private final JdbcTemplate jdbc;
     private final JsonMapper mapper;
@@ -32,7 +33,7 @@ class DeviceRepository {
 
     void insert(Device device) {
         jdbc.update(
-                "INSERT INTO device (" + COLUMNS + ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb, ?, ?, ?::jsonb, ?, ?::jsonb, ?, ?)",
+                "INSERT INTO device (" + COLUMNS + ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb, ?::jsonb, ?, ?, ?, ?::jsonb, ?, ?::jsonb, ?, ?)",
                 device.id(),
                 device.kind().wire(),
                 device.siteId(),
@@ -43,7 +44,9 @@ class DeviceRepository {
                 ts(device.lastHeartbeatAt()),
                 device.lastAppVersion(),
                 device.layout(),
+                mapper.writeValueAsString(device.layoutConfig()),
                 mapper.writeValueAsString(device.languageCycle()),
+                device.languageCycleSeconds(),
                 device.nextN(),
                 device.highlightSeconds(),
                 mapper.writeValueAsString(device.columns()),
@@ -53,13 +56,17 @@ class DeviceRepository {
                 ts(device.updatedAt()));
     }
 
-    /** Ticket 28: the display-board configuration (layout, language cycle, columns, next-N, highlight period, assignment). */
+    /** Ticket 28/30: the display-board configuration (layout and its config, language cycle and its interval, columns,
+     * next-N, highlight period, assignment). */
     void updateDisplayConfig(Device device) {
         jdbc.update(
-                "UPDATE device SET layout = ?, language_cycle = ?::jsonb, next_n = ?, highlight_seconds = ?, columns = ?::jsonb,"
-                        + " assignment_scope = ?, assignment_ids = ?::jsonb, updated_at = ? WHERE id = ?",
+                "UPDATE device SET layout = ?, layout_config = ?::jsonb, language_cycle = ?::jsonb, language_cycle_seconds = ?,"
+                        + " next_n = ?, highlight_seconds = ?, columns = ?::jsonb, assignment_scope = ?, assignment_ids = ?::jsonb,"
+                        + " updated_at = ? WHERE id = ?",
                 device.layout(),
+                mapper.writeValueAsString(device.layoutConfig()),
                 mapper.writeValueAsString(device.languageCycle()),
+                device.languageCycleSeconds(),
                 device.nextN(),
                 device.highlightSeconds(),
                 mapper.writeValueAsString(device.columns()),
@@ -122,6 +129,11 @@ class DeviceRepository {
         return strings(mapper, json).stream().map(UUID::fromString).toList();
     }
 
+    @SuppressWarnings("unchecked")
+    private static java.util.Map<String, Object> object(JsonMapper mapper, String json) {
+        return json == null ? java.util.Map.of() : java.util.Map.copyOf(mapper.readValue(json, java.util.LinkedHashMap.class));
+    }
+
     private static Device map(ResultSet rs, JsonMapper mapper) throws SQLException {
         return new Device(
                 rs.getObject("id", UUID.class),
@@ -134,7 +146,9 @@ class DeviceRepository {
                 instant(rs, "last_heartbeat_at"),
                 rs.getString("last_app_version"),
                 rs.getString("layout"),
+                object(mapper, rs.getString("layout_config")),
                 strings(mapper, rs.getString("language_cycle")),
+                rs.getInt("language_cycle_seconds"),
                 rs.getInt("next_n"),
                 rs.getInt("highlight_seconds"),
                 strings(mapper, rs.getString("columns")),
