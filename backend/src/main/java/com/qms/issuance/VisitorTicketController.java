@@ -62,4 +62,19 @@ class VisitorTicketController {
         var ticket = access.verify(id, secret).orElseThrow(() -> new ApiException(ErrorCode.UNAUTHENTICATED));
         return actions.setNotificationOptOut(ticket, request.optedOut(), request.consentTextVersion());
     }
+
+    /** Body: the shape of a browser's own {@code PushSubscription.toJSON()} (ticket 39, §18.3, FR-INT-040). */
+    public record PushSubscriptionRequest(String endpoint, Keys keys) {
+        public record Keys(String p256dh, String auth) {}
+    }
+
+    @PublicEndpoint("Anonymous visitor registers their own device for Web Push on their own ticket (§18.3, FR-INT-040)")
+    @PostMapping("/tickets/{id}/push-subscription")
+    public Map<String, Object> pushSubscription(
+            @PathVariable UUID id, @RequestHeader(value = SECRET_HEADER, required = false) String secret, @RequestBody PushSubscriptionRequest request) {
+        var ticket = access.verify(id, secret).orElseThrow(() -> new ApiException(ErrorCode.UNAUTHENTICATED));
+        String p256dh = request.keys() == null ? null : request.keys().p256dh();
+        String auth = request.keys() == null ? null : request.keys().auth();
+        return actions.subscribeWebPush(ticket, request.endpoint(), p256dh, auth);
+    }
 }

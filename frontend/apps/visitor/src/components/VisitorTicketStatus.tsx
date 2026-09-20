@@ -6,6 +6,7 @@ import { Button, Card, ErrorAlert, Page, StatusBadge } from "@qms/ui";
 import { useState } from "react";
 import { useApi } from "../lib/runtime";
 import { useTicketStream, type TicketStreamDeps } from "../lib/ticketStream";
+import { PushOptIn } from "./PushOptIn";
 
 /** A visitor may cancel any time before being called (FR-MOB-030); once called, serving or held, the button is gone. */
 const CANCELLABLE_STATES = new Set(["remote", "waiting", "paused"]);
@@ -148,6 +149,8 @@ export function VisitorTicketStatus({
           </Button>
         </Card>
       ) : null}
+
+      {!cancelled && <Card><PushOptIn ticketId={ticketId} credential={credential} /></Card>}
 
       <Card>
         {optOutError && <ErrorAlert>{optOutError}</ErrorAlert>}

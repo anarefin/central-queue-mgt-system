@@ -5,6 +5,7 @@ import com.qms.audit.AuditWriter;
 import com.qms.issuance.TicketRepository.TicketRecord;
 import com.qms.notification.NotificationConsentService;
 import com.qms.notification.NotificationProperties;
+import com.qms.notification.WebPushSubscriptionService;
 import com.qms.platform.ApiException;
 import com.qms.platform.ErrorCode;
 import com.qms.platform.Profiles;
@@ -45,6 +46,7 @@ class VisitorTicketActions {
     private final JdbcTemplate jdbc;
     private final NotificationConsentService consent;
     private final NotificationProperties notificationProperties;
+    private final WebPushSubscriptionService webPush;
 
     VisitorTicketActions(
             TicketRepository tickets,
@@ -53,7 +55,8 @@ class VisitorTicketActions {
             Clock clock,
             JdbcTemplate jdbc,
             NotificationConsentService consent,
-            NotificationProperties notificationProperties) {
+            NotificationProperties notificationProperties,
+            WebPushSubscriptionService webPush) {
         this.tickets = tickets;
         this.events = events;
         this.audit = audit;
@@ -61,6 +64,7 @@ class VisitorTicketActions {
         this.jdbc = jdbc;
         this.consent = consent;
         this.notificationProperties = notificationProperties;
+        this.webPush = webPush;
     }
 
     /**
@@ -78,6 +82,20 @@ class VisitorTicketActions {
                 .withAfter(Map.of("opted_out", optedOut, "consent_text_version", version))
                 .withReason("visitor_ticket_page"));
         return Map.of("opted_out", optedOut);
+    }
+
+    /**
+     * A visitor's own device opts into Web Push for this ticket (ticket 39, §18.3, FR-INT-040): the browser's own
+     * {@code PushSubscription}, stored keyed on its own endpoint so a re-subscribe upserts rather than duplicating.
+     * A ticket with no visitor record still has a subscription worth keeping — Web Push targets the device that
+     * asked, not the visitor identity opt-out does ({@link #setNotificationOptOut}).
+     */
+    @Transactional
+    Map<String, Object> subscribeWebPush(TicketRecord ticket, String endpoint, String p256dh, String auth) {
+        UUID visitorId = jdbc.query("SELECT visitor_id FROM ticket WHERE id = ?", rs -> rs.next() ? rs.getObject(1, UUID.class) : null, ticket.id());
+        webPush.subscribe(ticket.id(), visitorId, endpoint, p256dh, auth);
+        audit.record(AuditEvent.of("notification.push_subscribed", "ticket", ticket.id()).withReason("visitor_ticket_page"));
+        return Map.of("subscribed", true);
     }
 
     @Transactional

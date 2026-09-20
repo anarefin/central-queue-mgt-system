@@ -45,7 +45,9 @@ class SecurityConfig {
         "/api/v1/devices/refresh",
         "/api/v1/tickets/*/visitor",
         "/api/v1/tickets/*/visitor-cancel",
-        "/api/v1/tickets/*/visitor/notification-opt-out"
+        "/api/v1/tickets/*/visitor/notification-opt-out",
+        "/api/v1/tickets/*/push-subscription",
+        "/api/v1/notification-config/web-push-key"
     };
 
     @Bean

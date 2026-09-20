@@ -882,6 +882,12 @@
   "visitor.cancel.done": "Your ticket has been cancelled.",
   "visitor.cancel.refused.ticket_already_called": "This ticket can no longer be cancelled: it has already been called or closed.",
   "visitor.error.generic": "Something went wrong loading your ticket. Please try again.",
+  "visitor.push.enable": "Notify me when it's my turn",
+  "visitor.push.subscribing": "Turning on notifications…",
+  "visitor.push.enabled": "Notifications are on for this ticket. You'll be notified even if you close this page.",
+  "visitor.push.error": "Could not turn on notifications. Please try again.",
+  "visitor.push.permissionDenied": "Notifications are blocked for this site in your browser settings.",
+  "visitor.push.iosInstallHint": "On iPhone or iPad, add this page to your Home Screen first (Share, then \"Add to Home Screen\"), then open it from there to turn on notifications.",
 
   "admin.home.notifications": "Notifications",
 

@@ -38,6 +38,7 @@ import {
   type KioskAgentOption,
   type KioskIssueTicketInput,
   type KioskVisitorIdentity,
+  type PushSubscriptionInput,
   type QueueSnapshot,
   type ReprioritiseInput,
   type SiteServices,
@@ -274,6 +275,17 @@ export class ApiClient {
      */
     issueKiosk: (input: KioskIssueTicketInput, idempotencyKey: string) =>
       this.request<Ticket>("POST", "/kiosk/tickets", input, { headers: { "Idempotency-Key": idempotencyKey } }),
+    /** Registers the visitor's own device for Web Push on this ticket (ticket 39, §18.3, FR-INT-040). */
+    pushSubscribe: (id: string, credential: string, subscription: PushSubscriptionInput) =>
+      this.request<{ subscribed: boolean }>("POST", `/tickets/${id}/push-subscription`, subscription, {
+        anonymous: true,
+        headers: { [TICKET_CREDENTIAL_HEADER]: credential },
+      }),
+  };
+
+  /** The Web Push public key every visitor's browser needs before it can subscribe (ticket 39, RFC 8292); not sensitive, anonymous. */
+  readonly webPush = {
+    publicKey: () => this.request<{ public_key: string }>("GET", "/notification-config/web-push-key", undefined, { anonymous: true }),
   };
 
   /**

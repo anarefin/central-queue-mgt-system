@@ -168,6 +168,16 @@ export interface VisitorTicketView {
 }
 
 /**
+ * The shape of a browser's own `PushSubscription.toJSON()` (ticket 39, §18.3, FR-INT-040), the body of
+ * `POST /tickets/{id}/push-subscription`: `keys.p256dh` and `keys.auth` are base64url, exactly as the Push API hands
+ * them back.
+ */
+export interface PushSubscriptionInput {
+  endpoint: string;
+  keys: { p256dh: string; auth: string };
+}
+
+/**
  * The body of `POST /kiosk/tickets` (ticket 25, extended by ticket 26): the visitor's chosen Service, and the rest of
  * the selection tree they walked. `visitor_id` is who `GET /kiosk/visitors/identify` resolved them to, or omitted for
  * no identification (FR-ISS-013). `agent_id` is the on-duty Agent picked at the individual level, or omitted for

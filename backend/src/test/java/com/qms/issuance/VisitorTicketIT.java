@@ -258,4 +258,78 @@ class VisitorTicketIT {
 
         assertThat(status(wrong)).isEqualTo(401);
     }
+
+    // ---- Web Push subscription (ticket 39, §18.3, FR-INT-040) ---------------------------------------------------
+
+    @Test
+    void aVisitorRegistersTheirOwnDeviceForWebPushWithTheirOwnCredential() throws Exception {
+        Setup s = setup();
+        IssuedTicket ticket = issue(staffToken(), s.service());
+
+        MvcResult result = mvc.perform(post("/api/v1/tickets/" + ticket.id() + "/push-subscription")
+                        .header("X-Ticket-Secret", ticket.secret())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"endpoint\":\"https://203.0.113.10/abc\",\"keys\":{\"p256dh\":\"p256dh-value\",\"auth\":\"auth-value\"}}"))
+                .andReturn();
+
+        assertThat(status(result)).as(body(result)).isEqualTo(200);
+        assertThat((Boolean) field(result, "$.subscribed")).isTrue();
+        assertThat(jdbc.queryForObject("SELECT ticket_id FROM push_subscription WHERE endpoint = ?", UUID.class, "https://203.0.113.10/abc"))
+                .isEqualTo(ticket.id());
+        Integer auditEntries = jdbc.queryForObject(
+                "SELECT count(*) FROM audit_log WHERE action = 'notification.push_subscribed' AND entity_id = ?", Integer.class, ticket.id());
+        assertThat(auditEntries).isEqualTo(1);
+    }
+
+    @Test
+    void aWrongSecretNeverResolvesThePushSubscriptionEither() throws Exception {
+        Setup s = setup();
+        IssuedTicket ticket = issue(staffToken(), s.service());
+
+        MvcResult wrong = mvc.perform(post("/api/v1/tickets/" + ticket.id() + "/push-subscription")
+                        .header("X-Ticket-Secret", "wrong")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"endpoint\":\"https://203.0.113.10/abc\",\"keys\":{\"p256dh\":\"p256dh-value\",\"auth\":\"auth-value\"}}"))
+                .andReturn();
+
+        assertThat(status(wrong)).isEqualTo(401);
+        assertThat((Integer) jdbc.queryForObject("SELECT count(*) FROM push_subscription WHERE endpoint = ?", Integer.class, "https://203.0.113.10/abc"))
+                .isZero();
+    }
+
+    @Test
+    void resubscribingTheSameEndpointUpsertsRatherThanDuplicating() throws Exception {
+        Setup s = setup();
+        IssuedTicket ticket = issue(staffToken(), s.service());
+        String body = "{\"endpoint\":\"https://203.0.113.10/xyz\",\"keys\":{\"p256dh\":\"p256dh-1\",\"auth\":\"auth-1\"}}";
+        mvc.perform(post("/api/v1/tickets/" + ticket.id() + "/push-subscription")
+                        .header("X-Ticket-Secret", ticket.secret()).contentType(MediaType.APPLICATION_JSON).content(body))
+                .andReturn();
+
+        String updatedBody = "{\"endpoint\":\"https://203.0.113.10/xyz\",\"keys\":{\"p256dh\":\"p256dh-2\",\"auth\":\"auth-2\"}}";
+        MvcResult second = mvc.perform(post("/api/v1/tickets/" + ticket.id() + "/push-subscription")
+                        .header("X-Ticket-Secret", ticket.secret()).contentType(MediaType.APPLICATION_JSON).content(updatedBody))
+                .andReturn();
+
+        assertThat(status(second)).as(body(second)).isEqualTo(200);
+        assertThat((Integer) jdbc.queryForObject("SELECT count(*) FROM push_subscription WHERE endpoint = ?", Integer.class, "https://203.0.113.10/xyz"))
+                .isEqualTo(1);
+        assertThat(jdbc.queryForObject("SELECT p256dh FROM push_subscription WHERE endpoint = ?", String.class, "https://203.0.113.10/xyz"))
+                .isEqualTo("p256dh-2");
+    }
+
+    @Test
+    void aMissingEndpointOrKeyIsRejectedAsValidationFailed() throws Exception {
+        Setup s = setup();
+        IssuedTicket ticket = issue(staffToken(), s.service());
+
+        MvcResult result = mvc.perform(post("/api/v1/tickets/" + ticket.id() + "/push-subscription")
+                        .header("X-Ticket-Secret", ticket.secret())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"endpoint\":\"\",\"keys\":{\"p256dh\":\"p256dh-value\",\"auth\":\"auth-value\"}}"))
+                .andReturn();
+
+        assertThat(status(result)).isEqualTo(400);
+        assertThat((String) field(result, "$.error.code")).isEqualTo("validation_failed");
+    }
 }

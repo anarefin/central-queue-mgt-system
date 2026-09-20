@@ -70,3 +70,8 @@ qms:
     bootstrap:
       username: ${QMS_BOOTSTRAP_ADMIN_USERNAME:}
       password: ${QMS_BOOTSTRAP_ADMIN_PASSWORD:}
+  notification:
+    web-push:
+      # NFR-SEC-013: the VAPID key pair is generated on first start and kept outside source control, same convention as key-dir above.
+      key-dir: ${QMS_VAPID_KEY_DIR:./keys/vapid}
+      subject: ${QMS_VAPID_SUBJECT:mailto:admin@qms.local}

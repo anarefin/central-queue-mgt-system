@@ -3,7 +3,8 @@
 import { useEffect } from "react";
 import { BASE_PATH } from "../lib/runtime";
 
-/** Registers the visitor page's own service worker (FR-MOB-003, ADR-0011): installability today, Web Push once ticket 39 opts a visitor into it. */
+/** Registers the visitor page's own service worker (FR-MOB-003, ADR-0011): installability, and the `push`/`notificationclick`
+ * handlers `public/sw.js` adds for Web Push (ticket 39) once a visitor opts in through {@code PushOptIn}. */
 export function ServiceWorkerRegistration() {
   useEffect(() => {
     if (typeof navigator === "undefined" || !("serviceWorker" in navigator)) return;
