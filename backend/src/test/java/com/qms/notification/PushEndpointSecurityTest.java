@@ -48,6 +48,23 @@ class PushEndpointSecurityTest {
     }
 
     @Test
+    void anIpv6UniqueLocalAddressIsRejected() {
+        // fc00::/7: the IPv6 analogue of RFC 1918, not covered by Inet6Address.isSiteLocalAddress() (which only
+        // recognises the legacy fec0::/10 range).
+        assertThatThrownBy(() -> PushEndpointSecurity.requireSafe("https://[fd00::1]/push/abc", false))
+                .isInstanceOf(PushEndpointSecurity.UnsafeEndpointException.class)
+                .hasMessage("private_address");
+    }
+
+    @Test
+    void anIpv4MappedIpv6LoopbackLiteralIsRejected() {
+        // ::ffff:127.0.0.1 denotes IPv4 loopback but isn't caught by Inet6Address's own loopback check.
+        assertThatThrownBy(() -> PushEndpointSecurity.requireSafe("https://[::ffff:127.0.0.1]/push/abc", false))
+                .isInstanceOf(PushEndpointSecurity.UnsafeEndpointException.class)
+                .hasMessage("private_address");
+    }
+
+    @Test
     void aMalformedUrlOrAMissingHostIsRejected() {
         assertThatThrownBy(() -> PushEndpointSecurity.requireSafe("not a url", false))
                 .isInstanceOf(PushEndpointSecurity.UnsafeEndpointException.class);
