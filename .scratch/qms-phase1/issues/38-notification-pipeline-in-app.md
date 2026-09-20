@@ -4,7 +4,7 @@
 
 **Blocked by:** 11 — Realtime hub; 02 — Language packs and i18n foundation
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [x] `NotificationChannel` interface with in-app realtime and staff alert as first adapters; new channels register without changing triggers, templates or callers (FR-NTF-005, FR-INT-040)
 - [x] Trigger catalogue §14.2 with defaults; each trigger enableable per Site and Service (FR-NTF-010)

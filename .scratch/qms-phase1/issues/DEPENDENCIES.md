@@ -39,7 +39,7 @@
 35-appointment-check-in                    33,26,09        done     n/a*     24 files, +1138 −47 9663f40..dd54b60
 36-appointment-no-shows                    33              done     n/a*     14 files, +768 −7   8ab59a0..b8db6a9
 37-visitor-ticket-page-pwa                 11,19           done     n/a*     59 files, +2060 −65 ab00088..cc2e211
-38-notification-pipeline-in-app            11,02           todo     —        —                   —
+38-notification-pipeline-in-app            11,02           done     67m      54 files, +3480 −20 cbaf65c..22c0e00
 39-web-push-channel                        38,37           todo     —        —                   —
 40-email-channel-and-appointment-messages  38,34           todo     —        —                   —
 41-visitor-otp-login-self-service          37,40,34        todo     —        —                   —
