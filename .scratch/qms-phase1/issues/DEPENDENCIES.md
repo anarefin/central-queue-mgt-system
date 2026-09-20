@@ -41,7 +41,7 @@
 37-visitor-ticket-page-pwa                 11,19           done     n/a*     59 files, +2060 −65 ab00088..cc2e211
 38-notification-pipeline-in-app            11,02           done     67m      54 files, +3480 −20 cbaf65c..22c0e00
 39-web-push-channel                        38,37           done     35m      33 files, +1927 −16 bb5fb5f..9b06532
-40-email-channel-and-appointment-messages  38,34           todo     —        —                   —
+40-email-channel-and-appointment-messages  38,34           done     n/a*     29 files, +1206 −40 fde12f4..ed2b619
 41-visitor-otp-login-self-service          37,40,34        todo     —        —                   —
 42-remote-join                             37,21           todo     —        —                   —
 43-remote-arrival-and-forfeit              42,39,12        todo     —        —                   —
@@ -64,7 +64,7 @@
 60-installer-upgrades-backup               59              todo     —        —                   —
 61-acceptance-suite                        56,44,51,60     todo     —        —                   —
 
-# * 26, 35: worker hit a session rate limit mid-ticket, was resumed after reset; elapsed
+# * 26, 35, 40: worker hit a session rate limit mid-ticket, was resumed after reset; elapsed
 #   wall-clock spans the pause and is not comparable to other tickets' timings.
 # * 27, 29, 32, 34: worker's turn ended waiting on a background gradlew run before committing;
 #   resumed to finish verification and commit. Elapsed wall-clock not comparable either.
@@ -77,3 +77,7 @@
 # * 39: mid-flight background security review flagged an SSRF issue (unvalidated push
 #   subscription endpoint URL); relayed to the worker before commit, fixed
 #   (PushEndpointSecurity host/scheme validation) and verified in the landed diff.
+# * Out-of-band fix (commit fde12f4, parent, not tied to a ticket): a follow-up security
+#   review found the already-landed ticket-39 PushEndpointSecurity had an IPv6 ULA
+#   (fc00::/7) and IPv4-mapped-address bypass; fixed directly since the active worker at
+#   the time (ticket 40) doesn't touch that file.

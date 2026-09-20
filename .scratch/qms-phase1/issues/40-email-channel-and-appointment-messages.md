@@ -4,7 +4,7 @@
 
 **Blocked by:** 38 — Notification pipeline and in-app channel; 34 — Appointment reschedule, cancellation and waitlist
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [x] SMTP adapter behind `NotificationChannel`, configured per installation (§14.1, FR-INT-040)
 - [x] Appointment confirmed, rescheduled/cancelled and waitlist-offer triggers (§14.2)
