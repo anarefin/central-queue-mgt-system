@@ -3,6 +3,9 @@
 import {
   ApiRequestError,
   newIdempotencyKey,
+  type Appointment,
+  type AppointmentSource,
+  type Availability,
   type JourneyResult,
   type JourneyTemplateSummary,
   type PriorityClass,
@@ -15,7 +18,7 @@ import {
 } from "@qms/api-client";
 import { formatTokenNumber } from "@qms/i18n";
 import { useI18n } from "@qms/i18n/react";
-import { Button, Card, ErrorAlert, SelectField, TextField } from "@qms/ui";
+import { Button, Card, ErrorAlert, QrCode, SelectField, TextField } from "@qms/ui";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { describeError, localisedName } from "../lib/admin-support";
 import { useAuth } from "../lib/auth";
@@ -220,6 +223,8 @@ export function ReceptionDesk() {
 
       {siteId && services && <JourneySection siteId={siteId} services={services.items} classes={classes ?? []} nameOf={nameOf} />}
 
+      {services && <AppointmentBookingSection services={services.items} nameOf={nameOf} />}
+
       <Card>
         {!selectedService && <p className="qms-muted">{t("reception.queue.pick")}</p>}
         {selectedService && (
@@ -309,10 +314,13 @@ function VisitorPanel({
   visitor,
   onSelect,
   onClear,
+  idPrefix = "reception",
 }: {
   visitor: { id: string; name: string | null } | null;
   onSelect: (visitor: { id: string; name: string | null }) => void;
   onClear: () => void;
+  /** Distinct ids when more than one instance is on the page at once (ticket issuance, a Journey, an appointment). */
+  idPrefix?: string;
 }) {
   const { t } = useI18n();
   const { client } = useApi();
@@ -404,7 +412,7 @@ function VisitorPanel({
       {!visitor && (
         <>
           <div className="qms-row">
-            <TextField id="reception-visitor-query" label={t("reception.visitor.searchLabel")} value={query} onChange={(event) => setQuery(event.target.value)} />
+            <TextField id={`${idPrefix}-visitor-query`} label={t("reception.visitor.searchLabel")} value={query} onChange={(event) => setQuery(event.target.value)} />
             <Button type="button" variant="secondary" disabled={searching || query.trim() === ""} onClick={() => void search()}>
               {t(searching ? "reception.visitor.searching" : "reception.visitor.search")}
             </Button>
@@ -430,11 +438,11 @@ function VisitorPanel({
           {registering && (
             <fieldset className="qms-stack" aria-label={t("reception.visitor.registerTitle")}>
               <legend>{t("reception.visitor.registerTitle")}</legend>
-              <TextField id="reception-visitor-name" label={t("reception.visitor.name")} value={regName} onChange={(event) => setRegName(event.target.value)} />
-              <TextField id="reception-visitor-phone" label={t("reception.visitor.phone")} value={regPhone} onChange={(event) => setRegPhone(event.target.value)} />
-              <TextField id="reception-visitor-email" label={t("reception.visitor.email")} value={regEmail} onChange={(event) => setRegEmail(event.target.value)} />
-              <TextField id="reception-visitor-category" label={t("reception.visitor.category")} value={regCategory} onChange={(event) => setRegCategory(event.target.value)} />
-              <TextField id="reception-visitor-purpose" label={t("reception.visitor.purpose")} value={regPurpose} onChange={(event) => setRegPurpose(event.target.value)} />
+              <TextField id={`${idPrefix}-visitor-name`} label={t("reception.visitor.name")} value={regName} onChange={(event) => setRegName(event.target.value)} />
+              <TextField id={`${idPrefix}-visitor-phone`} label={t("reception.visitor.phone")} value={regPhone} onChange={(event) => setRegPhone(event.target.value)} />
+              <TextField id={`${idPrefix}-visitor-email`} label={t("reception.visitor.email")} value={regEmail} onChange={(event) => setRegEmail(event.target.value)} />
+              <TextField id={`${idPrefix}-visitor-category`} label={t("reception.visitor.category")} value={regCategory} onChange={(event) => setRegCategory(event.target.value)} />
+              <TextField id={`${idPrefix}-visitor-purpose`} label={t("reception.visitor.purpose")} value={regPurpose} onChange={(event) => setRegPurpose(event.target.value)} />
               {registerError !== null && <ErrorAlert>{registerError}</ErrorAlert>}
               <div className="qms-row">
                 <Button type="button" disabled={registerBusy || regName.trim() === "" || regPhone.trim() === ""} onClick={() => void register()}>
@@ -672,5 +680,171 @@ function JourneySection({
         </div>
       )}
     </Card>
+  );
+}
+
+/** Refusals of `POST /appointments` this screen has a sentence for (ticket 33). */
+const APPOINTMENT_REFUSALS = new Set(["slot_full", "slot_not_available", "max_active_appointments"]);
+
+const APPOINTMENT_SOURCES: AppointmentSource[] = ["staff", "phone", "walk_in"];
+
+function today(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+/**
+ * Staff appointment booking (ticket 33, SRS §9.2): reception searches a Service's availability by date
+ * (FR-APT-010) and books a slot on a visitor's behalf, recording where the booking came from — a phone call, a
+ * walk-in booked on the spot, or any other staff action (FR-APT-013). The visitor is captured the same way a
+ * walk-in ticket's is: found in the directory or registered fresh (FR-APT-015). The result carries the unique
+ * reference code and a QR that encodes it, usable for check-in later (FR-APT-014, ticket 35).
+ */
+function AppointmentBookingSection({ services, nameOf }: { services: SiteServiceItem[]; nameOf: (names: Record<string, string>) => string }) {
+  const { t } = useI18n();
+  const { client } = useApi();
+  const [open, setOpen] = useState(false);
+  const [serviceId, setServiceId] = useState("");
+  const [date, setDate] = useState(today);
+  const [availability, setAvailability] = useState<Availability | null>(null);
+  const [availabilityError, setAvailabilityError] = useState<unknown>(null);
+  const [searching, setSearching] = useState(false);
+  const [slotKey, setSlotKey] = useState("");
+  const [source, setSource] = useState<AppointmentSource>("staff");
+  const [visitor, setVisitor] = useState<{ id: string; name: string | null } | null>(null);
+  const [purpose, setPurpose] = useState("");
+  const [language, setLanguage] = useState("");
+  const [booking, setBooking] = useState(false);
+  const [bookError, setBookError] = useState<string | null>(null);
+  const [booked, setBooked] = useState<Appointment | null>(null);
+
+  async function search() {
+    if (!client || !serviceId) return;
+    setSearching(true);
+    setAvailabilityError(null);
+    setAvailability(null);
+    setSlotKey("");
+    try {
+      setAvailability(await client.appointments.availability(serviceId, date));
+    } catch (cause) {
+      setAvailabilityError(cause);
+    } finally {
+      setSearching(false);
+    }
+  }
+
+  function refusalText(cause: unknown): string {
+    const reason = cause instanceof ApiRequestError ? cause.body?.details?.reason : undefined;
+    if (cause instanceof ApiRequestError && cause.code === "conflict" && typeof reason === "string" && APPOINTMENT_REFUSALS.has(reason)) {
+      return t(`reception.appointment.refused.${reason}`);
+    }
+    return describeError(t, cause);
+  }
+
+  async function book() {
+    if (!client || !serviceId || !availability) return;
+    const slot = availability.slots.find((s) => `${s.start}-${s.end}` === slotKey);
+    if (!slot) {
+      setBookError(t("reception.appointment.error.slot"));
+      return;
+    }
+    if (!visitor) {
+      setBookError(t("reception.appointment.error.visitor"));
+      return;
+    }
+    setBooking(true);
+    setBookError(null);
+    try {
+      const appointment = await client.appointments.book({
+        service_id: serviceId,
+        date,
+        start: slot.start,
+        end: slot.end,
+        source,
+        visitor_id: visitor.id,
+        ...(purpose.trim() === "" ? {} : { purpose_note: purpose.trim() }),
+        ...(language.trim() === "" ? {} : { language: language.trim() }),
+      });
+      setBooked(appointment);
+      setVisitor(null);
+      setPurpose("");
+      setSlotKey("");
+      await search();
+    } catch (cause) {
+      setBookError(refusalText(cause));
+    } finally {
+      setBooking(false);
+    }
+  }
+
+  return (
+    <div data-testid="appointment-booking">
+    <Card>
+      <label className="qms-row">
+        <span>
+          <input type="checkbox" checked={open} onChange={(event) => setOpen(event.target.checked)} /> {t("reception.appointment.toggle")}
+        </span>
+      </label>
+      {open && (
+        <div className="qms-stack">
+          <SelectField
+            id="appointment-service"
+            label={t("reception.appointment.service.label")}
+            value={serviceId}
+            onChange={(event) => {
+              setServiceId(event.target.value);
+              setAvailability(null);
+              setSlotKey("");
+            }}
+            options={[{ value: "", label: t("reception.appointment.service.placeholder") }, ...services.map((s) => ({ value: s.id, label: nameOf(s.name_i18n) }))]}
+          />
+          <div className="qms-row">
+            <TextField id="appointment-date" type="date" label={t("reception.appointment.date.label")} value={date} onChange={(event) => setDate(event.target.value)} />
+            <Button type="button" variant="secondary" disabled={!serviceId || searching} onClick={() => void search()}>
+              {t(searching ? "reception.appointment.searching" : "reception.appointment.search")}
+            </Button>
+          </div>
+          {availabilityError !== null && <ErrorAlert>{describeError(t, availabilityError)}</ErrorAlert>}
+          {availability && (
+            <fieldset className="qms-stack">
+              <legend className="qms-heading">{t("reception.appointment.slots.title")}</legend>
+              {availability.slots.length === 0 && <p className="qms-muted">{t("reception.appointment.slots.none")}</p>}
+              {availability.slots.map((slot) => {
+                const key = `${slot.start}-${slot.end}`;
+                return (
+                  <label key={key} className="qms-row">
+                    <input type="radio" name="appointment-slot" value={key} checked={slotKey === key} onChange={() => setSlotKey(key)} />
+                    {t("reception.appointment.slot.label", { start: slot.start, end: slot.end, count: slot.remaining_capacity })}
+                  </label>
+                );
+              })}
+            </fieldset>
+          )}
+          <SelectField
+            id="appointment-source"
+            label={t("reception.appointment.source.label")}
+            value={source}
+            onChange={(event) => setSource(event.target.value as AppointmentSource)}
+            options={APPOINTMENT_SOURCES.map((value) => ({ value, label: t(`reception.appointment.source.${value}`) }))}
+          />
+          <VisitorPanel visitor={visitor} onSelect={setVisitor} onClear={() => setVisitor(null)} idPrefix="appointment" />
+          <TextField id="appointment-purpose" label={t("reception.appointment.purpose.label")} value={purpose} maxLength={1000} onChange={(event) => setPurpose(event.target.value)} />
+          <TextField id="appointment-language" label={t("reception.appointment.language.label")} value={language} maxLength={8} onChange={(event) => setLanguage(event.target.value)} />
+          {bookError !== null && <ErrorAlert>{bookError}</ErrorAlert>}
+          <Button type="button" disabled={booking || !slotKey || !visitor} onClick={() => void book()}>
+            {t(booking ? "reception.appointment.booking" : "reception.appointment.book")}
+          </Button>
+        </div>
+      )}
+
+      {booked && (
+        <div data-testid="appointment-result" className="qms-stack">
+          <h3 className="qms-heading">{t("reception.appointment.result.title")}</h3>
+          <p data-testid="appointment-reference">{t("reception.appointment.result.reference", { code: booked.reference_code })}</p>
+          <p className="qms-muted">{t("reception.appointment.result.slot", { date: booked.date, start: booked.start, end: booked.end })}</p>
+          <QrCode value={booked.reference_code} size={120} label={t("reception.appointment.result.qrLabel", { code: booked.reference_code })} />
+        </div>
+      )}
+    </Card>
+    </div>
   );
 }

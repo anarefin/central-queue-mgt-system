@@ -1,5 +1,5 @@
 import type { PriorityClass, QueueSnapshot, SiteServices, Ticket } from "@qms/api-client";
-import { screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import Home from "../app/page";
@@ -734,5 +734,89 @@ describe("issuing a multi-stop journey in one action (FR-ISS-022, FR-QUE-060, ti
 
     expect(await screen.findByTestId("journey-result-stop-1")).toHaveTextContent("S-200");
     expect(screen.getByTestId("journey-result-stop-2")).toHaveTextContent("not issued yet");
+  });
+});
+
+describe("staff appointment booking (ticket 33, SRS §9.2, FR-APT-011..016)", () => {
+  async function openBookingSection() {
+    renderApp(<ReceptionDesk />);
+    const section = within(await screen.findByTestId("appointment-booking"));
+    await userEvent.click(section.getByRole("checkbox", { name: "Book an appointment" }));
+    return section;
+  }
+
+  it("books a slot against remaining capacity, records the chosen source, and shows the reference code and a QR (FR-APT-013, FR-APT-014, FR-APT-015)", async () => {
+    const calls = fakeApi(fresh(), {
+      "GET /services/v1/appointments/availability?date=2026-09-21": () =>
+        json(200, { service_id: "v1", date: "2026-09-21", slots: [{ start: "09:00", end: "09:30", remaining_capacity: 2 }] }),
+      "GET /visitors/lookup?q=01700000001": () =>
+        json(200, { id: "vis1", external_code: "V-ABCDEFGH", name: "Karim", category: null, phone: "01700000001", flags: {} }),
+      "POST /appointments": (init) => {
+        const body = JSON.parse(String(init.body)) as Record<string, unknown>;
+        return json(201, {
+          id: "a1",
+          reference_code: "A-ABCDEFGH",
+          service_id: body.service_id,
+          date: body.date,
+          start: body.start,
+          end: body.end,
+          state: "booked",
+          source: body.source,
+          visitor_id: body.visitor_id,
+          preferred_agent_id: null,
+          purpose_note: body.purpose_note ?? null,
+          language: body.language ?? null,
+        });
+      },
+    });
+    const section = await openBookingSection();
+
+    await userEvent.selectOptions(section.getByLabelText("Service"), "Consultation");
+    fireEvent.change(section.getByLabelText("Date"), { target: { value: "2026-09-21" } });
+    await userEvent.click(section.getByRole("button", { name: "Search availability" }));
+    await userEvent.click(await section.findByRole("radio", { name: "09:00–09:30 (2 left)" }));
+    await userEvent.selectOptions(section.getByLabelText("Booking source"), "Phone call");
+    await userEvent.type(section.getByLabelText("Visitor code, phone or QR"), "01700000001");
+    await userEvent.click(section.getByRole("button", { name: "Search" }));
+    await userEvent.click(await section.findByRole("button", { name: "Use this visitor" }));
+
+    await userEvent.click(section.getByRole("button", { name: "Book appointment" }));
+
+    expect(await section.findByTestId("appointment-reference")).toHaveTextContent("Reference code: A-ABCDEFGH");
+    expect(section.getByText("2026-09-21 09:00–09:30")).toBeInTheDocument();
+
+    const booked = calls.filter((c) => c.method === "POST" && c.path === "/appointments");
+    expect(booked).toHaveLength(1);
+    expect(JSON.parse(String(booked[0]!.init.body))).toMatchObject({
+      service_id: "v1",
+      date: "2026-09-21",
+      start: "09:00",
+      end: "09:30",
+      source: "phone",
+      visitor_id: "vis1",
+    });
+  });
+
+  it("shows the server's reason when a slot has just filled up (FR-APT-011)", async () => {
+    fakeApi(fresh(), {
+      "GET /services/v1/appointments/availability?date=2026-09-21": () =>
+        json(200, { service_id: "v1", date: "2026-09-21", slots: [{ start: "09:00", end: "09:30", remaining_capacity: 1 }] }),
+      "GET /visitors/lookup?q=01700000002": () =>
+        json(200, { id: "vis2", external_code: "V-ZZZZZZZZ", name: "Rina", category: null, phone: "01700000002", flags: {} }),
+      "POST /appointments": () => json(409, { error: { code: "conflict", message: "x", trace_id: "t", details: { reason: "slot_full" } } }),
+    });
+    const section = await openBookingSection();
+
+    await userEvent.selectOptions(section.getByLabelText("Service"), "Consultation");
+    fireEvent.change(section.getByLabelText("Date"), { target: { value: "2026-09-21" } });
+    await userEvent.click(section.getByRole("button", { name: "Search availability" }));
+    await userEvent.click(await section.findByRole("radio", { name: "09:00–09:30 (1 left)" }));
+    await userEvent.type(section.getByLabelText("Visitor code, phone or QR"), "01700000002");
+    await userEvent.click(section.getByRole("button", { name: "Search" }));
+    await userEvent.click(await section.findByRole("button", { name: "Use this visitor" }));
+
+    await userEvent.click(section.getByRole("button", { name: "Book appointment" }));
+
+    expect(await section.findByText("This slot has no remaining capacity. Choose another.")).toBeInTheDocument();
   });
 });

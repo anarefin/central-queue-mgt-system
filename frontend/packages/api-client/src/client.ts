@@ -1,4 +1,5 @@
 import { ApiRequestError, isApiErrorCode, type ApiErrorBody } from "./errors";
+import type { Appointment, Availability, BookAppointmentInput } from "./appointments";
 import type {
   CounterLink,
   CounterOption,
@@ -303,6 +304,16 @@ export class ApiClient {
     /** The queue in computed order with every term of every score (FR-QUE-023); `strategy` tries another one without saving it. */
     dryRun: (serviceId: string, strategy?: QueueStrategy) =>
       this.request<QueueDryRun>("GET", `/queues/${serviceId}/dry-run${strategy ? `?strategy=${strategy}` : ""}`),
+  };
+
+  /**
+   * Appointment availability search and staff booking (ticket 32, 33; SRS §9.2, FR-APT-010..016). `book` needs no
+   * `Idempotency-Key`: two identical requests would each check the slot's remaining capacity for themselves and, past
+   * the last seat, the second is refused `conflict` (`slot_full`), never doubled.
+   */
+  readonly appointments = {
+    availability: (serviceId: string, date: string) => this.request<Availability>("GET", `/services/${serviceId}/appointments/availability?date=${date}`),
+    book: (input: BookAppointmentInput) => this.request<Appointment>("POST", "/appointments", input),
   };
 
   /**

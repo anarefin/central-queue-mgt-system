@@ -902,14 +902,55 @@ or FR-QUE-060..064 asks for it, and Phase 1 has no channel that would read a Jou
 **Notes on this ticket's interpretation.** "Most specific wins" (FR-APT-001) is implemented as a generic, independently
 tested precedence function, but `GET /services/{id}/appointments/availability` — explicitly "by Service" (FR-APT-010),
 not by Agent or Team — resolves only Team-then-Service for itself; Agent-level rows are fully definable, read, audited
-and scope-checked (CRUD is complete), but are consumed once ticket 33 (staff appointment booking) searches or books
-against a specific, chosen Agent. "Remaining capacity" (FR-APT-010) is a slot's defined capacity as this ticket has no
-booking/appointment entity yet to subtract from — ticket 33 introduces bookings and is expected to subtract them at
-the same seam. The exception `type: extra` doubles as the FR-APT-004 admin override (it is the one exception type that
+and scope-checked (CRUD is complete). *Update, ticket 33:* booking, like search, still resolves by Service (a chosen
+`preferred_agent_id` is captured and stored on the appointment, FR-APT-015, but does not itself filter or narrow
+availability) — booking or searching against a specific Agent's own slots remains open for a later ticket if needed.
+"Remaining capacity" (FR-APT-010) was, at this ticket, a slot's defined capacity, since no booking/appointment entity
+existed yet to subtract from. *Update, ticket 33:* `AppointmentAvailabilityService#search` now subtracts every
+appointment counted against a slot per §19.2 (`held_slot`, `booked`, `rescheduled`, `checked_in`), so "remaining" is
+now what the field name always promised; see ticket 33's own section below. The exception `type: extra` doubles as the FR-APT-004 admin override (it is the one exception type that
 ignores business hours and the holiday calendar entirely); FR-APT-003 and FR-APT-004 share one `appointment_exception`
 table rather than two, since a `blocked`/`extra`/`reduced_capacity` exception for a date is the same primitive read
 either way. `BusinessWindow` reads the `business_hours`/`holiday` tables issuance (ticket 21) owns, independently of
 `OpeningHours` (package-private there), the same cross-context read-only pattern issuance itself uses for `team`/`users`.
+
+## Ticket 33, staff appointment booking
+
+`Booking(IT)` = `B/appointment/AppointmentBookingIT`.
+
+| Requirement ID | Section | Test type | Test reference | Status |
+|---|---|---|---|---|
+| FR-APT-011 transactional booking against remaining capacity; two simultaneous last-seat bookings yield exactly one success | §9.2 | integration | `AppointmentBookingService#book` (a `pg_advisory_xact_lock` per exact slot, held for the whole transaction, the same pattern `IssuanceGate` uses for a Service's daily cap); `Booking(IT)#bookingBeyondRemainingCapacityIsRefusedWithSlotFull`, `#twoSimultaneousBookingsForTheLastSeatResultInExactlyOneSuccess` (two real concurrent HTTP requests via an `ExecutorService`) | passing |
+| FR-APT-012 a slot held for a configurable period (default 5 min), then released by a job | §9.2, §19.2 | integration | `appointment.hold_expires_at`, `AppointmentProperties#holdMinutes` (default 5); `AppointmentBookingRepository#insertHeld`/`#confirm`/`#releaseExpiredHolds`; `AppointmentHoldExpiryScheduler` (`qms.appointment.hold-expiry-check-cron`, off by default in tests, the same convention as `qms.queue.call-timeout-check-cron`); `Booking(IT)#aHeldSlotPastItsHoldIsReleasedByTheJobFreeingItsCapacity` (a held row inserted directly, past its hold, still counts against capacity until `releaseExpiredHolds()` deletes it and frees the slot) | passing |
+| FR-APT-013 staff books on a visitor's behalf, recording the source as `phone`, `walk_in` or `staff` | §9.2 | integration | `AppointmentSource`, `appointment.source` (`CHECK` constraint, `V28`); `Booking(IT)#theBookingSourceIsRecordedAsGiven`, `#anUnknownSourceIsRejected`, `#aStaffBookingIsConfirmedWithAUniqueReferenceCodeAndTheCapturedFields` (`source: "phone"`); `F/apps/admin/ReceptionDesk.test.tsx` books with a chosen source from the reception screen | passing |
+| FR-APT-014 every appointment gets a unique reference code and a QR usable for check-in | §9.2 | integration, unit(F) | `AppointmentBookingService#newReferenceCode` (retried on a `reference_code` collision, the same pattern `VisitorService#newPassReference` uses for a walk-in pass); `appointment_reference_code_uq` (`V28`); `Booking(IT)#aStaffBookingIsConfirmedWithAUniqueReferenceCodeAndTheCapturedFields`, `#twoBookingsForTheSameServiceGetDifferentReferenceCodes`; the reception screen renders the code as a QR with the existing dependency-free `QrCode`/`encodeQrMatrix` (`F/packages/ui/src/qrcode.test.ts`, ticket 08's printer-failure QR) | passing |
+| FR-APT-015 captures visitor identity or minimal contact, Service, slot, optional preferred Agent, purpose note, preferred language | §9.2 | integration | `AppointmentBookingFields#parse` (an existing `visitor_id`, or `contact_name`/`contact_phone` minted into a fresh `visitor` row the same shape a walk-in pass leaves without the pass); `Booking(IT)#aStaffBookingIsConfirmedWithAUniqueReferenceCodeAndTheCapturedFields` (visitor, service, slot, preferred agent, purpose, language all read back), `#aWalkInBookingWithNoExistingVisitorCreatesAMinimalContactRecord` | passing |
+| FR-APT-016 a configurable maximum active appointments per visitor (default 3) | §9.2 | integration | `AppointmentProperties#maxActivePerVisitor` (default 3); `AppointmentBookingRepository#activeCountForVisitor`, locked the same way `IssuanceGate` locks a Service's daily cap before counting; `Booking(IT)#aVisitorMayNotExceedTheDefaultOfThreeActiveAppointments` | passing |
+| §19.2 capacity is consumed in `held_slot`/`booked`/`checked_in`/`converted` and released on `cancelled`/`no_show`/hold expiry | §19.2 | integration | `AppointmentAvailabilityService#search` and `#offeredCapacity` both read `AppointmentBookingRepository#activeCountForSlot`, which counts `held_slot`, `booked`, `rescheduled`, `checked_in` (`rescheduled` is ticket 34's; kept in the active set now so a mid-reschedule appointment cannot be double-booked once that ticket lands); `Booking(IT)#bookingConsumesCapacityAndTheSearchShowsTheReducedRemainingCapacity` | passing |
+| `POST /appointments`; reception booking screen | §9.2, ticket 33 AC | integration, unit(F) | `AppointmentBookingController#book`; `Booking(IT)` (the full suite above); `F/apps/admin/components/ReceptionDesk.tsx` (`AppointmentBookingSection`: search by Service and date, pick a slot, capture the visitor the same way a walk-in ticket does, choose the source, book, see the reference code and QR); `F/apps/admin/ReceptionDesk.test.tsx#staff appointment booking` (books end to end against a stubbed API, and shows the server's `slot_full` refusal) | passing |
+| Definition of done §27.5 item 3 (strings in both packs) | §27.5 | unit(F) | `F/packages/i18n/src/i18n.test.ts` (pack parity); `reception.appointment.*` in `en.json`/`bn.json`; `appointment.refused.*` in `messages_en.properties`/`messages_bn.properties` (`MessagesTest`) | passing |
+| Definition of done §27.5 item 4 (permission-checked server-side) | §20.3 | integration | `POST /appointments` requires `appointment:book` (`Authorities.APPOINTMENT_BOOK`, already scaffolded in `PermissionMatrix`/`permission-matrix.txt` — `system_admin`, `org_admin`, `team_admin`, `reception_operator`), scoped to the Service's Site (`ScopeGuard#requireSite`); `Booking(IT)#bookingRequiresThePermissionAndIsScopedToTheServicesSite` (an Agent is refused by permission, a Reception Operator scoped to a different Site is refused too); build-time `ControllerSecurityTest` covers the new controller method | passing |
+| Definition of done §27.5 item 5 (events and audit entries) | §18.3 | integration | `appointment.booked` (after: reference code, service, visitor, slot, source, preferred agent), `appointment.hold_expired` (before: what was released), both via `AuditWriter` the same pattern every other appointment-context service uses; `Booking(IT)#aStaffBookingIsConfirmedWithAUniqueReferenceCodeAndTheCapturedFields`, `#aHeldSlotPastItsHoldIsReleasedByTheJobFreeingItsCapacity` | passing |
+| Definition of done §27.5 item 6 (documented) | §27.5 | manual | covered by this table; `docs/admin-guide.md` is not updated (the same gap tickets 25-32 left) | partial |
+| §18, §26 the V28 migration is forward-only and re-runnable | §18, §26 | integration | `B/platform/MigrationIT#everyMigrationScriptCanBeReExecutedAgainstAnAlreadyMigratedDatabase` (V28) | passing |
+
+**Notes on this ticket's interpretation.** Every field a staff booking supplies (visitor, slot, purpose, language) is
+already final — nothing is left for a visitor to complete later — so `AppointmentBookingService#book` moves an
+appointment from `held_slot` to `booked` (§19.2) within the same transaction it is created in, via two repository
+calls (`insertHeld` then `confirm`) rather than skipping the intermediate state outright: this keeps the state machine
+genuine (a booking really does pass through `held_slot`, if only for one transaction) and lets `Booking(IT)` exercise
+`AppointmentHoldExpiryScheduler`'s release path directly, by inserting a held row and never confirming it, the way a
+future caller (ticket 41's visitor self-service, which completes booking details over more than one request) actually
+would leave one. FR-APT-016's cap counts a visitor's active appointments across every Service, not per Service — the
+requirement names no scope narrower than "per visitor". `preferred_agent_id` is validated (must be a real user) and
+stored but does not filter availability or capacity (see the amendment to ticket 32's notes above); a booking against
+a specific Agent's own slots is not this ticket's acceptance criteria and is left open. The reception screen always
+resolves a visitor to an existing `visitor_id` through the same directory-search-or-register flow a walk-in ticket
+already uses (`VisitorPanel`, now given an `idPrefix` so more than one instance can be on the page at once without
+colliding element ids); `POST /appointments`' own `contact_name`/`contact_phone` minimal-contact path is fully built
+and tested at the API layer (`Booking(IT)#aWalkInBookingWithNoExistingVisitorCreatesAMinimalContactRecord`) for a
+channel that does not go through Reception's own directory screen first — a future host API (ticket 58) or a leaner
+phone-booking form, neither of which this ticket's acceptance criteria call for building now.
 
 ## Notes
 

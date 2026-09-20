@@ -53,6 +53,7 @@ public class AppointmentAvailabilityService {
     static final String SEARCH = "isAuthenticated()";
 
     private final AppointmentAvailabilityRepository repository;
+    private final AppointmentBookingRepository bookings;
     private final AuditWriter audit;
     private final ScopeGuard scope;
     private final CurrentUser currentUser;
@@ -60,8 +61,15 @@ public class AppointmentAvailabilityService {
     private final Clock clock;
 
     AppointmentAvailabilityService(
-            AppointmentAvailabilityRepository repository, AuditWriter audit, ScopeGuard scope, CurrentUser currentUser, LanguageProperties languages, Clock clock) {
+            AppointmentAvailabilityRepository repository,
+            AppointmentBookingRepository bookings,
+            AuditWriter audit,
+            ScopeGuard scope,
+            CurrentUser currentUser,
+            LanguageProperties languages,
+            Clock clock) {
         this.repository = repository;
+        this.bookings = bookings;
         this.audit = audit;
         this.scope = scope;
         this.currentUser = currentUser;
@@ -164,15 +172,52 @@ public class AppointmentAvailabilityService {
     public Availability search(UUID serviceId, String dateParam) {
         LocalDate date = AppointmentAvailabilityFields.date("date", dateParam);
         if (date == null) throw AppointmentAvailabilityFields.invalid("date", "NotNull");
+        Optional<Day> day = day(serviceId, date);
+        if (day.isEmpty()) return new Availability(serviceId, date.toString(), List.of());
+
+        List<AppointmentAvailabilityViews.Slot> out = new ArrayList<>();
+        for (SlotGenerator.Slot slot : day.get().slots()) {
+            if (!offered(day.get(), date, slot)) continue;
+            // "Remaining capacity" (FR-APT-010) subtracts every appointment §19.2 counts as still consuming this slot,
+            // the same numbers ticket 33's booking checks and holds itself to (FR-APT-011).
+            int active = bookings.activeCountForSlot(serviceId, date, slot.start(), slot.end());
+            int remaining = slot.capacity() - active;
+            if (remaining <= 0) continue;
+            out.add(new AppointmentAvailabilityViews.Slot(fmt(slot.start()), fmt(slot.end()), remaining));
+        }
+        return new Availability(serviceId, date.toString(), out);
+    }
+
+    /**
+     * The raw, defined capacity of one exact slot (service, date, start, end) if it is currently on offer at all —
+     * every rule {@link #search} applies (horizon, lead time, business hours/holiday, exceptions) but, unlike search,
+     * not reduced by existing bookings: the booking service subtracts those itself, atomically, inside its own
+     * per-slot lock (FR-APT-011), so the two must never race against different snapshots of the same count.
+     */
+    Optional<Integer> offeredCapacity(UUID serviceId, LocalDate date, LocalTime start, LocalTime end) {
+        Optional<Day> day = day(serviceId, date);
+        if (day.isEmpty()) return Optional.empty();
+        for (SlotGenerator.Slot slot : day.get().slots()) {
+            if (slot.start().equals(start) && slot.end().equals(end)) {
+                return offered(day.get(), date, slot) ? Optional.of(slot.capacity()) : Optional.empty();
+            }
+        }
+        return Optional.empty();
+    }
+
+    /** One Service's resolved slots for one date, with what {@code offered} needs to also apply the lead time (FR-APT-005). */
+    private record Day(ZoneId zone, ZonedDateTime earliestStart, List<SlotGenerator.Slot> slots) {}
+
+    private Optional<Day> day(UUID serviceId, LocalDate date) {
         SiteContext site = repository.siteContextOfService(serviceId).orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND));
-        if ("walk_in_only".equals(site.bookingMode())) return new Availability(serviceId, date.toString(), List.of());
+        if ("walk_in_only".equals(site.bookingMode())) return Optional.empty();
 
         ZoneId zone = ZoneId.of(site.timezone());
         ZonedDateTime now = clock.instant().atZone(zone);
         LocalDate today = now.toLocalDate();
         ServiceSettings settings = repository.settings(serviceId).orElse(ServiceSettings.DEFAULTS);
         if (date.isBefore(today) || date.isAfter(today.plusDays(settings.bookingHorizonDays()))) {
-            return new Availability(serviceId, date.toString(), List.of());
+            return Optional.empty();
         }
 
         Optional<UUID> teamId = repository.teamIdOfService(serviceId);
@@ -190,16 +235,14 @@ public class AppointmentAvailabilityService {
                 date.getDayOfWeek(), repository.week(site.siteId(), serviceId), repository.holidayOn(site.siteId(), date).orElse(null));
 
         List<SlotGenerator.Slot> slots = SlotGenerator.generate(effectiveTemplates, date, window, effectiveException);
-
         ZonedDateTime earliestStart = now.plusMinutes(settings.minLeadTimeMinutes());
-        List<AppointmentAvailabilityViews.Slot> out = new ArrayList<>();
-        for (SlotGenerator.Slot slot : slots) {
-            if (slot.capacity() <= 0) continue;
-            ZonedDateTime start = date.atTime(slot.start()).atZone(zone);
-            if (start.isBefore(earliestStart)) continue;
-            out.add(new AppointmentAvailabilityViews.Slot(fmt(slot.start()), fmt(slot.end()), slot.capacity()));
-        }
-        return new Availability(serviceId, date.toString(), out);
+        return Optional.of(new Day(zone, earliestStart, slots));
+    }
+
+    private static boolean offered(Day day, LocalDate date, SlotGenerator.Slot slot) {
+        if (slot.capacity() <= 0) return false;
+        ZonedDateTime start = date.atTime(slot.start()).atZone(day.zone());
+        return !start.isBefore(day.earliestStart());
     }
 
     private static List<Template> byWeekday(List<Template> rows, int weekday) {

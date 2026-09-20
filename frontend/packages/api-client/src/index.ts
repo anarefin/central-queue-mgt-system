@@ -1,3 +1,4 @@
+export * from "./appointments";
 export * from "./branding";
 export * from "./breaks";
 export * from "./catalogue";
