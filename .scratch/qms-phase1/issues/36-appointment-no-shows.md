@@ -4,7 +4,7 @@
 
 **Blocked by:** 33 — Staff appointment booking
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [x] Automatic `no_show` after slot + grace (FR-APT-040)
 - [x] Capacity freed immediately (FR-APT-041)

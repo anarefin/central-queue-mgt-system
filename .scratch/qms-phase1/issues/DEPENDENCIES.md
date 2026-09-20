@@ -37,7 +37,7 @@
 33-staff-appointment-booking               32,22           done     35m      22 files, +1614 −33 e5556ed..ca16543
 34-reschedule-cancel-waitlist              33              done     n/a*     17 files, +899 −32  5b75e34..dcd7e75
 35-appointment-check-in                    33,26,09        done     n/a*     24 files, +1138 −47 9663f40..dd54b60
-36-appointment-no-shows                    33              todo     —        —                   —
+36-appointment-no-shows                    33              done     n/a*     14 files, +768 −7   8ab59a0..b8db6a9
 37-visitor-ticket-page-pwa                 11,19           todo     —        —                   —
 38-notification-pipeline-in-app            11,02           todo     —        —                   —
 39-web-push-channel                        38,37           todo     —        —                   —
@@ -70,3 +70,4 @@
 #   resumed to finish verification and commit. Elapsed wall-clock not comparable either.
 # * 30: commit landed but the run was interrupted before bookkeeping; confirmed done and
 #   backfilled on resume, elapsed wall-clock not recorded.
+# * 36: worker stalled (no progress 600s) mid-verification; resumed to finish and commit.
