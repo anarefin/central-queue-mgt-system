@@ -4,7 +4,7 @@
 
 **Blocked by:** 21 — Issuance rules
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [x] Availability at Service, team and Agent levels, most specific wins (FR-APT-001)
 - [x] Slot templates with weekday pattern, start/end, slot minutes, concurrent capacity, validity range (FR-APT-002)
