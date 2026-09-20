@@ -4,7 +4,7 @@
 
 **Blocked by:** 42 — Remote join; 39 — Web Push channel; 12 — Re-announce and Miss
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [x] Approaching-turn notification at a threshold (default 3 ahead or 15 min) via Web Push and in-app (FR-MOB-020)
 - [x] Present by site QR, geofence check-in or reception; geofence radius per Site; QR accepted as drift fallback (FR-MOB-021, FR-MOB-024)
