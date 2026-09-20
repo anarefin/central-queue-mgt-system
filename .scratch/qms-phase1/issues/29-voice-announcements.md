@@ -4,7 +4,7 @@
 
 **Blocked by:** 28 — Display board: now-serving table; 12 — Re-announce and Miss
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [x] Call event plays in the Zone containing the Counter (FR-DSP-020)
 - [x] Template per language from token number, counter label, service name, floor, optional visitor name (FR-DSP-021)
