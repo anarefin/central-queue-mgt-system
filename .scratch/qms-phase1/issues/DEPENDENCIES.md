@@ -29,7 +29,7 @@
 25-kiosk-common-path                       24,21,02        done     46m      24 files, +2251 −23 3fbd63b..7ffbaba
 26-kiosk-identification-and-selection-tree 25,22           done     n/a*     31 files, +1576 −113 3296f0f..9f3fe5c
 27-branding-and-print-template             25              done     n/a*     34 files, +1787 −54 7ceebb1..fa9f8c8
-28-display-now-serving-table               24,11           todo     —        —                   —
+28-display-now-serving-table               24,11           done     51m      31 files, +1868 −37 5a319c3..1eb6a0c
 29-voice-announcements                     28,12           todo     —        —                   —
 30-display-layouts-and-notice-board        28              todo     —        —                   —
 31-journeys-and-multi-stop-visits          22,10           todo     —        —                   —

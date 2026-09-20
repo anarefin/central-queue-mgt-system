@@ -4,7 +4,7 @@
 
 **Blocked by:** 24 — Device pairing and fleet management; 11 — Realtime hub
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [x] Display registered with name, Zone, layout and language cycle; assignable to queues, Counters or a whole Zone (FR-DSP-001, FR-DSP-002)
 - [x] `now_serving_table` layout with configurable columns (at minimum token, counter label, service or staff) and next-N strip (default 4) (FR-DSP-003, FR-DSP-004, FR-DSP-005)
