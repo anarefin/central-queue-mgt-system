@@ -4,7 +4,7 @@
 
 **Blocked by:** 25 — Kiosk common path
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [x] Logo, primary colour and organisation name configurable and applied across surfaces (FR-CFG-030)
 - [x] Token template editor with fields: token number, building, floor, service group, service, visitor code, name, category, counter, issue time, estimated wait, QR, notice line (FR-CFG-031)

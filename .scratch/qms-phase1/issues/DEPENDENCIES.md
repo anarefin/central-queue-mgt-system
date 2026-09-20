@@ -28,7 +28,7 @@
 24-device-pairing-and-fleet                05,11           done     52m      68 files, +3390 −42 131ff44..26b1995
 25-kiosk-common-path                       24,21,02        done     46m      24 files, +2251 −23 3fbd63b..7ffbaba
 26-kiosk-identification-and-selection-tree 25,22           done     n/a*     31 files, +1576 −113 3296f0f..9f3fe5c
-27-branding-and-print-template             25              todo     —        —                   —
+27-branding-and-print-template             25              done     n/a*     34 files, +1787 −54 7ceebb1..fa9f8c8
 28-display-now-serving-table               24,11           todo     —        —                   —
 29-voice-announcements                     28,12           todo     —        —                   —
 30-display-layouts-and-notice-board        28              todo     —        —                   —
@@ -66,3 +66,5 @@
 
 # * 26: worker hit a session rate limit mid-ticket, was resumed after reset; elapsed wall-clock
 #   spans the pause and is not comparable to other tickets' timings.
+# * 27: worker's turn ended waiting on a background gradlew run before committing; resumed to
+#   finish verification and commit. Elapsed wall-clock not comparable either.
