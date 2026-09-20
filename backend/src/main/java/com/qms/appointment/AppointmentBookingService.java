@@ -21,7 +21,9 @@ import com.qms.platform.i18n.LanguageProperties;
 import com.qms.platform.notifications.NotificationContext;
 import com.qms.platform.notifications.NotificationTrigger;
 import com.qms.platform.notifications.NotificationTriggerKeys;
+import com.qms.platform.security.AuthenticatedUser;
 import com.qms.platform.security.CurrentUser;
+import com.qms.platform.security.Role;
 import com.qms.platform.security.ScopeGuard;
 import java.security.SecureRandom;
 import java.time.Clock;
@@ -58,7 +60,10 @@ import org.springframework.transaction.annotation.Transactional;
 @Profile(Profiles.SERVING)
 public class AppointmentBookingService {
 
-    static final String BOOK = "hasAuthority(T(com.qms.platform.security.Authorities).APPOINTMENT_BOOK)";
+    /** Staff with {@code appointment:book}, or a registered visitor acting on their own appointment (§5.2 "S" for
+     * Visitor, ticket 41) — {@code book}/{@code reschedule}/{@code cancel} each add the object-level "own" check
+     * FR-CFG-105 requires for the visitor branch, since {@code PermissionMatrix} itself is staff-only. */
+    static final String BOOK = "hasAuthority(T(com.qms.platform.security.Authorities).APPOINTMENT_BOOK) or hasRole('VISITOR')";
 
     /** Excludes characters easy to misread when read aloud or printed: 0/O, 1/I. */
     private static final char[] CODE_ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ".toCharArray();
@@ -106,7 +111,9 @@ public class AppointmentBookingService {
     @PreAuthorize(BOOK)
     @Transactional
     public AppointmentResponse book(BookAppointmentRequest request) {
-        Parsed parsed = AppointmentBookingFields.parse(request, languages.languages());
+        AuthenticatedUser caller = currentUser.require();
+        boolean visitorCaller = caller.roles().contains(Role.VISITOR);
+        Parsed parsed = AppointmentBookingFields.parse(request, languages.languages(), visitorCaller ? caller.userId() : null);
 
         SiteContext site = availabilityRepository.siteContextOfService(parsed.serviceId()).orElseThrow(() -> AppointmentBookingFields.invalid("service_id", "not_found"));
         scope.requireSite(site.siteId());
@@ -129,10 +136,9 @@ public class AppointmentBookingService {
 
         // FR-APT-042: an optional policy blocks further booking once a visitor has repeated no-shows in the rolling
         // window, but never a walk-in (someone standing in front of staff right now, the one source this can never
-        // apply to) — off by default. `source` is a closed set today (FR-APT-013: phone, walk_in, staff), all of them
-        // staff-mediated; the exemption is written as "every source but walk_in", not "phone or staff", so the visitor
-        // self-service channel ticket 41 adds later (reusing this same method, per ticket 34's own notes) is covered
-        // by this same rule without changing it.
+        // apply to) — off by default. The exemption is written as "every source but walk_in", not "phone or staff",
+        // so the visitor self-service channel (ticket 41, source `visitor`, reusing this same method per ticket 34's
+        // own notes) is covered by this same rule without changing it.
         if (properties.noShowPolicyEnabled() && !AppointmentSource.WALK_IN.equals(parsed.source())) {
             Instant windowStart = now.minus(Duration.ofDays(properties.noShowPolicyWindowDays()));
             if (repository.noShowCountForVisitor(visitorId, windowStart) >= properties.noShowPolicyThreshold()) {
@@ -161,7 +167,9 @@ public class AppointmentBookingService {
             throw conflict("slot_full", Map.of());
         }
 
-        UUID actor = currentUser.require().userId();
+        // `booked_by` is a staff user (FK to `users`); a visitor's own booking has none — the row's own `visitor_id`
+        // already names who it is for, the same way a phone or walk-in booking's caller and its visitor differ.
+        UUID actor = visitorCaller ? null : caller.userId();
         Instant holdExpiresAt = now.plus(Duration.ofMinutes(properties.holdMinutes()));
         UUID id = UUID.randomUUID();
         String referenceCode = insertHeldWithFreshReference(
@@ -192,8 +200,9 @@ public class AppointmentBookingService {
      * Moves a booked appointment to a new slot, keeping its reference code (FR-APT-021) and recording the move in
      * the audit log — the same append-only trail every other entity's "change history" is, including the staff
      * {@code reason} when one is given. A visitor may act up to {@code qms.appointment.visitor-cutoff-minutes}
-     * before the appointment's <em>current</em> slot; any closer needs a reason (FR-APT-020) — there is no visitor
-     * principal yet (ticket 41), so today every caller is staff and this is the rule that will govern both.
+     * before the appointment's <em>current</em> slot; past that, a visitor is refused outright and only staff may
+     * still act, with a reason (FR-APT-020, ticket 41). A visitor may only ever act on their own appointment (§5.2's
+     * "S", FR-CFG-105's own object-level check).
      *
      * <p>The row passes through {@code rescheduled} (§19.2) for the length of this transaction: {@link
      * AppointmentBookingRepository#activeCountForSlot} already counts it there (ticket 33's own migration, in
@@ -204,14 +213,17 @@ public class AppointmentBookingService {
     @PreAuthorize(BOOK)
     @Transactional
     public AppointmentResponse reschedule(UUID id, RescheduleAppointmentRequest request) {
+        AuthenticatedUser caller = currentUser.require();
+        boolean visitorCaller = caller.roles().contains(Role.VISITOR);
         RescheduleParsed target = AppointmentBookingFields.parseReschedule(request);
         SiteContext site = siteOfAppointment(id);
         Instant now = clock.instant();
 
         repository.lock("appointment:" + id); // serialises against any other reschedule/cancel of this same row.
         AppointmentRow appointment = repository.find(id).orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND));
+        if (visitorCaller && !appointment.visitorId().equals(caller.userId())) throw new ApiException(ErrorCode.FORBIDDEN);
         if (!"booked".equals(appointment.state())) throw conflict("not_booked", Map.of());
-        enforceCutoff(appointment.slotDate(), appointment.slotStart(), site.timezone(), target.reason(), now);
+        enforceCutoff(appointment.slotDate(), appointment.slotStart(), site.timezone(), target.reason(), visitorCaller, now);
 
         repository.lock(slotKey(appointment.serviceId(), appointment.slotDate(), appointment.slotStart()));
         if (repository.markRescheduling(id, now) == 0) throw conflict("not_booked", Map.of()); // raced past the check above.
@@ -249,14 +261,17 @@ public class AppointmentBookingService {
     @PreAuthorize(BOOK)
     @Transactional
     public void cancel(UUID id, CancelAppointmentRequest request) {
+        AuthenticatedUser caller = currentUser.require();
+        boolean visitorCaller = caller.roles().contains(Role.VISITOR);
         String reason = AppointmentBookingFields.parseCancelReason(request);
         SiteContext site = siteOfAppointment(id);
         Instant now = clock.instant();
 
         repository.lock("appointment:" + id);
         AppointmentRow appointment = repository.find(id).orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND));
+        if (visitorCaller && !appointment.visitorId().equals(caller.userId())) throw new ApiException(ErrorCode.FORBIDDEN);
         if (!"booked".equals(appointment.state())) throw conflict("not_booked", Map.of());
-        enforceCutoff(appointment.slotDate(), appointment.slotStart(), site.timezone(), reason, now);
+        enforceCutoff(appointment.slotDate(), appointment.slotStart(), site.timezone(), reason, visitorCaller, now);
 
         repository.lock(slotKey(appointment.serviceId(), appointment.slotDate(), appointment.slotStart()));
         if (repository.cancel(id, now) == 0) throw conflict("not_booked", Map.of()); // raced past the check above.
@@ -278,11 +293,14 @@ public class AppointmentBookingService {
         return site;
     }
 
-    /** FR-APT-020: a visitor may act up to the configured cut-off before the slot; a staff caller may act any closer, but only with a {@code reason}. */
-    private void enforceCutoff(LocalDate slotDate, LocalTime slotStart, String timezone, String reason, Instant now) {
+    /** FR-APT-020: a visitor may act up to the configured cut-off before the slot; past it, a visitor is refused
+     * outright (ticket 41 — {@code visitor_cutoff_passed}, no reason can lift it) and only a staff caller may still
+     * act, and only with a {@code reason}. */
+    private void enforceCutoff(LocalDate slotDate, LocalTime slotStart, String timezone, String reason, boolean visitorCaller, Instant now) {
         Instant slotStartInstant = slotDate.atTime(slotStart).atZone(ZoneId.of(timezone)).toInstant();
         Instant cutoff = slotStartInstant.minus(Duration.ofMinutes(properties.visitorCutoffMinutes()));
         if (now.isBefore(cutoff)) return;
+        if (visitorCaller) throw conflict("visitor_cutoff_passed", Map.of());
         if (reason == null || reason.isBlank()) throw conflict("cutoff_passed", Map.of("field", "reason"));
     }
 

@@ -14,21 +14,23 @@ export interface Availability {
   slots: AvailabilitySlot[];
 }
 
-export type AppointmentSource = "phone" | "walk_in" | "staff";
+export type AppointmentSource = "phone" | "walk_in" | "staff" | "visitor";
 
 export type AppointmentState = "held_slot" | "booked" | "rescheduled" | "checked_in" | "cancelled" | "no_show" | "converted";
 
 /**
  * The body of `POST /appointments` (FR-APT-013, FR-APT-015): either an existing `visitor_id` from the directory, or a
  * minimal `contact_name`/`contact_phone` (and optional `contact_email`) for a visitor not yet known — the same two
- * ways Reception already captures a visitor for a walk-in ticket.
+ * ways Reception already captures a visitor for a walk-in ticket. `source`, `visitor_id` and the contact fields are
+ * all omitted by a registered visitor's own self-service booking (ticket 41): the server fills in the caller's own
+ * visitor id and the `visitor` source itself from their JWT, never trusting a client-supplied value for either.
  */
 export interface BookAppointmentInput {
   service_id: string;
   date: string;
   start: string;
   end: string;
-  source: AppointmentSource;
+  source?: AppointmentSource;
   visitor_id?: string;
   contact_name?: string;
   contact_phone?: string;
@@ -36,6 +38,17 @@ export interface BookAppointmentInput {
   preferred_agent_id?: string;
   purpose_note?: string;
   language?: string;
+  priority_class_id?: string;
+}
+
+/** The body of `PATCH /appointments/{id}` (FR-APT-020, FR-APT-021): a new slot, keeping the same reference code. A
+ * visitor may act only up to the configured cut-off before the *current* slot; a staff caller may act any closer,
+ * but only with a `reason`. */
+export interface RescheduleAppointmentInput {
+  date: string;
+  start: string;
+  end: string;
+  reason?: string;
 }
 
 /** The booked appointment (FR-APT-014): `reference_code` is what the visitor is given, and what the QR shown to them encodes. */

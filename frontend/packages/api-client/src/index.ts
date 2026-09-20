@@ -16,4 +16,6 @@ export * from "./session";
 export * from "./sessions";
 export * from "./stream";
 export * from "./tickets";
+export * from "./visitor-account";
+export * from "./visitor-session";
 export * from "./visitors";

@@ -4,6 +4,7 @@ import { useI18n } from "@qms/i18n/react";
 import { Card, ErrorAlert, Page } from "@qms/ui";
 import { useEffect, useState } from "react";
 import { VisitorTicketStatus } from "../components/VisitorTicketStatus";
+import { BASE_PATH } from "../lib/runtime";
 
 interface TicketReference {
   ticketId: string;
@@ -45,6 +46,7 @@ export default function Home() {
         <Card>
           <h1 className="qms-heading">{t("app.visitor")}</h1>
           <ErrorAlert>{t("visitor.missingReference")}</ErrorAlert>
+          <a href={`${BASE_PATH}/account/`}>{t("visitor.accountLink")}</a>
         </Card>
       </Page>
     );

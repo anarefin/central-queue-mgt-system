@@ -1,5 +1,6 @@
 import { ApiRequestError, isApiErrorCode, type ApiErrorBody } from "./errors";
-import type { Appointment, Availability, BookAppointmentInput } from "./appointments";
+import type { Appointment, Availability, BookAppointmentInput, RescheduleAppointmentInput } from "./appointments";
+import type { AppointmentSummary, SavedSite, TicketSummary, VisitorMe, VisitorTokenResponse } from "./visitor-account";
 import type {
   CounterLink,
   CounterOption,
@@ -309,6 +310,30 @@ export class ApiClient {
   };
 
   /**
+   * A registered visitor's own email + OTP sign-in, silent refresh and sign-out (ticket 41, FR-MOB-001, §20.2): the
+   * same shape as {@code auth}, kept entirely apart from it (its own cookie, its own refresh-token table server
+   * side), so a browser signed in as both staff and a visitor never confuses the two sessions.
+   */
+  readonly visitorAuth = {
+    requestOtp: (email: string) => this.request<void>("POST", "/auth/visitor/otp/request", { email }, { anonymous: true }),
+    verifyOtp: (email: string, code: string) => this.request<VisitorTokenResponse>("POST", "/auth/visitor/otp/verify", { email, code }, { anonymous: true }),
+    /** Exchanges the HttpOnly visitor refresh cookie for a new access token; the browser sends the cookie, not our code. */
+    refresh: () => this.request<VisitorTokenResponse>("POST", "/auth/visitor/refresh", undefined, { anonymous: true }),
+    logout: () => this.request<void>("POST", "/auth/visitor/logout", undefined, { anonymous: true }),
+    me: () => this.request<VisitorMe>("GET", "/auth/visitor/me"),
+  };
+
+  /** A registered visitor's own "my account" read model (ticket 41, FR-MOB-002): active tickets, appointment
+   * history, and saved sites they may add or remove. */
+  readonly visitorAccount = {
+    tickets: () => this.request<Items<TicketSummary>>("GET", "/visitors/me/tickets"),
+    appointments: () => this.request<Items<AppointmentSummary>>("GET", "/visitors/me/appointments"),
+    savedSites: () => this.request<Items<SavedSite>>("GET", "/visitors/me/saved-sites"),
+    saveSite: (siteId: string) => this.request<void>("POST", `/visitors/me/saved-sites/${siteId}`),
+    unsaveSite: (siteId: string) => this.request<void>("DELETE", `/visitors/me/saved-sites/${siteId}`),
+  };
+
+  /**
    * Visitor master-data CSV import (FR-INT-010, FR-INT-011): the admin-set column mapping both a manual upload and
    * the scheduled folder pickup use, a manual upload's own validation report, and the run history — including a
    * scheduled run's report, which nobody was present to see synchronously.
@@ -358,6 +383,10 @@ export class ApiClient {
   readonly appointments = {
     availability: (serviceId: string, date: string) => this.request<Availability>("GET", `/services/${serviceId}/appointments/availability?date=${date}`),
     book: (input: BookAppointmentInput) => this.request<Appointment>("POST", "/appointments", input),
+    /** FR-APT-020, FR-APT-021: moves the appointment to a new slot, keeping its reference code. */
+    reschedule: (id: string, input: RescheduleAppointmentInput) => this.request<Appointment>("PATCH", `/appointments/${id}`, input),
+    /** FR-APT-020, FR-APT-022: cancels the appointment, freeing its slot's capacity at once. */
+    cancel: (id: string, reason?: string) => this.request<void>("DELETE", `/appointments/${id}`, reason ? { reason } : undefined),
   };
 
   /**

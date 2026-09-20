@@ -6,9 +6,9 @@
 
 **Status:** ready-for-agent
 
-- [ ] Email + OTP login issuing a visitor-role JWT; anonymous reference + secret still supported (FR-MOB-001, §20.2)
-- [ ] OTPs never logged (API-018); refresh token handled per API-017
-- [ ] Active Tickets, appointment history, saved Sites (FR-MOB-002)
-- [ ] Self-service booking, reschedule and cancel with visitor permissions "own only" (§5.2, FR-APT-020)
-- [ ] Visitor issuance rate limit (API-090)
-- [ ] Definition of done (SRS §27.5): user-facing strings in both en and bn packs; every protected action permission-checked server-side; specified events and audit entries emitted; each requirement ID above mapped to a passing test in the traceability matrix
+- [x] Email + OTP login issuing a visitor-role JWT; anonymous reference + secret still supported (FR-MOB-001, §20.2)
+- [x] OTPs never logged (API-018); refresh token handled per API-017
+- [x] Active Tickets, appointment history, saved Sites (FR-MOB-002)
+- [x] Self-service booking, reschedule and cancel with visitor permissions "own only" (§5.2, FR-APT-020)
+- [x] Visitor issuance rate limit (API-090)
+- [x] Definition of done (SRS §27.5): user-facing strings in both en and bn packs; every protected action permission-checked server-side; specified events and audit entries emitted; each requirement ID above mapped to a passing test in the traceability matrix

@@ -40,7 +40,18 @@ final class AppointmentBookingFields {
         }
     }
 
+    /** A staff booking (SRS §9.2): source and visitor come from the request body, validated as ever. */
     static Parsed parse(BookAppointmentRequest request, Collection<String> installedLanguages) {
+        return parse(request, installedLanguages, null);
+    }
+
+    /**
+     * {@code ownVisitorId} is non-null only for a registered visitor's own self-service booking (ticket 41): the
+     * source and the visitor are then never taken from the request — a visitor is never trusted to name another
+     * visitor's id or to claim a staff source — and no contact fields or existing-visitor lookup applies, since the
+     * caller's own JWT already names exactly one known visitor.
+     */
+    static Parsed parse(BookAppointmentRequest request, Collection<String> installedLanguages, UUID ownVisitorId) {
         if (request == null) throw invalid("service_id", "NotNull");
         if (request.serviceId() == null) throw invalid("service_id", "NotNull");
 
@@ -52,16 +63,25 @@ final class AppointmentBookingFields {
         if (end == null) throw invalid("end", "NotNull");
         if (!start.isBefore(end)) throw invalid("end", "start_must_precede_end");
 
-        String source = request.source();
-        if (source == null || !AppointmentSource.ALL.contains(source)) throw invalid("source", "Pattern");
-
-        UUID visitorId = request.visitorId();
-        String contactName = blank(request.contactName());
-        String contactPhone = blank(request.contactPhone());
-        String contactEmail = blank(request.contactEmail());
-        if (visitorId == null) {
-            if (contactName == null) throw invalid("contact_name", "required");
-            if (contactPhone == null) throw invalid("contact_phone", "required");
+        String source;
+        UUID visitorId;
+        String contactName = null;
+        String contactPhone = null;
+        String contactEmail = null;
+        if (ownVisitorId != null) {
+            source = AppointmentSource.VISITOR;
+            visitorId = ownVisitorId;
+        } else {
+            source = request.source();
+            if (source == null || !AppointmentSource.ALL.contains(source) || AppointmentSource.VISITOR.equals(source)) throw invalid("source", "Pattern");
+            visitorId = request.visitorId();
+            contactName = blank(request.contactName());
+            contactPhone = blank(request.contactPhone());
+            contactEmail = blank(request.contactEmail());
+            if (visitorId == null) {
+                if (contactName == null) throw invalid("contact_name", "required");
+                if (contactPhone == null) throw invalid("contact_phone", "required");
+            }
         }
 
         String purposeNote = blank(request.purposeNote());
@@ -70,9 +90,11 @@ final class AppointmentBookingFields {
         String language = blank(request.language());
         if (language != null && !installedLanguages.contains(language)) throw invalid("language", "unknown_language");
 
-        return new Parsed(
-                request.serviceId(), date, start, end, source, visitorId, contactName, contactPhone, contactEmail, request.preferredAgentId(), purposeNote, language,
-                request.priorityClassId());
+        // A visitor's own booking never carries staff's own routing choice of Priority class (FR-QUE-011 stays a
+        // staff/config decision); it may still name a preferred Agent, same as a phone booking can.
+        UUID priorityClassId = ownVisitorId != null ? null : request.priorityClassId();
+
+        return new Parsed(request.serviceId(), date, start, end, source, visitorId, contactName, contactPhone, contactEmail, request.preferredAgentId(), purposeNote, language, priorityClassId);
     }
 
     /** A reschedule's new slot and optional staff reason (FR-APT-020, FR-APT-021). */

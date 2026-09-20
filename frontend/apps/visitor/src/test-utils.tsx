@@ -3,6 +3,7 @@ import { render } from "@testing-library/react";
 import type { ReactElement, ReactNode } from "react";
 import { vi } from "vitest";
 import { RuntimeProvider } from "./lib/runtime";
+import { AccountProvider } from "./lib/visitorAuth";
 
 export function json(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
@@ -34,7 +35,9 @@ export function stubApi(routes: Routes): Recorded[] {
 function Shell({ children }: { children: ReactNode }) {
   return (
     <I18nProvider loadExtra={false}>
-      <RuntimeProvider>{children}</RuntimeProvider>
+      <RuntimeProvider>
+        <AccountProvider>{children}</AccountProvider>
+      </RuntimeProvider>
     </I18nProvider>
   );
 }
