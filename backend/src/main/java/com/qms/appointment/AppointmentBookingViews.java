@@ -25,13 +25,15 @@ public final class AppointmentBookingViews {
             @JsonProperty("contact_email") String contactEmail,
             @JsonProperty("preferred_agent_id") UUID preferredAgentId,
             @JsonProperty("purpose_note") String purposeNote,
-            String language) {}
+            String language,
+            @JsonProperty("priority_class_id") UUID priorityClassId) {}
 
     /**
      * The booked (or waitlisted) appointment (FR-APT-014): {@code reference_code} is what the visitor is given, and
      * what a QR the caller renders should encode. {@code state} is {@code "waitlisted"} and {@code reference_code}
      * is {@code null} when the slot was full and the Service's waitlist took the request instead (FR-APT-023); the
-     * {@code id} is then the waitlist entry's, not an appointment's.
+     * {@code id} is then the waitlist entry's, not an appointment's. {@code priority_class_id} is the class this
+     * appointment's Ticket will carry at check-in (FR-QUE-011, ticket 35); {@code null} is the default class.
      */
     public record AppointmentResponse(
             UUID id,
@@ -45,7 +47,8 @@ public final class AppointmentBookingViews {
             @JsonProperty("visitor_id") UUID visitorId,
             @JsonProperty("preferred_agent_id") UUID preferredAgentId,
             @JsonProperty("purpose_note") String purposeNote,
-            String language) {}
+            String language,
+            @JsonProperty("priority_class_id") UUID priorityClassId) {}
 
     /**
      * A reschedule (FR-APT-020, FR-APT-021): the new slot, keeping the same reference code. {@code reason} is

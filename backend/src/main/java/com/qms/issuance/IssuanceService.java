@@ -11,6 +11,7 @@ import com.qms.platform.ErrorCode;
 import com.qms.platform.Profiles;
 import com.qms.platform.security.ScopeGuard;
 import com.qms.queue.PriorityPrecedence;
+import com.qms.queue.QueueProperties;
 import com.qms.queue.TicketEvents;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -59,6 +60,7 @@ public class IssuanceService {
     private final IssuanceGate gate;
     private final AuditWriter audit;
     private final ScopeGuard scope;
+    private final QueueProperties queueProperties;
     private final Clock clock;
 
     IssuanceService(
@@ -71,6 +73,7 @@ public class IssuanceService {
             IssuanceGate gate,
             AuditWriter audit,
             ScopeGuard scope,
+            QueueProperties queueProperties,
             Clock clock) {
         this.tickets = tickets;
         this.sequences = sequences;
@@ -81,6 +84,7 @@ public class IssuanceService {
         this.gate = gate;
         this.audit = audit;
         this.scope = scope;
+        this.queueProperties = queueProperties;
         this.clock = clock;
     }
 
@@ -108,6 +112,63 @@ public class IssuanceService {
         return issue(target, command, visitId, clock.instant());
     }
 
+    /**
+     * A ticket converted from a checked-in appointment (SRS §8.4, §9.4; FR-APT-030..032, FR-QUE-011, FR-QUE-020).
+     * {@code appointmentPriorityClassId} is the class chosen at booking, the "appointment" source of FR-QUE-011's
+     * precedence (ahead of the visitor's category, which does not exist yet, and every default); {@code queuedAt} is
+     * the later of the slot time and this check-in, already worked out by the caller, so effective wait is measured
+     * from there and not from {@code checkinAt} (FR-QUE-020). The caller has already checked the appointment is
+     * within its check-in window and moved it {@code booked -> checked_in} (§19.2); this only ever creates the ticket
+     * that moves it on to {@code converted}.
+     */
+    public record AppointmentCheckinCommand(
+            UUID serviceId, UUID visitorId, UUID appointmentPriorityClassId, Instant queuedAt, Instant checkinAt, UUID actorId, ActorType actorType) {}
+
+    @Transactional
+    public TicketResponse issueForAppointmentCheckin(AppointmentCheckinCommand command) {
+        ServiceTarget target = tickets.serviceTarget(command.serviceId()).orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND));
+        if (!target.active()) throw IssuanceGate.conflict("service_inactive", Map.of());
+        Instant now = command.checkinAt();
+        UUID visitId = UUID.randomUUID();
+        tickets.insertVisit(visitId, target.siteId(), now);
+
+        PriorityPrecedence.Choice choice = PriorityPrecedence.choose(
+                null,
+                command.appointmentPriorityClassId(),
+                null,
+                tickets.channelDefaultClass(Channels.APPOINTMENT_CHECKIN).orElse(null),
+                tickets.serviceDefaultClass(target.serviceId()).orElse(null));
+        UUID priorityClassId = choice.classId();
+        PriorityClassRef priority = priorityClassId == null ? null : tickets.priorityClass(priorityClassId).orElseThrow();
+
+        NumberingSpec rule = numbering.effective(target.serviceId(), target.groupId());
+        String prefix = rule.prefix(target.tokenPrefix(), target.groupPrefix(), priority == null ? null : priority.prefixOverride());
+        Period period = TokenNumbering.period(now, ZoneId.of(target.timezone()), rule.boundary(), rule.resetTime());
+        resets.open(target.siteId(), prefix, period, rule, NumberingResets.ISSUANCE, now);
+        String resetKey = period.key();
+        long sequence = sequences.next(target.siteId(), prefix, resetKey, rule.start());
+        String tokenNumber = rule.format(prefix, sequence);
+        String secret = newSecret();
+
+        UUID ticketId = UUID.randomUUID();
+        tickets.insertTicket(new NewTicket(
+                ticketId, tokenNumber, sequence, resetKey, target, tickets.waitingZone(target.serviceId()), visitId, Channels.APPOINTMENT_CHECKIN, now, command.queuedAt(),
+                hash(secret), priorityClassId, command.visitorId(), null, null, null, queueProperties.appointmentBonusMinutes()));
+
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("origin_channel", Channels.APPOINTMENT_CHECKIN);
+        payload.put("token_number", tokenNumber);
+        if (choice.classId() != null) {
+            payload.put("priority_class_id", choice.classId().toString());
+            payload.put("priority_source", choice.source().wire());
+        }
+        events.append(new TicketEvents.Transition(
+                ticketId, ISSUED, null, WAITING, command.actorId(), command.actorType().wire(), null, payload, now, now));
+        audit.record(AuditEvent.of(ISSUED, "ticket", ticketId).withAfter(snapshot(ticketId, tokenNumber, target, Channels.APPOINTMENT_CHECKIN, visitId, priorityClassId)));
+
+        return views.of(tickets.ticket(ticketId).orElseThrow()).withSecret(secret);
+    }
+
     private TicketResponse issue(ServiceTarget target, IssueCommand command, UUID visitId, Instant now) {
         gate.beforeService(command, now);
         requireIssuable(target, command.originChannel());
@@ -117,7 +178,8 @@ public class IssuanceService {
         requireOnDutyAgent(target.groupId(), command.targetAgentId());
         if (command.priorityClassId() != null) requireIssuableClass(command.priorityClassId());
         // The class is decided once, here, and stored on the ticket, so a change to a default later cannot move it (FR-CFG-041).
-        // Appointments and visitor categories do not exist yet; their sources are passed as none until they do.
+        // A ticket issued this way is never an appointment's (that path is issueForAppointmentCheckin); visitor
+        // categories do not exist yet, so both sources are passed as none until one applies.
         PriorityPrecedence.Choice choice = PriorityPrecedence.choose(
                 command.priorityClassId(),
                 null,
@@ -138,8 +200,8 @@ public class IssuanceService {
 
         UUID ticketId = UUID.randomUUID();
         tickets.insertTicket(new NewTicket(
-                ticketId, tokenNumber, sequence, resetKey, target, tickets.waitingZone(target.serviceId()), visitId, command.originChannel(), now, hash(secret), priorityClassId, command.visitorId(),
-                blank(command.purposeNote()), command.targetAgentId(), command.customLevelId()));
+                ticketId, tokenNumber, sequence, resetKey, target, tickets.waitingZone(target.serviceId()), visitId, command.originChannel(), now, now, hash(secret), priorityClassId,
+                command.visitorId(), blank(command.purposeNote()), command.targetAgentId(), command.customLevelId(), 0));
         events.append(new TicketEvents.Transition(
                 ticketId,
                 ISSUED,

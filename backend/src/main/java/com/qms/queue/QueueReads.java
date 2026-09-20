@@ -78,7 +78,7 @@ public class QueueReads {
         QueueStrategy used = strategy == null ? strategyOf(serviceId) : strategy;
         Instant now = clock.instant();
         List<Row> rows = jdbc.query(
-                "SELECT t.id, t.token_number, t.state, t.origin_channel, t.issued_at, t.queued_at, t.score_adjustment_minutes,"
+                "SELECT t.id, t.token_number, t.state, t.origin_channel, t.issued_at, t.queued_at, t.score_adjustment_minutes, t.appointment_bonus_minutes,"
                         + " t.target_counter_id, t.target_agent_id, pc.id AS class_id, pc.name_i18n AS class_names, pc.headstart_minutes, pc.max_wait_minutes"
                         + " FROM ticket t LEFT JOIN priority_class pc ON pc.id = coalesce(t.priority_class_id, (SELECT id FROM priority_class WHERE is_default))"
                         + " WHERE t.service_id = ? AND t." + WAITING,
@@ -90,7 +90,7 @@ public class QueueReads {
                             rs.getObject("queued_at", OffsetDateTime.class).toInstant(),
                             rs.getInt("headstart_minutes"),
                             maxWait,
-                            0, // the appointment bonus arrives with appointment check-in (FR-APT-032)
+                            rs.getInt("appointment_bonus_minutes"), // a checked-in appointment's fixed bonus, read once at issue (FR-QUE-020, FR-APT-032)
                             rs.getInt("score_adjustment_minutes"));
                     return new Row(candidate, rs.getString("token_number"), rs.getString("state"), rs.getString("origin_channel"),
                             rs.getObject("class_id", UUID.class), names(rs.getString("class_names")),
@@ -123,7 +123,7 @@ public class QueueReads {
     public int reentryAdjustment(UUID ticketId, ReentryPosition position, int after) {
         record Own(UUID serviceId, Candidate candidate) {}
         Own own = jdbc.query(
-                        "SELECT t.service_id, t.issued_at, t.queued_at, pc.headstart_minutes, pc.max_wait_minutes"
+                        "SELECT t.service_id, t.issued_at, t.queued_at, t.appointment_bonus_minutes, pc.headstart_minutes, pc.max_wait_minutes"
                                 + " FROM ticket t LEFT JOIN priority_class pc ON pc.id = coalesce(t.priority_class_id, (SELECT id FROM priority_class WHERE is_default))"
                                 + " WHERE t.id = ?",
                         (rs, i) -> new Own(
@@ -134,7 +134,7 @@ public class QueueReads {
                                         rs.getObject("queued_at", OffsetDateTime.class).toInstant(),
                                         rs.getInt("headstart_minutes"),
                                         rs.getObject("max_wait_minutes", Integer.class),
-                                        0,
+                                        rs.getInt("appointment_bonus_minutes"),
                                         0)),
                         ticketId)
                 .stream().findFirst().orElseThrow();

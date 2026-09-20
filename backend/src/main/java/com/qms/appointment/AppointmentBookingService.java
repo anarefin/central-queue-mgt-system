@@ -105,6 +105,11 @@ public class AppointmentBookingService {
         if (parsed.hasExistingVisitor() && !repository.visitorExists(parsed.visitorId())) {
             throw AppointmentBookingFields.invalid("visitor_id", "not_found");
         }
+        // FR-QUE-011: the class this appointment's ticket will carry at check-in (ticket 35); must exist and be active,
+        // the same rule IssuanceService applies to a class staff choose at issue.
+        if (parsed.priorityClassId() != null && !repository.priorityClassUsable(parsed.priorityClassId())) {
+            throw AppointmentBookingFields.invalid("priority_class_id", "not_found");
+        }
 
         Instant now = clock.instant();
         UUID visitorId = parsed.hasExistingVisitor()
@@ -137,14 +142,14 @@ public class AppointmentBookingService {
         UUID id = UUID.randomUUID();
         String referenceCode = insertHeldWithFreshReference(
                 id, parsed.serviceId(), parsed.preferredAgentId(), visitorId, parsed.date(), parsed.start(), parsed.end(), parsed.source(), parsed.purposeNote(),
-                parsed.language(), actor, holdExpiresAt, now);
+                parsed.language(), parsed.priorityClassId(), actor, holdExpiresAt, now);
         repository.confirm(id, now); // held_slot -> booked: every detail was already given (§19.2).
 
         audit.record(AuditEvent.of("appointment.booked", "appointment", id).withAfter(bookedSnapshot(referenceCode, parsed, visitorId)));
 
         return new AppointmentResponse(
                 id, referenceCode, parsed.serviceId(), parsed.date().toString(), fmt(parsed.start()), fmt(parsed.end()), "booked", parsed.source(), visitorId,
-                parsed.preferredAgentId(), parsed.purposeNote(), parsed.language());
+                parsed.preferredAgentId(), parsed.purposeNote(), parsed.language(), parsed.priorityClassId());
     }
 
     /** FR-APT-023: joins the waitlist for a full slot; no capacity consumed, no reference code minted yet. */
@@ -153,7 +158,7 @@ public class AppointmentBookingService {
         audit.record(AuditEvent.of("appointment.waitlisted", "appointment_waitlist", waitlistId).withAfter(bookedSnapshot(null, parsed, visitorId)));
         return new AppointmentResponse(
                 waitlistId, null, parsed.serviceId(), parsed.date().toString(), fmt(parsed.start()), fmt(parsed.end()), "waitlisted", parsed.source(), visitorId,
-                parsed.preferredAgentId(), parsed.purposeNote(), parsed.language());
+                parsed.preferredAgentId(), parsed.purposeNote(), parsed.language(), parsed.priorityClassId());
     }
 
     // ---- FR-APT-020, FR-APT-021: reschedule ------------------------------------------------------------------
@@ -201,7 +206,7 @@ public class AppointmentBookingService {
 
         return new AppointmentResponse(
                 id, appointment.referenceCode(), appointment.serviceId(), target.date().toString(), fmt(target.start()), fmt(target.end()), "booked", appointment.source(),
-                appointment.visitorId(), appointment.preferredAgentId(), appointment.purposeNote(), appointment.language());
+                appointment.visitorId(), appointment.preferredAgentId(), appointment.purposeNote(), appointment.language(), appointment.priorityClassId());
     }
 
     // ---- FR-APT-020, FR-APT-022: cancellation ----------------------------------------------------------------
@@ -261,7 +266,7 @@ public class AppointmentBookingService {
         UUID appointmentId = UUID.randomUUID();
         String referenceCode = insertHeldWithFreshReference(
                 appointmentId, entry.serviceId(), null, entry.visitorId(), entry.slotDate(), entry.slotStart(), entry.slotEnd(), entry.source(), entry.purposeNote(),
-                entry.language(), null, holdExpiresAt, now);
+                entry.language(), null, null, holdExpiresAt, now);
         repository.markOffered(entry.id(), appointmentId, now);
         audit.record(AuditEvent.of("appointment.waitlist_offered", "appointment", appointmentId)
                 .withAfter(slotSnapshot(referenceCode, entry.serviceId(), entry.slotDate(), entry.slotStart(), entry.slotEnd())));
@@ -292,6 +297,7 @@ public class AppointmentBookingService {
             String source,
             String purposeNote,
             String language,
+            UUID priorityClassId,
             UUID actor,
             Instant holdExpiresAt,
             Instant now) {
@@ -299,7 +305,7 @@ public class AppointmentBookingService {
         for (int attempt = 0; attempt < CODE_ATTEMPTS; attempt++) {
             String code = newReferenceCode();
             try {
-                repository.insertHeld(id, code, serviceId, preferredAgentId, visitorId, date, start, end, source, purposeNote, language, actor, holdExpiresAt, now);
+                repository.insertHeld(id, code, serviceId, preferredAgentId, visitorId, date, start, end, source, purposeNote, language, priorityClassId, actor, holdExpiresAt, now);
                 return code;
             } catch (DataIntegrityViolationException e) {
                 last = e; // The reference code collided with an existing one (astronomically rare); try another.
@@ -328,6 +334,7 @@ public class AppointmentBookingService {
         values.put("slot_end", fmt(parsed.end()));
         values.put("source", parsed.source());
         if (parsed.preferredAgentId() != null) values.put("preferred_agent_id", parsed.preferredAgentId().toString());
+        if (parsed.priorityClassId() != null) values.put("priority_class_id", parsed.priorityClassId().toString());
         return values;
     }
 

@@ -26,7 +26,8 @@ public enum Permission {
     VISITOR_PII_VIEW("visitor_pii:view"),
     NOTICE_BOARD_MANAGE("notice_board:manage"),
     AUDIT_READ("audit:read"),
-    APPOINTMENT_BOOK("appointment:book");
+    APPOINTMENT_BOOK("appointment:book"),
+    APPOINTMENT_CHECKIN("appointment:checkin");
 
     private final String wire;
 

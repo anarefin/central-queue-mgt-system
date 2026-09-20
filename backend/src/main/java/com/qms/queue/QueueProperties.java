@@ -16,6 +16,8 @@ import org.springframework.boot.context.properties.bind.DefaultValue;
  *     queue (FR-QUE-032); 0 switches the timeout off
  * @param transferHeadstartMinutes the Head start a Successor ticket gets when it is transferred, in minutes; not set means the
  *     predecessor's accrued wait, so the visitor is not sent to the back (FR-QUE-053)
+ * @param appointmentBonusMinutes the fixed bonus a checked-in appointment's ticket carries in its score (FR-QUE-020,
+ *     FR-APT-032, default 15); read once at issue and stored on the ticket, so a later change never moves one already waiting
  */
 @ConfigurationProperties("qms.queue")
 public record QueueProperties(
@@ -26,7 +28,8 @@ public record QueueProperties(
         @DefaultValue("3") int missReentryAfter,
         @DefaultValue("3") int holdLimit,
         @DefaultValue("90") int callTimeoutSeconds,
-        Integer transferHeadstartMinutes) {
+        Integer transferHeadstartMinutes,
+        @DefaultValue("15") int appointmentBonusMinutes) {
 
     public QueueProperties {
         if (primaryLinkToleranceMinutes < 0) throw new IllegalArgumentException("qms.queue.primary-link-tolerance-minutes must not be negative");
@@ -36,5 +39,6 @@ public record QueueProperties(
         if (holdLimit < 0) throw new IllegalArgumentException("qms.queue.hold-limit must not be negative");
         if (callTimeoutSeconds < 0) throw new IllegalArgumentException("qms.queue.call-timeout-seconds must not be negative");
         if (transferHeadstartMinutes != null && transferHeadstartMinutes < 0) throw new IllegalArgumentException("qms.queue.transfer-headstart-minutes must not be negative");
+        if (appointmentBonusMinutes < 0) throw new IllegalArgumentException("qms.queue.appointment-bonus-minutes must not be negative");
     }
 }

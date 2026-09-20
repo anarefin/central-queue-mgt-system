@@ -32,7 +32,8 @@ final class AppointmentBookingFields {
             String contactEmail,
             UUID preferredAgentId,
             String purposeNote,
-            String language) {
+            String language,
+            UUID priorityClassId) {
 
         boolean hasExistingVisitor() {
             return visitorId != null;
@@ -69,7 +70,9 @@ final class AppointmentBookingFields {
         String language = blank(request.language());
         if (language != null && !installedLanguages.contains(language)) throw invalid("language", "unknown_language");
 
-        return new Parsed(request.serviceId(), date, start, end, source, visitorId, contactName, contactPhone, contactEmail, request.preferredAgentId(), purposeNote, language);
+        return new Parsed(
+                request.serviceId(), date, start, end, source, visitorId, contactName, contactPhone, contactEmail, request.preferredAgentId(), purposeNote, language,
+                request.priorityClassId());
     }
 
     /** A reschedule's new slot and optional staff reason (FR-APT-020, FR-APT-021). */

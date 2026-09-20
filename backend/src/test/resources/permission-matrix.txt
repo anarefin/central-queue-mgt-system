@@ -24,3 +24,4 @@ visitor_pii:view                    | Y | Y | Y | S | Y
 notice_board:manage                 | Y | Y | Y | - | -
 audit:read                          | Y | Y | - | - | -
 appointment:book                    | Y | Y | Y | - | Y
+appointment:checkin                 | Y | Y | Y | - | Y

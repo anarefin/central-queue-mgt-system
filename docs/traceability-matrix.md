@@ -990,6 +990,46 @@ before the slot itself would be), and nothing in this ticket's acceptance criter
 cascading an expired offer to the next waitlisted visitor — both are left to whichever future ticket adds the accept
 flow (most plausibly ticket 41's self-service, since only a visitor can meaningfully accept their own offer).
 
+## Ticket 35, appointment check-in converts to a Ticket
+
+`CheckIn(IT)` = `B/appointment/AppointmentCheckInIT`.
+
+| Requirement ID | Section | Test type | Test reference | Status |
+|---|---|---|---|---|
+| FR-ISS-030 check-in at the kiosk by code or QR, or at reception | §8.4 | integration | `AppointmentCheckInController#checkIn` (`POST /appointments/check-in`, staff), `KioskAppointmentCheckInController#checkIn` (`POST /kiosk/appointments/check-in`, `hasRole('KIOSK')`); both resolve the same `reference_code` a QR encodes, through `AppointmentBookingRepository#findByReferenceCode`; `CheckIn(IT)#checkInAtReceptionWithinTheWindowConvertsTheAppointmentToATicket`, `#checkInAtTheKioskWithinTheWindowAlsoConvertsTheAppointment`, `#aStaffTokenIsRefusedAtTheKioskCheckInEndpoint` | passing |
+| FR-ISS-031 check-in allowed only within a configurable window (default 30 min before to 15 min after) | §8.4 | integration | `AppointmentProperties#checkinWindowBeforeMinutes`/`#checkinGraceMinutes` (defaults 30, 15); `AppointmentCheckInService#checkIn` (`slotStart ± window`, both bounds inclusive); `CheckIn(IT)#checkInIsAcceptedAtBothEdgesOfTheDefaultWindow` | passing |
+| FR-ISS-032 early check-in offers a walk-in Ticket without cancelling the appointment | §8.4 | integration | `AppointmentCheckInService#earlyWalkIn` (calls the unchanged `IssuanceService#issue` — the same gates any other walk-in goes through — and leaves the appointment `booked`); `CheckIn(IT)#earlyCheckInBeforeTheWindowOffersAWalkInTicketWithoutCancellingTheAppointment` | passing |
+| FR-ISS-033 late beyond the grace period follows the no-show policy (§9.5) | §8.4, §9.5 | integration | `AppointmentCheckInService#lateNoShow`, `AppointmentNoShowMarker#markAndAudit` (`booked -> no_show`, its own `REQUIRES_NEW` transaction so the mark survives the refusal thrown around it — a plain write in the same transaction as the throw would otherwise be rolled back by Spring's default); `CheckIn(IT)#lateCheckInPastTheGracePeriodIsRefusedAndTheAppointmentIsMarkedNoShow` (also retries and gets `not_booked`, not a second `no_show`) | passing |
+| FR-APT-030 the Ticket carries the appointment's Priority class; the difference between slot time and actual check-in is recorded | §9.4 | integration | `appointment.priority_class_id` (`V30`, captured at booking, FR-QUE-011's "appointment" source in `IssuanceService#issueForAppointmentCheckin`'s call to `PriorityPrecedence#choose`); `appointment.checkin_variance_seconds` (`V30`, `AppointmentBookingRepository#markConverted`, signed seconds, positive late); `CheckIn(IT)#theTicketCarriesTheAppointmentsPriorityClassAndRecordsTheCheckinVariance`, `#anEarlyCheckinRecordsANegativeVariance` | passing |
+| FR-QUE-020, FR-APT-032 effective wait from the later of slot time and check-in, plus a configurable appointment bonus (default 15) | §10.3, §9.4 | integration, unit | `ticket.queued_at` set to `max(slotStart, checkinAt)` in `AppointmentCheckInService#convert`, read by `QueueEngine#terms` exactly as any other ticket's wait (`Math.max(0, ...)` already clamps a `queued_at` still in the future); `ticket.appointment_bonus_minutes` (`V30`, `QueueProperties#appointmentBonusMinutes` default 15, read once at issue into `IssuanceService#issueForAppointmentCheckin` and from there by `QueueReads#ordered`/`#reentryAdjustment`, replacing the placeholder 0 `QueueReads` carried since ticket 09); `CheckIn(IT)#effectiveWaitIsMeasuredFromTheLaterOfSlotTimeAndCheckInPlusTheConfiguredBonus` (0 minutes before the slot starts, the bonus present immediately, real minutes accruing only after) | passing |
+| FR-APT-031 an appointment Ticket never displaces a Ticket already being served | §9.4 | integration | Structural: `QueueReads#ordered`/`#callableHead` only ever select from `state IN ('waiting', 'paused')`, and check-in only ever inserts a new `waiting` Ticket — there is no code path from a check-in to a `serving` Ticket's row; `CheckIn(IT)#aCheckedInAppointmentTicketNeverDisplacesATicketAlreadyBeingServed` (a Ticket called and served, then a higher-scored appointment Ticket checked in, the served Ticket's `state`/`counter_session_id` unchanged) | passing |
+| §19.2 the appointment moves `checked_in -> converted` | §19.2 | integration | `AppointmentBookingRepository#markCheckedIn` (`booked -> checked_in`, guarded on `state = 'booked'`) then `#markConverted` (`checked_in -> converted`, guarded on `state = 'checked_in'`), the same two-step-within-one-transaction pattern `AppointmentBookingService#reschedule` uses for its own intermediate state; every `CheckIn(IT)` conversion test asserts the final `appointment.state`/`ticket_id`/`checked_in_at` | passing |
+| Definition of done §27.5 item 3 (strings in both packs) | §27.5 | unit | `appointment.refused.no_show` in `messages_en.properties`/`messages_bn.properties`; `MessagesTest#shippedPacksAreCompleteAndNonBlank` (pack parity, generic over every key) | passing |
+| Definition of done §27.5 item 4 (permission-checked server-side) | §20.3 | integration | `POST /appointments/check-in` requires `appointment:checkin` (`Authorities.APPOINTMENT_CHECKIN`, `PermissionMatrix`/`permission-matrix.txt` — `system_admin`, `org_admin`, `team_admin`, `reception_operator`, the same set as `appointment:book`), scoped to the Service's Site (`ScopeGuard#requireSite`); `POST /kiosk/appointments/check-in` requires `hasRole('KIOSK')`, the same convention as `KioskTicketController`; `CheckIn(IT)#checkInRequiresThePermissionAndIsScopedToTheServicesSite`, `#aStaffTokenIsRefusedAtTheKioskCheckInEndpoint`; build-time `ControllerSecurityTest` and `PermissionMatrixTest` cover both | passing |
+| Definition of done §27.5 item 5 (events and audit entries) | §18.3 | integration | `appointment.checked_in` (after: ticket id, check-in variance, priority class), `appointment.checkin_early_walk_in` (after: ticket id), `appointment.no_show` (before: reference code, state), plus the unchanged `ticket.issued` event and audit entry every issuance already writes, now also for `origin_channel = appointment_checkin`; `CheckIn(IT)` asserts each by `action`/`entity_id` | passing |
+| Definition of done §27.5 item 6 (documented) | §27.5 | manual | covered by this table; `docs/admin-guide.md` is not updated (the same gap tickets 25-34 left) | partial |
+| §18, §26 the V30 migration is forward-only and re-runnable | §18, §26 | integration | `B/platform/MigrationIT#everyMigrationScriptCanBeReExecutedAgainstAnAlreadyMigratedDatabase` (V30) | passing |
+
+**Notes on this ticket's interpretation.** Ticket 33 never gave an appointment a Priority class (there was nowhere for
+one to come from yet); FR-APT-030 needs one, so this ticket adds `appointment.priority_class_id` and an optional
+`priority_class_id` on `POST /appointments`, validated the same way `IssuanceService#requireIssuableClass` validates
+a class staff choose at issue — plumbing this ticket's own acceptance criteria require, not a drive-by extension of
+ticket 33's booking screen. `origin_channel`, `Channels.APPOINTMENT_CHECKIN` and the `checked_in`/`converted`/`no_show`
+appointment states already existed (ticket 26's kiosk work and ticket 33's own migration reserved them, and
+`QueueReads` already carried a literal `0` for `appointment_bonus_minutes` with a comment naming this exact ticket) —
+this ticket is the wiring ticket 09 and ticket 33 both anticipated in their own comments, not new design.
+"§9.5 no-show policy" here means: a late check-in attempt marks its own appointment `no_show` on the spot, since
+nothing else does yet (ticket 36 adds the *background* sweep for an appointment nobody ever tries to check in for);
+the two are complementary, not overlapping — this ticket's mark only ever fires from an actual check-in attempt.
+Conversion deliberately skips the general issuance gates (`IssuanceGate#beforeService`/`#forService`: business hours,
+the Service's daily cap, a duplicate-ticket policy) — `IssuanceService#issueForAppointmentCheckin` is a parallel path
+to `#issue`, not a call to it, because the appointment's own booking already reserved this capacity at a slot the
+gates never re-litigate; only `target.active()` is still checked, since a Service switched off entirely should not
+convert either. The early-arrival walk-in, by contrast, calls the ordinary `IssuanceService#issue` unchanged, because
+it really is an ordinary walk-in the moment the appointment declines to cover it. FR-APT-031 ("never displaces a
+Ticket being served") is proven structurally rather than by a special rule: the queue engine orders only `waiting`
+Tickets, so a Ticket already `serving` is never in its input at all, whatever a checked-in appointment's score is.
+
 ## Notes
 
 - **Compose.** Verified by hand on 2026-09-19 with OrbStack Docker, from a clean build: `migrate` exited 0, then Postgres,

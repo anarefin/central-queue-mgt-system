@@ -38,6 +38,10 @@ class TicketRepository {
      * A new ticket row. {@code purposeNote} is the agent-visible note Reception adds at issuance (FR-ISS-020).
      * {@code targetAgentId} and {@code customLevelId} are the kiosk selection tree's individual and custom levels
      * (ticket 26, FR-ISS-010..012); both are null when the visitor's path never reached, or skipped, that level.
+     * {@code queuedAt} is when the ticket's real wait starts (FR-QUE-020): {@code issuedAt} for every channel but a
+     * checked-in appointment, where it is the later of the slot time and the check-in (ticket 35).
+     * {@code appointmentBonusMinutes} is the fixed bonus a checked-in appointment's ticket carries in its score
+     * (FR-QUE-020, FR-APT-032); 0 for every other channel.
      */
     record NewTicket(
             UUID id,
@@ -49,12 +53,14 @@ class TicketRepository {
             UUID visitId,
             String originChannel,
             Instant issuedAt,
+            Instant queuedAt,
             String secretHash,
             UUID priorityClassId,
             UUID visitorId,
             String purposeNote,
             UUID targetAgentId,
-            String customLevelId) {}
+            String customLevelId,
+            int appointmentBonusMinutes) {}
 
     /** A group joined to its site, for a kiosk scope check (ticket 26). */
     record GroupSite(UUID groupId, UUID siteId) {}
@@ -237,11 +243,12 @@ class TicketRepository {
     void insertTicket(NewTicket t) {
         jdbc.update(
                 "INSERT INTO ticket (id, token_number, sequence_no, reset_key, service_id, service_group_id, site_id, zone_id, visit_id,"
-                        + " origin_channel, state, issued_at, queued_at, secret_hash, priority_class_id, visitor_id, purpose_note, target_agent_id, custom_level_id)"
-                        + " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'waiting', ?, ?, ?, ?, ?, ?, ?, ?)",
+                        + " origin_channel, state, issued_at, queued_at, secret_hash, priority_class_id, visitor_id, purpose_note, target_agent_id, custom_level_id,"
+                        + " appointment_bonus_minutes)"
+                        + " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'waiting', ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 t.id(), t.tokenNumber(), t.sequenceNo(), t.resetKey(), t.target().serviceId(), t.target().groupId(), t.target().siteId(), t.zoneId(),
-                t.visitId(), t.originChannel(), ts(t.issuedAt()), ts(t.issuedAt()), t.secretHash(), t.priorityClassId(), t.visitorId(), t.purposeNote(),
-                t.targetAgentId(), t.customLevelId());
+                t.visitId(), t.originChannel(), ts(t.issuedAt()), ts(t.queuedAt()), t.secretHash(), t.priorityClassId(), t.visitorId(), t.purposeNote(),
+                t.targetAgentId(), t.customLevelId(), t.appointmentBonusMinutes());
     }
 
     // ---- reads ------------------------------------------------------------------------------------------------

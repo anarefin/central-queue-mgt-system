@@ -20,7 +20,7 @@ import org.springframework.stereotype.Repository;
 @Repository
 class AppointmentBookingRepository {
 
-    /** A booking as read back for the response (FR-APT-014, FR-APT-015). */
+    /** A booking as read back for the response (FR-APT-014, FR-APT-015). {@code priorityClassId} is the class this appointment's Ticket carries at check-in (FR-QUE-011, ticket 35); {@code null} is the default class. */
     record AppointmentRow(
             UUID id,
             String referenceCode,
@@ -33,7 +33,8 @@ class AppointmentBookingRepository {
             String state,
             String source,
             String purposeNote,
-            String language) {}
+            String language,
+            UUID priorityClassId) {}
 
     /** A held_slot row swept past its hold (FR-APT-012), enough to audit what was released. */
     record ExpiredHold(UUID id, String referenceCode, UUID serviceId, LocalDate slotDate, LocalTime slotStart, LocalTime slotEnd, UUID visitorId) {}
@@ -65,7 +66,8 @@ class AppointmentBookingRepository {
             rs.getString("state"),
             rs.getString("source"),
             rs.getString("purpose_note"),
-            rs.getString("language"));
+            rs.getString("language"),
+            rs.getObject("priority_class_id", UUID.class));
 
     private final JdbcTemplate jdbc;
 
@@ -123,11 +125,36 @@ class AppointmentBookingRepository {
             UUID bookedBy,
             Instant holdExpiresAt,
             Instant now) {
+        insertHeld(id, referenceCode, serviceId, preferredAgentId, visitorId, date, start, end, source, purposeNote, language, null, bookedBy, holdExpiresAt, now);
+    }
+
+    /** Inserts a slot hold with a chosen Priority class (FR-APT-012, FR-QUE-011, ticket 35); the caller retries on a {@code reference_code} collision. */
+    void insertHeld(
+            UUID id,
+            String referenceCode,
+            UUID serviceId,
+            UUID preferredAgentId,
+            UUID visitorId,
+            LocalDate date,
+            LocalTime start,
+            LocalTime end,
+            String source,
+            String purposeNote,
+            String language,
+            UUID priorityClassId,
+            UUID bookedBy,
+            Instant holdExpiresAt,
+            Instant now) {
         jdbc.update(
                 "INSERT INTO appointment (id, reference_code, service_id, preferred_agent_id, visitor_id, slot_date, slot_start, slot_end, state, source,"
-                        + " purpose_note, language, hold_expires_at, booked_by, created_at, updated_at)"
-                        + " VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'held_slot', ?, ?, ?, ?, ?, ?, ?)",
-                id, referenceCode, serviceId, preferredAgentId, visitorId, date, start, end, source, purposeNote, language, ts(holdExpiresAt), bookedBy, ts(now), ts(now));
+                        + " purpose_note, language, priority_class_id, hold_expires_at, booked_by, created_at, updated_at)"
+                        + " VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'held_slot', ?, ?, ?, ?, ?, ?, ?, ?)",
+                id, referenceCode, serviceId, preferredAgentId, visitorId, date, start, end, source, purposeNote, language, priorityClassId, ts(holdExpiresAt), bookedBy, ts(now), ts(now));
+    }
+
+    /** Whether a Priority class exists and is active, so it may be given to a new appointment (FR-QUE-011, mirrors {@code IssuanceService#requireIssuableClass}). */
+    boolean priorityClassUsable(UUID id) {
+        return Boolean.TRUE.equals(jdbc.queryForObject("SELECT EXISTS (SELECT 1 FROM priority_class WHERE id = ? AND active)", Boolean.class, id));
     }
 
     /** {@code held_slot -> booked: details confirmed} (§19.2): every field the caller gave is already in place, so this only flips the state. */
@@ -181,13 +208,33 @@ class AppointmentBookingRepository {
         jdbc.update("UPDATE appointment_waitlist SET state = 'offered', offered_appointment_id = ?, updated_at = ? WHERE id = ?", offeredAppointmentId, ts(now), waitlistId);
     }
 
+    private static final String SELECT_ROW =
+            "SELECT id, reference_code, service_id, preferred_agent_id, visitor_id, slot_date, slot_start, slot_end, state, source, purpose_note, language, priority_class_id FROM appointment";
+
     Optional<AppointmentRow> find(UUID id) {
-        return jdbc.query(
-                        "SELECT id, reference_code, service_id, preferred_agent_id, visitor_id, slot_date, slot_start, slot_end, state, source, purpose_note, language"
-                                + " FROM appointment WHERE id = ?",
-                        ROW, id)
-                .stream()
-                .findFirst();
+        return jdbc.query(SELECT_ROW + " WHERE id = ?", ROW, id).stream().findFirst();
+    }
+
+    /** The appointment a visitor presents by its reference code (FR-ISS-030): what a kiosk resolves from a typed code or QR, or reception from either. */
+    Optional<AppointmentRow> findByReferenceCode(String referenceCode) {
+        return jdbc.query(SELECT_ROW + " WHERE reference_code = ?", ROW, referenceCode).stream().findFirst();
+    }
+
+    /** {@code booked -> checked_in} (§19.2, FR-APT-030): guarded on {@code state = 'booked'}; 0 means it was not (a stale caller, or a race the appointment-id advisory lock should already have prevented). */
+    int markCheckedIn(UUID id, Instant checkedInAt, Instant now) {
+        return jdbc.update("UPDATE appointment SET state = 'checked_in', checked_in_at = ?, updated_at = ? WHERE id = ? AND state = 'booked'", ts(checkedInAt), ts(now), id);
+    }
+
+    /** {@code checked_in -> converted} (§19.2, FR-APT-030): the Ticket the check-in created, and the recorded difference between slot time and the actual check-in. */
+    int markConverted(UUID id, UUID ticketId, int checkinVarianceSeconds, Instant now) {
+        return jdbc.update(
+                "UPDATE appointment SET state = 'converted', ticket_id = ?, checkin_variance_seconds = ?, updated_at = ? WHERE id = ? AND state = 'checked_in'",
+                ticketId, checkinVarianceSeconds, ts(now), id);
+    }
+
+    /** {@code booked -> no_show} (§19.2, FR-APT-033, FR-APT-040): a late check-in past the grace period follows the no-show policy instead of converting. */
+    int markNoShow(UUID id, Instant now) {
+        return jdbc.update("UPDATE appointment SET state = 'no_show', updated_at = ? WHERE id = ? AND state = 'booked'", ts(now), id);
     }
 
     /** {@code held_slot -> [*]: hold expired} (§19.2): deletes every hold whose window has passed, freeing the capacity it held. */

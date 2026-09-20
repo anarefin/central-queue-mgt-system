@@ -46,6 +46,7 @@ public final class PermissionMatrix {
         allow(NOTICE_BOARD_MANAGE, SYSTEM_ADMIN, ORG_ADMIN, TEAM_ADMIN);
         allow(AUDIT_READ, SYSTEM_ADMIN, ORG_ADMIN);
         allow(APPOINTMENT_BOOK, SYSTEM_ADMIN, ORG_ADMIN, TEAM_ADMIN, RECEPTION_OPERATOR);
+        allow(APPOINTMENT_CHECKIN, SYSTEM_ADMIN, ORG_ADMIN, TEAM_ADMIN, RECEPTION_OPERATOR);
     }
 
     private PermissionMatrix() {}
