@@ -178,6 +178,17 @@ export interface PushSubscriptionInput {
 }
 
 /**
+ * The body of `POST /tickets/{id}/check-in` (ticket 43, FR-MOB-021, FR-MOB-024): `"qr"` is a site QR, accepted
+ * without a position (the GPS-drift fallback); `"geofence"` is validated against the Site's own radius and needs
+ * `latitude`/`longitude`.
+ */
+export interface CheckInInput {
+  method: "qr" | "geofence";
+  latitude?: number;
+  longitude?: number;
+}
+
+/**
  * The body of `POST /kiosk/tickets` (ticket 25, extended by ticket 26): the visitor's chosen Service, and the rest of
  * the selection tree they walked. `visitor_id` is who `GET /kiosk/visitors/identify` resolved them to, or omitted for
  * no identification (FR-ISS-013). `agent_id` is the on-duty Agent picked at the individual level, or omitted for

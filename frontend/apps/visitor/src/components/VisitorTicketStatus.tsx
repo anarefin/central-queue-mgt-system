@@ -3,13 +3,27 @@
 import { ApiRequestError } from "@qms/api-client";
 import { useI18n } from "@qms/i18n/react";
 import { Button, Card, ErrorAlert, Page, StatusBadge } from "@qms/ui";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useApi } from "../lib/runtime";
 import { useTicketStream, type TicketStreamDeps } from "../lib/ticketStream";
 import { PushOptIn } from "./PushOptIn";
+import { RemoteCheckIn } from "./RemoteCheckIn";
 
 /** A visitor may cancel any time before being called (FR-MOB-030); once called, serving or held, the button is gone. */
 const CANCELLABLE_STATES = new Set(["remote", "waiting", "paused"]);
+
+/**
+ * The site's own QR opens this same page with `?checkin=qr` (ticket 43, FR-MOB-021, FR-MOB-024): reaching here by
+ * scanning it at the site is itself the proof of presence, so {@link RemoteCheckIn} confirms it directly rather than
+ * asking for the device's location.
+ */
+function useOpenedByQr(): boolean {
+  const [qr, setQr] = useState(false);
+  useEffect(() => {
+    setQr(new URLSearchParams(window.location.search).get("checkin") === "qr");
+  }, []);
+  return qr;
+}
 
 export function VisitorTicketStatus({
   ticketId,
@@ -24,6 +38,7 @@ export function VisitorTicketStatus({
   const { t, formatToken, formatNumber, formatTime } = useI18n();
   const { client, apiOrigin, error: configError } = useApi();
   const stream = useTicketStream(client, apiOrigin, ticketId, credential, streamDeps);
+  const openedByQr = useOpenedByQr();
   const [cancelling, setCancelling] = useState(false);
   const [cancelError, setCancelError] = useState<string | null>(null);
   const [cancelled, setCancelled] = useState(false);
@@ -136,6 +151,12 @@ export function VisitorTicketStatus({
           <p className="qms-muted">{t("visitor.zone.none")}</p>
         )}
       </Card>
+
+      {!cancelled && view.state === "remote" && (
+        <Card>
+          <RemoteCheckIn ticketId={ticketId} credential={credential} qr={openedByQr} />
+        </Card>
+      )}
 
       {cancelled ? (
         <Card>

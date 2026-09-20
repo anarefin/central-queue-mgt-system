@@ -50,7 +50,29 @@ public enum TicketTransition {
      * more, so a paused sibling stop returns to waiting (FR-QUE-063). {@code queued_at} is never touched, so a paused
      * stint accrues no wait (Invariant 1).
      */
-    UNPAUSE("paused", "waiting", "ticket.unpaused");
+    UNPAUSE("paused", "waiting", "ticket.unpaused"),
+    /**
+     * FR-MOB-021, §19.1: a remote ticket is marked present by a site QR, a geofence check-in or reception, and joins the
+     * callable queue exactly where it already ranked (FR-MOB-012) — nothing about its score changes.
+     */
+    CHECK_IN("remote", "waiting", "ticket.checked_in"),
+    /**
+     * FR-MOB-031: a visitor's own "not ready yet", once per ticket, while it is still remote. No change of state, the
+     * same shape as Re-announce; the Score adjustment that moves it back is worked out and recorded separately
+     * ({@link com.qms.queue.QueueEngine#moveBackAdjustment}, ADR-0004).
+     */
+    DELAY("remote", "remote", "ticket.delayed"),
+    /**
+     * FR-MOB-022: a remote ticket still not present when it reaches the front, held for the arrival deadline, under a
+     * forfeit policy of {@code cancel}. Terminal.
+     */
+    FORFEIT("remote", "forfeited", "ticket.forfeited"),
+    /**
+     * FR-MOB-022: the same deadline, under a forfeit policy of {@code move_back} instead — the ticket stays remote and
+     * gets another chance, moved back by the configured places (ADR-0004); its hold clock is cleared and starts again
+     * only once it next reaches the front.
+     */
+    FORFEIT_MOVED_BACK("remote", "remote", "ticket.forfeit_moved_back");
 
     private final String from;
     private final String to;

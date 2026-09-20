@@ -144,6 +144,34 @@ public class QueueReads {
         return QueueEngine.reentryAdjustment(QueueEngine.terms(own.candidate(), clock.instant()), others, position, after);
     }
 
+    /**
+     * The Score adjustment that moves a ticket {@code places} behind where it stands right now (FR-MOB-022, FR-MOB-031,
+     * ADR-0004): the same shape as {@link #reentryAdjustment}, but anchored on the ticket's own current rank rather than
+     * the front of the queue. {@code places} is the configured "back N": 5 for a remote forfeit, 3 for a visitor's own
+     * delay.
+     */
+    public int moveBackAdjustment(UUID ticketId, int places) {
+        record Own(UUID serviceId, Candidate candidate) {}
+        Own own = jdbc.query(
+                        "SELECT t.service_id, t.issued_at, t.queued_at, t.appointment_bonus_minutes, pc.headstart_minutes, pc.max_wait_minutes"
+                                + " FROM ticket t LEFT JOIN priority_class pc ON pc.id = coalesce(t.priority_class_id, (SELECT id FROM priority_class WHERE is_default))"
+                                + " WHERE t.id = ?",
+                        (rs, i) -> new Own(
+                                rs.getObject("service_id", UUID.class),
+                                new Candidate(
+                                        ticketId,
+                                        rs.getObject("issued_at", OffsetDateTime.class).toInstant(),
+                                        rs.getObject("queued_at", OffsetDateTime.class).toInstant(),
+                                        rs.getInt("headstart_minutes"),
+                                        rs.getObject("max_wait_minutes", Integer.class),
+                                        rs.getInt("appointment_bonus_minutes"),
+                                        0)),
+                        ticketId)
+                .stream().findFirst().orElseThrow();
+        List<Terms> others = ordered(own.serviceId(), null).entries().stream().filter(e -> !e.ticketId().equals(ticketId)).map(Entry::terms).toList();
+        return QueueEngine.moveBackAdjustment(QueueEngine.terms(own.candidate(), clock.instant()), others, places);
+    }
+
     /** The place of a queued ticket, or null once it has left the queue. */
     public Integer positionOf(UUID ticketId) {
         List<UUID> service = jdbc.query("SELECT service_id FROM ticket WHERE id = ? AND " + WAITING, (rs, i) -> rs.getObject("service_id", UUID.class), ticketId);

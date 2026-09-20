@@ -51,6 +51,8 @@ class SecurityConfig {
         "/api/v1/tickets/*/visitor-cancel",
         "/api/v1/tickets/*/visitor/notification-opt-out",
         "/api/v1/tickets/*/push-subscription",
+        "/api/v1/tickets/*/check-in",
+        "/api/v1/tickets/*/delay",
         "/api/v1/notification-config/web-push-key"
     };
 

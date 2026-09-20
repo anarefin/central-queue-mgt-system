@@ -19,6 +19,7 @@ public enum Permission {
     TICKET_REPRIORITISE("ticket:reprioritise"),
     TICKET_ISSUE("ticket:issue"),
     TICKET_CANCEL("ticket:cancel"),
+    TICKET_CHECKIN("ticket:checkin"),
     AGENT_AVAILABILITY_FORCE_SET("agent_availability:force_set"),
     DASHBOARD_VIEW_ALL("dashboard:view_all"),
     DASHBOARD_VIEW_OWN_GROUPS("dashboard:view_own_groups"),

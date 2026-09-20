@@ -145,6 +145,23 @@ public final class QueueEngine {
         };
     }
 
+    /**
+     * The Score adjustment that moves a ticket {@code places} behind where it stands right now (FR-MOB-022's forfeit,
+     * FR-MOB-031's delay; ADR-0004): unlike {@link #reentryAdjustment}, which is anchored on the front of the queue,
+     * this is anchored on the ticket's own current rank among {@code others} — "N places back from here", not "after the
+     * Nth ticket". Worked out by finding how many ordinary tickets already rank ahead of it and asking for the adjustment
+     * that puts it {@code places} further back than that (falling back to the very back once fewer than {@code places}
+     * tickets remain behind it, the same as {@link #reentryAdjustment}'s own {@code AFTER_N} does).
+     */
+    public static int moveBackAdjustment(Terms self, List<Terms> others, int places) {
+        if (places <= 0 || self.escalated()) return 0;
+        List<Terms> ordinary = others.stream().filter(t -> !t.escalated()).toList();
+        if (ordinary.isEmpty()) return 0;
+        long ahead = ordinary.stream().filter(t -> t.score() > self.score()).count();
+        int after = (int) Math.min(Integer.MAX_VALUE, ahead + places);
+        return reentryAdjustment(self, others, ReentryPosition.AFTER_N, after);
+    }
+
     private static Comparator<Scored> comparator(QueueStrategy strategy) {
         Comparator<Scored> creation = Comparator.<Scored, Instant>comparing(s -> s.ticket().createdAt()).thenComparing(s -> s.ticket().id());
         return switch (strategy) {

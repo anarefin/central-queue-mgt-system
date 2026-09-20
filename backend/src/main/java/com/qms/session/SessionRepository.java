@@ -517,6 +517,16 @@ class SessionRepository {
     }
 
     /**
+     * Reception marks a remote ticket present on the visitor's behalf (ticket 43, FR-MOB-021, §19.1): the same
+     * {@code remote -> waiting} move the visitor's own QR or geofence check-in makes, nothing about its Score changes.
+     */
+    boolean checkIn(UUID ticketId, int version) {
+        return jdbc.update(
+                "UPDATE ticket SET state = 'waiting', remote_hold_started_at = NULL, version = version + 1 WHERE id = ? AND version = ? AND state = 'remote'",
+                ticketId, version) == 1;
+    }
+
+    /**
      * Closes an active ticket as {@code cancelled}: like any terminal state it clears the binding, and the counter and agent stay as
      * history. Its wait is stored now and, if service had started, so is its service time (§18.5).
      */

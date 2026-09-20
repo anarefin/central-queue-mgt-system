@@ -39,4 +39,11 @@ public class TicketActionsController {
             @PathVariable UUID id, @RequestHeader(value = "If-Match", required = false) String ifMatch, @RequestBody(required = false) CancelTicketRequest request) {
         return actions.cancel(id, request, SessionController.version(ifMatch));
     }
+
+    /** Reception marks a remote ticket present on the visitor's behalf (ticket 43, FR-MOB-021, §19.1). */
+    @PreAuthorize(TicketActions.CHECKIN)
+    @PostMapping("/tickets/{id}/reception-check-in")
+    public TicketChange receptionCheckIn(@PathVariable UUID id, @RequestHeader(value = "If-Match", required = false) String ifMatch) {
+        return actions.receptionCheckIn(id, SessionController.version(ifMatch));
+    }
 }

@@ -12,10 +12,12 @@ package com.qms.platform.notifications;
 public final class NotificationTriggerKeys {
 
     public static final String TICKET_ISSUED = "ticket_issued";
+    public static final String APPROACHING_TURN = "approaching_turn";
     public static final String YOUR_TURN = "your_turn";
     public static final String MISSED_BACK_IN_QUEUE = "missed_back_in_queue";
     public static final String MARKED_NO_SHOW = "marked_no_show";
     public static final String TICKET_TRANSFERRED = "ticket_transferred";
+    public static final String TICKET_FORFEITED = "ticket_forfeited";
     public static final String SERVICE_COMPLETED_FEEDBACK = "service_completed_feedback";
     public static final String APPOINTMENT_CONFIRMED = "appointment_confirmed";
     public static final String APPOINTMENT_REMINDER = "appointment_reminder";

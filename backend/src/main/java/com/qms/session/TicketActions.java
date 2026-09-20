@@ -46,9 +46,11 @@ public class TicketActions {
     /** Everyone with the permission, an agent for their own tickets only (§5.2); the service checks which are theirs. */
     static final String CANCEL = "hasAnyAuthority(T(com.qms.platform.security.Authorities).TICKET_CANCEL,"
             + " T(com.qms.platform.security.Authorities).TICKET_CANCEL + ':own')";
+    static final String CHECKIN = "hasAuthority(T(com.qms.platform.security.Authorities).TICKET_CHECKIN)";
 
     static final String PRIORITY_EVENT = "ticket.position_changed";
     static final String PRIORITY_AUDIT = "ticket.priority_changed";
+    private static final String STAFF_CHECK_IN_METHOD = "reception";
 
     private static final String STAFF = "staff";
     private static final int MAX_REASON_LENGTH = 1000;
@@ -123,6 +125,34 @@ public class TicketActions {
                 .withBefore(classSnapshot(ticket, before))
                 .withAfter(classSnapshot(ticket, target.id()))
                 .withReason(reason));
+        return change(ticket.id());
+    }
+
+    /**
+     * Reception marks a remote ticket present on the visitor's behalf (ticket 43, FR-MOB-021, §19.1
+     * {@code remote -> waiting}): the same move the visitor's own QR scan or geofence check-in makes. Nothing about
+     * the ticket's Score changes — it joins the callable queue exactly where it already ranked (FR-MOB-012).
+     */
+    @PreAuthorize(CHECKIN)
+    @Transactional
+    public TicketChange receptionCheckIn(UUID ticketId, Integer ifMatch) {
+        UUID user = currentUser.require().userId();
+        ActionTicket ticket = sessions.actionTicket(ticketId, true).orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND));
+        scope.requireSite(ticket.siteId());
+        scope.requireGroup(ticket.groupId());
+        if (!"remote".equals(ticket.state())) throw refusal("ticket_not_remote");
+        if (ifMatch != null && ifMatch != ticket.version()) throw refusal("version_mismatch");
+        if (!sessions.checkIn(ticket.id(), ticket.version())) throw refusal("version_mismatch");
+
+        Instant now = clock.instant();
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("method", STAFF_CHECK_IN_METHOD);
+        events.append(new TicketEvents.Transition(
+                ticket.id(), TicketTransition.CHECK_IN.eventType(), TicketTransition.CHECK_IN.from(), TicketTransition.CHECK_IN.to(), user, STAFF, null, payload, now, now));
+        audit.record(AuditEvent.of(TicketTransition.CHECK_IN.eventType(), "ticket", ticket.id())
+                .withBefore(Map.of("state", "remote"))
+                .withAfter(Map.of("state", TicketTransition.CHECK_IN.to()))
+                .withReason("reception_check_in"));
         return change(ticket.id());
     }
 

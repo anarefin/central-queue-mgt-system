@@ -320,6 +320,30 @@ class TicketRepository {
         return updated == 1;
     }
 
+    /**
+     * A remote ticket is marked present (ticket 43, FR-MOB-021, §19.1) and joins the callable queue exactly where it
+     * already ranked (FR-MOB-012): its Score adjustment is untouched. Guarded on {@code state = 'remote'}, so a race
+     * with the forfeit sweep or a second check-in attempt finds nothing to do.
+     */
+    boolean checkIn(UUID id) {
+        int updated = jdbc.update(
+                "UPDATE ticket SET state = 'waiting', remote_hold_started_at = NULL, version = version + 1 WHERE id = ? AND state = 'remote'", id);
+        return updated == 1;
+    }
+
+    /**
+     * A visitor's own "not ready yet" (ticket 43, FR-MOB-031), once per ticket while it is still remote: the Score
+     * adjustment is set absolutely, the same shape {@code SessionRepository#miss} already sets it in. Guarded on
+     * {@code delay_used = false} as well as the state, so a second attempt (a double click, two tabs) finds nothing
+     * to do rather than moving the ticket back twice.
+     */
+    boolean delay(UUID id, int scoreAdjustmentMinutes) {
+        int updated = jdbc.update(
+                "UPDATE ticket SET score_adjustment_minutes = ?, delay_used = true, version = version + 1 WHERE id = ? AND state = 'remote' AND delay_used = false",
+                scoreAdjustmentMinutes, id);
+        return updated == 1;
+    }
+
     record SiteInfo(UUID id, String defaultLanguage) {}
 
     Optional<SiteInfo> site(UUID siteId) {

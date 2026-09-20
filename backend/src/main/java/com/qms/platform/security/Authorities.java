@@ -22,6 +22,7 @@ public final class Authorities {
     public static final String TICKET_REPRIORITISE = "perm:ticket:reprioritise";
     public static final String TICKET_ISSUE = "perm:ticket:issue";
     public static final String TICKET_CANCEL = "perm:ticket:cancel";
+    public static final String TICKET_CHECKIN = "perm:ticket:checkin";
     public static final String AGENT_AVAILABILITY_FORCE_SET = "perm:agent_availability:force_set";
     public static final String DASHBOARD_VIEW_ALL = "perm:dashboard:view_all";
     public static final String DASHBOARD_VIEW_OWN_GROUPS = "perm:dashboard:view_own_groups";

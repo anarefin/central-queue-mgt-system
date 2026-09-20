@@ -77,4 +77,29 @@ class VisitorTicketController {
         String auth = request.keys() == null ? null : request.keys().auth();
         return actions.subscribeWebPush(ticket, request.endpoint(), p256dh, auth);
     }
+
+    /**
+     * Body: {@code method} is {@code "qr"} (a site QR, the drift fallback) or {@code "geofence"} (validated against
+     * the Site's own radius); {@code latitude}/{@code longitude} are required for {@code "geofence"} (ticket 43,
+     * FR-MOB-021, FR-MOB-024).
+     */
+    public record CheckInRequest(String method, Double latitude, Double longitude) {}
+
+    @PublicEndpoint("Anonymous visitor marks their own remote ticket present, by site QR or geofence (§19.1, FR-MOB-021)")
+    @PostMapping("/tickets/{id}/check-in")
+    public Map<String, Object> checkIn(
+            @PathVariable UUID id, @RequestHeader(value = SECRET_HEADER, required = false) String secret, @RequestBody(required = false) CheckInRequest request) {
+        var ticket = access.verify(id, secret).orElseThrow(() -> new ApiException(ErrorCode.UNAUTHENTICATED));
+        String method = request == null ? null : request.method();
+        Double latitude = request == null ? null : request.latitude();
+        Double longitude = request == null ? null : request.longitude();
+        return views.view(actions.checkIn(ticket, method, latitude, longitude));
+    }
+
+    @PublicEndpoint("Anonymous visitor asks once to be moved back on their own still-remote ticket (FR-MOB-031)")
+    @PostMapping("/tickets/{id}/delay")
+    public Map<String, Object> delay(@PathVariable UUID id, @RequestHeader(value = SECRET_HEADER, required = false) String secret) {
+        var ticket = access.verify(id, secret).orElseThrow(() -> new ApiException(ErrorCode.UNAUTHENTICATED));
+        return views.view(actions.delay(ticket));
+    }
 }

@@ -18,6 +18,13 @@ import org.springframework.boot.context.properties.bind.DefaultValue;
  *     predecessor's accrued wait, so the visitor is not sent to the back (FR-QUE-053)
  * @param appointmentBonusMinutes the fixed bonus a checked-in appointment's ticket carries in its score (FR-QUE-020,
  *     FR-APT-032, default 15); read once at issue and stored on the ticket, so a later change never moves one already waiting
+ * @param remoteForfeitBackPlaces how many places a {@code move_back} forfeit moves a still-remote ticket back, once the
+ *     arrival deadline elapses at the front of its queue (FR-MOB-022, ADR-0004)
+ * @param remoteDelayBackPlaces how many places a visitor's own delay moves their remote ticket back (FR-MOB-031, ADR-0004)
+ * @param approachingTurnThresholdTickets the approaching-turn notification fires once a remote ticket is at or inside this
+ *     many places from the front (FR-MOB-020)
+ * @param approachingTurnThresholdMinutes or once its estimated wait is at or under this many minutes, whichever comes first
+ *     (FR-MOB-020)
  */
 @ConfigurationProperties("qms.queue")
 public record QueueProperties(
@@ -29,7 +36,11 @@ public record QueueProperties(
         @DefaultValue("3") int holdLimit,
         @DefaultValue("90") int callTimeoutSeconds,
         Integer transferHeadstartMinutes,
-        @DefaultValue("15") int appointmentBonusMinutes) {
+        @DefaultValue("15") int appointmentBonusMinutes,
+        @DefaultValue("5") int remoteForfeitBackPlaces,
+        @DefaultValue("3") int remoteDelayBackPlaces,
+        @DefaultValue("3") int approachingTurnThresholdTickets,
+        @DefaultValue("15") int approachingTurnThresholdMinutes) {
 
     public QueueProperties {
         if (primaryLinkToleranceMinutes < 0) throw new IllegalArgumentException("qms.queue.primary-link-tolerance-minutes must not be negative");
@@ -40,5 +51,9 @@ public record QueueProperties(
         if (callTimeoutSeconds < 0) throw new IllegalArgumentException("qms.queue.call-timeout-seconds must not be negative");
         if (transferHeadstartMinutes != null && transferHeadstartMinutes < 0) throw new IllegalArgumentException("qms.queue.transfer-headstart-minutes must not be negative");
         if (appointmentBonusMinutes < 0) throw new IllegalArgumentException("qms.queue.appointment-bonus-minutes must not be negative");
+        if (remoteForfeitBackPlaces < 1) throw new IllegalArgumentException("qms.queue.remote-forfeit-back-places must be at least 1");
+        if (remoteDelayBackPlaces < 1) throw new IllegalArgumentException("qms.queue.remote-delay-back-places must be at least 1");
+        if (approachingTurnThresholdTickets < 0) throw new IllegalArgumentException("qms.queue.approaching-turn-threshold-tickets must not be negative");
+        if (approachingTurnThresholdMinutes < 0) throw new IllegalArgumentException("qms.queue.approaching-turn-threshold-minutes must not be negative");
     }
 }

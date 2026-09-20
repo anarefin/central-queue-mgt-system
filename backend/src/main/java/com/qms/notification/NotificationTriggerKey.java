@@ -19,19 +19,22 @@ import java.util.Set;
  * (FR-NTF-033), so a Phase 2 channel (SMS, native push) with nothing behind it yet costs nothing to leave catalogued
  * here already (FR-NTF-005, FR-INT-040).
  *
- * <p>{@code approaching_turn} and the operational-alert triggers still have no caller wired (they need wait-estimate
- * thresholds and live-dashboard monitoring that later tickets build — 46-47 for the operational alerts) but are
- * catalogued here with their defaults and variables so their templates and per-site/service settings can already be
- * configured (FR-NTF-010, FR-NTF-020). The appointment triggers (ticket 40, FR-APT-050) are fired from
- * {@code com.qms.appointment.AppointmentBookingService} and its reminder scheduler.
+ * <p>The operational-alert triggers still have no caller wired (they need live-dashboard monitoring that later
+ * tickets build — 46-47) but are catalogued here with their defaults and variables so their templates and per-site
+ * settings can already be configured (FR-NTF-010, FR-NTF-020). {@code approaching_turn} is fired by
+ * {@code com.qms.queue.RemoteArrivalService}'s own sweep (ticket 43, FR-MOB-020), the same wait-estimate threshold
+ * this catalogue already anticipated; {@code ticket_forfeited} likewise (ticket 43, FR-MOB-022). The appointment
+ * triggers (ticket 40, FR-APT-050) are fired from {@code com.qms.appointment.AppointmentBookingService} and its
+ * reminder scheduler.
  */
 public enum NotificationTriggerKey {
     TICKET_ISSUED(NotificationTriggerKeys.TICKET_ISSUED, List.of("web_push", "in_app"), true, false, ticketVars()),
-    APPROACHING_TURN("approaching_turn", List.of("web_push", "in_app"), true, false, ticketVars()),
+    APPROACHING_TURN(NotificationTriggerKeys.APPROACHING_TURN, List.of("web_push", "in_app"), true, false, ticketVars()),
     YOUR_TURN(NotificationTriggerKeys.YOUR_TURN, List.of("web_push", "in_app"), true, true, ticketVarsWithCounter()),
     MISSED_BACK_IN_QUEUE(NotificationTriggerKeys.MISSED_BACK_IN_QUEUE, List.of("web_push", "in_app"), true, true, ticketVars()),
     MARKED_NO_SHOW(NotificationTriggerKeys.MARKED_NO_SHOW, List.of("web_push", "in_app"), true, false, ticketVars()),
     TICKET_TRANSFERRED(NotificationTriggerKeys.TICKET_TRANSFERRED, List.of("web_push", "in_app"), true, false, ticketVars()),
+    TICKET_FORFEITED(NotificationTriggerKeys.TICKET_FORFEITED, List.of("web_push", "in_app"), true, false, ticketVars()),
     APPOINTMENT_CONFIRMED(NotificationTriggerKeys.APPOINTMENT_CONFIRMED, List.of("email", "web_push"), true, false, appointmentVars()),
     APPOINTMENT_REMINDER(NotificationTriggerKeys.APPOINTMENT_REMINDER, List.of("email", "web_push"), true, false, appointmentVars()),
     APPOINTMENT_RESCHEDULED_OR_CANCELLED(NotificationTriggerKeys.APPOINTMENT_RESCHEDULED_OR_CANCELLED, List.of("email", "web_push"), true, false, appointmentVars()),

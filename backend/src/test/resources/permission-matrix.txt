@@ -16,6 +16,7 @@ ticket:transfer                     | - | Y | Y | S | -
 ticket:reprioritise                 | Y | Y | Y | - | Y
 ticket:issue                        | - | - | - | - | Y
 ticket:cancel                       | Y | Y | Y | S | Y
+ticket:checkin                      | Y | Y | Y | - | Y
 agent_availability:force_set        | Y | Y | Y | - | -
 dashboard:view_all                  | Y | Y | - | - | -
 dashboard:view_own_groups           | Y | Y | Y | S | Y

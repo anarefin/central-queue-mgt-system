@@ -41,6 +41,7 @@ import {
   type KioskIssueTicketInput,
   type KioskVisitorIdentity,
   type PushSubscriptionInput,
+  type CheckInInput,
   type QueueSnapshot,
   type ReprioritiseInput,
   type SiteServices,
@@ -280,6 +281,24 @@ export class ApiClient {
     /** Registers the visitor's own device for Web Push on this ticket (ticket 39, §18.3, FR-INT-040). */
     pushSubscribe: (id: string, credential: string, subscription: PushSubscriptionInput) =>
       this.request<{ subscribed: boolean }>("POST", `/tickets/${id}/push-subscription`, subscription, {
+        anonymous: true,
+        headers: { [TICKET_CREDENTIAL_HEADER]: credential },
+      }),
+    /**
+     * A visitor marks their own remote ticket present, by site QR or geofence (ticket 43, FR-MOB-021, §19.1). Refused
+     * with `conflict` / `ticket_not_remote`, `too_far` or `geofence_not_configured`.
+     */
+    checkIn: (id: string, credential: string, input: CheckInInput) =>
+      this.request<VisitorTicketView>("POST", `/tickets/${id}/check-in`, input, {
+        anonymous: true,
+        headers: { [TICKET_CREDENTIAL_HEADER]: credential },
+      }),
+    /**
+     * A visitor's own "not ready yet", once per ticket while it is still remote, if the Service allows it (ticket 43,
+     * FR-MOB-031). Refused with `conflict` / `delay_not_allowed` or `delay_already_used`.
+     */
+    delay: (id: string, credential: string) =>
+      this.request<VisitorTicketView>("POST", `/tickets/${id}/delay`, undefined, {
         anonymous: true,
         headers: { [TICKET_CREDENTIAL_HEADER]: credential },
       }),

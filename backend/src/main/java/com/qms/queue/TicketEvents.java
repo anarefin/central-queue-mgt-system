@@ -65,7 +65,8 @@ public class TicketEvents {
             "ticket.missed", NotificationTriggerKeys.MISSED_BACK_IN_QUEUE,
             "ticket.no_show", NotificationTriggerKeys.MARKED_NO_SHOW,
             "ticket.transferred", NotificationTriggerKeys.TICKET_TRANSFERRED,
-            "ticket.completed", NotificationTriggerKeys.SERVICE_COMPLETED_FEEDBACK);
+            "ticket.completed", NotificationTriggerKeys.SERVICE_COMPLETED_FEEDBACK,
+            "ticket.forfeited", NotificationTriggerKeys.TICKET_FORFEITED);
 
     private final JdbcTemplate jdbc;
     private final JsonMapper mapper;
