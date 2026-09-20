@@ -4,7 +4,7 @@
 
 **Blocked by:** 38 — Notification pipeline and in-app channel; 37 — Visitor ticket page (PWA)
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [x] VAPID key pair generated per installation, secret kept outside source control (§14.1, NFR-SEC-013)
 - [x] Service worker handles push and notification click back to the ticket page (ADR-0011)

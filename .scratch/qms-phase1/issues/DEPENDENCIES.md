@@ -40,7 +40,7 @@
 36-appointment-no-shows                    33              done     n/a*     14 files, +768 −7   8ab59a0..b8db6a9
 37-visitor-ticket-page-pwa                 11,19           done     n/a*     59 files, +2060 −65 ab00088..cc2e211
 38-notification-pipeline-in-app            11,02           done     67m      54 files, +3480 −20 cbaf65c..22c0e00
-39-web-push-channel                        38,37           todo     —        —                   —
+39-web-push-channel                        38,37           done     35m      33 files, +1927 −16 bb5fb5f..9b06532
 40-email-channel-and-appointment-messages  38,34           todo     —        —                   —
 41-visitor-otp-login-self-service          37,40,34        todo     —        —                   —
 42-remote-join                             37,21           todo     —        —                   —
@@ -74,3 +74,6 @@
 # * 37: mid-flight background security review flagged a secret-in-URL issue (ticket secret in
 #   query string); relayed to the worker before commit, fixed (fragment + replaceState +
 #   no-referrer) and verified in the landed diff.
+# * 39: mid-flight background security review flagged an SSRF issue (unvalidated push
+#   subscription endpoint URL); relayed to the worker before commit, fixed
+#   (PushEndpointSecurity host/scheme validation) and verified in the landed diff.
