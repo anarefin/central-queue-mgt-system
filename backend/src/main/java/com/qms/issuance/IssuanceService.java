@@ -50,6 +50,7 @@ public class IssuanceService {
     private static final int SECRET_BYTES = 32;
     static final String ISSUED = "ticket.issued";
     static final String WAITING = "waiting";
+    static final String REMOTE = "remote";
 
     private final TicketRepository tickets;
     private final SequenceBlocks sequences;
@@ -95,7 +96,24 @@ public class IssuanceService {
         Instant now = clock.instant();
         UUID visitId = UUID.randomUUID();
         tickets.insertVisit(visitId, target.siteId(), now);
-        return issue(target, command, visitId, now);
+        return issue(target, command, visitId, now, WAITING, null, null);
+    }
+
+    /**
+     * A visitor's remote join (ticket 42, SRS §13.2, FR-MOB-010..012): the same channel-agnostic pipeline every other
+     * issuance goes through — numbering, priority, the Visit and the event log — except the ticket starts {@code remote}
+     * instead of {@code waiting} (queued and accruing wait identically, but never callable until it is checked in, ticket
+     * 43) and the gate additionally requires the Service's virtual-queue flag, its distance and remote-share caps and its
+     * join window in place of the usual "must already be open" ({@link IssuanceGate#forRemoteJoin}). {@code latitude} and
+     * {@code longitude} are the visitor's own device position, required only when the Service's policy sets a distance cap.
+     */
+    @Transactional
+    public TicketResponse issueRemote(IssueCommand command, Double latitude, Double longitude) {
+        ServiceTarget target = tickets.serviceTarget(command.serviceId()).orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND));
+        Instant now = clock.instant();
+        UUID visitId = UUID.randomUUID();
+        tickets.insertVisit(visitId, target.siteId(), now);
+        return issue(target, command, visitId, now, REMOTE, latitude, longitude);
     }
 
     /**
@@ -109,7 +127,7 @@ public class IssuanceService {
     TicketResponse issueIntoVisit(IssueCommand command, UUID visitId) {
         ServiceTarget target = tickets.serviceTarget(command.serviceId()).orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND));
         if (command.actorType() == ActorType.STAFF) scope.requireSite(target.siteId());
-        return issue(target, command, visitId, clock.instant());
+        return issue(target, command, visitId, clock.instant(), WAITING, null, null);
     }
 
     /**
@@ -153,7 +171,7 @@ public class IssuanceService {
         UUID ticketId = UUID.randomUUID();
         tickets.insertTicket(new NewTicket(
                 ticketId, tokenNumber, sequence, resetKey, target, tickets.waitingZone(target.serviceId()), visitId, Channels.APPOINTMENT_CHECKIN, now, command.queuedAt(),
-                hash(secret), priorityClassId, command.visitorId(), null, null, null, queueProperties.appointmentBonusMinutes()));
+                hash(secret), priorityClassId, command.visitorId(), null, null, null, queueProperties.appointmentBonusMinutes(), WAITING));
 
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("origin_channel", Channels.APPOINTMENT_CHECKIN);
@@ -169,10 +187,14 @@ public class IssuanceService {
         return views.of(tickets.ticket(ticketId).orElseThrow()).withSecret(secret);
     }
 
-    private TicketResponse issue(ServiceTarget target, IssueCommand command, UUID visitId, Instant now) {
+    private TicketResponse issue(ServiceTarget target, IssueCommand command, UUID visitId, Instant now, String initialState, Double latitude, Double longitude) {
         gate.beforeService(command, now);
         requireIssuable(target, command.originChannel());
-        gate.forService(target, command, now);
+        if (REMOTE.equals(initialState)) {
+            gate.forRemoteJoin(target, command, now, latitude, longitude);
+        } else {
+            gate.forService(target, command, now);
+        }
         requireVisitorIdentifier(target, command.visitorId());
         requireValidCustomLevel(target.groupId(), command.customLevelId());
         requireOnDutyAgent(target.groupId(), command.targetAgentId());
@@ -201,12 +223,12 @@ public class IssuanceService {
         UUID ticketId = UUID.randomUUID();
         tickets.insertTicket(new NewTicket(
                 ticketId, tokenNumber, sequence, resetKey, target, tickets.waitingZone(target.serviceId()), visitId, command.originChannel(), now, now, hash(secret), priorityClassId,
-                command.visitorId(), blank(command.purposeNote()), command.targetAgentId(), command.customLevelId(), 0));
+                command.visitorId(), blank(command.purposeNote()), command.targetAgentId(), command.customLevelId(), 0, initialState));
         events.append(new TicketEvents.Transition(
                 ticketId,
                 ISSUED,
                 null,
-                WAITING,
+                initialState,
                 command.actorId(),
                 command.actorType().wire(),
                 null,

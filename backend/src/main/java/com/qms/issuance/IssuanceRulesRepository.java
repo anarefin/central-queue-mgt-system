@@ -41,6 +41,14 @@ class IssuanceRulesRepository {
 
     record Settings(boolean maintenanceEnabled, Map<String, String> maintenanceMessage, int deviceLimitPerMinute, int visitorLimitPerHour) {}
 
+    /** A Service's remote-join policy (ticket 42, FR-MOB-011). No row means the virtual-queue flag is off. */
+    record RemoteRule(boolean virtualQueueEnabled, Integer maxDistanceMeters, int maxRemoteSharePct, int joinWindowMinutes, int arrivalDeadlineMinutes) {
+        static final RemoteRule NONE = new RemoteRule(false, null, 40, 30, 15);
+    }
+
+    /** A Site's own coordinates (ticket 42, FR-MOB-011), for the max-distance leg of a remote join. */
+    record SiteLocation(double latitude, double longitude) {}
+
     private static final RowMapper<HolidayRow> HOLIDAYS = (rs, i) -> new HolidayRow(
             rs.getObject("id", UUID.class),
             rs.getObject("site_id", UUID.class),
@@ -164,6 +172,61 @@ class IssuanceRulesRepository {
                         + " cap_message_i18n = EXCLUDED.cap_message_i18n, duplicate_policy = EXCLUDED.duplicate_policy,"
                         + " require_agent = EXCLUDED.require_agent, updated_at = EXCLUDED.updated_at",
                 serviceId, rule.dailyCap(), json(rule.capMessage()), rule.duplicatePolicy(), rule.requireAgent(), ts(now));
+    }
+
+    // ---- remote join (ticket 42, FR-MOB-010..012) --------------------------------------------------------------
+
+    RemoteRule remoteRule(UUID serviceId) {
+        return jdbc.query(
+                        "SELECT virtual_queue_enabled, max_distance_m, max_remote_share_pct, join_window_minutes, arrival_deadline_minutes"
+                                + " FROM service_remote_rule WHERE service_id = ?",
+                        (rs, i) -> new RemoteRule(
+                                rs.getBoolean("virtual_queue_enabled"),
+                                rs.getObject("max_distance_m", Integer.class),
+                                rs.getInt("max_remote_share_pct"),
+                                rs.getInt("join_window_minutes"),
+                                rs.getInt("arrival_deadline_minutes")),
+                        serviceId)
+                .stream().findFirst().orElse(RemoteRule.NONE);
+    }
+
+    void saveRemoteRule(UUID serviceId, RemoteRule rule, Instant now) {
+        jdbc.update(
+                "INSERT INTO service_remote_rule (service_id, virtual_queue_enabled, max_distance_m, max_remote_share_pct, join_window_minutes,"
+                        + " arrival_deadline_minutes, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT (service_id) DO UPDATE SET"
+                        + " virtual_queue_enabled = EXCLUDED.virtual_queue_enabled, max_distance_m = EXCLUDED.max_distance_m,"
+                        + " max_remote_share_pct = EXCLUDED.max_remote_share_pct, join_window_minutes = EXCLUDED.join_window_minutes,"
+                        + " arrival_deadline_minutes = EXCLUDED.arrival_deadline_minutes, updated_at = EXCLUDED.updated_at",
+                serviceId, rule.virtualQueueEnabled(), rule.maxDistanceMeters(), rule.maxRemoteSharePct(), rule.joinWindowMinutes(),
+                rule.arrivalDeadlineMinutes(), ts(now));
+    }
+
+    Optional<SiteLocation> siteLocation(UUID siteId) {
+        return jdbc.query(
+                        "SELECT latitude, longitude FROM site_location WHERE site_id = ?",
+                        (rs, i) -> new SiteLocation(rs.getDouble("latitude"), rs.getDouble("longitude")),
+                        siteId)
+                .stream().findFirst();
+    }
+
+    void saveSiteLocation(UUID siteId, SiteLocation location, Instant now) {
+        jdbc.update(
+                "INSERT INTO site_location (site_id, latitude, longitude, updated_at) VALUES (?, ?, ?, ?)"
+                        + " ON CONFLICT (site_id) DO UPDATE SET latitude = EXCLUDED.latitude, longitude = EXCLUDED.longitude, updated_at = EXCLUDED.updated_at",
+                siteId, location.latitude(), location.longitude(), ts(now));
+    }
+
+    /** Tickets of a Service still in the queue: waiting, paused or remote (FR-MOB-011's "share of the queue"). */
+    int activeQueueCount(UUID serviceId) {
+        Integer count = jdbc.queryForObject(
+                "SELECT count(*) FROM ticket WHERE service_id = ? AND state IN ('waiting', 'paused', 'remote')", Integer.class, serviceId);
+        return count == null ? 0 : count;
+    }
+
+    /** Of those, how many are still remote (not yet checked in). */
+    int remoteCount(UUID serviceId) {
+        Integer count = jdbc.queryForObject("SELECT count(*) FROM ticket WHERE service_id = ? AND state = 'remote'", Integer.class, serviceId);
+        return count == null ? 0 : count;
     }
 
     // ---- settings ---------------------------------------------------------------------------------------------

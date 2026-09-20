@@ -131,4 +131,39 @@ class OpeningHoursTest {
         assertThat(local.getDayOfWeek()).isEqualTo(DayOfWeek.SUNDAY);
         assertThat(reason(OpeningHours.check(local, officeWeek(), null, 0))).isEqualTo("outside_hours");
     }
+
+    // ---- remote join's own early window (ticket 42, FR-MOB-011) ------------------------------------------------
+
+    @Test
+    void insideTheEarlyWindowBeforeOpeningIsOpen() {
+        assertThat(reason(OpeningHours.check(at("2026-09-20", "08:30"), officeWeek(), null, 0, 30))).isEqualTo("open");
+        assertThat(reason(OpeningHours.check(at("2026-09-20", "09:00"), officeWeek(), null, 0, 30))).isEqualTo("open");
+    }
+
+    @Test
+    void beforeTheEarlyWindowIsTooEarlyNotOutsideHours() {
+        Optional<Refusal> refusal = OpeningHours.check(at("2026-09-20", "08:29"), officeWeek(), null, 0, 30);
+
+        assertThat(refusal).isPresent();
+        assertThat(refusal.get().reason()).isEqualTo("too_early");
+    }
+
+    @Test
+    void withNoEarlyWindowBeforeOpeningIsStillOutsideHoursNotTooEarly() {
+        assertThat(reason(OpeningHours.check(at("2026-09-20", "08:59"), officeWeek(), null, 0, 0))).isEqualTo("outside_hours");
+    }
+
+    @Test
+    void theEarlyWindowNeverExtendsPastClosingOrLiftsTheCutOff() {
+        assertThat(reason(OpeningHours.check(at("2026-09-20", "17:00"), officeWeek(), null, 0, 30))).isEqualTo("outside_hours");
+        assertThat(reason(OpeningHours.check(at("2026-09-20", "16:30"), officeWeek(), null, 30, 30))).isEqualTo("past_cutoff");
+    }
+
+    @Test
+    void anEarlyWindowLongerThanTheGapSinceMidnightClampsAtMidnightRatherThanWrapping() {
+        Map<DayOfWeek, Day> earlyOpener = new EnumMap<>(DayOfWeek.class);
+        earlyOpener.put(DayOfWeek.SUNDAY, new Day(LocalTime.of(0, 10), LocalTime.of(17, 0)));
+
+        assertThat(reason(OpeningHours.check(at("2026-09-20", "00:00"), earlyOpener, null, 0, 30))).isEqualTo("open");
+    }
 }

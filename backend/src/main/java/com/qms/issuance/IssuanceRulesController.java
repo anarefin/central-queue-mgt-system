@@ -102,6 +102,30 @@ public class IssuanceRulesController {
         return rules.setServiceRule(id, request);
     }
 
+    @PreAuthorize(IssuanceRulesService.CATALOGUE)
+    @GetMapping("/services/{id}/remote-rule")
+    public IssuanceRulesViews.RemoteRule remoteRule(@PathVariable UUID id) {
+        return rules.remoteRule(id);
+    }
+
+    @PreAuthorize(IssuanceRulesService.CATALOGUE)
+    @PutMapping("/services/{id}/remote-rule")
+    public IssuanceRulesViews.RemoteRule setRemoteRule(@PathVariable UUID id, @RequestBody(required = false) IssuanceRulesViews.RemoteRule request) {
+        return rules.setRemoteRule(id, request);
+    }
+
+    @PreAuthorize(IssuanceRulesService.SITES)
+    @GetMapping("/sites/{siteId}/location")
+    public IssuanceRulesViews.SiteLocation siteLocation(@PathVariable UUID siteId) {
+        return rules.siteLocation(siteId);
+    }
+
+    @PreAuthorize(IssuanceRulesService.SITES)
+    @PutMapping("/sites/{siteId}/location")
+    public IssuanceRulesViews.SiteLocation setSiteLocation(@PathVariable UUID siteId, @RequestBody(required = false) IssuanceRulesViews.SiteLocation request) {
+        return rules.setSiteLocation(siteId, request);
+    }
+
     @PreAuthorize(IssuanceRulesService.SITES)
     @GetMapping("/issuance-settings")
     public IssuanceRulesViews.Settings settings() {

@@ -171,7 +171,8 @@ public class TicketEvents {
     private void publish(Transition transition) {
         var facts = jdbc.queryForMap("SELECT service_id, token_number, site_id, visitor_id FROM ticket WHERE id = ?", transition.ticketId());
         UUID serviceId = (UUID) facts.get("service_id");
-        Integer waiting = jdbc.queryForObject("SELECT count(*) FROM ticket WHERE service_id = ? AND state IN ('waiting', 'paused')", Integer.class, serviceId);
+        // Same "queued" definition as QueueReads: a remote ticket (ticket 42) counts too (FR-MOB-012).
+        Integer waiting = jdbc.queryForObject("SELECT count(*) FROM ticket WHERE service_id = ? AND state IN ('waiting', 'paused', 'remote')", Integer.class, serviceId);
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("ticket_id", transition.ticketId().toString());
         data.put("token_number", facts.get("token_number"));

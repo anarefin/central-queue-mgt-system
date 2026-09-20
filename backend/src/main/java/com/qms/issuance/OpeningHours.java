@@ -30,6 +30,8 @@ final class OpeningHours {
     static final String OUTSIDE_HOURS = "outside_hours";
     static final String HOLIDAY = "holiday";
     static final String PAST_CUTOFF = "past_cutoff";
+    /** Remote join only (ticket 42, FR-MOB-011): still before the day's opening time even with its join window allowed for. */
+    static final String TOO_EARLY = "too_early";
 
     private static final DateTimeFormatter OFFSET_TIME = DateTimeFormatter.ISO_OFFSET_DATE_TIME;
 
@@ -42,6 +44,16 @@ final class OpeningHours {
      * @param cutoffMinutes minutes before closing at which the channel stops issuing; 0 for none
      */
     static Optional<Refusal> check(ZonedDateTime local, Map<DayOfWeek, Day> week, Holiday holiday, int cutoffMinutes) {
+        return check(local, week, holiday, cutoffMinutes, 0);
+    }
+
+    /**
+     * Remote join (ticket 42, FR-MOB-011) may join up to {@code earlyMinutes} before the day's opening time — "stops
+     * overnight queue-camping" past that, but does not itself refuse before then. Cut-offs (a channel stopping before
+     * closing) never apply before the Service has even opened, so they are only checked once {@code now} is at or
+     * after the opening time. Every other caller passes 0, keeping their own behaviour exactly as it was.
+     */
+    static Optional<Refusal> check(ZonedDateTime local, Map<DayOfWeek, Day> week, Holiday holiday, int cutoffMinutes, int earlyMinutes) {
         if (holiday != null && !holiday.halfDay()) {
             Map<String, Object> details = new LinkedHashMap<>();
             details.put("reason", HOLIDAY);
@@ -63,7 +75,12 @@ final class OpeningHours {
         if (close == null) return Optional.empty();
 
         LocalTime now = local.toLocalTime();
-        if (now.isBefore(open) || !now.isBefore(close)) return Optional.of(outside());
+        if (!now.isBefore(close)) return Optional.of(outside());
+        if (now.isBefore(open)) {
+            LocalTime earliest = earlyMinutes <= 0 ? open : earlier(open, earlyMinutes);
+            if (now.isBefore(earliest)) return Optional.of(earlyMinutes > 0 ? new Refusal(TOO_EARLY, Map.of("reason", TOO_EARLY)) : outside());
+            return Optional.empty(); // Inside the join window, ahead of opening; a cut-off before closing makes no sense yet.
+        }
 
         int cutoffAt = close.getHour() * 60 + close.getMinute() - cutoffMinutes;
         if (cutoffMinutes > 0 && now.getHour() * 60 + now.getMinute() >= cutoffAt) {
@@ -75,6 +92,12 @@ final class OpeningHours {
             return Optional.of(new Refusal(PAST_CUTOFF, details));
         }
         return Optional.empty();
+    }
+
+    /** {@code minutes} before {@code time}, clamped to midnight rather than wrapping into the previous day. */
+    private static LocalTime earlier(LocalTime time, int minutes) {
+        int atMinute = time.getHour() * 60 + time.getMinute() - minutes;
+        return atMinute <= 0 ? LocalTime.MIN : LocalTime.of(atMinute / 60, atMinute % 60);
     }
 
     private static Refusal outside() {

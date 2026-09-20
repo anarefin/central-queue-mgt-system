@@ -45,4 +45,15 @@ public final class IssuanceRulesViews {
             @JsonProperty("maintenance_message_i18n") Map<String, String> maintenanceMessageI18n,
             @JsonProperty("device_limit_per_minute") Integer deviceLimitPerMinute,
             @JsonProperty("visitor_limit_per_hour") Integer visitorLimitPerHour) {}
+
+    /** A Service's remote-join policy (ticket 42, FR-MOB-010..011). {@code max_distance_m} null means the distance check is off. */
+    public record RemoteRule(
+            @JsonProperty("virtual_queue_enabled") Boolean virtualQueueEnabled,
+            @JsonProperty("max_distance_m") Integer maxDistanceMeters,
+            @JsonProperty("max_remote_share_pct") Integer maxRemoteSharePct,
+            @JsonProperty("join_window_minutes") Integer joinWindowMinutes,
+            @JsonProperty("arrival_deadline_minutes") Integer arrivalDeadlineMinutes) {}
+
+    /** A Site's own coordinates (ticket 42, FR-MOB-011), for the max-distance leg of a remote join. */
+    public record SiteLocation(Double latitude, Double longitude) {}
 }

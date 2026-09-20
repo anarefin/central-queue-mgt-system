@@ -1,6 +1,7 @@
 import { ApiRequestError, isApiErrorCode, type ApiErrorBody } from "./errors";
 import type { Appointment, Availability, BookAppointmentInput, RescheduleAppointmentInput } from "./appointments";
 import type { AppointmentSummary, SavedSite, TicketSummary, VisitorMe, VisitorTokenResponse } from "./visitor-account";
+import type { RemoteJoinInput, RemoteJoinPolicy } from "./remote-join";
 import type {
   CounterLink,
   CounterOption,
@@ -331,6 +332,18 @@ export class ApiClient {
     savedSites: () => this.request<Items<SavedSite>>("GET", "/visitors/me/saved-sites"),
     saveSite: (siteId: string) => this.request<void>("POST", `/visitors/me/saved-sites/${siteId}`),
     unsaveSite: (siteId: string) => this.request<void>("DELETE", `/visitors/me/saved-sites/${siteId}`),
+  };
+
+  /**
+   * A registered visitor's own remote join of a Service's queue, before arriving (ticket 42, SRS §13.2,
+   * FR-MOB-010..012). `policy` is what the join screen shows before the visitor commits (FR-MOB-023); `join` needs an
+   * `Idempotency-Key`, the same guarantee `tickets.issue` already gives reception, so a retry after a lost response
+   * cannot join twice. The result is a `Ticket`, the same shape any other channel's issuance already returns.
+   */
+  readonly remoteJoin = {
+    policy: (serviceId: string) => this.request<RemoteJoinPolicy>("GET", `/remote-join/${serviceId}`),
+    join: (serviceId: string, input: RemoteJoinInput, idempotencyKey: string) =>
+      this.request<Ticket>("POST", `/remote-join/${serviceId}`, input, { headers: { "Idempotency-Key": idempotencyKey } }),
   };
 
   /**

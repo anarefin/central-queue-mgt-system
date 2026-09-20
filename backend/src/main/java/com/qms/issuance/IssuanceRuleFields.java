@@ -112,6 +112,30 @@ final class IssuanceRuleFields {
                 Boolean.TRUE.equals(given.maintenanceEnabled()), message("maintenance_message_i18n", given.maintenanceMessageI18n(), installed), device, visitor);
     }
 
+    /** A Service's remote-join policy (ticket 42, FR-MOB-011): the flag itself, the optional distance cap, and the three bounds. */
+    static IssuanceRulesRepository.RemoteRule remoteRule(IssuanceRulesViews.RemoteRule given) {
+        if (given == null) throw invalid("virtual_queue_enabled", "NotNull");
+        Integer distance = given.maxDistanceMeters();
+        if (distance != null && distance < 1) throw invalid("max_distance_m", "Range");
+        int share = given.maxRemoteSharePct() == null ? 40 : given.maxRemoteSharePct();
+        if (share < 1 || share > 100) throw invalid("max_remote_share_pct", "Range");
+        int window = given.joinWindowMinutes() == null ? 30 : given.joinWindowMinutes();
+        if (window < 0 || window > 1440) throw invalid("join_window_minutes", "Range");
+        int deadline = given.arrivalDeadlineMinutes() == null ? 15 : given.arrivalDeadlineMinutes();
+        if (deadline < 1 || deadline > 1440) throw invalid("arrival_deadline_minutes", "Range");
+        return new IssuanceRulesRepository.RemoteRule(Boolean.TRUE.equals(given.virtualQueueEnabled()), distance, share, window, deadline);
+    }
+
+    /** A Site's own coordinates (ticket 42, FR-MOB-011): plain WGS84 latitude/longitude. */
+    static IssuanceRulesRepository.SiteLocation siteLocation(IssuanceRulesViews.SiteLocation given) {
+        if (given == null || given.latitude() == null || given.longitude() == null) throw invalid("latitude", "NotNull");
+        double lat = given.latitude();
+        double lng = given.longitude();
+        if (lat < -90 || lat > 90) throw invalid("latitude", "Range");
+        if (lng < -180 || lng > 180) throw invalid("longitude", "Range");
+        return new IssuanceRulesRepository.SiteLocation(lat, lng);
+    }
+
     /** A per-language message: only installed languages, blank texts dropped. No message at all is allowed: the built-in text is used. */
     static Map<String, String> message(String field, Map<String, String> given, Collection<String> installed) {
         Map<String, String> kept = new LinkedHashMap<>();

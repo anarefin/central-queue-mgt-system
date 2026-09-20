@@ -16,10 +16,12 @@ import org.springframework.stereotype.Repository;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * Reads of a service's queue at one site. A queue is logical (FR-QUE-001): it is the set of {@code waiting} and
- * {@code paused} tickets of a service, read through the partial index on (service, state); a ticket never moves
+ * Reads of a service's queue at one site. A queue is logical (FR-QUE-001): it is the set of {@code waiting},
+ * {@code paused} and {@code remote} tickets of a service (a remote join, ticket 42, accrues its place and estimate
+ * identically to a waiting ticket, FR-MOB-012), read through the partial index on (service, state); a ticket never moves
  * between tables, only its state changes. The order comes from {@link QueueEngine} under the strategy of the service's
  * group (FR-QUE-021), computed on read from each ticket's class and the clock, so nothing about the order is stored.
+ * {@link #callableHead} narrows to {@code waiting} alone, so a remote ticket ranked here is still never drawn.
  */
 @Repository
 public class QueueReads {
@@ -47,7 +49,7 @@ public class QueueReads {
     /** A queue in order under one strategy at one moment. */
     public record Ordered(QueueStrategy strategy, Instant computedAt, List<Entry> entries) {}
 
-    private static final String WAITING = "state IN ('waiting', 'paused')";
+    private static final String WAITING = "state IN ('waiting', 'paused', 'remote')";
 
     private final JdbcTemplate jdbc;
     private final JsonMapper mapper;

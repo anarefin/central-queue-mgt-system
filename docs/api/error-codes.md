@@ -107,5 +107,26 @@ id, both answer `unauthenticated`, never `not_found` or `forbidden`, so a guess 
 `waiting` or `paused` (called, serving, held, or already closed) — a narrower rule than a staff cancel's `ticket_not_active`, since a visitor
 may never cancel a ticket once someone has started calling it.
 
+A registered visitor's own remote join (`GET`/`POST /remote-join/{serviceId}`, §13.2, ticket 42, FR-MOB-010..012)
+needs `hasRole('VISITOR')`, the same JWT ticket 41's OTP sign-in mints; an unknown Service is `not_found`. `POST`
+needs an `Idempotency-Key` exactly like `POST /tickets` does. It refuses with `conflict` and `details.reason`
+`virtual_queue_disabled` (the Service has no remote-join policy, or its flag is off) before any other remote-only
+check runs; once the flag is on, every reason `POST /tickets` itself can refuse with still applies (`service_closed`
+`outside_hours`/`holiday`/`past_cutoff`/`cap_reached`, `unavailable`/`maintenance`, `conflict`
+`service_inactive`/`channel_not_allowed`/`no_agent_rostered`/`duplicate_ticket`, `rate_limited`), plus three more of
+its own: `service_closed` `too_early` (before the Service's configured join window ahead of opening), `conflict`
+`too_far` (`details.distance_m`, `details.max_distance_m`; farther from the Site than the Service's configured
+distance cap) and `conflict` `remote_share_full` (`details.max_remote_share_pct`; remote tickets already hold their
+allowed share of the queue). A distance cap with no Site coordinates set is `conflict` `site_location_unset`
+(an administrator has not configured the Site's location yet, so distance cannot be checked); one with no
+`latitude`/`longitude` in the request body is `validation_failed` naming `latitude`. The joined Ticket is the same
+shape `POST /tickets` itself returns, `origin_channel: "mobile"` and `state: "remote"`.
+
+A Service's remote-join policy (`GET`/`PUT /services/{id}/remote-rule`) and a Site's own coordinates (`GET`/`PUT
+/sites/{siteId}/location`) are administered exactly like every other issuance rule above: `config:service_catalogue`
+and `config:org_sites_zones` respectively, an unknown Service or Site is `not_found`, and `validation_failed` covers
+`max_distance_m` (must be positive when given), `max_remote_share_pct` (1 to 100), `join_window_minutes` /
+`arrival_deadline_minutes` (0 to 1440, at least 1 for the deadline), and `latitude` / `longitude` (WGS84 range).
+
 The client library also synthesises two codes that never come from the server: `network_error` (no response) and
 `unexpected_response` (a reply that is not a §20.3 envelope, such as a proxy error page).

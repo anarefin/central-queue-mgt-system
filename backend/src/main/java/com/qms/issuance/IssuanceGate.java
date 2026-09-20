@@ -54,12 +54,22 @@ class IssuanceGate {
 
     /** What the Service and its Site say about this moment, once the Service is known to be able to issue at all. */
     void forService(ServiceTarget target, IssueCommand command, Instant now) {
+        forService(target, command, now, 0);
+    }
+
+    /**
+     * {@code earlyMinutes} lets a caller join up to that long before the Service's opening time (ticket 42's own remote
+     * join, FR-MOB-011's join window); every other caller passes 0 through {@link #forService(ServiceTarget, IssueCommand,
+     * Instant)}, which behaves exactly as it always did.
+     */
+    private void forService(ServiceTarget target, IssueCommand command, Instant now, int earlyMinutes) {
         ZonedDateTime local = now.atZone(ZoneId.of(target.timezone()));
         OpeningHours.check(
                         local,
                         rules.week(target.siteId(), target.serviceId()),
                         rules.holidayOn(target.siteId(), local.toLocalDate()).map(h -> new OpeningHours.Holiday(h.name(), h.halfDay(), h.closeTime())).orElse(null),
-                        rules.cutoff(target.siteId(), command.originChannel()))
+                        rules.cutoff(target.siteId(), command.originChannel()),
+                        earlyMinutes)
                 .ifPresent(refusal -> {
                     throw closed(refusal.reason(), refusal.details(), Map.of());
                 });
@@ -71,6 +81,39 @@ class IssuanceGate {
             boolean block = "block".equals(rule.duplicatePolicy());
             // A warning is shown once; the caller who has seen it and still means it asks again with the confirmation.
             if (block || !command.confirmDuplicate()) throw conflict("duplicate_ticket", Map.of("policy", rule.duplicatePolicy()));
+        }
+    }
+
+    /**
+     * The extra checks a remote join must pass beyond a normal issuance (ticket 42, FR-MOB-010..011): the Service's
+     * virtual-queue flag must be on, and — once it is — everything {@link #forService} already checks applies too, with
+     * its join window in place of the usual "must already be open" (FR-MOB-011's "queue-camping" bound instead), plus the
+     * Service's own maximum distance from its Site and the maximum share of the queue a remote ticket may hold.
+     */
+    void forRemoteJoin(ServiceTarget target, IssueCommand command, Instant now, Double latitude, Double longitude) {
+        IssuanceRulesRepository.RemoteRule rule = rules.remoteRule(target.serviceId());
+        if (!rule.virtualQueueEnabled()) throw conflict("virtual_queue_disabled", Map.of());
+
+        forService(target, command, now, rule.joinWindowMinutes());
+
+        if (rule.maxDistanceMeters() != null) {
+            IssuanceRulesRepository.SiteLocation site = rules.siteLocation(target.siteId()).orElseThrow(() -> conflict("site_location_unset", Map.of()));
+            if (latitude == null || longitude == null) {
+                throw new ApiException(ErrorCode.VALIDATION_FAILED, Map.of("fields", List.of(Map.of("field", "latitude", "code", "required"))));
+            }
+            double meters = GeoDistance.metersBetween(site.latitude(), site.longitude(), latitude, longitude);
+            if (meters > rule.maxDistanceMeters()) {
+                throw conflict("too_far", Map.of("max_distance_m", rule.maxDistanceMeters(), "distance_m", Math.round(meters)));
+            }
+        }
+
+        // Has the queue's remote share (before this join) already reached the cap? An empty queue has no share yet, so
+        // the very first remote join is always let through — the cap only ever stops a later one, once remote tickets
+        // already make up at least their allowed fraction of the queue, until a walk-in ticket widens it again.
+        int total = rules.activeQueueCount(target.serviceId());
+        int remote = rules.remoteCount(target.serviceId());
+        if (total > 0 && (long) remote * 100 >= (long) rule.maxRemoteSharePct() * total) {
+            throw conflict("remote_share_full", Map.of("max_remote_share_pct", rule.maxRemoteSharePct()));
         }
     }
 

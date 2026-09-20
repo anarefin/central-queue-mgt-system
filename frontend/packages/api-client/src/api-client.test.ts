@@ -587,3 +587,36 @@ describe("ApiClient service catalogue", () => {
     expect(newIdempotencyKey()).not.toBe(newIdempotencyKey());
   });
 });
+
+describe("ApiClient remote join (ticket 42, FR-MOB-010..012)", () => {
+  it("reads a Service's remote-join policy", async () => {
+    const policy = {
+      service_id: "v1",
+      virtual_queue_enabled: true,
+      max_distance_m: 10000,
+      max_remote_share_pct: 40,
+      join_window_minutes: 30,
+      arrival_deadline_minutes: 15,
+    };
+    const fetchImpl = vi.fn().mockResolvedValue(json(200, policy));
+    const client = new ApiClient({ apiOrigin: "", fetch: fetchImpl as unknown as typeof fetch, getAccessToken: () => "visitor-token" });
+
+    await expect(client.remoteJoin.policy("v1")).resolves.toEqual(policy);
+
+    expect(fetchImpl.mock.calls[0]?.[0]).toBe("/api/v1/remote-join/v1");
+    expect((fetchImpl.mock.calls[0]?.[1] as RequestInit).method).toBe("GET");
+  });
+
+  it("joins with an Idempotency-Key and the visitor's own position", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(json(201, { id: "t9", state: "remote", origin_channel: "mobile" }));
+    const client = new ApiClient({ apiOrigin: "", fetch: fetchImpl as unknown as typeof fetch, getAccessToken: () => "visitor-token" });
+
+    const result = await client.remoteJoin.join("v1", { latitude: 23.81, longitude: 90.41 }, "key-9");
+
+    expect(result).toEqual({ id: "t9", state: "remote", origin_channel: "mobile" });
+    const [url, init] = fetchImpl.mock.calls[0] as [string, RequestInit];
+    expect(`${init.method} ${url}`).toBe("POST /api/v1/remote-join/v1");
+    expect((init.headers as Record<string, string>)["Idempotency-Key"]).toBe("key-9");
+    expect(JSON.parse(String(init.body))).toEqual({ latitude: 23.81, longitude: 90.41 });
+  });
+});

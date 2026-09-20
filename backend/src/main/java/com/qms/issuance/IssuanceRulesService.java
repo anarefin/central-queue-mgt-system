@@ -182,6 +182,50 @@ public class IssuanceRulesService {
         return view(after);
     }
 
+    // ---- remote-join policy (ticket 42, FR-MOB-010..011) -------------------------------------------------------
+
+    @PreAuthorize(CATALOGUE)
+    @Transactional(readOnly = true)
+    public IssuanceRulesViews.RemoteRule remoteRule(UUID serviceId) {
+        requireService(serviceId);
+        return view(repository.remoteRule(serviceId));
+    }
+
+    @PreAuthorize(CATALOGUE)
+    @Transactional
+    public IssuanceRulesViews.RemoteRule setRemoteRule(UUID serviceId, IssuanceRulesViews.RemoteRule request) {
+        requireService(serviceId);
+        IssuanceRulesRepository.RemoteRule after = IssuanceRuleFields.remoteRule(request);
+        IssuanceRulesRepository.RemoteRule before = repository.remoteRule(serviceId);
+        if (!before.equals(after)) {
+            repository.saveRemoteRule(serviceId, after, clock.instant());
+            audit.record(AuditEvent.of("service_remote_rule.updated", "service_remote_rule", serviceId).withBefore(snapshot(before)).withAfter(snapshot(after)));
+        }
+        return view(after);
+    }
+
+    // ---- a Site's own coordinates (ticket 42, FR-MOB-011) -------------------------------------------------------
+
+    @PreAuthorize(SITES)
+    @Transactional(readOnly = true)
+    public IssuanceRulesViews.SiteLocation siteLocation(UUID siteId) {
+        requireSite(siteId);
+        return repository.siteLocation(siteId).map(IssuanceRulesService::view).orElse(new IssuanceRulesViews.SiteLocation(null, null));
+    }
+
+    @PreAuthorize(SITES)
+    @Transactional
+    public IssuanceRulesViews.SiteLocation setSiteLocation(UUID siteId, IssuanceRulesViews.SiteLocation request) {
+        requireSite(siteId);
+        IssuanceRulesRepository.SiteLocation after = IssuanceRuleFields.siteLocation(request);
+        IssuanceRulesRepository.SiteLocation before = repository.siteLocation(siteId).orElse(null);
+        if (!after.equals(before)) {
+            repository.saveSiteLocation(siteId, after, clock.instant());
+            audit.record(AuditEvent.of("site_location.updated", "site_location", siteId).withBefore(snapshot(before)).withAfter(snapshot(after)));
+        }
+        return view(after);
+    }
+
     // ---- maintenance mode and rate limits (FR-OPS-043, API-090) -----------------------------------------------
 
     @PreAuthorize(SITES)
@@ -241,6 +285,14 @@ public class IssuanceRulesService {
         return new IssuanceRulesViews.Settings(s.maintenanceEnabled(), s.maintenanceMessage(), s.deviceLimitPerMinute(), s.visitorLimitPerHour());
     }
 
+    private static IssuanceRulesViews.RemoteRule view(IssuanceRulesRepository.RemoteRule r) {
+        return new IssuanceRulesViews.RemoteRule(r.virtualQueueEnabled(), r.maxDistanceMeters(), r.maxRemoteSharePct(), r.joinWindowMinutes(), r.arrivalDeadlineMinutes());
+    }
+
+    private static IssuanceRulesViews.SiteLocation view(IssuanceRulesRepository.SiteLocation l) {
+        return new IssuanceRulesViews.SiteLocation(l.latitude(), l.longitude());
+    }
+
     private static Map<String, Object> snapshot(HolidayRow h) {
         Map<String, Object> values = new LinkedHashMap<>();
         values.put("site_id", h.siteId().toString());
@@ -266,6 +318,23 @@ public class IssuanceRulesService {
         values.put("maintenance_message_i18n", s.maintenanceMessage());
         values.put("device_limit_per_minute", s.deviceLimitPerMinute());
         values.put("visitor_limit_per_hour", s.visitorLimitPerHour());
+        return values;
+    }
+
+    private static Map<String, Object> snapshot(IssuanceRulesRepository.RemoteRule r) {
+        Map<String, Object> values = new LinkedHashMap<>();
+        values.put("virtual_queue_enabled", r.virtualQueueEnabled());
+        values.put("max_distance_m", r.maxDistanceMeters());
+        values.put("max_remote_share_pct", r.maxRemoteSharePct());
+        values.put("join_window_minutes", r.joinWindowMinutes());
+        values.put("arrival_deadline_minutes", r.arrivalDeadlineMinutes());
+        return values;
+    }
+
+    private static Map<String, Object> snapshot(IssuanceRulesRepository.SiteLocation l) {
+        Map<String, Object> values = new LinkedHashMap<>();
+        values.put("latitude", l == null ? null : l.latitude());
+        values.put("longitude", l == null ? null : l.longitude());
         return values;
     }
 }
