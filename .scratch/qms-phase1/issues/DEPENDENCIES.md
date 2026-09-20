@@ -36,7 +36,7 @@
 32-appointment-availability                21              done     n/a*     17 files, +1909 −7  2529305..b5c2b99
 33-staff-appointment-booking               32,22           done     35m      22 files, +1614 −33 e5556ed..ca16543
 34-reschedule-cancel-waitlist              33              done     n/a*     17 files, +899 −32  5b75e34..dcd7e75
-35-appointment-check-in                    33,26,09        todo     —        —                   —
+35-appointment-check-in                    33,26,09        done     n/a*     24 files, +1138 −47 9663f40..dd54b60
 36-appointment-no-shows                    33              todo     —        —                   —
 37-visitor-ticket-page-pwa                 11,19           todo     —        —                   —
 38-notification-pipeline-in-app            11,02           todo     —        —                   —
@@ -64,8 +64,8 @@
 60-installer-upgrades-backup               59              todo     —        —                   —
 61-acceptance-suite                        56,44,51,60     todo     —        —                   —
 
-# * 26: worker hit a session rate limit mid-ticket, was resumed after reset; elapsed wall-clock
-#   spans the pause and is not comparable to other tickets' timings.
+# * 26, 35: worker hit a session rate limit mid-ticket, was resumed after reset; elapsed
+#   wall-clock spans the pause and is not comparable to other tickets' timings.
 # * 27, 29, 32, 34: worker's turn ended waiting on a background gradlew run before committing;
 #   resumed to finish verification and commit. Elapsed wall-clock not comparable either.
 # * 30: commit landed but the run was interrupted before bookkeeping; confirmed done and

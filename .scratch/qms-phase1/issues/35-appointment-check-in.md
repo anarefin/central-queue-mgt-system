@@ -4,7 +4,7 @@
 
 **Blocked by:** 33 — Staff appointment booking; 26 — Kiosk identification and full selection tree; 09 — Queue ordering engine
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [x] Check-in at kiosk by code or QR and at reception (FR-ISS-030)
 - [x] Allowed only within a configurable window (default 30 min before to 15 min after) (FR-ISS-031)
