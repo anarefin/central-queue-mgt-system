@@ -193,3 +193,51 @@ body {
   border-block-end: 1px solid var(--qms-color-border);
   text-align: start;
 }
+
+/*
+ * The single print-only-slip seam every app's `window.print()` renders through (ticket 25's kiosk token, ticket
+ * 27's admin preview/test-print, FR-CFG-032, FR-ISS-016): invisible on screen, the only thing visible on paper,
+ * positioned at the page's own origin so nothing else leaves a mark regardless of where in the flow it sits.
+ */
+.qms-print-slip {
+  display: none;
+}
+
+@media print {
+  body * {
+    visibility: hidden;
+  }
+
+  .qms-print-slip,
+  .qms-print-slip * {
+    visibility: visible;
+  }
+
+  .qms-print-slip {
+    display: block;
+    position: absolute;
+    inset-block-start: 0;
+    inset-inline-start: 0;
+  }
+}
+
+/* The on-screen mirror of `.qms-print-slip` (ticket 27's admin preview, FR-CFG-032): visible on screen, itself hidden
+   on paper by the print rule above since it does not carry the `.qms-print-slip` class. */
+.qms-print-slip-preview {
+  border: 1px solid var(--qms-color-border);
+  border-radius: 0.5rem;
+  padding: 1rem;
+  max-inline-size: 24rem;
+}
+
+.qms-print-slip-logo,
+.qms-brand-logo {
+  max-inline-size: 8rem;
+  max-block-size: 4rem;
+}
+
+.qms-print-slip-accent {
+  block-size: 0.25rem;
+  inline-size: 100%;
+  background: var(--qms-print-accent, var(--qms-color-primary));
+}

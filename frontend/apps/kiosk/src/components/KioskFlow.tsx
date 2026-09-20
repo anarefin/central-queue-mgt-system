@@ -6,6 +6,7 @@ import {
   type ApiClient,
   type DeviceBootstrap,
   type KioskAgentOption,
+  type PrintField,
   type Ticket,
 } from "@qms/api-client";
 import { I18nProvider, useI18n } from "@qms/i18n/react";
@@ -13,7 +14,7 @@ import { ErrorAlert, QrCode, TextField } from "@qms/ui";
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { DEFAULT_INACTIVITY_TIMEOUT_MS, useInactivityTimeout } from "../lib/inactivity";
 import { localisedName } from "../lib/localised-name";
-import { BrowserTokenPrinter, type TokenPrinter } from "../lib/token-printer";
+import { BrowserTokenPrinter, type PrintPayload, type TokenPrinter } from "../lib/token-printer";
 
 type VisitorIdentifier = "not_required" | "optional" | "mandatory";
 
@@ -72,7 +73,7 @@ type Step =
   | { kind: "custom"; selection: Selection; options: CustomLevelOptionVM[] }
   | { kind: "confirm"; selection: Selection }
   | { kind: "issuing"; selection: Selection; idempotencyKey: string }
-  | { kind: "result"; ticket: Ticket; printFailed: boolean }
+  | { kind: "result"; ticket: Ticket; selection: Selection; printFailed: boolean }
   | { kind: "error"; selection: Selection; idempotencyKey: string; message: string };
 
 const ACCESSIBILITY_STORAGE_KEY = "qms-kiosk-accessibility";
@@ -149,6 +150,98 @@ function ticketStatusUrl(ticket: Ticket): string {
 
 function qrScanningSupported(): boolean {
   return typeof window !== "undefined" && "BarcodeDetector" in window && typeof navigator !== "undefined" && Boolean(navigator.mediaDevices);
+}
+
+/** The FR-SEC-020 "printed token" row's default visible set, used only when a bootstrap predates ticket 27's template. */
+const DEFAULT_PRINT_FIELDS: PrintField[] = ["token_number", "floor", "service_group", "visitor_code", "visitor_name", "visitor_category", "issue_time"];
+
+/** Everything the printed token needs (ticket 27, FR-CFG-030, FR-CFG-031): the issued Ticket, the visitor's own
+ * selections (the API's Ticket never carries visitor name/category/code), and the admin's saved branding and
+ * template, read from the same bootstrap the kiosk already has (no second round trip). */
+function printPayloadFor(ticket: Ticket, selection: Selection, bootstrap: DeviceBootstrap): PrintPayload {
+  const wait = ticket.estimated_wait_minutes;
+  return {
+    tokenNumber: ticket.token_number,
+    serviceName: selection.serviceName,
+    groupName: selection.groupName,
+    building: ticket.zone?.building_label ?? null,
+    floor: ticket.zone?.floor_label ?? null,
+    visitorCode: selection.visitorId ?? null,
+    visitorName: selection.visitorName ?? null,
+    visitorCategory: selection.visitorCategory ?? null,
+    // A kiosk-issued ticket is never pre-assigned a counter; the field still prints when the admin enables it, blank.
+    counter: null,
+    issueTime: ticket.issued_at,
+    estimatedWait: wait ? `${wait.low}–${wait.high}` : null,
+    qrValue: ticketStatusUrl(ticket),
+    noticeLine: bootstrap.print_template?.notice_line ?? null,
+    fields: bootstrap.print_template?.fields ?? DEFAULT_PRINT_FIELDS,
+    orgName: bootstrap.branding.org_name ?? bootstrap.branding.site_name,
+    primaryColor: bootstrap.branding.primary_color ?? "",
+    logoUrl: bootstrap.branding.logo_url ?? null,
+  };
+}
+
+function printFieldLabel(t: (key: string) => string, field: PrintField): string {
+  return t(`kiosk.printSlip.fields.${field}`);
+}
+
+function printFieldValue(payload: PrintPayload, field: PrintField): string | null {
+  switch (field) {
+    case "token_number":
+      return payload.tokenNumber;
+    case "building":
+      return payload.building;
+    case "floor":
+      return payload.floor;
+    case "service_group":
+      return payload.groupName;
+    case "service":
+      return payload.serviceName;
+    case "visitor_code":
+      return payload.visitorCode;
+    case "visitor_name":
+      return payload.visitorName;
+    case "visitor_category":
+      return payload.visitorCategory;
+    case "counter":
+      return payload.counter;
+    case "issue_time":
+      return new Date(payload.issueTime).toLocaleString();
+    case "estimated_wait":
+      return payload.estimatedWait ? `${payload.estimatedWait} min` : null;
+    case "notice_line":
+      return payload.noticeLine;
+    case "qr_code":
+      return null; // rendered as a QrCode below, not as text
+  }
+}
+
+/** The printed token itself (ticket 27, FR-CFG-030..031): only the admin's enabled fields, in the admin's order. */
+function PrintSlip({ payload }: { payload: PrintPayload }) {
+  const { t } = useI18n();
+  return (
+    <div style={payload.primaryColor ? { ["--qms-print-accent" as string]: payload.primaryColor } : undefined}>
+      <div className="qms-print-slip-accent" />
+      {payload.logoUrl && <img className="qms-print-slip-logo" src={payload.logoUrl} alt={t("kiosk.printSlip.logoAlt", { org: payload.orgName })} />}
+      <p>
+        <strong>{payload.orgName}</strong>
+      </p>
+      {payload.fields.map((field) => {
+        if (field === "qr_code") {
+          return <QrCode key={field} value={payload.qrValue} size={96} label={t("kiosk.result.qrLabel", { token: payload.tokenNumber })} />;
+        }
+        const value = printFieldValue(payload, field);
+        if (!value) return null;
+        if (field === "notice_line") return <p key={field}>{value}</p>;
+        return (
+          <p key={field}>
+            {printFieldLabel(t, field)}: {value}
+          </p>
+        );
+      })}
+    </div>
+  );
 }
 
 export interface KioskFlowProps {
@@ -331,17 +424,17 @@ function KioskFlowInner({ bootstrap, client, printer, inactivityTimeoutMs, langu
         );
         let printFailed = false;
         try {
-          await printer.print({ tokenNumber: ticket.token_number, serviceName: selection.serviceName, groupName: selection.groupName });
+          await printer.print(printPayloadFor(ticket, selection, bootstrap));
         } catch {
           printFailed = true;
         }
-        setStep({ kind: "result", ticket, printFailed });
+        setStep({ kind: "result", ticket, selection, printFailed });
       } catch (cause) {
         const message = cause instanceof ApiRequestError ? localisedApiError(cause, language, t) : t("errors.network_error");
         setStep({ kind: "error", selection, idempotencyKey, message });
       }
     },
-    [client, printer, language, t],
+    [client, printer, language, t, bootstrap],
   );
 
   function confirmAndPrint(selection: Selection) {
@@ -352,8 +445,16 @@ function KioskFlowInner({ bootstrap, client, printer, inactivityTimeoutMs, langu
     void issue(current.selection, current.idempotencyKey);
   }
 
+  // The organisation's primary colour (ticket 27, FR-CFG-030) overrides the kiosk's own accent everywhere `--qms-color-primary`
+  // is used (buttons, the active language toggle), high-contrast mode's own palette excepted (it overrides this var itself).
+  const brandStyle = bootstrap.branding.primary_color ? { ["--qms-color-primary" as string]: bootstrap.branding.primary_color } : undefined;
+
   return (
-    <div className={`qms-kiosk${accessibility.largeText ? " qms-kiosk--large-text" : ""}`} data-contrast={accessibility.highContrast ? "high" : "normal"}>
+    <div
+      className={`qms-kiosk${accessibility.largeText ? " qms-kiosk--large-text" : ""}`}
+      data-contrast={accessibility.highContrast ? "high" : "normal"}
+      style={brandStyle}
+    >
       <AccessibilityBar prefs={accessibility} onChange={(next) => { setAccessibility(next); saveAccessibilityPrefs(next); }} />
       {step.kind === "idle" && <IdleScreen languages={bootstrap.languages} onStart={leaveIdle} />}
       {step.kind === "empty" && <EmptyScreen onBack={goIdle} />}
@@ -396,7 +497,9 @@ function KioskFlowInner({ bootstrap, client, printer, inactivityTimeoutMs, langu
       {step.kind === "confirm" && <ConfirmScreen selection={step.selection} onConfirm={() => confirmAndPrint(step.selection)} onBack={goIdle} />}
       {step.kind === "issuing" && <IssuingScreen />}
       {step.kind === "error" && <ErrorScreen message={step.message} onRetry={() => retry(step)} onStartOver={goIdle} />}
-      {step.kind === "result" && <ResultScreen ticket={step.ticket} printFailed={step.printFailed} onDone={goIdle} />}
+      {step.kind === "result" && (
+        <ResultScreen ticket={step.ticket} selection={step.selection} bootstrap={bootstrap} printFailed={step.printFailed} onDone={goIdle} />
+      )}
     </div>
   );
 }
@@ -823,13 +926,25 @@ function ErrorScreen({ message, onRetry, onStartOver }: { message: string; onRet
   );
 }
 
-function ResultScreen({ ticket, printFailed, onDone }: { ticket: Ticket; printFailed: boolean; onDone: () => void }) {
-  const { t, language, formatToken } = useI18n();
+function ResultScreen({
+  ticket,
+  selection,
+  bootstrap,
+  printFailed,
+  onDone,
+}: {
+  ticket: Ticket;
+  selection: Selection;
+  bootstrap: DeviceBootstrap;
+  printFailed: boolean;
+  onDone: () => void;
+}) {
+  const { t, formatToken } = useI18n();
   const statusUrl = useMemo(() => ticketStatusUrl(ticket), [ticket]);
   // Token numbers are always Western Arabic digits, on every surface, never the reading language's own numerals
   // (FR-I18N-020, ADR-0011) — `formatToken` is the one place that rule is enforced, so every render of it goes through it.
   const token = formatToken(ticket.token_number);
-  const serviceName = localisedName(ticket.service.name_i18n, language, language);
+  const payload = useMemo(() => printPayloadFor(ticket, selection, bootstrap), [ticket, selection, bootstrap]);
   return (
     <div className="qms-kiosk-screen">
       <h1 className="qms-heading">{t(printFailed ? "kiosk.result.printFailedTitle" : "kiosk.result.printedTitle")}</h1>
@@ -844,9 +959,9 @@ function ResultScreen({ ticket, printFailed, onDone }: { ticket: Ticket; printFa
       <button type="button" className="qms-button qms-kiosk-tile" onClick={onDone}>
         {t("kiosk.result.done")}
       </button>
+      {/* The actual printed token (ticket 27, FR-CFG-030..031): invisible on screen, the only thing `window.print()` shows. */}
       <div className="qms-print-slip" aria-hidden="true">
-        <p className="qms-token">{token}</p>
-        <p>{serviceName}</p>
+        <PrintSlip payload={payload} />
       </div>
     </div>
   );

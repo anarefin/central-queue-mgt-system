@@ -10,9 +10,27 @@ import java.util.UUID;
  * The SRS names the four parts in prose only ("branding, languages, layout and service tree") and gives no
  * field-level schema, so the shape below is this build's choice.
  */
-record BootstrapResponse(Branding branding, List<String> languages, Layout layout, @JsonProperty("service_tree") List<ServiceTreeGroup> serviceTree) {
+record BootstrapResponse(
+        Branding branding,
+        List<String> languages,
+        Layout layout,
+        @JsonProperty("service_tree") List<ServiceTreeGroup> serviceTree,
+        @JsonProperty("print_template") PrintTemplate printTemplate) {
 
-    record Branding(@JsonProperty("site_name") String siteName, @JsonProperty("default_language") String defaultLanguage) {}
+    /**
+     * {@code siteName}/{@code defaultLanguage} are per-site; {@code orgName}, {@code primaryColor} and {@code logoUrl}
+     * are the organisation-wide branding of ticket 27 (FR-CFG-030), included here so a device never needs a second
+     * round trip to render it.
+     */
+    record Branding(
+            @JsonProperty("site_name") String siteName,
+            @JsonProperty("default_language") String defaultLanguage,
+            @JsonProperty("org_name") String orgName,
+            @JsonProperty("primary_color") String primaryColor,
+            @JsonProperty("logo_url") String logoUrl) {}
+
+    /** The printed token layout (ticket 27, FR-CFG-031), shipped with bootstrap so a kiosk prints it without another call. */
+    record PrintTemplate(List<String> fields, @JsonProperty("notice_line") String noticeLine) {}
 
     /** Present only for a display, which is scoped to one zone; a kiosk's layout is site-level only. */
     record Layout(@JsonProperty("zone") ZoneLayout zone) {}

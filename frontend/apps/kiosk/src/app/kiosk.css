@@ -119,28 +119,5 @@
   border: 2px solid #fff;
 }
 
-/*
- * Screen: invisible. Print: the only thing visible, positioned at the page's own origin so nothing else leaves a
- * mark, regardless of where in the flow it sits (this is `window.print()`'s own render pass, not React's).
- */
-.qms-print-slip {
-  display: none;
-}
-
-@media print {
-  body * {
-    visibility: hidden;
-  }
-
-  .qms-print-slip,
-  .qms-print-slip * {
-    visibility: visible;
-  }
-
-  .qms-print-slip {
-    display: block;
-    position: absolute;
-    inset-block-start: 0;
-    inset-inline-start: 0;
-  }
-}
+/* The print-only slip itself (`.qms-print-slip`) is shared with every app through `@qms/ui/styles.css` (ticket 27's
+   admin preview/test-print, FR-CFG-032, needs the exact same isolation the kiosk's real print already has). */

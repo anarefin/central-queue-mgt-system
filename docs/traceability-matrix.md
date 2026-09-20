@@ -632,6 +632,42 @@ package, per SRS §28.1's Phase-1 assumption of a camera reachable from the brow
 the requirement per-Service, so it cannot be resolved before the Service is known; asking generically up front for
 every visitor regardless of what they came for would also cost taps for Services that never require it.
 
+## Ticket 27, branding and printed token template
+
+`Rules` = `B/configuration/branding/BrandingRulesTest`, `Admin` = `B/configuration/branding/BrandingAdminIT`, `BrandingUI` =
+`F/apps/admin/src/components/BrandingAdmin.test.tsx`, `Flow` = `F/apps/kiosk/src/components/KioskFlow.test.tsx`, `Display` =
+`F/apps/display/src/components/DevicePairing.test.tsx`.
+
+| Requirement ID | Section | Test type | Test reference | Status |
+|---|---|---|---|---|
+| FR-CFG-030 logo, primary colour and organisation name configurable and applied to kiosk, display, printed token and reports | §7.5 | unit, integration, F | `Admin#aPairedKiosksBootstrapReflectsWhateverBrandingAndTemplateAnAdminLastSaved` (`GET /config/bootstrap` carries whatever an admin last saved, with no second endpoint); `BrandingUI#loads the current branding and saves an edited organisation name and colour`; `Flow#applies the organisation's primary colour to the kiosk's own accent colour`, `#prints only the admin's enabled fields, with the organisation's name, logo and notice line`; `Display#shows the organisation's logo and applies its primary colour once paired`. Reports (tickets 48–52) and the mobile/visitor app (ticket 37) do not exist yet in this build, so branding is exposed to them only through the same `OrgBranding`/bootstrap read path, not yet rendered by either | passing |
+| FR-CFG-031 printed token template editable from the fixed field set: token number, building, floor, service group, service, visitor code, visitor name, visitor category, counter, issue time, estimated wait, QR, notice line | §7.5 | unit, integration, F | `Rules#everyFixedFieldFromFrCfg031IsAcceptedByItsWireValue`, `#fieldsMustBeNonEmptyKnownAndDedupedInOrder` (`PrintField` is the closed set; nothing outside it is ever accepted); `Admin#savingThePrintTemplatePersistsAndWritesAnAuditEntry`; `BrandingUI#toggles a printed field and saves the template, including the notice line`; `Flow#prints only the admin's enabled fields…` (only the saved fields render, in the saved order, values blank when a Ticket has nothing for that field) | passing |
+| FR-CFG-032 template previewable and test-printable from the admin UI without issuing a real Ticket | §7.5 | F | `BrandingUI#previews only the enabled fields with sample data and never calls the ticket API`, `#test-prints the preview without issuing a real ticket` (fixed sample data, `window.print()` only, no `/tickets` call stubbed or made) | passing |
+| FR-SEC-020 printed token's default visible field set: token, floor, service group, code, name, category, time | §25.3 | unit, integration, F | `Admin#beforeAnyAdminHasSavedTheDefaultsApply` (`print_template`'s seed row and `PrintTemplate.DEFAULT` both match this exact set); `Flow#falls back to the FR-SEC-020 default field set when no template has ever been saved` (a bootstrap that predates ticket 27's `print_template` falls back to the same set client-side) | passing |
+| Definition of done §27.5: user-facing strings in both en and bn packs | §17 | unit | `F/packages/i18n/src/i18n.test.ts` (pack parity, unchanged, now covers the added `branding.*`, `kiosk.printSlip.*` and `devicePairing.logoAlt` keys) | passing |
+| Definition of done §27.5: every protected action permission-checked server-side | §5.2, §27.5 | integration | `Admin#onlyAnOrgOrSystemAdminMayReadOrChangeBrandingOrTheTemplate` (`config:org_sites_zones`, the same organisation-wide permission `break_type` already reuses, on all four `/branding`/`/print-template` methods); `#aPairedKiosksBootstrapReflectsWhateverBrandingAndTemplateAnAdminLastSaved` (the device-only bootstrap credential cannot reach the staff endpoints, and vice versa) | passing |
+| Definition of done §27.5: specified events and audit entries emitted | §27.5, §25.5 | integration | `Admin#savingBrandingPersistsAndWritesOneAuditEntryAndANoOpWritesNothing` (`branding.updated`, before/after, a no-op writes nothing), `#savingThePrintTemplatePersistsAndWritesAnAuditEntry` (`print_template.updated`) | passing |
+| Definition of done §27.5: each requirement ID mapped to a passing test here | §27.5 | — | this table | passing |
+
+**Notes on this ticket's interpretation.** Branding and the print template are organisation-wide singletons (single-
+tenant QMS, MAP.md), stored the same way `visitor_import_mapping` (V19) already established for one-admin-set-row
+configuration: `id boolean PRIMARY KEY DEFAULT true`, upserted, read as a fixed default until anyone has ever saved.
+Both reuse `config:org_sites_zones` rather than a new permission — the same choice `BreakTypeService` already made for
+other organisation-wide (not site- or zone-scoped) configuration, and the SRS §5.2 matrix has no dedicated branding
+permission to add. Kiosk and display never call `/branding` or `/print-template` directly (they lack the permission by
+design); both read through their own `GET /config/bootstrap`, extended with `branding.org_name`/`primary_color`/
+`logo_url` and a top-level `print_template`, so a paired device never needs a second round trip. The 13 fixed fields
+are a closed Java enum (`PrintField`) and a closed TypeScript union (`@qms/api-client`'s `PrintField`), not a free-text
+list, so a template can never reference a field outside FR-CFG-031's set. The admin UI's preview and test print (FR-
+CFG-032) never call the ticket API: they render fixed sample data (`A-001`, a sample name, category, etc.) into the
+same `.qms-print-slip`/`@media print` mechanism the kiosk's real print already used, moved from `apps/kiosk/kiosk.css`
+into `@qms/ui/styles.css` (ticket 25's `TokenPrinter` seam) so both the kiosk's real print and the admin's test print
+share one print-isolation rule instead of two copies drifting apart. `counter` always prints blank from the kiosk (a
+kiosk-issued Ticket is never pre-assigned a counter); the field still exists in the fixed set for a channel that does
+pre-assign one. Reports (tickets 48–52) and the visitor/mobile app (ticket 37) are still stubs or unbuilt in this repo,
+so "applied to reports"/"applied to the mobile app" is satisfied only as far as: `OrgBranding` is readable wherever
+those tickets will need it, with nothing further to build against yet.
+
 ## Notes
 
 - **Compose.** Verified by hand on 2026-09-19 with OrbStack Docker, from a clean build: `migrate` exited 0, then Postgres,

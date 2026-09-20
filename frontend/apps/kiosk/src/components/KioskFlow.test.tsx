@@ -1,5 +1,5 @@
 import { ApiClient, type DeviceBootstrap, type Ticket } from "@qms/api-client";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { KioskFlow } from "./KioskFlow";
@@ -136,7 +136,25 @@ describe("KioskFlow common path (ticket 25, SRS §8.2)", () => {
 
     expect(await screen.findByText("Take your ticket from the printer")).toBeInTheDocument();
     expect(visibleToken("A-001")).toBeInTheDocument();
-    expect(printer.calls).toEqual([{ tokenNumber: "A-001", serviceName: "Consultation", groupName: "Outpatient" }]);
+    expect(printer.calls).toHaveLength(1);
+    expect(printer.calls[0]).toMatchObject({
+      tokenNumber: "A-001",
+      serviceName: "Consultation",
+      groupName: "Outpatient",
+      building: null,
+      floor: null,
+      visitorCode: null,
+      visitorName: null,
+      visitorCategory: null,
+      counter: null,
+      estimatedWait: "0–5",
+      noticeLine: null,
+      // no template saved yet (ticket 27): falls back to FR-SEC-020's "printed token" default field set
+      fields: ["token_number", "floor", "service_group", "visitor_code", "visitor_name", "visitor_category", "issue_time"],
+      orgName: "Main campus",
+      primaryColor: "",
+      logoUrl: null,
+    });
     const [url, init] = fetchImpl.mock.calls[0] as [string, RequestInit];
     expect(url).toContain("/kiosk/tickets");
     expect(JSON.parse(String(init.body))).toEqual({ service_id: "svc-1" });
@@ -538,5 +556,60 @@ describe("KioskFlow custom level (ticket 26, FR-ISS-010)", () => {
     expect(await screen.findByText("Confirm your token")).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Get my token" }));
     await waitFor(() => expect(issuedBody(fetchImpl)).toMatchObject({ custom_level_id: "en" }));
+  });
+});
+
+describe("branding and the printed token template (ticket 27, FR-CFG-030..032)", () => {
+  const BRANDED: DeviceBootstrap = {
+    ...SINGLE,
+    branding: {
+      site_name: "Main campus",
+      default_language: "en",
+      org_name: "Northside Clinic",
+      primary_color: "#123abc",
+      logo_url: "https://example.org/logo.png",
+    },
+    print_template: { fields: ["token_number", "qr_code", "notice_line"], notice_line: "Please arrive 10 minutes early." },
+  };
+
+  it("applies the organisation's primary colour to the kiosk's own accent colour", async () => {
+    const { container } = render(<KioskFlow bootstrap={BRANDED} client={clientWith(vi.fn())} printer={new ResolvingPrinter()} />);
+    const root = container.querySelector(".qms-kiosk") as HTMLElement;
+    expect(root.style.getPropertyValue("--qms-color-primary")).toBe("#123abc");
+  });
+
+  it("prints only the admin's enabled fields, with the organisation's name, logo and notice line", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(json(201, ticketResponse()));
+    render(<KioskFlow bootstrap={BRANDED} client={clientWith(fetchImpl)} printer={new ResolvingPrinter()} />);
+
+    await userEvent.click(screen.getByRole("button", { name: "Tap to begin" }));
+    await userEvent.click(screen.getByRole("button", { name: "Get my token" }));
+    await screen.findByText("Take your ticket from the printer");
+
+    const slip = document.querySelector(".qms-print-slip") as HTMLElement;
+    expect(within(slip).getByText("Northside Clinic")).toBeInTheDocument();
+    expect(within(slip).getByAltText("Northside Clinic logo")).toHaveAttribute("src", "https://example.org/logo.png");
+    expect(within(slip).getByText("Token: A-001")).toBeInTheDocument();
+    expect(within(slip).getByText("Please arrive 10 minutes early.")).toBeInTheDocument();
+    expect(within(slip).getByRole("img", { name: /QR code/, hidden: true })).toBeInTheDocument();
+    // fields the admin did not enable (floor, service group, ...) never print
+    expect(within(slip).queryByText(/^Floor:/)).not.toBeInTheDocument();
+    expect(within(slip).queryByText(/^Service group:/)).not.toBeInTheDocument();
+  });
+
+  it("falls back to the FR-SEC-020 default field set when no template has ever been saved", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(json(201, ticketResponse()));
+    render(<KioskFlow bootstrap={SINGLE} client={clientWith(fetchImpl)} printer={new ResolvingPrinter()} />);
+
+    await userEvent.click(screen.getByRole("button", { name: "Tap to begin" }));
+    await userEvent.click(screen.getByRole("button", { name: "Get my token" }));
+    await screen.findByText("Take your ticket from the printer");
+
+    const slip = document.querySelector(".qms-print-slip") as HTMLElement;
+    expect(within(slip).getByText("Token: A-001")).toBeInTheDocument();
+    expect(within(slip).getByText("Service group: Outpatient")).toBeInTheDocument();
+    // this flow never identified the visitor, so the field is enabled by default but has nothing to print
+    expect(within(slip).queryByText(/^Name:/)).not.toBeInTheDocument();
+    expect(within(slip).queryByRole("img", { name: /QR code/, hidden: true })).not.toBeInTheDocument();
   });
 });

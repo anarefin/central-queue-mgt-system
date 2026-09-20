@@ -116,12 +116,26 @@ function PairingForm() {
 
 function PairedView({ bootstrap, bootstrapError }: { bootstrap: DeviceBootstrap | null; bootstrapError: boolean }) {
   const { t } = useI18n();
+  // The organisation's branding (ticket 27, FR-CFG-030): applied here the same way the kiosk applies it, so the
+  // display board carries the same logo, colour and name once ticket 28 gives it real "now serving" content to show.
+  const style = bootstrap?.branding.primary_color ? { ["--qms-color-primary" as string]: bootstrap.branding.primary_color } : undefined;
   return (
     <Page>
       <Card>
         {bootstrapError && <ErrorAlert>{t("devicePairing.configError")}</ErrorAlert>}
         {!bootstrap && !bootstrapError && <p className="qms-muted">{t("devicePairing.loadingConfig")}</p>}
-        {bootstrap && <h1 className="qms-heading">{bootstrap.branding.site_name}</h1>}
+        {bootstrap && (
+          <div className="qms-stack" style={style}>
+            {bootstrap.branding.logo_url && (
+              <img
+                className="qms-brand-logo"
+                src={bootstrap.branding.logo_url}
+                alt={t("devicePairing.logoAlt", { org: bootstrap.branding.org_name ?? bootstrap.branding.site_name })}
+              />
+            )}
+            <h1 className="qms-heading">{bootstrap.branding.site_name}</h1>
+          </div>
+        )}
       </Card>
     </Page>
   );

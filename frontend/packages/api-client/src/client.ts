@@ -45,6 +45,7 @@ import type {
   VisitorMatch,
   VisitorRegistration,
 } from "./visitors";
+import type { BrandingInput, OrgBranding, PrintTemplate, PrintTemplateInput } from "./branding";
 
 export const API_BASE_PATH = "/api/v1";
 
@@ -267,6 +268,14 @@ export class ApiClient {
     upload: (input: VisitorImportUploadInput) => this.request<VisitorImportReport>("POST", "/visitors/import", input),
     runs: () => this.request<Items<VisitorImportReport>>("GET", "/visitors/import/runs"),
     run: (id: string) => this.request<VisitorImportReport>("GET", `/visitors/import/runs/${id}`),
+  };
+
+  /** Organisation branding and the printed-token template (ticket 27, FR-CFG-030..032). */
+  readonly branding = {
+    get: () => this.request<OrgBranding>("GET", "/branding"),
+    update: (input: BrandingInput) => this.request<OrgBranding>("PUT", "/branding", input),
+    template: () => this.request<PrintTemplate>("GET", "/print-template"),
+    updateTemplate: (input: PrintTemplateInput) => this.request<PrintTemplate>("PUT", "/print-template", input),
   };
 
   readonly queues = {

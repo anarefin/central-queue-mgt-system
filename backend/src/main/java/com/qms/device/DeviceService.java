@@ -2,6 +2,7 @@ package com.qms.device;
 
 import com.qms.audit.AuditEvent;
 import com.qms.audit.AuditWriter;
+import com.qms.configuration.branding.BrandingService;
 import com.qms.configuration.catalogue.CatalogueService;
 import com.qms.configuration.catalogue.ServiceEntry;
 import com.qms.configuration.catalogue.ServiceGroup;
@@ -67,6 +68,7 @@ public class DeviceService {
     private final AccessTokenService accessTokens;
     private final HierarchyService hierarchy;
     private final CatalogueService catalogue;
+    private final BrandingService branding;
     private final DeviceProperties properties;
     private final AuditWriter audit;
     private final CurrentUser currentUser;
@@ -81,6 +83,7 @@ public class DeviceService {
             AccessTokenService accessTokens,
             HierarchyService hierarchy,
             CatalogueService catalogue,
+            BrandingService branding,
             DeviceProperties properties,
             AuditWriter audit,
             CurrentUser currentUser,
@@ -93,6 +96,7 @@ public class DeviceService {
         this.accessTokens = accessTokens;
         this.hierarchy = hierarchy;
         this.catalogue = catalogue;
+        this.branding = branding;
         this.properties = properties;
         this.audit = audit;
         this.currentUser = currentUser;
@@ -215,7 +219,12 @@ public class DeviceService {
                 .filter(g -> !kiosk || !g.services().isEmpty())
                 .toList();
 
-        return new BootstrapResponse(new Branding(site.name(), site.defaultLanguage()), site.enabledLanguages(), layout, tree);
+        var orgBranding = branding.forDevice();
+        var template = branding.templateForDevice();
+        Branding responseBranding =
+                new Branding(site.name(), site.defaultLanguage(), orgBranding.orgName(), orgBranding.primaryColor(), orgBranding.logoUrl());
+        var printTemplate = new BootstrapResponse.PrintTemplate(template.fields(), template.noticeLine());
+        return new BootstrapResponse(responseBranding, site.enabledLanguages(), layout, tree, printTemplate);
     }
 
     // ---- fleet administration (staff-facing) --------------------------------------------------------------------

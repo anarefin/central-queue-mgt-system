@@ -105,4 +105,41 @@ describe("display device pairing", () => {
 
     expect(await screen.findByText("Your session token is invalid or has expired.")).toBeInTheDocument();
   });
+
+  it("shows the organisation's logo and applies its primary colour once paired (ticket 27, FR-CFG-030)", async () => {
+    stubApi({
+      "POST /devices/pair": () =>
+        json(201, {
+          device_id: "d1",
+          kind: "display",
+          site_id: "s1",
+          zone_id: "z1",
+          access_token: "access-1",
+          token_type: "Bearer",
+          expires_in: 900,
+          refresh_token: "refresh-1",
+        }),
+      "GET /config/bootstrap": () =>
+        json(200, {
+          ...BOOTSTRAP,
+          branding: {
+            site_name: "Main campus",
+            default_language: "en",
+            org_name: "Northside Clinic",
+            primary_color: "#123abc",
+            logo_url: "https://example.org/logo.png",
+          },
+        }),
+      "POST /devices/d1/heartbeat": () => new Response(null, { status: 204 }),
+    });
+    renderPairing();
+    await screen.findByText("Pair this device");
+
+    await userEvent.type(screen.getByLabelText("Pairing code"), "abcd1234");
+    await userEvent.click(screen.getByRole("button", { name: "Pair" }));
+
+    const logo = await screen.findByAltText("Northside Clinic logo");
+    expect(logo).toHaveAttribute("src", "https://example.org/logo.png");
+    expect((logo.closest(".qms-stack") as HTMLElement).style.getPropertyValue("--qms-color-primary")).toBe("#123abc");
+  });
 });

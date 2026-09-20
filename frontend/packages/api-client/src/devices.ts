@@ -1,3 +1,5 @@
+import type { PrintField } from "./branding";
+
 /** Device pairing and fleet management (SRS §20.2, §20.4, §21.2; FR-OPS-011, FR-OPS-041, FR-OPS-042; ticket 24). */
 export type DeviceKind = "kiosk" | "display";
 export type DeviceConnectivity = "online" | "stale" | "offline";
@@ -49,7 +51,18 @@ export interface PairingCodeResponse {
 
 /** Body of `GET /config/bootstrap`: everything a device needs to render without a second round trip. */
 export interface DeviceBootstrap {
-  branding: { site_name: string; default_language: string };
+  branding: {
+    site_name: string;
+    default_language: string;
+    /**
+     * The organisation-wide branding of ticket 27 (FR-CFG-030): logo, primary colour and organisation name, as
+     * opposed to `site_name` above. Optional only so older fixtures that predate ticket 27 keep type-checking; a
+     * real backend always sends all three.
+     */
+    org_name?: string;
+    primary_color?: string;
+    logo_url?: string | null;
+  };
   languages: string[];
   /** Present only for a display, scoped to one zone; a kiosk's layout is site-level only, so this is null. */
   layout: {
@@ -62,6 +75,8 @@ export interface DeviceBootstrap {
     };
   } | null;
   service_tree: KioskServiceTreeGroup[];
+  /** The printed token layout (ticket 27, FR-CFG-031); optional for the same fixture-compatibility reason as above. */
+  print_template?: { fields: PrintField[]; notice_line: string | null };
 }
 
 /** A service the kiosk selection tree can lead to (ticket 26). `visitor_identifier` decides the identify step: `not_required`, `optional` or `mandatory` (FR-CFG-013). */
