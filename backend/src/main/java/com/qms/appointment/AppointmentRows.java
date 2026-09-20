@@ -28,10 +28,11 @@ final class AppointmentRows {
         static final String REDUCED_CAPACITY = "reduced_capacity";
     }
 
-    /** A Service's booking horizon and minimum lead time (FR-APT-005). */
-    record ServiceSettings(int bookingHorizonDays, int minLeadTimeMinutes) {
+    /** A Service's booking horizon, minimum lead time (FR-APT-005) and whether its waitlist is on (FR-APT-023). */
+    record ServiceSettings(int bookingHorizonDays, int minLeadTimeMinutes, boolean waitlistEnabled) {
         static final int DEFAULT_HORIZON_DAYS = 30;
         static final int DEFAULT_LEAD_MINUTES = 120;
-        static final ServiceSettings DEFAULTS = new ServiceSettings(DEFAULT_HORIZON_DAYS, DEFAULT_LEAD_MINUTES);
+        static final boolean DEFAULT_WAITLIST_ENABLED = false;
+        static final ServiceSettings DEFAULTS = new ServiceSettings(DEFAULT_HORIZON_DAYS, DEFAULT_LEAD_MINUTES, DEFAULT_WAITLIST_ENABLED);
     }
 }

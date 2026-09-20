@@ -171,18 +171,18 @@ class AppointmentAvailabilityRepository {
 
     Optional<ServiceSettings> settings(UUID serviceId) {
         return jdbc.query(
-                        "SELECT booking_horizon_days, min_lead_time_minutes FROM appointment_service_settings WHERE service_id = ?",
-                        (rs, i) -> new ServiceSettings(rs.getInt("booking_horizon_days"), rs.getInt("min_lead_time_minutes")),
+                        "SELECT booking_horizon_days, min_lead_time_minutes, waitlist_enabled FROM appointment_service_settings WHERE service_id = ?",
+                        (rs, i) -> new ServiceSettings(rs.getInt("booking_horizon_days"), rs.getInt("min_lead_time_minutes"), rs.getBoolean("waitlist_enabled")),
                         serviceId)
                 .stream().findFirst();
     }
 
     void saveSettings(UUID serviceId, ServiceSettings settings, Instant now) {
         jdbc.update(
-                "INSERT INTO appointment_service_settings (service_id, booking_horizon_days, min_lead_time_minutes, updated_at) VALUES (?, ?, ?, ?)"
+                "INSERT INTO appointment_service_settings (service_id, booking_horizon_days, min_lead_time_minutes, waitlist_enabled, updated_at) VALUES (?, ?, ?, ?, ?)"
                         + " ON CONFLICT (service_id) DO UPDATE SET booking_horizon_days = EXCLUDED.booking_horizon_days,"
-                        + " min_lead_time_minutes = EXCLUDED.min_lead_time_minutes, updated_at = EXCLUDED.updated_at",
-                serviceId, settings.bookingHorizonDays(), settings.minLeadTimeMinutes(), ts(now));
+                        + " min_lead_time_minutes = EXCLUDED.min_lead_time_minutes, waitlist_enabled = EXCLUDED.waitlist_enabled, updated_at = EXCLUDED.updated_at",
+                serviceId, settings.bookingHorizonDays(), settings.minLeadTimeMinutes(), settings.waitlistEnabled(), ts(now));
     }
 
     // ---- business hours and holidays, read only (FR-APT-004) --------------------------------------------------

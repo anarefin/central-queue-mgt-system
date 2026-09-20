@@ -2,9 +2,14 @@ package com.qms.appointment;
 
 import com.qms.appointment.AppointmentAvailabilityRepository.SiteContext;
 import com.qms.appointment.AppointmentBookingFields.Parsed;
+import com.qms.appointment.AppointmentBookingFields.RescheduleParsed;
+import com.qms.appointment.AppointmentBookingRepository.AppointmentRow;
 import com.qms.appointment.AppointmentBookingRepository.ExpiredHold;
+import com.qms.appointment.AppointmentBookingRepository.WaitlistEntry;
 import com.qms.appointment.AppointmentBookingViews.AppointmentResponse;
 import com.qms.appointment.AppointmentBookingViews.BookAppointmentRequest;
+import com.qms.appointment.AppointmentBookingViews.CancelAppointmentRequest;
+import com.qms.appointment.AppointmentBookingViews.RescheduleAppointmentRequest;
 import com.qms.audit.AuditEvent;
 import com.qms.audit.AuditWriter;
 import com.qms.platform.ApiException;
@@ -17,7 +22,9 @@ import java.security.SecureRandom;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.time.LocalTime;
+import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -113,17 +120,24 @@ public class AppointmentBookingService {
 
         // FR-APT-011: the per-slot lock is held for the rest of this transaction, so a second booking for the same
         // slot blocks here until this one commits or rolls back, and then re-counts against what actually landed.
-        repository.lock(slotKey(parsed));
+        repository.lock(slotKey(parsed.serviceId(), parsed.date(), parsed.start()));
         int capacity = availability.offeredCapacity(parsed.serviceId(), parsed.date(), parsed.start(), parsed.end())
                 .orElseThrow(() -> conflict("slot_not_available", Map.of()));
         if (repository.activeCountForSlot(parsed.serviceId(), parsed.date(), parsed.start(), parsed.end()) >= capacity) {
+            // FR-APT-023: a full slot on a Service with its waitlist on takes the request as a waitlist entry
+            // instead of refusing it; still under the same per-slot lock, so it cannot race a seat freeing up.
+            if (repository.waitlistEnabled(parsed.serviceId())) {
+                return waitlist(parsed, visitorId, now);
+            }
             throw conflict("slot_full", Map.of());
         }
 
         UUID actor = currentUser.require().userId();
         Instant holdExpiresAt = now.plus(Duration.ofMinutes(properties.holdMinutes()));
         UUID id = UUID.randomUUID();
-        String referenceCode = insertWithFreshReference(id, parsed, visitorId, actor, holdExpiresAt, now);
+        String referenceCode = insertHeldWithFreshReference(
+                id, parsed.serviceId(), parsed.preferredAgentId(), visitorId, parsed.date(), parsed.start(), parsed.end(), parsed.source(), parsed.purposeNote(),
+                parsed.language(), actor, holdExpiresAt, now);
         repository.confirm(id, now); // held_slot -> booked: every detail was already given (§19.2).
 
         audit.record(AuditEvent.of("appointment.booked", "appointment", id).withAfter(bookedSnapshot(referenceCode, parsed, visitorId)));
@@ -131,6 +145,126 @@ public class AppointmentBookingService {
         return new AppointmentResponse(
                 id, referenceCode, parsed.serviceId(), parsed.date().toString(), fmt(parsed.start()), fmt(parsed.end()), "booked", parsed.source(), visitorId,
                 parsed.preferredAgentId(), parsed.purposeNote(), parsed.language());
+    }
+
+    /** FR-APT-023: joins the waitlist for a full slot; no capacity consumed, no reference code minted yet. */
+    private AppointmentResponse waitlist(Parsed parsed, UUID visitorId, Instant now) {
+        UUID waitlistId = repository.insertWaitlistEntry(parsed.serviceId(), visitorId, parsed.date(), parsed.start(), parsed.end(), parsed.source(), parsed.purposeNote(), parsed.language(), now);
+        audit.record(AuditEvent.of("appointment.waitlisted", "appointment_waitlist", waitlistId).withAfter(bookedSnapshot(null, parsed, visitorId)));
+        return new AppointmentResponse(
+                waitlistId, null, parsed.serviceId(), parsed.date().toString(), fmt(parsed.start()), fmt(parsed.end()), "waitlisted", parsed.source(), visitorId,
+                parsed.preferredAgentId(), parsed.purposeNote(), parsed.language());
+    }
+
+    // ---- FR-APT-020, FR-APT-021: reschedule ------------------------------------------------------------------
+
+    /**
+     * Moves a booked appointment to a new slot, keeping its reference code (FR-APT-021) and recording the move in
+     * the audit log — the same append-only trail every other entity's "change history" is, including the staff
+     * {@code reason} when one is given. A visitor may act up to {@code qms.appointment.visitor-cutoff-minutes}
+     * before the appointment's <em>current</em> slot; any closer needs a reason (FR-APT-020) — there is no visitor
+     * principal yet (ticket 41), so today every caller is staff and this is the rule that will govern both.
+     *
+     * <p>The row passes through {@code rescheduled} (§19.2) for the length of this transaction: {@link
+     * AppointmentBookingRepository#activeCountForSlot} already counts it there (ticket 33's own migration, in
+     * anticipation of this one), so the old slot stays held while the new slot's capacity is confirmed, and a
+     * concurrent booking or cancellation for either slot serialises against this one through the same per-slot
+     * advisory lock {@link #book} uses.
+     */
+    @PreAuthorize(BOOK)
+    @Transactional
+    public AppointmentResponse reschedule(UUID id, RescheduleAppointmentRequest request) {
+        RescheduleParsed target = AppointmentBookingFields.parseReschedule(request);
+        SiteContext site = siteOfAppointment(id);
+        Instant now = clock.instant();
+
+        repository.lock("appointment:" + id); // serialises against any other reschedule/cancel of this same row.
+        AppointmentRow appointment = repository.find(id).orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND));
+        if (!"booked".equals(appointment.state())) throw conflict("not_booked", Map.of());
+        enforceCutoff(appointment.slotDate(), appointment.slotStart(), site.timezone(), target.reason(), now);
+
+        repository.lock(slotKey(appointment.serviceId(), appointment.slotDate(), appointment.slotStart()));
+        if (repository.markRescheduling(id, now) == 0) throw conflict("not_booked", Map.of()); // raced past the check above.
+
+        repository.lock(slotKey(appointment.serviceId(), target.date(), target.start()));
+        int capacity = availability.offeredCapacity(appointment.serviceId(), target.date(), target.start(), target.end())
+                .orElseThrow(() -> conflict("slot_not_available", Map.of()));
+        if (repository.activeCountForSlot(appointment.serviceId(), target.date(), target.start(), target.end()) >= capacity) {
+            throw conflict("slot_full", Map.of());
+        }
+        repository.applyReschedule(id, target.date(), target.start(), target.end(), now);
+
+        audit.record(AuditEvent.of("appointment.rescheduled", "appointment", id)
+                .withBefore(slotSnapshot(appointment.referenceCode(), appointment.serviceId(), appointment.slotDate(), appointment.slotStart(), appointment.slotEnd()))
+                .withAfter(slotSnapshot(appointment.referenceCode(), appointment.serviceId(), target.date(), target.start(), target.end()))
+                .withReason(target.reason()));
+
+        return new AppointmentResponse(
+                id, appointment.referenceCode(), appointment.serviceId(), target.date().toString(), fmt(target.start()), fmt(target.end()), "booked", appointment.source(),
+                appointment.visitorId(), appointment.preferredAgentId(), appointment.purposeNote(), appointment.language());
+    }
+
+    // ---- FR-APT-020, FR-APT-022: cancellation ----------------------------------------------------------------
+
+    /**
+     * Cancels a booked appointment. Capacity is free the instant this commits ({@link
+     * AppointmentBookingRepository#activeCountForSlot} excludes {@code cancelled}, FR-APT-022); if the Service's
+     * waitlist is on and someone is waiting on this exact slot, the first of them (by join order) is offered it
+     * (FR-APT-023), still inside the same transaction and the same per-slot lock, so nobody else can take the seat
+     * first. The cutoff and reason rule is the same {@link #reschedule} enforces.
+     */
+    @PreAuthorize(BOOK)
+    @Transactional
+    public void cancel(UUID id, CancelAppointmentRequest request) {
+        String reason = AppointmentBookingFields.parseCancelReason(request);
+        SiteContext site = siteOfAppointment(id);
+        Instant now = clock.instant();
+
+        repository.lock("appointment:" + id);
+        AppointmentRow appointment = repository.find(id).orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND));
+        if (!"booked".equals(appointment.state())) throw conflict("not_booked", Map.of());
+        enforceCutoff(appointment.slotDate(), appointment.slotStart(), site.timezone(), reason, now);
+
+        repository.lock(slotKey(appointment.serviceId(), appointment.slotDate(), appointment.slotStart()));
+        if (repository.cancel(id, now) == 0) throw conflict("not_booked", Map.of()); // raced past the check above.
+
+        audit.record(AuditEvent.of("appointment.cancelled", "appointment", id)
+                .withBefore(slotSnapshot(appointment.referenceCode(), appointment.serviceId(), appointment.slotDate(), appointment.slotStart(), appointment.slotEnd()))
+                .withReason(reason));
+
+        offerToWaitlistIfEnabled(appointment.serviceId(), appointment.slotDate(), appointment.slotStart(), appointment.slotEnd(), now);
+    }
+
+    private SiteContext siteOfAppointment(UUID id) {
+        UUID serviceId = repository.find(id).orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND)).serviceId();
+        SiteContext site = availabilityRepository.siteContextOfService(serviceId).orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND));
+        scope.requireSite(site.siteId());
+        return site;
+    }
+
+    /** FR-APT-020: a visitor may act up to the configured cut-off before the slot; a staff caller may act any closer, but only with a {@code reason}. */
+    private void enforceCutoff(LocalDate slotDate, LocalTime slotStart, String timezone, String reason, Instant now) {
+        Instant slotStartInstant = slotDate.atTime(slotStart).atZone(ZoneId.of(timezone)).toInstant();
+        Instant cutoff = slotStartInstant.minus(Duration.ofMinutes(properties.visitorCutoffMinutes()));
+        if (now.isBefore(cutoff)) return;
+        if (reason == null || reason.isBlank()) throw conflict("cutoff_passed", Map.of("field", "reason"));
+    }
+
+    /** FR-APT-023: offers a freed slot to the first still-waiting entry, if the Service's waitlist is on and anyone is waiting. Called under the slot's advisory lock, already held by the caller. */
+    private void offerToWaitlistIfEnabled(UUID serviceId, LocalDate date, LocalTime start, LocalTime end, Instant now) {
+        if (!repository.waitlistEnabled(serviceId)) return;
+        repository.firstWaiting(serviceId, date, start, end).ifPresent(entry -> offer(entry, now));
+    }
+
+    private void offer(WaitlistEntry entry, Instant now) {
+        Instant holdExpiresAt = now.plus(Duration.ofMinutes(properties.waitlistHoldMinutes()));
+        UUID appointmentId = UUID.randomUUID();
+        String referenceCode = insertHeldWithFreshReference(
+                appointmentId, entry.serviceId(), null, entry.visitorId(), entry.slotDate(), entry.slotStart(), entry.slotEnd(), entry.source(), entry.purposeNote(),
+                entry.language(), null, holdExpiresAt, now);
+        repository.markOffered(entry.id(), appointmentId, now);
+        audit.record(AuditEvent.of("appointment.waitlist_offered", "appointment", appointmentId)
+                .withAfter(slotSnapshot(referenceCode, entry.serviceId(), entry.slotDate(), entry.slotStart(), entry.slotEnd())));
     }
 
     /** FR-APT-012, §19.2 {@code held_slot -> [*]: hold expired}: releases every hold whose window has passed, so its capacity is free again. */
@@ -143,18 +277,29 @@ public class AppointmentBookingService {
         return released.size();
     }
 
-    private String slotKey(Parsed parsed) {
-        return "appointment_slot:" + parsed.serviceId() + "|" + parsed.date() + "|" + parsed.start();
+    private String slotKey(UUID serviceId, LocalDate date, LocalTime start) {
+        return "appointment_slot:" + serviceId + "|" + date + "|" + start;
     }
 
-    private String insertWithFreshReference(UUID id, Parsed parsed, UUID visitorId, UUID actor, Instant holdExpiresAt, Instant now) {
+    private String insertHeldWithFreshReference(
+            UUID id,
+            UUID serviceId,
+            UUID preferredAgentId,
+            UUID visitorId,
+            LocalDate date,
+            LocalTime start,
+            LocalTime end,
+            String source,
+            String purposeNote,
+            String language,
+            UUID actor,
+            Instant holdExpiresAt,
+            Instant now) {
         DataIntegrityViolationException last = null;
         for (int attempt = 0; attempt < CODE_ATTEMPTS; attempt++) {
             String code = newReferenceCode();
             try {
-                repository.insertHeld(
-                        id, code, parsed.serviceId(), parsed.preferredAgentId(), visitorId, parsed.date(), parsed.start(), parsed.end(), parsed.source(),
-                        parsed.purposeNote(), parsed.language(), actor, holdExpiresAt, now);
+                repository.insertHeld(id, code, serviceId, preferredAgentId, visitorId, date, start, end, source, purposeNote, language, actor, holdExpiresAt, now);
                 return code;
             } catch (DataIntegrityViolationException e) {
                 last = e; // The reference code collided with an existing one (astronomically rare); try another.
@@ -183,6 +328,17 @@ public class AppointmentBookingService {
         values.put("slot_end", fmt(parsed.end()));
         values.put("source", parsed.source());
         if (parsed.preferredAgentId() != null) values.put("preferred_agent_id", parsed.preferredAgentId().toString());
+        return values;
+    }
+
+    /** A reschedule's before/after, or a waitlist offer's after (FR-APT-021, FR-APT-023). */
+    private static Map<String, Object> slotSnapshot(String referenceCode, UUID serviceId, LocalDate date, LocalTime start, LocalTime end) {
+        Map<String, Object> values = new LinkedHashMap<>();
+        values.put("reference_code", referenceCode);
+        values.put("service_id", serviceId.toString());
+        values.put("slot_date", date.toString());
+        values.put("slot_start", fmt(start));
+        values.put("slot_end", fmt(end));
         return values;
     }
 

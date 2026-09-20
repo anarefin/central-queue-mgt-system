@@ -116,9 +116,10 @@ final class AppointmentAvailabilityFields {
         if (given == null) return ServiceSettings.DEFAULTS;
         int horizon = given.bookingHorizonDays() == null ? ServiceSettings.DEFAULT_HORIZON_DAYS : given.bookingHorizonDays();
         int lead = given.minLeadTimeMinutes() == null ? ServiceSettings.DEFAULT_LEAD_MINUTES : given.minLeadTimeMinutes();
+        boolean waitlistEnabled = given.waitlistEnabled() == null ? ServiceSettings.DEFAULT_WAITLIST_ENABLED : given.waitlistEnabled();
         if (horizon < 1 || horizon > MAX_HORIZON_DAYS) throw invalid("booking_horizon_days", "Range");
         if (lead < 0 || lead > MAX_LEAD_MINUTES) throw invalid("min_lead_time_minutes", "Range");
-        return new ServiceSettings(horizon, lead);
+        return new ServiceSettings(horizon, lead, waitlistEnabled);
     }
 
     /** A per-language note: only installed languages, blank texts dropped. No note at all is allowed. */

@@ -38,6 +38,21 @@ class AppointmentBookingRepository {
     /** A held_slot row swept past its hold (FR-APT-012), enough to audit what was released. */
     record ExpiredHold(UUID id, String referenceCode, UUID serviceId, LocalDate slotDate, LocalTime slotStart, LocalTime slotEnd, UUID visitorId) {}
 
+    /** A visitor waiting on a full slot (FR-APT-023), enough to offer it to them once it frees. */
+    record WaitlistEntry(
+            UUID id, UUID serviceId, UUID visitorId, LocalDate slotDate, LocalTime slotStart, LocalTime slotEnd, String source, String purposeNote, String language) {}
+
+    private static final RowMapper<WaitlistEntry> WAITLIST_ROW = (rs, i) -> new WaitlistEntry(
+            rs.getObject("id", UUID.class),
+            rs.getObject("service_id", UUID.class),
+            rs.getObject("visitor_id", UUID.class),
+            rs.getObject("slot_date", LocalDate.class),
+            rs.getObject("slot_start", LocalTime.class),
+            rs.getObject("slot_end", LocalTime.class),
+            rs.getString("source"),
+            rs.getString("purpose_note"),
+            rs.getString("language"));
+
     private static final RowMapper<AppointmentRow> ROW = (rs, i) -> new AppointmentRow(
             rs.getObject("id", UUID.class),
             rs.getString("reference_code"),
@@ -118,6 +133,52 @@ class AppointmentBookingRepository {
     /** {@code held_slot -> booked: details confirmed} (§19.2): every field the caller gave is already in place, so this only flips the state. */
     void confirm(UUID id, Instant now) {
         jdbc.update("UPDATE appointment SET state = 'booked', hold_expires_at = NULL, updated_at = ? WHERE id = ?", ts(now), id);
+    }
+
+    /** {@code booked -> rescheduled} (§19.2): the old slot stays held (still in {@link #activeCountForSlot}'s set) while the new slot's capacity is confirmed. Guarded on {@code state = 'booked'}; 0 means it was not (a stale caller, or a race the appointment-id advisory lock should already have prevented). */
+    int markRescheduling(UUID id, Instant now) {
+        return jdbc.update("UPDATE appointment SET state = 'rescheduled', updated_at = ? WHERE id = ? AND state = 'booked'", ts(now), id);
+    }
+
+    /** {@code rescheduled -> booked} (§19.2, FR-APT-021): moves to the new slot, same reference code. */
+    void applyReschedule(UUID id, LocalDate date, LocalTime start, LocalTime end, Instant now) {
+        jdbc.update("UPDATE appointment SET slot_date = ?, slot_start = ?, slot_end = ?, state = 'booked', updated_at = ? WHERE id = ?", date, start, end, ts(now), id);
+    }
+
+    /** {@code booked -> cancelled} (§19.2, FR-APT-022): capacity is free the instant this commits, since {@link #activeCountForSlot} excludes it. Guarded the same way {@link #markRescheduling} is. */
+    int cancel(UUID id, Instant now) {
+        return jdbc.update("UPDATE appointment SET state = 'cancelled', updated_at = ? WHERE id = ? AND state = 'booked'", ts(now), id);
+    }
+
+    // ---- waitlist (FR-APT-023) ----------------------------------------------------------------------------------
+
+    boolean waitlistEnabled(UUID serviceId) {
+        return Boolean.TRUE.equals(jdbc.query(
+                        "SELECT waitlist_enabled FROM appointment_service_settings WHERE service_id = ?", (rs, i) -> rs.getBoolean("waitlist_enabled"), serviceId)
+                .stream().findFirst().orElse(false));
+    }
+
+    UUID insertWaitlistEntry(UUID serviceId, UUID visitorId, LocalDate date, LocalTime start, LocalTime end, String source, String purposeNote, String language, Instant now) {
+        UUID id = UUID.randomUUID();
+        jdbc.update(
+                "INSERT INTO appointment_waitlist (id, service_id, visitor_id, slot_date, slot_start, slot_end, source, purpose_note, language, state, created_at, updated_at)"
+                        + " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'waiting', ?, ?)",
+                id, serviceId, visitorId, date, start, end, source, purposeNote, language, ts(now), ts(now));
+        return id;
+    }
+
+    /** The first still-waiting entry for one exact slot (FR-APT-023: "the first waitlisted visitor"). */
+    Optional<WaitlistEntry> firstWaiting(UUID serviceId, LocalDate date, LocalTime start, LocalTime end) {
+        return jdbc.query(
+                        "SELECT id, service_id, visitor_id, slot_date, slot_start, slot_end, source, purpose_note, language FROM appointment_waitlist"
+                                + " WHERE service_id = ? AND slot_date = ? AND slot_start = ? AND slot_end = ? AND state = 'waiting' ORDER BY created_at LIMIT 1",
+                        WAITLIST_ROW,
+                        serviceId, date, start, end)
+                .stream().findFirst();
+    }
+
+    void markOffered(UUID waitlistId, UUID offeredAppointmentId, Instant now) {
+        jdbc.update("UPDATE appointment_waitlist SET state = 'offered', offered_appointment_id = ?, updated_at = ? WHERE id = ?", offeredAppointmentId, ts(now), waitlistId);
     }
 
     Optional<AppointmentRow> find(UUID id) {

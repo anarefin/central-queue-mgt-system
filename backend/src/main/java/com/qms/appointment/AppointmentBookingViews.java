@@ -27,7 +27,12 @@ public final class AppointmentBookingViews {
             @JsonProperty("purpose_note") String purposeNote,
             String language) {}
 
-    /** The booked appointment (FR-APT-014): {@code reference_code} is what the visitor is given, and what a QR the caller renders should encode. */
+    /**
+     * The booked (or waitlisted) appointment (FR-APT-014): {@code reference_code} is what the visitor is given, and
+     * what a QR the caller renders should encode. {@code state} is {@code "waitlisted"} and {@code reference_code}
+     * is {@code null} when the slot was full and the Service's waitlist took the request instead (FR-APT-023); the
+     * {@code id} is then the waitlist entry's, not an appointment's.
+     */
     public record AppointmentResponse(
             UUID id,
             @JsonProperty("reference_code") String referenceCode,
@@ -41,4 +46,14 @@ public final class AppointmentBookingViews {
             @JsonProperty("preferred_agent_id") UUID preferredAgentId,
             @JsonProperty("purpose_note") String purposeNote,
             String language) {}
+
+    /**
+     * A reschedule (FR-APT-020, FR-APT-021): the new slot, keeping the same reference code. {@code reason} is
+     * required once the caller is past {@code qms.appointment.visitor-cutoff-minutes} before the appointment's
+     * current slot — a visitor acts only inside that window, staff any time, but then must say why.
+     */
+    public record RescheduleAppointmentRequest(String date, String start, String end, String reason) {}
+
+    /** A cancellation (FR-APT-020): {@code reason} is required past the same cutoff a reschedule enforces. */
+    public record CancelAppointmentRequest(String reason) {}
 }

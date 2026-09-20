@@ -147,7 +147,7 @@ public class AppointmentAvailabilityService {
     public Settings settings(UUID serviceId) {
         requireService(serviceId);
         ServiceSettings s = repository.settings(serviceId).orElse(ServiceSettings.DEFAULTS);
-        return new Settings(s.bookingHorizonDays(), s.minLeadTimeMinutes());
+        return new Settings(s.bookingHorizonDays(), s.minLeadTimeMinutes(), s.waitlistEnabled());
     }
 
     @PreAuthorize(CATALOGUE)
@@ -159,10 +159,14 @@ public class AppointmentAvailabilityService {
         if (!before.equals(after)) {
             repository.saveSettings(serviceId, after, clock.instant());
             audit.record(AuditEvent.of("appointment_settings.updated", "appointment_settings", serviceId)
-                    .withBefore(Map.of("booking_horizon_days", before.bookingHorizonDays(), "min_lead_time_minutes", before.minLeadTimeMinutes()))
-                    .withAfter(Map.of("booking_horizon_days", after.bookingHorizonDays(), "min_lead_time_minutes", after.minLeadTimeMinutes())));
+                    .withBefore(Map.of(
+                            "booking_horizon_days", before.bookingHorizonDays(), "min_lead_time_minutes", before.minLeadTimeMinutes(),
+                            "waitlist_enabled", before.waitlistEnabled()))
+                    .withAfter(Map.of(
+                            "booking_horizon_days", after.bookingHorizonDays(), "min_lead_time_minutes", after.minLeadTimeMinutes(),
+                            "waitlist_enabled", after.waitlistEnabled())));
         }
-        return new Settings(after.bookingHorizonDays(), after.minLeadTimeMinutes());
+        return new Settings(after.bookingHorizonDays(), after.minLeadTimeMinutes(), after.waitlistEnabled());
     }
 
     // ---- search (FR-APT-010) ------------------------------------------------------------------------------------

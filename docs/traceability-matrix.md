@@ -952,6 +952,44 @@ and tested at the API layer (`Booking(IT)#aWalkInBookingWithNoExistingVisitorCre
 channel that does not go through Reception's own directory screen first — a future host API (ticket 58) or a leaner
 phone-booking form, neither of which this ticket's acceptance criteria call for building now.
 
+## Ticket 34, reschedule, cancellation and waitlist
+
+`Reschedule(IT)` = `B/appointment/AppointmentRescheduleCancelIT`.
+
+| Requirement ID | Section | Test type | Test reference | Status |
+|---|---|---|---|---|
+| FR-APT-020 visitor reschedule/cancel up to a configurable cut-off (default 2 h); staff any time with a reason | §9.3 | integration | `AppointmentBookingService#enforceCutoff` (`AppointmentProperties#visitorCutoffMinutes`, default 120); `Reschedule(IT)#reschedulingPastTheCutoffWithoutAReasonIsRefused`, `#staffMayRescheduleAnyTimeWithAReason`, `#cancellingPastTheCutoffWithoutAReasonIsRefused`, `#staffMayCancelAnyTimeWithAReason`, `#reschedulingWithinTheCutoffKeepsTheReferenceCodeAndIsRecordedInTheAuditLog` (well inside the cut-off, no reason needed) | passing |
+| FR-APT-021 reschedule preserves the reference code and records the change history | §9.3 | integration | `AppointmentBookingService#reschedule` (`booked -> rescheduled -> booked`, §19.2, the same one transaction pattern `#book` uses for `held_slot -> booked`; `AppointmentBookingRepository#activeCountForSlot` already counted `rescheduled` from ticket 33's own migration); the move (before/after slot, staff `reason`) is written to `audit_log` — the same append-only trail every other entity's history is, not a separate table; `Reschedule(IT)#reschedulingWithinTheCutoffKeepsTheReferenceCodeAndIsRecordedInTheAuditLog`, `#staffMayRescheduleAnyTimeWithAReason` | passing |
+| FR-APT-022 cancellation returns capacity immediately | §9.3, §19.2 | integration | `AppointmentBookingRepository#cancel` (`booked -> cancelled`; `activeCountForSlot`'s `IN` list already excludes `cancelled`, so the freed seat is visible to the very next request in the same test); `Reschedule(IT)#cancellingReturnsCapacityImmediately` (a second booking blocked while full succeeds right after the cancel) | passing |
+| FR-APT-023 an optional per-Service waitlist offers the first waitlisted visitor a freed slot for a configurable hold period | §9.3 | integration | `appointment_service_settings.waitlist_enabled` (`V29`, off by default); `appointment_waitlist` (`V29`, outside the appointment lifecycle: `waiting` consumes no capacity, `offered` points at a real `appointment` row); joining is `POST /appointments` hitting a full slot on a Service with its waitlist on, in place of the `slot_full` refusal (still inside that request's per-slot lock); an offer reuses the existing `held_slot`/hold-expiry machinery verbatim (`AppointmentBookingService#offer` calls the same `insertHeldWithFreshReference` `#book` does, `AppointmentProperties#waitlistHoldMinutes` default 30), so an unclaimed offer is swept by the unchanged `AppointmentHoldExpiryScheduler`; `Reschedule(IT)#aFullSlotWithWaitlistEnabledJoinsTheWaitlistInsteadOfBeingRefused`, `#aFullSlotWithNoWaitlistIsStillRefusedWithSlotFull`, `#cancellingOffersTheFreedSlotToTheFirstWaitlistedVisitor` | passing |
+| `PATCH /appointments/{id}`, `DELETE /appointments/{id}` | §9.3 AC | integration | `AppointmentBookingController#reschedule`/`#cancel`; `Reschedule(IT)` (the full suite above), `#rescheduleAndCancelOfAnUnknownAppointmentAreNotFound`, `#reschedulingToAFullSlotIsRefusedAndTheOriginalBookingIsUnchanged`, `#cancellingAnAlreadyCancelledAppointmentIsRefused` | passing |
+| Definition of done §27.5 item 3 (strings in both packs) | §27.5 | unit | `appointment.refused.not_booked`, `appointment.refused.cutoff_passed` in `messages_en.properties`/`messages_bn.properties`; `MessagesTest#shippedPacksAreCompleteAndNonBlank` (pack parity, generic over every key) | passing |
+| Definition of done §27.5 item 4 (permission-checked server-side) | §20.3 | integration | `PATCH`/`DELETE /appointments/{id}` require `appointment:book` (`Authorities.APPOINTMENT_BOOK`, unchanged — SRS §5.2 has one permission row, "Book an appointment", covering reschedule and cancel too), scoped to the Service's Site; `Reschedule(IT)#rescheduleAndCancelRequireThePermissionAndAreScopedToTheServicesSite`; build-time `ControllerSecurityTest` covers both new controller methods | passing |
+| Definition of done §27.5 item 5 (events and audit entries) | §18.3 | integration | `appointment.rescheduled` (before/after slot, reason), `appointment.cancelled` (before, reason), `appointment.waitlisted` (after), `appointment.waitlist_offered` (after), all via `AuditWriter`; `Reschedule(IT)` asserts each by `action`/`entity_id` (and `reason` for the staff-override cases) | passing |
+| Definition of done §27.5 item 6 (documented) | §27.5 | manual | covered by this table; `docs/admin-guide.md` and `docs/api/error-codes.md` are not updated (the same gap ticket 33 left) | partial |
+| §18, §26 the V29 migration is forward-only and re-runnable | §18, §26 | integration | `B/platform/MigrationIT#everyMigrationScriptCanBeReExecutedAgainstAnAlreadyMigratedDatabase` (V29) | passing |
+
+**Notes on this ticket's interpretation.** There is no visitor principal yet (ticket 41 builds visitor OTP sign-in and
+reuses these same two endpoints "with visitor permissions "own only""), so every caller here is staff; FR-APT-020's
+visitor/staff split is implemented as one rule both will share: act before `visitorCutoffMinutes` (default 2 h,
+matching FR-APT-020's own default) before the appointment's *current* slot and no reason is needed, or act any closer
+(or even after the slot) and a `reason` is required — there is no separate visitor-only code path to test today, so
+`Reschedule(IT)` exercises the rule directly at the staff endpoint, both sides of it (`cutoff_passed` without a
+reason, success with one). "Change history" (FR-APT-021) is the existing append-only `audit_log`, the same mechanism
+every other entity's history is (templates, exceptions, settings, users) — not a new per-appointment history table.
+The `rescheduled` state (§19.2) is written and then immediately replaced by `booked` inside the one transaction that
+serves the `PATCH`; nothing outside that transaction ever reads it mid-flight, but doing the update in that order
+(rather than one direct `booked -> booked` update carrying new slot fields) keeps `activeCountForSlot`'s bookkeeping
+honest with the state machine ticket 33's migration already committed to, and mirrors how `#book` itself passes
+through `held_slot` for a single transaction rather than skipping it. The waitlist join has no endpoint of its own:
+FR-APT-023 only names the *offer* side ("first waitlisted visitor offered..."), and the natural way a caller ends up
+on a waitlist is the same one used to try to book in the first place — `POST /appointments` against a full slot, on a
+Service that has turned the waitlist on. An offer is not auto-accepted: it lands in `held_slot` with
+`waitlistHoldMinutes`' hold (default 30, shorter than the visitor cutoff so an unclaimed offer can still be re-tried
+before the slot itself would be), and nothing in this ticket's acceptance criteria asks for an accept step or for
+cascading an expired offer to the next waitlisted visitor — both are left to whichever future ticket adds the accept
+flow (most plausibly ticket 41's self-service, since only a visitor can meaningfully accept their own offer).
+
 ## Notes
 
 - **Compose.** Verified by hand on 2026-09-19 with OrbStack Docker, from a clean build: `migrate` exited 0, then Postgres,

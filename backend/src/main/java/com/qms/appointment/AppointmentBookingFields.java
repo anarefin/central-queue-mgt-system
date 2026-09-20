@@ -1,6 +1,8 @@
 package com.qms.appointment;
 
 import com.qms.appointment.AppointmentBookingViews.BookAppointmentRequest;
+import com.qms.appointment.AppointmentBookingViews.CancelAppointmentRequest;
+import com.qms.appointment.AppointmentBookingViews.RescheduleAppointmentRequest;
 import com.qms.platform.ApiException;
 import com.qms.platform.ErrorCode;
 import java.time.LocalDate;
@@ -68,6 +70,31 @@ final class AppointmentBookingFields {
         if (language != null && !installedLanguages.contains(language)) throw invalid("language", "unknown_language");
 
         return new Parsed(request.serviceId(), date, start, end, source, visitorId, contactName, contactPhone, contactEmail, request.preferredAgentId(), purposeNote, language);
+    }
+
+    /** A reschedule's new slot and optional staff reason (FR-APT-020, FR-APT-021). */
+    record RescheduleParsed(LocalDate date, LocalTime start, LocalTime end, String reason) {}
+
+    static RescheduleParsed parseReschedule(RescheduleAppointmentRequest request) {
+        if (request == null) throw invalid("date", "NotNull");
+        LocalDate date = AppointmentAvailabilityFields.date("date", request.date());
+        if (date == null) throw invalid("date", "NotNull");
+        LocalTime start = AppointmentAvailabilityFields.time("start", request.start());
+        if (start == null) throw invalid("start", "NotNull");
+        LocalTime end = AppointmentAvailabilityFields.time("end", request.end());
+        if (end == null) throw invalid("end", "NotNull");
+        if (!start.isBefore(end)) throw invalid("end", "start_must_precede_end");
+        return new RescheduleParsed(date, start, end, reason(request.reason()));
+    }
+
+    static String parseCancelReason(CancelAppointmentRequest request) {
+        return request == null ? null : reason(request.reason());
+    }
+
+    private static String reason(String raw) {
+        String trimmed = blank(raw);
+        if (trimmed != null && trimmed.length() > MAX_NOTE) throw invalid("reason", "Size");
+        return trimmed;
     }
 
     private static String blank(String value) {

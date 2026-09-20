@@ -57,10 +57,14 @@ public final class AppointmentAvailabilityViews {
 
     public record Exceptions(List<AppointmentException> items) {}
 
-    /** A Service's booking horizon and minimum lead time (FR-APT-005); either left out takes the default. */
+    /**
+     * A Service's booking horizon, minimum lead time (FR-APT-005) and whether its waitlist is on (FR-APT-023); any
+     * left out takes the default.
+     */
     public record Settings(
             @JsonProperty("booking_horizon_days") Integer bookingHorizonDays,
-            @JsonProperty("min_lead_time_minutes") Integer minLeadTimeMinutes) {}
+            @JsonProperty("min_lead_time_minutes") Integer minLeadTimeMinutes,
+            @JsonProperty("waitlist_enabled") Boolean waitlistEnabled) {}
 
     public record Slot(String start, String end, @JsonProperty("remaining_capacity") int remainingCapacity) {}
 
