@@ -35,7 +35,7 @@
 31-journeys-and-multi-stop-visits          22,10           done     42m      36 files, +2276 −16 8edcae0..4969763
 32-appointment-availability                21              done     n/a*     17 files, +1909 −7  2529305..b5c2b99
 33-staff-appointment-booking               32,22           done     35m      22 files, +1614 −33 e5556ed..ca16543
-34-reschedule-cancel-waitlist              33              todo     —        —                   —
+34-reschedule-cancel-waitlist              33              done     n/a*     17 files, +899 −32  5b75e34..dcd7e75
 35-appointment-check-in                    33,26,09        todo     —        —                   —
 36-appointment-no-shows                    33              todo     —        —                   —
 37-visitor-ticket-page-pwa                 11,19           todo     —        —                   —
@@ -66,7 +66,7 @@
 
 # * 26: worker hit a session rate limit mid-ticket, was resumed after reset; elapsed wall-clock
 #   spans the pause and is not comparable to other tickets' timings.
-# * 27, 29, 32: worker's turn ended waiting on a background gradlew run before committing;
+# * 27, 29, 32, 34: worker's turn ended waiting on a background gradlew run before committing;
 #   resumed to finish verification and commit. Elapsed wall-clock not comparable either.
 # * 30: commit landed but the run was interrupted before bookkeeping; confirmed done and
 #   backfilled on resume, elapsed wall-clock not recorded.

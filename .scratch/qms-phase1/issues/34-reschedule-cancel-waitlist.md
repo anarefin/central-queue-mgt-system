@@ -4,7 +4,7 @@
 
 **Blocked by:** 33 — Staff appointment booking
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [x] Visitor reschedule/cancel up to a configurable cut-off (default 2 h); staff any time with reason (FR-APT-020)
 - [x] Reschedule keeps the reference code and records history (FR-APT-021)
