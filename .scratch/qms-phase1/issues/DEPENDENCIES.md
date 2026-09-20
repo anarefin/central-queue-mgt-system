@@ -32,7 +32,7 @@
 28-display-now-serving-table               24,11           done     51m      31 files, +1868 −37 5a319c3..1eb6a0c
 29-voice-announcements                     28,12           done     n/a*     44 files, +1512 −59 7b04c75..c8252ee
 30-display-layouts-and-notice-board        28              done     n/a*     82 files, +3891 −123 1eb6a0c..8fcf281
-31-journeys-and-multi-stop-visits          22,10           todo     —        —                   —
+31-journeys-and-multi-stop-visits          22,10           done     42m      36 files, +2276 −16 8edcae0..4969763
 32-appointment-availability                21              todo     —        —                   —
 33-staff-appointment-booking               32,22           todo     —        —                   —
 34-reschedule-cancel-waitlist              33              todo     —        —                   —

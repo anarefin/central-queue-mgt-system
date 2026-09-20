@@ -4,7 +4,7 @@
 
 **Blocked by:** 22 — Visitor directory and walk-in registration; 10 — Counter session: call next, start service, complete
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [x] Journey stored as journey stops on the Visit (ordered or unordered), from a template or ad hoc; Tickets realise stops (FR-QUE-060, ADR-0007)
 - [x] Reception issues the linked set in one action; all share one Visit (FR-ISS-022)
