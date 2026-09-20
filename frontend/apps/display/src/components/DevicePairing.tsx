@@ -5,6 +5,7 @@ import { useI18n } from "@qms/i18n/react";
 import { Button, Card, ErrorAlert, Page, TextField } from "@qms/ui";
 import { useEffect, useId, useState, type FormEvent } from "react";
 import { useApi } from "../lib/runtime";
+import { NowServingBoard } from "./NowServingBoard";
 
 /** How often a paired device reports in (FR-OPS-041); the SRS gives no number, this build's own choice. */
 const HEARTBEAT_INTERVAL_MS = 60_000;
@@ -68,7 +69,7 @@ export function DevicePairing() {
   if (configError) return <ErrorAlert>{t("errors.network_error")}</ErrorAlert>;
   if (!session || status === "unknown") return <p className="qms-muted">{t("common.loading")}</p>;
   if (status === "unpaired") return <PairingForm />;
-  return <PairedView bootstrap={bootstrap} bootstrapError={bootstrapError} />;
+  return <PairedView bootstrap={bootstrap} bootstrapError={bootstrapError} deviceId={session.device?.id ?? null} />;
 }
 
 function PairingForm() {
@@ -114,18 +115,34 @@ function PairingForm() {
   );
 }
 
-function PairedView({ bootstrap, bootstrapError }: { bootstrap: DeviceBootstrap | null; bootstrapError: boolean }) {
+function PairedView({
+  bootstrap,
+  bootstrapError,
+  deviceId,
+}: {
+  bootstrap: DeviceBootstrap | null;
+  bootstrapError: boolean;
+  deviceId: string | null;
+}) {
   const { t } = useI18n();
   // The organisation's branding (ticket 27, FR-CFG-030): applied here the same way the kiosk applies it, so the
-  // display board carries the same logo, colour and name once ticket 28 gives it real "now serving" content to show.
+  // display board carries the same logo, colour and name as the now-serving table it wraps (ticket 28).
   const style = bootstrap?.branding.primary_color ? { ["--qms-color-primary" as string]: bootstrap.branding.primary_color } : undefined;
   return (
     <Page>
-      <Card>
-        {bootstrapError && <ErrorAlert>{t("devicePairing.configError")}</ErrorAlert>}
-        {!bootstrap && !bootstrapError && <p className="qms-muted">{t("devicePairing.loadingConfig")}</p>}
+      <div className="qms-stack" style={style}>
+        {bootstrapError && (
+          <Card>
+            <ErrorAlert>{t("devicePairing.configError")}</ErrorAlert>
+          </Card>
+        )}
+        {!bootstrap && !bootstrapError && (
+          <Card>
+            <p className="qms-muted">{t("devicePairing.loadingConfig")}</p>
+          </Card>
+        )}
         {bootstrap && (
-          <div className="qms-stack" style={style}>
+          <header className="qms-now-serving-header">
             {bootstrap.branding.logo_url && (
               <img
                 className="qms-brand-logo"
@@ -134,9 +151,11 @@ function PairedView({ bootstrap, bootstrapError }: { bootstrap: DeviceBootstrap 
               />
             )}
             <h1 className="qms-heading">{bootstrap.branding.site_name}</h1>
-          </div>
+          </header>
         )}
-      </Card>
+        {/* FR-DSP-001: only a display is paired to a zone; a kiosk's bootstrap.layout is null and has no board to show. */}
+        {bootstrap?.layout && deviceId && <NowServingBoard deviceId={deviceId} />}
+      </div>
     </Page>
   );
 }

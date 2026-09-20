@@ -69,6 +69,7 @@ public class DeviceService {
     private final HierarchyService hierarchy;
     private final CatalogueService catalogue;
     private final BrandingService branding;
+    private final DisplayStateReads displayReads;
     private final DeviceProperties properties;
     private final AuditWriter audit;
     private final CurrentUser currentUser;
@@ -84,6 +85,7 @@ public class DeviceService {
             HierarchyService hierarchy,
             CatalogueService catalogue,
             BrandingService branding,
+            DisplayStateReads displayReads,
             DeviceProperties properties,
             AuditWriter audit,
             CurrentUser currentUser,
@@ -97,6 +99,7 @@ public class DeviceService {
         this.hierarchy = hierarchy;
         this.catalogue = catalogue;
         this.branding = branding;
+        this.displayReads = displayReads;
         this.properties = properties;
         this.audit = audit;
         this.currentUser = currentUser;
@@ -128,6 +131,14 @@ public class DeviceService {
                 now,
                 null,
                 null,
+                DeviceRules.DEFAULT_LAYOUT,
+                List.of("en"), // pairing is public and unauthenticated, so the site's own default language cannot be read here (ticket 28); an
+                // administrator sets a real language cycle with PUT /devices/{id}/display-config once paired.
+                DeviceRules.DEFAULT_NEXT_N,
+                DeviceRules.DEFAULT_HIGHLIGHT_SECONDS,
+                DeviceRules.DEFAULT_COLUMNS,
+                "zone",
+                List.of(),
                 now,
                 now);
         devices.insert(device);
@@ -294,6 +305,73 @@ public class DeviceService {
         audit.record(AuditEvent.of("device.command_pushed", "device", id).withAfter(Map.of("command", command)));
     }
 
+    /**
+     * Sets a display's layout, language cycle, column set, next-N depth, highlight period and its assignment within
+     * its zone (ticket 28, FR-DSP-001, FR-DSP-002). A null field in the request keeps this build's default. Pushes
+     * {@code config.changed} on the device's own topic, the same push {@code command(reload/config_changed)} already
+     * uses, so a live display refetches at once instead of waiting for its next heartbeat-driven reload.
+     */
+    @PreAuthorize(PERMISSION)
+    @Transactional
+    public DisplayConfigResponse updateDisplayConfig(UUID id, DisplayConfigRequest request) {
+        Device before = requireDevice(id);
+        scope.requireSite(before.siteId());
+        if (before.kind() != Role.DISPLAY) throw new ApiException(ErrorCode.CONFLICT, Map.of("reason", "not_a_display"));
+        Site site = hierarchy.site(before.siteId());
+
+        String layout = DeviceRules.layout(request.layout());
+        List<String> languageCycle = DeviceRules.languageCycle(request.languageCycle(), site.defaultLanguage(), site.enabledLanguages());
+        int nextN = DeviceRules.positiveInt("next_n", request.nextN(), DeviceRules.DEFAULT_NEXT_N, DeviceRules.MAX_NEXT_N);
+        int highlightSeconds = DeviceRules.positiveInt(
+                "highlight_seconds", request.highlightSeconds(), DeviceRules.DEFAULT_HIGHLIGHT_SECONDS, DeviceRules.MAX_HIGHLIGHT_SECONDS);
+        List<String> columns = DeviceRules.columns(request.columns());
+        DisplayConfigRequest.AssignmentRequest assignmentRequest = request.assignment();
+        String assignmentScope = DeviceRules.assignmentScope(assignmentRequest == null ? null : assignmentRequest.scope());
+        List<UUID> assignmentIds = DeviceRules.assignmentIds(assignmentScope, assignmentRequest == null ? null : assignmentRequest.ids());
+        if ("counters".equals(assignmentScope)) {
+            for (UUID counterId : assignmentIds) {
+                if (!devices.counterInZone(counterId, before.zoneId())) throw DeviceRules.invalid("assignment.ids", "counter_not_in_zone");
+            }
+        } else if ("queues".equals(assignmentScope)) {
+            for (UUID serviceId : assignmentIds) {
+                if (!devices.serviceServedInZone(serviceId, before.zoneId())) throw DeviceRules.invalid("assignment.ids", "service_not_in_zone");
+            }
+        }
+
+        Device after = new Device(
+                before.id(), before.kind(), before.siteId(), before.zoneId(), before.label(), before.active(),
+                before.pairedAt(), before.lastHeartbeatAt(), before.lastAppVersion(),
+                layout, languageCycle, nextN, highlightSeconds, columns, assignmentScope, assignmentIds,
+                before.createdAt(), clock.instant());
+        if (configSnapshot(after).equals(configSnapshot(before))) return DisplayConfigResponse.from(before);
+        devices.updateDisplayConfig(after);
+        audit.record(AuditEvent.of("device.display_config_updated", "device", id)
+                .withBefore(configSnapshot(before)).withAfter(configSnapshot(after)));
+        realtime.publish(Topics.device(id), "config.changed", clock.instant(), Map.of());
+        return DisplayConfigResponse.from(after);
+    }
+
+    /** Body of {@code GET /devices/{id}/display-state} (FR-DSP-012): the display's own resume read, no staff permission needed. */
+    @PreAuthorize("hasRole('DISPLAY')")
+    @Transactional(readOnly = true)
+    public DisplayStateResponse displayState(UUID id) {
+        requireSelf(id);
+        Device device = requireDevice(id);
+        if (!device.active()) throw new ApiException(ErrorCode.TOKEN_INVALID);
+        if (device.kind() != Role.DISPLAY || device.zoneId() == null) throw new ApiException(ErrorCode.CONFLICT, Map.of("reason", "not_a_display"));
+        Zone zone = hierarchy.zoneForDevice(device.zoneId());
+        return new DisplayStateResponse(
+                new DisplayStateResponse.ZoneRef(zone.id(), zone.name(), zone.buildingLabel(), zone.floorLabel()),
+                device.layout(),
+                device.languageCycle(),
+                device.columns(),
+                device.nextN(),
+                device.highlightSeconds(),
+                new DisplayStateResponse.Assignment(device.assignmentScope(), device.assignmentIds()),
+                displayReads.serving(zone.id()).stream().map(DeviceService::servingEntry).toList(),
+                displayReads.next(zone.id()).stream().map(DeviceService::nextGroupEntry).toList());
+    }
+
     // ---- internals -----------------------------------------------------------------------------------------------
 
     private DeviceSession issueSession(Device device, UUID familyId, Instant now) {
@@ -329,7 +407,14 @@ public class DeviceService {
                 device.pairedAt(),
                 device.lastHeartbeatAt(),
                 device.lastAppVersion(),
-                connectivity(device, clock.instant()));
+                connectivity(device, clock.instant()),
+                device.layout(),
+                device.languageCycle(),
+                device.nextN(),
+                device.highlightSeconds(),
+                device.columns(),
+                device.assignmentScope(),
+                device.assignmentIds());
     }
 
     private static String connectivity(Device device, Instant now) {
@@ -348,6 +433,30 @@ public class DeviceService {
         values.put("label", device.label());
         values.put("active", device.active());
         return values;
+    }
+
+    private static Map<String, Object> configSnapshot(Device device) {
+        Map<String, Object> values = new LinkedHashMap<>();
+        values.put("layout", device.layout());
+        values.put("language_cycle", device.languageCycle());
+        values.put("next_n", device.nextN());
+        values.put("highlight_seconds", device.highlightSeconds());
+        values.put("columns", device.columns());
+        values.put("assignment_scope", device.assignmentScope());
+        values.put("assignment_ids", device.assignmentIds().stream().map(UUID::toString).toList());
+        return values;
+    }
+
+    private static DisplayStateResponse.ServingEntry servingEntry(DisplayStateReads.ServingRow row) {
+        return new DisplayStateResponse.ServingEntry(
+                row.counterId(), row.counterLabel(), row.tokenNumber(), row.state(), row.serviceId(), row.serviceNames(), row.staffName());
+    }
+
+    private static DisplayStateResponse.NextGroupEntry nextGroupEntry(DisplayStateReads.NextGroup group) {
+        return new DisplayStateResponse.NextGroupEntry(
+                group.serviceId(),
+                group.serviceNames(),
+                group.tokens().stream().map(t -> new DisplayStateResponse.NextTicketEntry(t.tokenNumber(), t.position())).toList());
     }
 
     static String hash(String rawToken) {

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import "@qms/ui/styles.css";
+import "./display.css";
 import { Providers } from "./providers";
 
 export const metadata: Metadata = { title: "QMS — display" };

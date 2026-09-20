@@ -668,6 +668,58 @@ pre-assign one. Reports (tickets 48–52) and the visitor/mobile app (ticket 37)
 so "applied to reports"/"applied to the mobile app" is satisfied only as far as: `OrgBranding` is readable wherever
 those tickets will need it, with nothing further to build against yet.
 
+## Ticket 28, display board: now-serving table
+
+`Rules` = `B/device/DeviceRulesTest`, `Fleet` = `B/device/DeviceFleetIT`, `ZoneRT` = `B/platform/realtime/DisplayRealtimeIT`,
+`F/Board` = `F/apps/display/src/components/NowServingBoard.test.tsx`.
+
+| Requirement ID | Section | Test type | Test reference | Status |
+|---|---|---|---|---|
+| FR-DSP-001 registered as a device with a name, a zone, a layout and a language cycle | §12.1 | integration | `Fleet#aDisplayIsPairedWithSensibleDefaultsAndAnAdminCanUpdateItsConfigWithinItsZone` (name/zone already ticket 24; layout and language cycle default on pairing, both settable after) | passing |
+| FR-DSP-002 assignable to one or more queues, one or more counters, or a whole zone | §12.1 | unit, integration | `Rules#assignmentIdsMustBeEmptyForZoneAndNonEmptyOtherwiseWithoutDuplicates`; `Fleet#aDisplayIsPairedWithSensibleDefaultsAndAnAdminCanUpdateItsConfigWithinItsZone` (`counters` scope), `#displayConfigValidatesLayoutColumnsAndKeepsAssignmentWithinTheDisplaysZone` (a Counter or Service outside the display's own zone is refused) | passing |
+| FR-DSP-003 `now_serving_table` layout, selectable from a shipped set | §12.1 | unit | `Rules#layoutDefaultsToNowServingTableAndRejectsAnythingElse` (the only layout this build ships; ticket 30 adds `split_media`/`single_counter`/`summary_board`) | passing |
+| FR-DSP-004 serving table shows at minimum token, counter label, service or staff name, with a configurable column set | §12.1 | unit, integration | `Rules#columnsDefaultToTokenAndCounterOnlyAndAlwaysIncludeBoth`; `Fleet#displayStateShowsWhoIsBeingServedWhereAndTheNextTokenOfEachQueueInTheZone`; `F/Board` (renders only the configured columns) | passing |
+| FR-DSP-005 next-token strip shows the next N tokens per queue (default 4) | §12.1 | unit, integration | `Rules#positiveIntFallsBackAndRejectsOutOfRange`; `Fleet#displayStateShowsWhoIsBeingServedWhereAndTheNextTokenOfEachQueueInTheZone`; `F/Board` (next strip grouped per queue) | passing |
+| FR-DSP-007 newly called tokens highlighted for a configurable period (default 10 s) | §12.1 | integration | `F/Board#highlightsANewlyCalledTokenPushedLiveOnTheZoneTopic` (the row gets `qms-now-serving-row--highlight` on `ticket.called`) | passing |
+| FR-DSP-010 / NFR-PERF-002 updates within 2 s of a call event | §12.2 | integration | `ZoneRT#aDisplayWatchesItsOwnZoneAndSeesACallWithinTheHubsDeliveryAndTheSnapshotListsTheCounterAndTheNextStrip` (the `zone:` event arrives over the same hub `RealtimeIT` already times at P95); `F/Board` applies it live | passing |
+| FR-DSP-011 auto-reconnects; discreet stale indicator after 30 s without an update | §12.2 | unit, integration | reconnect is the realtime client's own mechanism (ticket 11, `F/packages/realtime-client/src/client.test.ts`); `F/Board#showsADiscreetStaleIndicatorOnceNothingHasUpdatedForAWhile` | passing |
+| FR-DSP-012 resumes zone and layout with no login; full state from `GET /devices/{id}/display-state` | §12.2 | integration | `Fleet#onlyTheDisplayItselfMayReadItsOwnDisplayStateAndAKioskHasNone`, `#displayStateShowsWhoIsBeingServedWhereAndTheNextTokenOfEachQueueInTheZone`; the device's own persisted refresh credential (ticket 24, API-017) is what lets it authenticate again with no login | passing |
+| FR-QUE-084 polling fallback at 5 s for displays | §21.5 | integration | `ZoneRT#whereWebSocketIsBlockedTheSameZoneSnapshotCanBePolledOverHttp` (`GET /stream/snapshot?topic=zone:{id}`, the same endpoint the realtime client's own polling fallback already uses at its 5 s display default, ticket 11) | passing |
+| FR-SEC-020 public display shows token and counter only by default | §25.3 | unit | `Rules#columnsDefaultToTokenAndCounterOnlyAndAlwaysIncludeBoth` | passing |
+| NFR-USA-004 token text ≥ 60 px at 1080p on a 43-inch screen, configurable upward | §26 | manual | `frontend/apps/display/src/app/display.css`'s `.qms-now-serving-token` (`font-size: var(--qms-now-serving-token-size, 60px)`, the same CSS-custom-property override convention `--qms-color-primary` already uses); no automated layout/rendering test measures on-screen pixels in this repo | manual |
+| §21.2 the `zone:{zone_id}` topic: a display watches its own zone; a staff caller needs `config:org_sites_zones` and site scope | §21.2 | integration | `ZoneRT#anAdminWhoManagesTheZonesSitesMayWatchItButAnotherRoleMayNot`, `#aDisplayFromAnotherZoneMayNotWatchAndAnUnknownZoneIsNotFound` | passing |
+| FR-SEC-040/042 the display config update is audited | §18.3 | integration | `Fleet#aDisplayIsPairedWithSensibleDefaultsAndAnAdminCanUpdateItsConfigWithinItsZone` (`device.display_config_updated`) | passing |
+| §18.2 the V23 migration is forward-only and re-runnable | §18, §26 | integration | `B/platform/MigrationIT#everyMigrationScriptCanBeReExecutedAgainstAnAlreadyMigratedDatabase` (V23) | passing |
+| FR-I18N-001 the new strings are in both packs | §17 | unit | `F/packages/i18n/src/i18n.test.ts` (pack parity; `nowServing.*` resolve in en and bn) | passing |
+| Definition of done §27.5 item 6 | §27.5 | manual | covered by this table and `docs/admin-guide.md` (not yet updated with a display-board section; left for the admin UI ticket that surfaces `display-config`) | partial |
+
+**Notes on this ticket's interpretation.** `serving` and `next` in `GET /devices/{id}/display-state` and the `zone:`
+topic are always the *whole zone's* live state -- one row per active Counter, every Service any active Counter of the
+zone serves -- never pre-filtered to one display's own `assignment`. Several displays can watch the same zone with
+different assignments (FR-DSP-002), and the hub's `zone:` topic is one shared feed per zone, not one per display;
+computing a per-assignment view server-side would mean either a topic per display (defeating the shared feed the SRS
+describes: "it subscribes to a zone") or recomputing a bespoke snapshot per subscriber on every event. Instead
+`DisplayStateReads` (device package) is the single place that computation lives, shared by the REST read and the
+topic's snapshot so the two can never drift apart, and the frontend (`NowServingBoard`) applies the same
+`assignment`-based filter to both the initial read and every subsequent live update. This is exact for `zone` (this
+build's common case, and the only one the backend IT suite exercises end to end) and for `queues` (Service ids are
+compared directly); for `counters`, the next-token strip still lists every queue the zone serves, not narrowed to
+only the Services those specific Counters offer, because the API does not carry static Counter→Service capability
+data to the display -- only which Service a Counter is *currently* serving. A `zone:` event carries a transition's own
+fields (`counter_id`, `token_number`, `state`, `service_id`, from the same envelope `TicketEvents` already builds for
+`queue:`/`counter:`), not a full re-snapshot, so the serving table updates within the hub's normal delivery latency
+(FR-DSP-010); a Service's display name and a staff member's name are not in that envelope, so `NowServingBoard` also
+re-fetches the whole zone in full every 20 seconds regardless of transport, correcting those two columns and the
+next-token strip within that window without weakening the fast per-call update the SRS times. The device-registration
+attribute `language_cycle` (FR-DSP-001) is stored and returned but this build does not implement an on-screen
+rotation through it: `@qms/i18n`'s `I18nProvider` resolves one fixed language per page load with no runtime
+`setLanguage`, and adding one is a shared-package change wider than this ticket's own layout; the ticket's checklist
+also lists language cycle only as a registration attribute, not as an animated behaviour. `layout` accepts only
+`now_serving_table` in this build (`DeviceRules.LAYOUTS`); FR-DSP-003's other three layouts and FR-DSP-006's notice
+panel belong to ticket 30. Assignment and column validation reuse `config:org_sites_zones` exactly as ticket 24's
+fleet administration does, for the same reason: a display sits under a Site/Zone like a Counter, and §5.2's matrix has
+no dedicated display-configuration permission to add.
+
 ## Notes
 
 - **Compose.** Verified by hand on 2026-09-19 with OrbStack Docker, from a clean build: `migrate` exited 0, then Postgres,

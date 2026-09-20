@@ -1,5 +1,5 @@
 import type { DeviceView, Site } from "@qms/api-client";
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { json, renderApp, stubApi, type Recorded, type Routes } from "../test-utils";
@@ -29,6 +29,21 @@ const KIOSK: DeviceView = {
   last_heartbeat_at: null,
   last_app_version: null,
   connectivity: "offline",
+  layout: "now_serving_table",
+  language_cycle: ["en"],
+  next_n: 4,
+  highlight_seconds: 10,
+  columns: ["token", "counter"],
+  assignment_scope: "zone",
+  assignment_ids: [],
+};
+
+const DISPLAY: DeviceView = {
+  ...KIOSK,
+  id: "d2",
+  kind: "display",
+  zone_id: "z1",
+  label: "Lobby screen",
 };
 
 const NO_SESSION: Routes = { "POST /auth/refresh": () => json(401, { error: { code: "token_invalid", message: "x", trace_id: "t" } }) };
@@ -53,6 +68,16 @@ function fakeApi(state: { sites: Site[]; devices: DeviceView[] }, extra: Routes 
       return json(200, state.devices[0]);
     },
     "POST /devices/d1/commands": () => new Response(null, { status: 204 }),
+    "PUT /devices/d2/display-config": () =>
+      json(200, {
+        id: "d2",
+        layout: "now_serving_table",
+        language_cycle: ["en"],
+        next_n: 6,
+        highlight_seconds: 10,
+        columns: ["token", "counter", "staff"],
+        assignment: { scope: "counters", ids: ["c1"] },
+      }),
     ...extra,
   };
   return stubApi(routes);
@@ -126,5 +151,34 @@ describe("device administration screen", () => {
     await userEvent.click(screen.getByRole("button", { name: "Push reload" }));
 
     await waitFor(() => expect(bodyOf(calls.find((c) => c.method === "POST" && c.path === "/devices/d1/commands"))).toEqual({ command: "reload" }));
+  });
+
+  it("shows display settings only for a display, and saves its columns, next-N, highlight period and assignment (ticket 28, FR-DSP-002)", async () => {
+    const state = { sites: [SITE], devices: [KIOSK, DISPLAY] };
+    const calls = fakeApi(state);
+    renderApp(<DeviceAdmin />);
+    await screen.findByText("Front desk kiosk (Kiosk, Main campus)");
+
+    expect(screen.queryByRole("button", { name: "Display settings" })).toBeInTheDocument();
+    const toggles = screen.getAllByRole("button", { name: "Display settings" });
+    expect(toggles).toHaveLength(1); // not offered for the kiosk
+
+    await userEvent.click(toggles[0]!);
+    const form = screen.getByRole("form", { name: "Display settings" });
+    expect(within(form).getByLabelText("Token")).toBeDisabled(); // FR-DSP-004's floor is never optional
+    await userEvent.click(within(form).getByLabelText("Staff"));
+    await userEvent.clear(within(form).getByLabelText("Next-token strip depth"));
+    await userEvent.type(within(form).getByLabelText("Next-token strip depth"), "6");
+    await userEvent.selectOptions(within(form).getByLabelText("Assigned to"), "counters");
+    await userEvent.type(within(form).getByLabelText("Counter IDs (comma-separated)"), "c1");
+    await userEvent.click(within(form).getByRole("button", { name: "Save display settings" }));
+
+    expect(await within(form).findByText("Display settings saved.")).toBeInTheDocument();
+    expect(bodyOf(calls.find((c) => c.method === "PUT" && c.path === "/devices/d2/display-config"))).toEqual({
+      columns: ["token", "counter", "staff"],
+      next_n: 6,
+      highlight_seconds: 10,
+      assignment: { scope: "counters", ids: ["c1"] },
+    });
   });
 });

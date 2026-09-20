@@ -53,4 +53,10 @@ public class DeviceController {
     public BootstrapResponse bootstrap() {
         return service.bootstrap();
     }
+
+    @PreAuthorize("hasRole('DISPLAY')")
+    @GetMapping("/devices/{id}/display-state")
+    public DisplayStateResponse displayState(@PathVariable UUID id) {
+        return service.displayState(id);
+    }
 }

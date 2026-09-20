@@ -22,6 +22,7 @@ export interface DeviceTokenResponse {
 }
 
 /** A device on the central health view (FR-OPS-041). `connectivity` is computed server-side so every client agrees. */
+/** A display's board fields are meaningless and just this build's defaults for a kiosk (ticket 28). */
 export interface DeviceView {
   id: string;
   kind: DeviceKind;
@@ -33,6 +34,13 @@ export interface DeviceView {
   last_heartbeat_at: string | null;
   last_app_version: string | null;
   connectivity: DeviceConnectivity;
+  layout: DisplayLayout;
+  language_cycle: string[];
+  next_n: number;
+  highlight_seconds: number;
+  columns: DisplayColumn[];
+  assignment_scope: DisplayAssignmentScope;
+  assignment_ids: string[];
 }
 
 export interface CreatePairingCodeInput {
@@ -111,4 +119,84 @@ export interface KioskServiceTreeGroup {
   team_selectable: boolean;
   individual_selectable: boolean;
   custom_level: KioskCustomLevel | null;
+}
+
+// ---- display board (ticket 28, SRS §12, FR-DSP-001..005, FR-DSP-007, FR-DSP-012) -----------------------------------
+
+/** The only shipped layout this build implements; ticket 30 adds `split_media`, `single_counter` and `summary_board`. */
+export type DisplayLayout = "now_serving_table";
+export type DisplayColumn = "token" | "counter" | "service" | "staff";
+export type DisplayAssignmentScope = "zone" | "counters" | "queues";
+
+export interface DisplayAssignment {
+  scope: DisplayAssignmentScope;
+  ids: string[];
+}
+
+/** Body of `PUT /devices/{id}/display-config` (staff, `config:org_sites_zones`); a field left out keeps its default. */
+export interface DisplayConfigInput {
+  layout?: DisplayLayout;
+  language_cycle?: string[];
+  next_n?: number;
+  highlight_seconds?: number;
+  columns?: DisplayColumn[];
+  assignment?: DisplayAssignment;
+}
+
+export interface DisplayConfig {
+  id: string;
+  layout: DisplayLayout;
+  language_cycle: string[];
+  next_n: number;
+  highlight_seconds: number;
+  columns: DisplayColumn[];
+  assignment: DisplayAssignment;
+}
+
+export interface DisplayZoneRef {
+  id: string;
+  name: string;
+  building_label: string | null;
+  floor_label: string;
+}
+
+/** One Counter of the zone: null token/state/service/staff when nothing is being called or served there right now. */
+export interface DisplayServingEntry {
+  counter_id: string;
+  counter_label: string;
+  token_number: string | null;
+  state: "called" | "serving" | null;
+  service_id: string | null;
+  service_names: Record<string, string>;
+  staff_name: string | null;
+}
+
+export interface DisplayNextToken {
+  token_number: string;
+  position: number;
+}
+
+/** The next-token strip of one queue in the zone (FR-DSP-005: next N tokens per queue). */
+export interface DisplayNextGroup {
+  service_id: string;
+  service_names: Record<string, string>;
+  tokens: DisplayNextToken[];
+}
+
+/**
+ * Body of `GET /devices/{id}/display-state` (device-authenticated, FR-DSP-012): everything a display needs to
+ * resume its assigned zone and layout with no login. `serving` and `next` are always the whole zone's live state;
+ * a display assigned to fewer Counters or queues than the whole zone (`assignment.scope` other than `zone`) filters
+ * this down to its own assignment itself -- the same filter it applies to every `zone:` topic update afterwards.
+ */
+export interface DisplayState {
+  zone: DisplayZoneRef;
+  layout: DisplayLayout;
+  language_cycle: string[];
+  columns: DisplayColumn[];
+  next_n: number;
+  highlight_seconds: number;
+  assignment: DisplayAssignment;
+  serving: DisplayServingEntry[];
+  next: DisplayNextGroup[];
 }

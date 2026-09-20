@@ -4,8 +4,10 @@ import com.qms.platform.ApiException;
 import com.qms.platform.ErrorCode;
 import com.qms.platform.security.Role;
 import java.security.SecureRandom;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 /** Field rules for device pairing and fleet management. Every failure is {@code validation_failed} naming the field. */
 final class DeviceRules {
@@ -14,6 +16,68 @@ final class DeviceRules {
     private static final String CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
     private static final int CODE_LENGTH = 8;
     private static final SecureRandom RANDOM = new SecureRandom();
+
+    // ---- display board defaults and rules (ticket 28, FR-DSP-001..005, FR-DSP-007, FR-SEC-020) ---------------------
+
+    /** The shipped layout set of FR-DSP-003; only {@code now_serving_table} is implemented by this ticket, the rest by ticket 30. */
+    static final String DEFAULT_LAYOUT = "now_serving_table";
+    static final List<String> LAYOUTS = List.of(DEFAULT_LAYOUT);
+    /** FR-SEC-020's public-display default: token number and counter only. */
+    static final List<String> DEFAULT_COLUMNS = List.of("token", "counter");
+    static final List<String> COLUMN_OPTIONS = List.of("token", "counter", "service", "staff");
+    static final int DEFAULT_NEXT_N = 4;
+    static final int MAX_NEXT_N = 20;
+    static final int DEFAULT_HIGHLIGHT_SECONDS = 10;
+    static final int MAX_HIGHLIGHT_SECONDS = 300;
+    static final List<String> ASSIGNMENT_SCOPES = List.of("zone", "counters", "queues");
+
+    static String layout(String wire) {
+        if (wire == null) return DEFAULT_LAYOUT;
+        if (!LAYOUTS.contains(wire)) throw invalid("layout", "unknown_layout");
+        return wire;
+    }
+
+    /** A non-empty, ordered, duplicate-free list of codes the site has enabled; defaults to the site's own default language. */
+    static List<String> languageCycle(List<String> wire, String siteDefaultLanguage, List<String> siteEnabledLanguages) {
+        if (wire == null || wire.isEmpty()) return List.of(siteDefaultLanguage);
+        LinkedHashSet<String> ordered = new LinkedHashSet<>(wire);
+        if (ordered.size() != wire.size()) throw invalid("language_cycle", "duplicate_language");
+        if (!siteEnabledLanguages.containsAll(ordered)) throw invalid("language_cycle", "unknown_language");
+        return List.copyOf(ordered);
+    }
+
+    /** Always includes {@code token} and {@code counter} (FR-DSP-004's floor); defaults to FR-SEC-020's public default. */
+    static List<String> columns(List<String> wire) {
+        List<String> value = (wire == null || wire.isEmpty()) ? DEFAULT_COLUMNS : wire;
+        LinkedHashSet<String> ordered = new LinkedHashSet<>(value);
+        if (ordered.size() != value.size()) throw invalid("columns", "duplicate_column");
+        if (!COLUMN_OPTIONS.containsAll(ordered)) throw invalid("columns", "unknown_column");
+        if (!ordered.contains("token") || !ordered.contains("counter")) throw invalid("columns", "must_include_token_and_counter");
+        return List.copyOf(ordered);
+    }
+
+    static int positiveInt(String field, Integer wire, int fallback, int max) {
+        int value = wire == null ? fallback : wire;
+        if (value <= 0 || value > max) throw invalid(field, "out_of_range");
+        return value;
+    }
+
+    static String assignmentScope(String wire) {
+        if (wire == null) return "zone";
+        if (!ASSIGNMENT_SCOPES.contains(wire)) throw invalid("assignment.scope", "unknown_scope");
+        return wire;
+    }
+
+    static List<UUID> assignmentIds(String scope, List<UUID> wire) {
+        List<UUID> value = wire == null ? List.of() : wire;
+        if ("zone".equals(scope)) {
+            if (!value.isEmpty()) throw invalid("assignment.ids", "must_be_empty_for_zone");
+            return List.of();
+        }
+        if (value.isEmpty()) throw invalid("assignment.ids", "NotEmpty");
+        if (new LinkedHashSet<>(value).size() != value.size()) throw invalid("assignment.ids", "duplicate_id");
+        return List.copyOf(value);
+    }
 
     private DeviceRules() {}
 

@@ -17,6 +17,9 @@ import type {
   DeviceCommand,
   DeviceTokenResponse,
   DeviceView,
+  DisplayConfig,
+  DisplayConfigInput,
+  DisplayState,
   PairingCodeResponse,
 } from "./devices";
 import type { Counter, CounterInput, Items, Site, SiteInput, Zone, ZoneInput } from "./hierarchy";
@@ -421,6 +424,11 @@ export class ApiClient {
     get: (id: string) => this.request<DeviceView>("GET", `/devices/${id}`),
     revoke: (id: string) => this.request<DeviceView>("POST", `/devices/${id}/revoke`),
     command: (id: string, command: DeviceCommand) => this.request<void>("POST", `/devices/${id}/commands`, { command }),
+    /** The display board's own resume-after-power-loss read (device-authenticated, ticket 28, FR-DSP-012). */
+    displayState: (id: string) => this.request<DisplayState>("GET", `/devices/${id}/display-state`),
+    /** Sets a display's layout, language cycle, columns, next-N depth, highlight period and zone assignment (staff, ticket 28). */
+    updateDisplayConfig: (id: string, input: DisplayConfigInput) =>
+      this.request<DisplayConfig>("PUT", `/devices/${id}/display-config`, input),
   };
 
   /**

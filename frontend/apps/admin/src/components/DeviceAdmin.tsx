@@ -1,11 +1,26 @@
 "use client";
 
-import type { CreatePairingCodeInput, DeviceCommand, DeviceKind, DeviceView, PairingCodeResponse, Site, Zone } from "@qms/api-client";
+import type {
+  CreatePairingCodeInput,
+  DeviceCommand,
+  DeviceKind,
+  DeviceView,
+  DisplayAssignmentScope,
+  DisplayColumn,
+  PairingCodeResponse,
+  Site,
+  Zone,
+} from "@qms/api-client";
 import { useI18n } from "@qms/i18n/react";
 import { Button, Card, ErrorAlert, SelectField, StatusBadge, TextField, type StatusKind } from "@qms/ui";
 import { useId, useState, type FormEvent } from "react";
 import { describeError, useList, useSubmit } from "../lib/admin-support";
 import { useApi } from "../lib/runtime";
+
+/** The configurable column set of FR-DSP-004, in display order; `token` and `counter` may never be turned off. */
+const DISPLAY_COLUMNS: DisplayColumn[] = ["token", "counter", "service", "staff"];
+const REQUIRED_COLUMNS = new Set<DisplayColumn>(["token", "counter"]);
+const ASSIGNMENT_SCOPES: DisplayAssignmentScope[] = ["zone", "counters", "queues"];
 
 const CONNECTIVITY_STATUS: Record<DeviceView["connectivity"], StatusKind> = {
   online: "up",
@@ -131,6 +146,7 @@ function DeviceRow({ device, siteLabel, onChanged }: { device: DeviceView; siteL
   const { client } = useApi();
   const { busy, error, run } = useSubmit();
   const [confirming, setConfirming] = useState(false);
+  const [configuring, setConfiguring] = useState(false);
   const seen = device.last_heartbeat_at ? new Date(device.last_heartbeat_at) : null;
 
   async function push(command: DeviceCommand) {
@@ -165,10 +181,16 @@ function DeviceRow({ device, siteLabel, onChanged }: { device: DeviceView; siteL
         <Button variant="secondary" type="button" disabled={!device.active || busy} onClick={() => void push("config_changed")}>
           {t("devices.pushConfig")}
         </Button>
+        {device.kind === "display" && (
+          <Button variant="secondary" type="button" disabled={!device.active} onClick={() => setConfiguring((v) => !v)}>
+            {t("devices.display.settings")}
+          </Button>
+        )}
         <Button variant="secondary" type="button" disabled={!device.active || busy} onClick={() => setConfirming(true)}>
           {t("devices.revoke")}
         </Button>
       </div>
+      {configuring && <DisplayConfigForm device={device} onSaved={onChanged} />}
       {confirming && (
         <div className="qms-stack" role="group" aria-label={`${t("devices.revoke")} ${device.label}`}>
           <p>{t("devices.revoke.confirm", { label: device.label })}</p>
@@ -184,5 +206,108 @@ function DeviceRow({ device, siteLabel, onChanged }: { device: DeviceView; siteL
       )}
       {error && <ErrorAlert>{error}</ErrorAlert>}
     </li>
+  );
+}
+
+/**
+ * A display's board configuration (ticket 28, FR-DSP-001..005): its column set, next-token depth, highlight period
+ * and its assignment within its own zone to a whole Zone, specific Counters or specific queues (Services).
+ */
+function DisplayConfigForm({ device, onSaved }: { device: DeviceView; onSaved: () => void }) {
+  const { t } = useI18n();
+  const { client } = useApi();
+  const id = useId();
+  const { busy, error, run } = useSubmit();
+  const [columns, setColumns] = useState<DisplayColumn[]>(device.columns);
+  const [nextN, setNextN] = useState(String(device.next_n));
+  const [highlightSeconds, setHighlightSeconds] = useState(String(device.highlight_seconds));
+  const [scope, setScope] = useState<DisplayAssignmentScope>(device.assignment_scope);
+  const [ids, setIds] = useState(device.assignment_ids.join(", "));
+  const [saved, setSaved] = useState(false);
+
+  function toggleColumn(column: DisplayColumn, checked: boolean) {
+    if (REQUIRED_COLUMNS.has(column)) return; // FR-DSP-004's floor: token and counter are never optional
+    setColumns((current) => (checked ? [...current.filter((c) => c !== column), column] : current.filter((c) => c !== column)));
+  }
+
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    setSaved(false);
+    const ok = await run(async () => {
+      const result = await client!.devices.updateDisplayConfig(device.id, {
+        columns,
+        next_n: Number(nextN),
+        highlight_seconds: Number(highlightSeconds),
+        assignment: {
+          scope,
+          ids: scope === "zone" ? [] : ids.split(",").map((raw) => raw.trim()).filter((raw) => raw !== ""),
+        },
+      });
+      setColumns(result.columns);
+      setNextN(String(result.next_n));
+      setHighlightSeconds(String(result.highlight_seconds));
+      setScope(result.assignment.scope);
+      setIds(result.assignment.ids.join(", "));
+      onSaved();
+    });
+    if (ok) setSaved(true);
+  }
+
+  return (
+    <form className="qms-stack" onSubmit={submit} aria-label={t("devices.display.settings")}>
+      <fieldset className="qms-stack">
+        <legend className="qms-label">{t("devices.display.columnsLegend")}</legend>
+        {DISPLAY_COLUMNS.map((column) => (
+          <div className="qms-row" key={column}>
+            <input
+              type="checkbox"
+              id={`${id}-column-${column}`}
+              checked={columns.includes(column)}
+              disabled={REQUIRED_COLUMNS.has(column)}
+              onChange={(e) => toggleColumn(column, e.target.checked)}
+            />
+            <label htmlFor={`${id}-column-${column}`}>{t(`devices.display.columns.${column}`)}</label>
+          </div>
+        ))}
+      </fieldset>
+      <TextField
+        id={`${id}-next-n`}
+        label={t("devices.display.nextN")}
+        type="number"
+        min={1}
+        value={nextN}
+        onChange={(e) => setNextN(e.target.value)}
+      />
+      <TextField
+        id={`${id}-highlight-seconds`}
+        label={t("devices.display.highlightSeconds")}
+        type="number"
+        min={1}
+        value={highlightSeconds}
+        onChange={(e) => setHighlightSeconds(e.target.value)}
+      />
+      <SelectField
+        id={`${id}-assignment-scope`}
+        label={t("devices.display.assignmentScope")}
+        value={scope}
+        onChange={(e) => setScope(e.target.value as DisplayAssignmentScope)}
+        options={ASSIGNMENT_SCOPES.map((value) => ({ value, label: t(`devices.display.assignmentScope.${value}`) }))}
+      />
+      {scope !== "zone" && (
+        <TextField
+          id={`${id}-assignment-ids`}
+          label={t(scope === "counters" ? "devices.display.counterIds" : "devices.display.queueIds")}
+          value={ids}
+          onChange={(e) => setIds(e.target.value)}
+        />
+      )}
+      {error && <ErrorAlert>{error}</ErrorAlert>}
+      {saved && !error && <p className="qms-muted">{t("devices.display.saved")}</p>}
+      <div className="qms-row">
+        <Button type="submit" disabled={busy}>
+          {busy ? t("admin.action.saving") : t("devices.display.save")}
+        </Button>
+      </div>
+    </form>
   );
 }

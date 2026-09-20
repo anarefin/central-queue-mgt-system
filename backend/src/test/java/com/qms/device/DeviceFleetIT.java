@@ -3,8 +3,13 @@ package com.qms.device;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 
 import com.jayway.jsonpath.JsonPath;
+import com.qms.issuance.ActorType;
+import com.qms.issuance.Channels;
+import com.qms.issuance.IssuanceService;
+import com.qms.issuance.IssueCommand;
 import com.qms.platform.security.Role;
 import com.qms.support.MutableClock;
 import com.qms.support.PostgresContainerConfig;
@@ -71,6 +76,7 @@ class DeviceFleetIT {
     @Autowired MockMvc mvc;
     @Autowired JdbcTemplate jdbc;
     @Autowired MutableClock clock;
+    @Autowired IssuanceService issuance;
 
     // ---- helpers -----------------------------------------------------------------------------------------------
 
@@ -147,6 +153,38 @@ class DeviceFleetIT {
 
     private MvcResult pair(String code) throws Exception {
         return call(post("/api/v1/devices/pair"), null, "{\"code\":\"" + code + "\"}");
+    }
+
+    private UUID createCounter(String token, UUID zone) throws Exception {
+        MvcResult created = call(post("/api/v1/zones/" + zone + "/counters"), token, "{\"label\":\"Desk 1\"}");
+        assertThat(status(created)).as(body(created)).isEqualTo(201);
+        return UUID.fromString(field(created, "$.id"));
+    }
+
+    private record Agent(UUID id, String token) {}
+
+    /** A staff Agent signed in and on the team of {@code groupId}, so they may open a session on one of its Counters. */
+    private Agent agentFor(UUID site, UUID groupId, String displayName) throws Exception {
+        UUID id = UUID.randomUUID();
+        String username = "agent-" + id;
+        jdbc.update(
+                "INSERT INTO users (id, username, password_hash, display_name, preferred_language) VALUES (?, ?, ?, ?, ?)",
+                id, username, new BCryptPasswordEncoder(12).encode(PASSWORD), displayName, "en");
+        jdbc.update(connection -> {
+            var ps = connection.prepareStatement("INSERT INTO role_assignments (id, user_id, role, site_ids, group_ids) VALUES (?, ?, ?, ?, ?)");
+            ps.setObject(1, UUID.randomUUID());
+            ps.setObject(2, id);
+            ps.setString(3, Role.AGENT.wire());
+            ps.setArray(4, connection.createArrayOf("uuid", new UUID[] {site}));
+            ps.setArray(5, connection.createArrayOf("uuid", new UUID[0]));
+            return ps;
+        });
+        jdbc.update("INSERT INTO team_member (team_id, user_id) SELECT id, ? FROM team WHERE service_group_id = ?", id, groupId);
+        MvcResult login = mvc.perform(post("/api/v1/auth/login").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"username\":\"" + username + "\",\"password\":\"" + PASSWORD + "\"}"))
+                .andReturn();
+        assertThat(login.getResponse().getStatus()).as(login.getResponse().getContentAsString()).isEqualTo(200);
+        return new Agent(id, JsonPath.read(login.getResponse().getContentAsString(), "$.access_token"));
     }
 
     // ---- pairing (FR-OPS-011) ------------------------------------------------------------------------------------
@@ -392,5 +430,125 @@ class DeviceFleetIT {
         MvcResult afterRevoke = call(post("/api/v1/devices/" + id + "/commands"), admin, "{\"command\":\"reload\"}");
         assertThat(status(afterRevoke)).isEqualTo(409);
         assertThat(errorCode(afterRevoke)).isEqualTo("conflict");
+    }
+
+    // ---- display board configuration and state (ticket 28, FR-DSP-001, FR-DSP-002, FR-DSP-012) --------------------
+
+    @Test
+    void aDisplayIsPairedWithSensibleDefaultsAndAnAdminCanUpdateItsConfigWithinItsZone() throws Exception {
+        String admin = tokenFor(Role.ORG_ADMIN);
+        UUID site = createSite(admin);
+        UUID zone = createZone(admin, site);
+        MvcResult paired = pair(pairingCode(admin, "display", site, zone));
+        UUID id = UUID.fromString(field(paired, "$.device_id"));
+        String displayToken = field(paired, "$.access_token");
+
+        MvcResult initial = call(get("/api/v1/devices/" + id + "/display-state"), displayToken, null);
+        assertThat(status(initial)).as(body(initial)).isEqualTo(200);
+        assertThat((String) field(initial, "$.layout")).isEqualTo("now_serving_table");
+        assertThat((List<String>) field(initial, "$.columns")).containsExactly("token", "counter");
+        assertThat((Integer) field(initial, "$.next_n")).isEqualTo(4);
+        assertThat((Integer) field(initial, "$.highlight_seconds")).isEqualTo(10);
+        assertThat((String) field(initial, "$.assignment.scope")).isEqualTo("zone");
+        assertThat((String) field(initial, "$.zone.id")).isEqualTo(zone.toString());
+
+        UUID counter = createCounter(admin, zone);
+        MvcResult updated = call(put("/api/v1/devices/" + id + "/display-config"), admin,
+                "{\"columns\":[\"token\",\"counter\",\"service\",\"staff\"],\"next_n\":6,\"highlight_seconds\":20,"
+                        + "\"assignment\":{\"scope\":\"counters\",\"ids\":[\"" + counter + "\"]}}");
+        assertThat(status(updated)).as(body(updated)).isEqualTo(200);
+        assertThat((List<String>) field(updated, "$.columns")).containsExactly("token", "counter", "service", "staff");
+        assertThat((Integer) field(updated, "$.next_n")).isEqualTo(6);
+        assertThat((String) field(updated, "$.assignment.scope")).isEqualTo("counters");
+        assertThat((List<String>) field(updated, "$.assignment.ids")).containsExactly(counter.toString());
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM audit_log WHERE action = 'device.display_config_updated' AND entity_id = ?", Integer.class, id))
+                .isEqualTo(1);
+
+        MvcResult afterUpdate = call(get("/api/v1/devices/" + id + "/display-state"), displayToken, null);
+        assertThat((Integer) field(afterUpdate, "$.next_n")).isEqualTo(6);
+        assertThat((String) field(afterUpdate, "$.assignment.scope")).isEqualTo("counters");
+
+        // The staff fleet view (FR-OPS-041) carries the same configuration, so the admin screen can show and re-edit
+        // it without a second endpoint.
+        MvcResult staffView = call(get("/api/v1/devices/" + id), admin, null);
+        assertThat(status(staffView)).as(body(staffView)).isEqualTo(200);
+        assertThat((List<String>) field(staffView, "$.columns")).containsExactly("token", "counter", "service", "staff");
+        assertThat((Integer) field(staffView, "$.next_n")).isEqualTo(6);
+        assertThat((String) field(staffView, "$.assignment_scope")).isEqualTo("counters");
+        assertThat((List<String>) field(staffView, "$.assignment_ids")).containsExactly(counter.toString());
+    }
+
+    @Test
+    void displayConfigValidatesLayoutColumnsAndKeepsAssignmentWithinTheDisplaysZone() throws Exception {
+        String admin = tokenFor(Role.ORG_ADMIN);
+        UUID site = createSite(admin);
+        UUID zone = createZone(admin, site);
+        UUID otherZone = createZone(admin, site);
+        UUID id = UUID.fromString(field(pair(pairingCode(admin, "display", site, zone)), "$.device_id"));
+
+        assertThat(status(call(put("/api/v1/devices/" + id + "/display-config"), admin, "{\"layout\":\"summary_board\"}"))).isEqualTo(400);
+        assertThat(status(call(put("/api/v1/devices/" + id + "/display-config"), admin, "{\"columns\":[\"staff\"]}")))
+                .as("token and counter are the floor").isEqualTo(400);
+        assertThat(status(call(put("/api/v1/devices/" + id + "/display-config"), admin, "{\"next_n\":0}"))).isEqualTo(400);
+
+        UUID counterElsewhere = createCounter(admin, otherZone);
+        MvcResult crossZone = call(put("/api/v1/devices/" + id + "/display-config"), admin,
+                "{\"assignment\":{\"scope\":\"counters\",\"ids\":[\"" + counterElsewhere + "\"]}}");
+        assertThat(status(crossZone)).as(body(crossZone)).isEqualTo(400);
+        assertThat(errorCode(crossZone)).isEqualTo("validation_failed");
+
+        // a kiosk is never a display
+        UUID kiosk = UUID.fromString(field(pair(pairingCode(admin, "kiosk", site, null)), "$.device_id"));
+        assertThat(status(call(put("/api/v1/devices/" + kiosk + "/display-config"), admin, "{}"))).isEqualTo(409);
+    }
+
+    @Test
+    void onlyTheDisplayItselfMayReadItsOwnDisplayStateAndAKioskHasNone() throws Exception {
+        String admin = tokenFor(Role.ORG_ADMIN);
+        UUID site = createSite(admin);
+        UUID zone = createZone(admin, site);
+        MvcResult displayA = pair(pairingCode(admin, "display", site, zone));
+        MvcResult displayB = pair(pairingCode(admin, "display", site, zone));
+        MvcResult kiosk = pair(pairingCode(admin, "kiosk", site, null));
+        UUID idA = UUID.fromString(field(displayA, "$.device_id"));
+
+        assertThat(status(call(get("/api/v1/devices/" + idA + "/display-state"), field(displayB, "$.access_token"), null)))
+                .as("another display, even in the same zone, is not this display").isEqualTo(403);
+        assertThat(status(call(get("/api/v1/devices/" + idA + "/display-state"), field(kiosk, "$.access_token"), null))).isEqualTo(403);
+        assertThat(status(call(get("/api/v1/devices/" + idA + "/display-state"), admin, null))).as("staff cannot call a device-only endpoint").isEqualTo(403);
+        assertThat(status(call(get("/api/v1/devices/" + idA + "/display-state"), null, null))).isEqualTo(401);
+    }
+
+    @Test
+    void displayStateShowsWhoIsBeingServedWhereAndTheNextTokenOfEachQueueInTheZone() throws Exception {
+        String admin = tokenFor(Role.ORG_ADMIN);
+        UUID site = createSite(admin);
+        UUID zone = createZone(admin, site);
+        UUID counter = createCounter(admin, zone);
+        UUID group = newGroup(site, "GD");
+        jdbc.update("INSERT INTO team (id, service_group_id, name) VALUES (?, ?, 'Team')", UUID.randomUUID(), group);
+        UUID service = newService(group, "AD", "[\"reception\",\"kiosk\"]");
+        jdbc.update("INSERT INTO counter_service (counter_id, service_id, preference_weight) VALUES (?, ?, 1)", counter, service);
+        Agent agent = agentFor(site, group, "Dr. Karim");
+        MvcResult paired = pair(pairingCode(admin, "display", site, zone));
+        String displayToken = field(paired, "$.access_token");
+
+        issuance.issue(new IssueCommand(service, Channels.RECEPTION, UUID.randomUUID(), ActorType.SYSTEM, null));
+        issuance.issue(new IssueCommand(service, Channels.RECEPTION, UUID.randomUUID(), ActorType.SYSTEM, null));
+        MvcResult opened = call(post("/api/v1/sessions"), agent.token(), "{\"counter_id\":\"" + counter + "\"}");
+        assertThat(status(opened)).as(body(opened)).isEqualTo(201);
+        UUID sessionId = UUID.fromString(field(opened, "$.id"));
+        MvcResult called = call(post("/api/v1/sessions/" + sessionId + "/next"), agent.token(), null);
+        assertThat(status(called)).as(body(called)).isEqualTo(200);
+        String tokenNumber = field(called, "$.ticket.token_number");
+
+        MvcResult state = call(get("/api/v1/devices/" + UUID.fromString(field(paired, "$.device_id")) + "/display-state"), displayToken, null);
+        assertThat(status(state)).as(body(state)).isEqualTo(200);
+        assertThat((List<String>) field(state, "$.serving[*].counter_id")).containsExactly(counter.toString());
+        assertThat((String) field(state, "$.serving[0].token_number")).isEqualTo(tokenNumber);
+        assertThat((String) field(state, "$.serving[0].state")).isEqualTo("called");
+        assertThat((String) field(state, "$.serving[0].staff_name")).isEqualTo("Dr. Karim");
+        assertThat((String) field(state, "$.serving[0].counter_label")).isEqualTo("Desk 1");
+        assertThat((List<String>) field(state, "$.next[0].tokens[*].token_number")).hasSize(1);
     }
 }

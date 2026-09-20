@@ -20,9 +20,11 @@ import tools.jackson.databind.json.JsonMapper;
  * sequence (FR-QUE-070). It joins the caller's transaction, so the transition and its event commit together.
  *
  * <p>The same transition is published to the realtime hub (SRS §21.4) on the queue of its Service and, when a counter took
- * part, on that counter's topic. The hub delivers it only once the transaction commits, so a subscriber never hears of a
- * transition that was rolled back. A transition that moves the queue also publishes the recomputed wait estimate and the
- * new places of the tickets it moved ({@link EstimateEvents}).
+ * part, on that counter's topic and on that counter's zone's topic ({@code zone:}, ticket 28, FR-DSP-010): a display
+ * board watches its whole zone, not one counter, so it hears every call in it within the hub's own delivery latency.
+ * The hub delivers it only once the transaction commits, so a subscriber never hears of a transition that was rolled
+ * back. A transition that moves the queue also publishes the recomputed wait estimate and the new places of the
+ * tickets it moved ({@link EstimateEvents}).
  */
 @Repository
 public class TicketEvents {
@@ -95,7 +97,12 @@ public class TicketEvents {
             for (String key : List.of("announce", "announce_count")) if (payload.containsKey(key)) data.put(key, payload.get(key));
         }
         realtime.publish(Topics.queue(serviceId), transition.eventType(), transition.deviceTime(), data);
-        if (transition.counterId() != null) realtime.publish(Topics.counter(transition.counterId()), transition.eventType(), transition.deviceTime(), data);
+        if (transition.counterId() != null) {
+            realtime.publish(Topics.counter(transition.counterId()), transition.eventType(), transition.deviceTime(), data);
+            UUID zoneId = jdbc.query("SELECT zone_id FROM counter WHERE id = ?", (rs, i) -> rs.getObject("zone_id", UUID.class), transition.counterId())
+                    .stream().findFirst().orElse(null);
+            if (zoneId != null) realtime.publish(Topics.zone(zoneId), transition.eventType(), transition.deviceTime(), data);
+        }
         // A transition that moves the queue changes its estimate and the places of the tickets behind it (FR-QUE-042).
         estimates.transitioned(serviceId, transition.fromState(), transition.toState(), transition.deviceTime());
     }

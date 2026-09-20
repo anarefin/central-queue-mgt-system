@@ -8,6 +8,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
@@ -56,5 +57,11 @@ public class DeviceFleetController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void command(@PathVariable UUID id, @RequestBody CommandRequest request) {
         service.command(id, request.command());
+    }
+
+    @PreAuthorize(PERMISSION)
+    @PutMapping("/devices/{id}/display-config")
+    public DisplayConfigResponse updateDisplayConfig(@PathVariable UUID id, @RequestBody DisplayConfigRequest request) {
+        return service.updateDisplayConfig(id, request);
     }
 }
