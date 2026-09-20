@@ -880,6 +880,37 @@ the API path a UI would call. A Journey's secret per stop is issued (each ticket
 unchanged) but not surfaced in `JourneyResponse`/the Reception result panel, the same scope line: nothing in FR-ISS-022
 or FR-QUE-060..064 asks for it, and Phase 1 has no channel that would read a Journey stop's secret back.
 
+## Ticket 32, appointment availability
+
+`Resolver` = `B/appointment/AppointmentAvailabilityResolverTest`, `Window` = `B/appointment/BusinessWindowTest`,
+`Slots` = `B/appointment/SlotGeneratorTest`, `Availability(IT)` = `B/appointment/AppointmentAvailabilityIT`.
+
+| Requirement ID | Section | Test type | Test reference | Status |
+|---|---|---|---|---|
+| FR-APT-001 availability definable at Service, Team and Agent level, most specific winning | §9.1 | unit, integration | `AppointmentAvailabilityResolver.mostSpecific` (pure, generic over templates and exceptions); `Resolver` (all four precedence cases); `Availability(IT)#teamLevelTemplateOverridesServiceLevelForThatWeekday`, `#agentLevelTemplatesAreDefinableReadableAndRemovable` (Agent-level CRUD; consumed by the resolver once ticket 33 searches by a chosen Agent) | passing |
+| FR-APT-002 a slot template carries weekday pattern, start/end time, slot minutes, concurrent capacity and a validity range | §9.1 | unit, integration | `AppointmentRows.Template`, `V27` migration (`appointment_slot_template`); `Slots` (slicing, partial trailing slot dropped, validity range); `Availability(IT)#aServiceLevelTemplateProducesSlotsWithRemainingCapacityOnTheSearch`, `#readingBackAServiceLevelTemplateReturnsWhatWasSet`, `#aValidityRangeExcludesTheTemplateOutsideItsDates` | passing |
+| FR-APT-003 exceptions: blocked dates, one-off extra availability, reduced capacity for a date | §9.1 | unit, integration | `SlotGenerator.generate` (`blocked`/`extra`/`reduced_capacity`); `Slots#aBlockedExceptionSuppressesEveryTemplateThatDayRegardlessOfHours`, `#anExtraExceptionOverridesSuppressionWithItsOwnWindowEvenWhenTheDayIsClosed`, `#aReducedCapacityExceptionKeepsTheNormalWindowButOverridesCapacity`; `Availability(IT)#aBlockedExceptionSuppressesTheDateEntirely`, `#aReducedCapacityExceptionCapsCapacityForThatDateOnly`, `#duplicateExceptionsForTheSameDateAreConflict`, `#anExceptionCanBeRemovedAfterWhichTheDateIsNormalAgain` | passing |
+| FR-APT-004 business hours and the holiday calendar suppress slots; admin override per date | §9.1 | unit, integration | `BusinessWindow.forDate` (reads the same `business_hours`/`holiday` tables as issuance, ticket 21, independently); `Window` (unrestricted, configured weekday, missing weekday, full holiday, half-day clip); `Availability(IT)#aFullHolidaySuppressesSlotsAndAnExtraExceptionOverridesIt`, `#aWeekdayMissingFromConfiguredBusinessHoursIsSuppressed` (the `extra` exception type doubles as the override) | passing |
+| FR-APT-005 configurable booking horizon (default 30 days) and minimum lead time (default 2 h) | §9.1 | integration | `AppointmentAvailabilityService#search` (`appointment_service_settings`, defaults `AppointmentRows.ServiceSettings.DEFAULTS`); `Availability(IT)#defaultsAreThirtyDaysAndTwoHoursWhenNeverConfigured`, `#aDateBeyondTheBookingHorizonReturnsNoSlots`, `#aSlotStartingBeforeTheMinimumLeadTimeIsExcluded` | passing |
+| FR-APT-010 `GET /services/{id}/appointments/availability?date=` by Service then date, only slots with remaining capacity | §9.2 | integration | `AppointmentAvailabilityController#search`; `Availability(IT)#aServiceLevelTemplateProducesSlotsWithRemainingCapacityOnTheSearch`, `#aSlotReducedToZeroCapacityIsExcludedFromTheSearch`, `#aWalkInOnlyServiceHasNoAppointmentAvailability` | passing |
+| Definition of done §27.5 item 3 (strings in both packs) | §27.5 | integration | an exception's admin-authored `note_i18n` validated against installed languages, the same pattern as issuance's `cap_message_i18n` (`AppointmentAvailabilityFields#message`); `Availability(IT)#anExceptionsNoteAcceptsBothInstalledLanguagesAndRejectsAnUnknownOne` | passing |
+| Definition of done §27.5 item 4 (permission-checked server-side) | §20.3 | integration | templates/exceptions/settings CRUD require `config:service_catalogue`, scoped to the caller's Sites (Service and Team via their Site, Agent via any Site any of their Teams puts them in); the search requires only `isAuthenticated()` (SRS §9.2 names a visitor as the caller and visitor self-service does not exist yet, ticket 41); `Availability(IT)#theTemplateEndpointsArePermissionCheckedAndScopedToTheCallersSites`, `#theSearchEndpointAcceptsAnyAuthenticatedCallerButNotAnAnonymousOne`; build-time `ControllerSecurityTest` covers every new controller method | passing |
+| Definition of done §27.5 item 5 (events and audit entries) | §18.3 | integration | `appointment_slot_template.updated`, `appointment_exception.created`/`deleted`, `appointment_settings.updated`, each with before/after and a no-op writing nothing (`AuditWriter`, the same pattern as `IssuanceRulesService`); `Availability(IT)#settingATemplateWritesAnAuditEntryAndANoOpWritesNothing`, `#exceptionsAndSettingsChangesAlsoWriteAuditEntries` | passing |
+| Definition of done §27.5 item 6 (documented) | §27.5 | manual | covered by this table; `docs/admin-guide.md` is not updated (the same gap tickets 25-31 left) | partial |
+| §18, §26 the V27 migration is forward-only and re-runnable | §18, §26 | integration | `B/platform/MigrationIT#everyMigrationScriptCanBeReExecutedAgainstAnAlreadyMigratedDatabase` (V27) | passing |
+
+**Notes on this ticket's interpretation.** "Most specific wins" (FR-APT-001) is implemented as a generic, independently
+tested precedence function, but `GET /services/{id}/appointments/availability` — explicitly "by Service" (FR-APT-010),
+not by Agent or Team — resolves only Team-then-Service for itself; Agent-level rows are fully definable, read, audited
+and scope-checked (CRUD is complete), but are consumed once ticket 33 (staff appointment booking) searches or books
+against a specific, chosen Agent. "Remaining capacity" (FR-APT-010) is a slot's defined capacity as this ticket has no
+booking/appointment entity yet to subtract from — ticket 33 introduces bookings and is expected to subtract them at
+the same seam. The exception `type: extra` doubles as the FR-APT-004 admin override (it is the one exception type that
+ignores business hours and the holiday calendar entirely); FR-APT-003 and FR-APT-004 share one `appointment_exception`
+table rather than two, since a `blocked`/`extra`/`reduced_capacity` exception for a date is the same primitive read
+either way. `BusinessWindow` reads the `business_hours`/`holiday` tables issuance (ticket 21) owns, independently of
+`OpeningHours` (package-private there), the same cross-context read-only pattern issuance itself uses for `team`/`users`.
+
 ## Notes
 
 - **Compose.** Verified by hand on 2026-09-19 with OrbStack Docker, from a clean build: `migrate` exited 0, then Postgres,
