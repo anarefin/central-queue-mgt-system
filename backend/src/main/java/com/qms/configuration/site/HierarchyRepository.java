@@ -19,7 +19,8 @@ import tools.jackson.databind.json.JsonMapper;
 class HierarchyRepository {
 
     private static final String SITE = "id, name, code, timezone, address, default_language, enabled_languages, active, created_at, updated_at";
-    private static final String ZONE = "id, site_id, name, building_label, floor_label, display_order, active, created_at, updated_at";
+    private static final String ZONE = "id, site_id, name, building_label, floor_label, display_order, active,"
+            + " chime, chime_volume, quiet_start, quiet_end, announcement_languages, max_announce_queue_depth, created_at, updated_at";
     private static final String COUNTER =
             "c.id, c.zone_id, z.site_id, c.label, c.location_note, c.active, c.created_at, c.updated_at FROM counter c JOIN zone z ON z.id = c.zone_id";
 
@@ -72,16 +73,22 @@ class HierarchyRepository {
 
     void insert(Zone zone) {
         jdbc.update(
-                "INSERT INTO zone (id, site_id, name, building_label, floor_label, display_order, active, created_at, updated_at)"
-                        + " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "INSERT INTO zone (id, site_id, name, building_label, floor_label, display_order, active,"
+                        + " chime, chime_volume, quiet_start, quiet_end, announcement_languages, max_announce_queue_depth, created_at, updated_at)"
+                        + " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb, ?, ?, ?)",
                 zone.id(), zone.siteId(), zone.name(), zone.buildingLabel(), zone.floorLabel(), zone.displayOrder(), zone.active(),
-                ts(zone.createdAt()), ts(zone.updatedAt()));
+                zone.chime(), zone.chimeVolume(), zone.quietStart(), zone.quietEnd(), mapper.writeValueAsString(zone.announcementLanguages()),
+                zone.maxAnnounceQueueDepth(), ts(zone.createdAt()), ts(zone.updatedAt()));
     }
 
     void update(Zone zone) {
         jdbc.update(
-                "UPDATE zone SET name = ?, building_label = ?, floor_label = ?, display_order = ?, updated_at = ? WHERE id = ?",
-                zone.name(), zone.buildingLabel(), zone.floorLabel(), zone.displayOrder(), ts(zone.updatedAt()), zone.id());
+                "UPDATE zone SET name = ?, building_label = ?, floor_label = ?, display_order = ?,"
+                        + " chime = ?, chime_volume = ?, quiet_start = ?, quiet_end = ?, announcement_languages = ?::jsonb, max_announce_queue_depth = ?,"
+                        + " updated_at = ? WHERE id = ?",
+                zone.name(), zone.buildingLabel(), zone.floorLabel(), zone.displayOrder(),
+                zone.chime(), zone.chimeVolume(), zone.quietStart(), zone.quietEnd(), mapper.writeValueAsString(zone.announcementLanguages()),
+                zone.maxAnnounceQueueDepth(), ts(zone.updatedAt()), zone.id());
     }
 
     void setZoneActive(UUID id, boolean active, Instant now) {
@@ -145,7 +152,9 @@ class HierarchyRepository {
                 instant(rs, "updated_at"));
     }
 
-    private static Zone zone(ResultSet rs) throws SQLException {
+    private Zone zone(ResultSet rs) throws SQLException {
+        java.sql.Time quietStart = rs.getTime("quiet_start");
+        java.sql.Time quietEnd = rs.getTime("quiet_end");
         return new Zone(
                 rs.getObject("id", UUID.class),
                 rs.getObject("site_id", UUID.class),
@@ -154,6 +163,12 @@ class HierarchyRepository {
                 rs.getString("floor_label"),
                 rs.getInt("display_order"),
                 rs.getBoolean("active"),
+                rs.getString("chime"),
+                rs.getInt("chime_volume"),
+                quietStart == null ? null : quietStart.toLocalTime(),
+                quietEnd == null ? null : quietEnd.toLocalTime(),
+                List.copyOf(Arrays.asList(mapper.readValue(rs.getString("announcement_languages"), String[].class))),
+                rs.getInt("max_announce_queue_depth"),
                 instant(rs, "created_at"),
                 instant(rs, "updated_at"));
     }

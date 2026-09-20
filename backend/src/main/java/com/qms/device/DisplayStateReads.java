@@ -40,7 +40,17 @@ class DisplayStateReads {
         this.mapper = mapper;
     }
 
-    record ServingRow(UUID counterId, String counterLabel, String tokenNumber, String state, UUID serviceId, Map<String, String> serviceNames, String staffName) {}
+    record ServingRow(
+            UUID counterId,
+            String counterLabel,
+            String tokenNumber,
+            String state,
+            UUID serviceId,
+            Map<String, String> serviceNames,
+            String staffName,
+            String tokenPrefix,
+            Map<String, String> tokenPrefixSpoken,
+            boolean announceVisitorName) {}
 
     record NextTicket(String tokenNumber, int position) {}
 
@@ -51,11 +61,16 @@ class DisplayStateReads {
         return jdbc.query("SELECT site_id FROM zone WHERE id = ?", (rs, i) -> rs.getObject("site_id", UUID.class), zoneId).stream().findFirst();
     }
 
-    /** One row per active Counter of the zone, called/serving ticket columns null when nothing is happening there. */
+    /**
+     * One row per active Counter of the zone, called/serving ticket columns null when nothing is happening there.
+     * {@code token_prefix_spoken} (ticket 29, FR-DSP-030) is aggregated per language with a correlated subquery
+     * rather than a join, since a prefix may have zero to many spoken forms and this stays one row per Counter.
+     */
     List<ServingRow> serving(UUID zoneId) {
         return jdbc.query(
                 "SELECT c.id AS counter_id, c.label, t.token_number, t.state, v.id AS service_id, v.name_i18n AS service_names,"
-                        + " coalesce(nullif(u.display_name, ''), u.username) AS staff_name"
+                        + " coalesce(nullif(u.display_name, ''), u.username) AS staff_name, v.token_prefix, v.announce_visitor_name,"
+                        + " (SELECT jsonb_object_agg(f.language, f.spoken_text) FROM token_prefix_spoken_form f WHERE f.prefix = v.token_prefix) AS token_prefix_spoken"
                         + " FROM counter c"
                         + " LEFT JOIN ticket t ON t.counter_id = c.id AND t.state IN ('called', 'serving')"
                         + " LEFT JOIN service v ON v.id = t.service_id"
@@ -100,7 +115,10 @@ class DisplayStateReads {
                 rs.getString("state"),
                 serviceId,
                 serviceId == null ? Map.of() : names(rs.getString("service_names")),
-                rs.getString("staff_name"));
+                rs.getString("staff_name"),
+                rs.getString("token_prefix"),
+                names(rs.getString("token_prefix_spoken")),
+                rs.getBoolean("announce_visitor_name"));
     }
 
     @SuppressWarnings("unchecked")

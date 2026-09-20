@@ -90,6 +90,22 @@ final class CatalogueRules {
         return value;
     }
 
+    /** FR-DSP-030: how a token prefix is read aloud in one language, e.g. "Q C" or a configured Bangla phrase. */
+    static String spokenText(String value) {
+        return required("spoken_text", value, 200);
+    }
+
+    /**
+     * FR-I18N-041: the enabled languages of a prefix's site that have no spoken form recorded for it yet, in the
+     * site's order -- surfaced on the Service exactly like {@link #missing} surfaces a name translation gap, so an
+     * admin is prompted to supply or generate one before the prefix is announced, rather than the prefix silently
+     * going live unpronounceable (mirrors {@code missing_translations}, never a hard refusal here: a Service is
+     * created and edited before its audio configuration is necessarily complete).
+     */
+    static List<String> missingSpokenForms(List<String> enabledLanguages, java.util.Set<String> covered) {
+        return enabledLanguages.stream().filter(language -> !covered.contains(language)).toList();
+    }
+
     /**
      * Per-language names for a site: every language must be enabled at the site, and the site's default language must
      * have a text, because a missing translation falls back to it (FR-I18N-011). Other enabled languages may be blank;

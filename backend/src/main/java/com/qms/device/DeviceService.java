@@ -361,7 +361,17 @@ public class DeviceService {
         if (device.kind() != Role.DISPLAY || device.zoneId() == null) throw new ApiException(ErrorCode.CONFLICT, Map.of("reason", "not_a_display"));
         Zone zone = hierarchy.zoneForDevice(device.zoneId());
         return new DisplayStateResponse(
-                new DisplayStateResponse.ZoneRef(zone.id(), zone.name(), zone.buildingLabel(), zone.floorLabel()),
+                new DisplayStateResponse.ZoneRef(
+                        zone.id(),
+                        zone.name(),
+                        zone.buildingLabel(),
+                        zone.floorLabel(),
+                        zone.chime(),
+                        zone.chimeVolume(),
+                        zone.quietStart() == null ? null : zone.quietStart().toString(),
+                        zone.quietEnd() == null ? null : zone.quietEnd().toString(),
+                        zone.announcementLanguages(),
+                        zone.maxAnnounceQueueDepth()),
                 device.layout(),
                 device.languageCycle(),
                 device.columns(),
@@ -449,7 +459,8 @@ public class DeviceService {
 
     private static DisplayStateResponse.ServingEntry servingEntry(DisplayStateReads.ServingRow row) {
         return new DisplayStateResponse.ServingEntry(
-                row.counterId(), row.counterLabel(), row.tokenNumber(), row.state(), row.serviceId(), row.serviceNames(), row.staffName());
+                row.counterId(), row.counterLabel(), row.tokenNumber(), row.state(), row.serviceId(), row.serviceNames(), row.staffName(),
+                row.tokenPrefix(), row.tokenPrefixSpoken(), row.announceVisitorName());
     }
 
     private static DisplayStateResponse.NextGroupEntry nextGroupEntry(DisplayStateReads.NextGroup group) {

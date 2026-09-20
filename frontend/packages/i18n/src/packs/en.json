@@ -175,6 +175,9 @@
   "nowServing.columns.service": "Service",
   "nowServing.columns.staff": "Staff",
 
+  "announcement.template": "Attention please. Token {token}, {service}, please proceed to {counter}, {floor}.",
+  "announcement.templateWithVisitor": "Attention please. {visitorName}, token {token}, {service}, please proceed to {counter}, {floor}.",
+
   "kiosk.language.native.en": "English",
   "kiosk.language.native.bn": "বাংলা",
   "kiosk.idle.title": "Welcome",

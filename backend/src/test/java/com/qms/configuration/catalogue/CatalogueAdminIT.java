@@ -785,4 +785,45 @@ class CatalogueAdminIT {
         assertThat(status(call(post("/api/v1/services/" + otherService + "/outcome-codes"), scoped, "{\"code\":\"x\",\"label_i18n\":{\"bn\":\"x\"}}"))).isEqualTo(403);
         assertThat(jdbc.queryForObject("SELECT display_order FROM service_group WHERE id = ?", Integer.class, otherGroup)).isEqualTo(2);
     }
+
+    // ---- ticket 29: announce_visitor_name and token prefix spoken forms --------------------------------------------
+
+    @Test
+    void announceVisitorNameDefaultsOffAndIsAPerServiceFlagAnAdminMayTurnOn() throws Exception {
+        String admin = tokenFor(Role.ORG_ADMIN);
+        UUID site = createSite(admin);
+        UUID group = createGroup(admin, site, "OPD");
+
+        MvcResult created = call(post("/api/v1/service-groups/" + group + "/services"), admin, serviceJson("CON"));
+        assertThat(status(created)).as(body(created)).isEqualTo(201);
+        assertThat((Boolean) field(created, "$.announce_visitor_name")).as("default off (FR-DSP-022)").isFalse();
+        UUID service = id(created);
+
+        MvcResult updated = call(patch("/api/v1/services/" + service), admin, "{\"announce_visitor_name\":true}");
+        assertThat(status(updated)).as(body(updated)).isEqualTo(200);
+        assertThat((Boolean) field(updated, "$.announce_visitor_name")).isTrue();
+    }
+
+    @Test
+    void aNewTokenPrefixIsFlaggedWithMissingSpokenFormsUntilAnAdminRecordsOneForEveryEnabledLanguage() throws Exception {
+        String admin = tokenFor(Role.ORG_ADMIN);
+        UUID site = createSite(admin); // enabled languages bn, en (see createSite)
+        UUID group = createGroup(admin, site, "OPD");
+
+        MvcResult created = call(post("/api/v1/service-groups/" + group + "/services"), admin, serviceJson("NEW"));
+        assertThat(status(created)).as(body(created)).isEqualTo(201);
+        assertThat((List<String>) field(created, "$.missing_spoken_forms")).as("FR-I18N-041: a new prefix has no spoken form yet").containsExactlyInAnyOrder("bn", "en");
+
+        assertThat(status(call(put("/api/v1/token-prefixes/NEW/spoken-forms/en"), admin, "{\"spoken_text\":\"N E W\"}"))).isEqualTo(200);
+        MvcResult afterEnglish = call(get("/api/v1/services/" + id(created)), admin, null);
+        assertThat((List<String>) field(afterEnglish, "$.missing_spoken_forms")).containsExactly("bn");
+
+        assertThat(status(call(put("/api/v1/token-prefixes/NEW/spoken-forms/bn"), admin, "{\"spoken_text\":\"এন ই ডব্লিউ\"}"))).isEqualTo(200);
+        MvcResult afterBoth = call(get("/api/v1/services/" + id(created)), admin, null);
+        assertThat((List<String>) field(afterBoth, "$.missing_spoken_forms")).as("every enabled language now has a spoken form").isEmpty();
+
+        MvcResult forms = call(get("/api/v1/token-prefixes/NEW/spoken-forms"), admin, null);
+        assertThat(status(forms)).as(body(forms)).isEqualTo(200);
+        assertThat((List<String>) field(forms, "$[*].language")).containsExactlyInAnyOrder("bn", "en");
+    }
 }

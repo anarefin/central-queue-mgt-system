@@ -153,14 +153,33 @@ export interface DisplayConfig {
   assignment: DisplayAssignment;
 }
 
+/** The chimes this build ships (ticket 29, FR-DSP-025); an admin picks one, never a free-text sound file. */
+export type ZoneChime = "chime_standard" | "chime_soft" | "chime_alert";
+
+/**
+ * A zone's voice-announcement settings (ticket 29, SRS §12.3-12.4): the chime and its volume (FR-DSP-025), an
+ * optional daily quiet period during which audio is suppressed but the display still updates (FR-DSP-027, "HH:mm"
+ * or null for neither end set), the languages announcements play in and their order (FR-DSP-023), and the most
+ * announcements ever queued at once, keeping only the most recent per Counter beyond that (FR-DSP-026).
+ */
 export interface DisplayZoneRef {
   id: string;
   name: string;
   building_label: string | null;
   floor_label: string;
+  chime: ZoneChime;
+  chime_volume: number;
+  quiet_start: string | null;
+  quiet_end: string | null;
+  announcement_languages: string[];
+  max_announce_queue_depth: number;
 }
 
-/** One Counter of the zone: null token/state/service/staff when nothing is being called or served there right now. */
+/**
+ * One Counter of the zone: null token/state/service/staff when nothing is being called or served there right now.
+ * {@code token_prefix_spoken} (FR-DSP-030) is the calling Service's token prefix spoken per language, empty until an
+ * admin records one (FR-I18N-041); {@code announce_visitor_name} is the calling Service's flag (FR-DSP-022).
+ */
 export interface DisplayServingEntry {
   counter_id: string;
   counter_label: string;
@@ -169,6 +188,9 @@ export interface DisplayServingEntry {
   service_id: string | null;
   service_names: Record<string, string>;
   staff_name: string | null;
+  token_prefix: string | null;
+  token_prefix_spoken: Record<string, string>;
+  announce_visitor_name: boolean;
 }
 
 export interface DisplayNextToken {

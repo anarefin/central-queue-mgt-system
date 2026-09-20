@@ -3,7 +3,9 @@
 import type { DisplayNextGroup, DisplayServingEntry, DisplayState } from "@qms/api-client";
 import { useI18n } from "@qms/i18n/react";
 import { ErrorAlert } from "@qms/ui";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { AnnouncementQueue, type Speaker, type ZoneAudioConfig } from "../lib/announcementQueue";
+import { createSpeaker } from "../lib/speaker";
 import { useApi } from "../lib/runtime";
 
 /** FR-DSP-011: a discreet stale indicator once nothing has updated for this long, rather than showing wrong data silently. */
@@ -16,8 +18,8 @@ const TICK_MS = 1_000;
 
 const CALL_EVENTS = new Set(["ticket.called", "ticket.reannounced"]);
 
-/** {@code now_serving_table} (FR-DSP-003): serving token / counter / service, plus a next-token strip per queue. */
-export function NowServingBoard({ deviceId }: { deviceId: string }) {
+/** {@code now_serving_table} (FR-DSP-003): serving token / counter / service, plus a next-token strip per queue. `speaker` is injectable for tests; a real display uses the browser's TTS/clip speaker (ticket 29). */
+export function NowServingBoard({ deviceId, speaker }: { deviceId: string; speaker?: Speaker }) {
   const { t, language } = useI18n();
   const { client, realtime } = useApi();
   const [state, setState] = useState<DisplayState | null>(null);
@@ -27,6 +29,10 @@ export function NowServingBoard({ deviceId }: { deviceId: string }) {
   const highlightUntil = useRef<Record<string, number>>({});
   const stateRef = useRef<DisplayState | null>(null);
   stateRef.current = state;
+
+  // Ticket 29 (FR-DSP-020..028): one queue per mounted board, so calls never overlap; it reads the zone's live audio
+  // settings off `stateRef` at announce time, not at enqueue time, so a config change mid-queue takes effect at once.
+  const announcer = useMemo(() => new AnnouncementQueue(speaker ?? createSpeaker(), () => zoneAudioConfig(stateRef.current)), [speaker]);
 
   const load = useRef<() => void>(() => undefined);
   load.current = () => {
@@ -66,6 +72,7 @@ export function NowServingBoard({ deviceId }: { deviceId: string }) {
           if (CALL_EVENTS.has(update.type)) {
             const seconds = stateRef.current?.highlight_seconds ?? 10;
             highlightUntil.current = { ...highlightUntil.current, [counterId]: Date.now() + seconds * 1000 };
+            enqueueAnnouncement(announcer, stateRef.current, counterId, data);
           }
         }
         setLastUpdateAt(Date.now());
@@ -134,6 +141,50 @@ export function NowServingBoard({ deviceId }: { deviceId: string }) {
       )}
     </div>
   );
+}
+
+/**
+ * The zone's voice-announcement settings from its last loaded state, or a silent-audio-but-no-quiet-period default
+ * before anything has loaded (the board renders nothing to announce yet at that point regardless).
+ */
+function zoneAudioConfig(state: DisplayState | null): ZoneAudioConfig {
+  const zone = state?.zone;
+  return {
+    chime: zone?.chime ?? "chime_standard",
+    chimeVolume: zone?.chime_volume ?? 80,
+    quietStart: zone?.quiet_start ?? null,
+    quietEnd: zone?.quiet_end ?? null,
+    announcementLanguages: zone?.announcement_languages ?? ["en"],
+    maxAnnounceQueueDepth: zone?.max_announce_queue_depth ?? 5,
+  };
+}
+
+/**
+ * Builds and enqueues the announcement for a `ticket.called`/`ticket.reannounced` event (FR-DSP-020, FR-DSP-028).
+ * The Counter's own last-loaded row supplies the fields the event itself does not carry (counter label, Service
+ * names, its token prefix and spoken forms, its visitor-name flag); like `patchCounter`'s own fields, these settle
+ * to the call's own Service within `REFRESH_INTERVAL_MS` of a Service change at that Counter (ticket 28's same
+ * eventual-consistency window, see the ticket 29 traceability notes). Nothing is enqueued when the board has not
+ * loaded that Counter yet, or the event carries no `announce_count` (never true for a real `ticket.called`/
+ * `ticket.reannounced`, guarded here only so a malformed event cannot crash the board).
+ */
+function enqueueAnnouncement(announcer: AnnouncementQueue, state: DisplayState | null, counterId: string, data: Record<string, unknown>): void {
+  const row = state?.serving.find((entry) => entry.counter_id === counterId);
+  const tokenNumber = (data.token_number as string | undefined) ?? row?.token_number;
+  const announceCount = data.announce_count as number | undefined;
+  if (!state || !row || !tokenNumber || announceCount === undefined) return;
+  announcer.enqueue({
+    ticketId: data.ticket_id as string,
+    announceCount,
+    counterId,
+    tokenNumber,
+    tokenPrefix: row.token_prefix,
+    tokenPrefixSpoken: row.token_prefix_spoken,
+    counterLabel: row.counter_label,
+    serviceNames: row.service_names,
+    floorLabel: state.zone.floor_label,
+    announceVisitorName: row.announce_visitor_name,
+  });
 }
 
 /** Applies a `zone:` event's ticket fields to the one Counter row it names; everything else is left as it was. */

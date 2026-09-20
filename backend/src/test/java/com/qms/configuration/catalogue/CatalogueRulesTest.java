@@ -7,6 +7,7 @@ import com.qms.platform.ApiException;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 
 /** Field rules for the service catalogue (FR-CFG-010, FR-CFG-012..014, FR-I18N-010). */
@@ -81,5 +82,21 @@ class CatalogueRulesTest {
         assertInvalid(() -> CatalogueRules.parallelLimit(0, false, 1), "parallel_limit", "Range");
         assertInvalid(() -> CatalogueRules.parallelLimit(21, true, 1), "parallel_limit", "Range");
         assertInvalid(() -> CatalogueRules.parallelLimit(1, true, 1), "parallel_limit", "Range");
+    }
+
+    // ---- token prefix spoken forms (ticket 29, FR-DSP-030, FR-I18N-040, FR-I18N-041) ----------------------------
+
+    @Test
+    void spokenTextIsRequiredAndBounded() {
+        assertThat(CatalogueRules.spokenText(" Q C ")).isEqualTo("Q C");
+        assertInvalid(() -> CatalogueRules.spokenText("  "), "spoken_text", "NotBlank");
+        assertInvalid(() -> CatalogueRules.spokenText("x".repeat(201)), "spoken_text", "Size");
+    }
+
+    @Test
+    void missingSpokenFormsListsTheEnabledLanguagesNotYetCoveredInTheSitesOrderAndNeverThrows() {
+        assertThat(CatalogueRules.missingSpokenForms(ENABLED, Set.of())).containsExactly("bn", "en");
+        assertThat(CatalogueRules.missingSpokenForms(ENABLED, Set.of("bn"))).containsExactly("en");
+        assertThat(CatalogueRules.missingSpokenForms(ENABLED, Set.of("bn", "en"))).isEmpty();
     }
 }

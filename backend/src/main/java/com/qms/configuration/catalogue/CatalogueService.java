@@ -35,14 +35,23 @@ public class CatalogueService {
     private final CatalogueRepository repository;
     private final TeamRepository teams;
     private final ServiceUsage usage;
+    private final PrefixSpokenFormRepository spokenForms;
     private final AuditWriter audit;
     private final ScopeGuard scope;
     private final Clock clock;
 
-    CatalogueService(CatalogueRepository repository, TeamRepository teams, ServiceUsage usage, AuditWriter audit, ScopeGuard scope, Clock clock) {
+    CatalogueService(
+            CatalogueRepository repository,
+            TeamRepository teams,
+            ServiceUsage usage,
+            PrefixSpokenFormRepository spokenForms,
+            AuditWriter audit,
+            ScopeGuard scope,
+            Clock clock) {
         this.repository = repository;
         this.teams = teams;
         this.usage = usage;
+        this.spokenForms = spokenForms;
         this.audit = audit;
         this.scope = scope;
         this.clock = clock;
@@ -199,13 +208,15 @@ public class CatalogueService {
         Instant now = clock.instant();
         Map<String, String> names = CatalogueRules.names("name_i18n", request.nameI18n(), site.defaultLanguage(), site.enabled());
         boolean parallel = Boolean.TRUE.equals(request.parallelServing());
+        String tokenPrefix = CatalogueRules.tokenPrefix(request.tokenPrefix());
         ServiceEntry service = new ServiceEntry(
                 UUID.randomUUID(),
                 groupId,
                 group.siteId(),
                 names,
                 CatalogueRules.missing(names, site.enabled()),
-                CatalogueRules.tokenPrefix(request.tokenPrefix()),
+                tokenPrefix,
+                CatalogueRules.missingSpokenForms(site.enabled(), spokenForms.languagesCovered(tokenPrefix)),
                 CatalogueRules.minutes("expected_minutes", request.expectedMinutes()),
                 CatalogueRules.minutes("sla_wait_minutes", request.slaWaitMinutes()),
                 CatalogueRules.channels(request.channels()),
@@ -215,6 +226,7 @@ public class CatalogueService {
                 request.bookingMode() == null ? "both" : CatalogueRules.choice("booking_mode", request.bookingMode(), CatalogueRules.BOOKING_MODE),
                 parallel,
                 CatalogueRules.parallelLimit(request.parallelLimit(), parallel, 1),
+                Boolean.TRUE.equals(request.announceVisitorName()),
                 true,
                 now,
                 now);
@@ -233,13 +245,15 @@ public class CatalogueService {
                 ? before.nameI18n()
                 : CatalogueRules.names("name_i18n", change.nameI18n(), site.defaultLanguage(), site.enabled());
         boolean parallel = change.parallelServing() == null ? before.parallelServing() : change.parallelServing();
+        String tokenPrefix = change.tokenPrefix() == null ? before.tokenPrefix() : CatalogueRules.tokenPrefix(change.tokenPrefix());
         ServiceEntry after = new ServiceEntry(
                 id,
                 before.serviceGroupId(),
                 before.siteId(),
                 names,
                 CatalogueRules.missing(names, site.enabled()),
-                change.tokenPrefix() == null ? before.tokenPrefix() : CatalogueRules.tokenPrefix(change.tokenPrefix()),
+                tokenPrefix,
+                CatalogueRules.missingSpokenForms(site.enabled(), spokenForms.languagesCovered(tokenPrefix)),
                 change.expectedMinutes() == null ? before.expectedMinutes() : CatalogueRules.minutes("expected_minutes", change.expectedMinutes()),
                 change.slaWaitMinutes() == null ? before.slaWaitMinutes() : CatalogueRules.minutes("sla_wait_minutes", change.slaWaitMinutes()),
                 change.channels() == null ? before.channels() : CatalogueRules.channels(change.channels()),
@@ -249,6 +263,7 @@ public class CatalogueService {
                 change.bookingMode() == null ? before.bookingMode() : CatalogueRules.choice("booking_mode", change.bookingMode(), CatalogueRules.BOOKING_MODE),
                 parallel,
                 CatalogueRules.parallelLimit(change.parallelLimit(), parallel, before.parallelLimit()),
+                change.announceVisitorName() == null ? before.announceVisitorName() : change.announceVisitorName(),
                 before.active(),
                 before.createdAt(),
                 clock.instant());
@@ -350,6 +365,27 @@ public class CatalogueService {
         repository.deleteLink(counterId, serviceId);
         audit.record(AuditEvent.of("service.counter_unlinked", "service", serviceId)
                 .withBefore(Map.of("counter_id", counterId.toString(), "preference_weight", link.preferenceWeight())));
+    }
+
+    // ---- token prefix spoken forms (ticket 29, FR-DSP-030, FR-I18N-040, FR-I18N-041) ---------------------------
+
+    @PreAuthorize(PERMISSION)
+    @Transactional(readOnly = true)
+    public List<PrefixSpokenForm> spokenForms(String prefix) {
+        return spokenForms.forPrefix(prefix);
+    }
+
+    @PreAuthorize(PERMISSION)
+    @Transactional
+    public PrefixSpokenForm upsertSpokenForm(String prefix, String language, UpsertSpokenFormRequest request) {
+        String trimmedPrefix = CatalogueRules.required("prefix", prefix, 8);
+        String trimmedLanguage = CatalogueRules.required("language", language, 8);
+        String spokenText = CatalogueRules.spokenText(request == null ? null : request.spokenText());
+        Instant now = clock.instant();
+        spokenForms.upsert(trimmedPrefix, trimmedLanguage, spokenText, now);
+        audit.record(AuditEvent.of("token_prefix.spoken_form_set", "token_prefix", null)
+                .withAfter(Map.of("prefix", trimmedPrefix, "language", trimmedLanguage, "spoken_text", spokenText)));
+        return new PrefixSpokenForm(trimmedPrefix, trimmedLanguage, spokenText, now);
     }
 
     // ---- outcome codes -----------------------------------------------------------------------------------------
@@ -518,6 +554,7 @@ public class CatalogueService {
         values.put("booking_mode", service.bookingMode());
         values.put("parallel_serving", service.parallelServing());
         values.put("parallel_limit", service.parallelLimit());
+        values.put("announce_visitor_name", service.announceVisitorName());
         values.put("active", service.active());
         return values;
     }

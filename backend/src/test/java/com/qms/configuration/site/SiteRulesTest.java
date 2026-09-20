@@ -67,4 +67,55 @@ class SiteRulesTest {
         assertThat(SiteRules.displayOrder(7)).isEqualTo(7);
         assertThat(failedField(() -> SiteRules.displayOrder(-1))).isEqualTo("display_order:Range");
     }
+
+    // ---- zone audio (ticket 29, FR-DSP-023, FR-DSP-025..027) --------------------------------------------------
+
+    @Test
+    void chimeIsOneOfTheShippedChimesAndDefaultsWhenNotGiven() {
+        assertThat(SiteRules.chime(null)).isEqualTo("chime_standard");
+        assertThat(SiteRules.chime("chime_alert")).isEqualTo("chime_alert");
+        assertThat(failedField(() -> SiteRules.chime("bell.mp3"))).isEqualTo("chime:unknown_chime");
+    }
+
+    @Test
+    void chimeVolumeIsZeroToOneHundredAndDefaultsToEighty() {
+        assertThat(SiteRules.chimeVolume(null)).isEqualTo(80);
+        assertThat(SiteRules.chimeVolume(0)).isZero();
+        assertThat(SiteRules.chimeVolume(100)).isEqualTo(100);
+        assertThat(failedField(() -> SiteRules.chimeVolume(101))).isEqualTo("chime_volume:Range");
+        assertThat(failedField(() -> SiteRules.chimeVolume(-1))).isEqualTo("chime_volume:Range");
+    }
+
+    @Test
+    void quietTimeParsesHhMmKeepsTheCurrentValueWhenNotGivenAndClearsOnAnEmptyString() {
+        assertThat(SiteRules.quietTime("quiet_start", null, java.time.LocalTime.of(9, 0))).isEqualTo(java.time.LocalTime.of(9, 0));
+        assertThat(SiteRules.quietTime("quiet_start", "22:00", null)).isEqualTo(java.time.LocalTime.of(22, 0));
+        assertThat(SiteRules.quietTime("quiet_start", "", java.time.LocalTime.of(9, 0))).isNull();
+        assertThat(failedField(() -> SiteRules.quietTime("quiet_start", "not-a-time", null))).isEqualTo("quiet_start:Pattern");
+    }
+
+    @Test
+    void aQuietPeriodNeedsBothEndsOrNeither() {
+        SiteRules.quietPeriodComplete(null, null); // no quiet period configured: fine
+        SiteRules.quietPeriodComplete(java.time.LocalTime.of(22, 0), java.time.LocalTime.of(6, 0)); // both ends: fine
+        assertThat(failedField(() -> SiteRules.quietPeriodComplete(java.time.LocalTime.of(22, 0), null)))
+                .isEqualTo("quiet_start:quiet_period_needs_both_ends");
+    }
+
+    @Test
+    void announcementLanguagesAreOrderedDeduplicatedAndMustBeInstalledOrDefaultToEnglish() {
+        assertThat(SiteRules.announcementLanguages(null, INSTALLED)).containsExactly("en");
+        assertThat(SiteRules.announcementLanguages(List.of("bn", "en"), INSTALLED)).containsExactly("bn", "en");
+        assertThat(failedField(() -> SiteRules.announcementLanguages(List.of("bn", "bn"), INSTALLED))).isEqualTo("announcement_languages:duplicate_language");
+        assertThat(failedField(() -> SiteRules.announcementLanguages(List.of("fr"), INSTALLED))).isEqualTo("announcement_languages:unknown_language");
+    }
+
+    @Test
+    void maxAnnounceQueueDepthIsOneToTwentyAndDefaultsToFive() {
+        assertThat(SiteRules.maxAnnounceQueueDepth(null)).isEqualTo(5);
+        assertThat(SiteRules.maxAnnounceQueueDepth(1)).isEqualTo(1);
+        assertThat(SiteRules.maxAnnounceQueueDepth(20)).isEqualTo(20);
+        assertThat(failedField(() -> SiteRules.maxAnnounceQueueDepth(0))).isEqualTo("max_announce_queue_depth:Range");
+        assertThat(failedField(() -> SiteRules.maxAnnounceQueueDepth(21))).isEqualTo("max_announce_queue_depth:Range");
+    }
 }

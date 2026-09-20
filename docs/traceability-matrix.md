@@ -720,6 +720,80 @@ panel belong to ticket 30. Assignment and column validation reuse `config:org_si
 fleet administration does, for the same reason: a display sits under a Site/Zone like a Counter, and §5.2's matrix has
 no dedicated display-configuration permission to add.
 
+## Ticket 29, voice announcements
+
+`SiteRules` = `B/configuration/site/SiteRulesTest`, `CatRules` = `B/configuration/catalogue/CatalogueRulesTest`,
+`Cat` = `B/configuration/catalogue/CatalogueAdminIT`, `Fleet` = `B/device/DeviceFleetIT`,
+`ZoneRT` = `B/platform/realtime/DisplayRealtimeIT`, `F/Queue` = `F/apps/display/src/lib/announcementQueue.test.ts`,
+`F/Text` = `F/apps/display/src/lib/announcementText.test.ts`, `F/Speaker` = `F/apps/display/src/lib/speaker.test.ts`,
+`F/Numerals` = `F/packages/i18n/src/spokenNumerals.test.ts`, `F/Board` = `F/apps/display/src/components/NowServingBoard.test.tsx`.
+
+| Requirement ID | Section | Test type | Test reference | Status |
+|---|---|---|---|---|
+| FR-DSP-020 a call event plays in the Zone containing the Counter | §12.3 | integration, unit | the `zone:` topic already scopes a call to its Counter's Zone (ticket 28, `ZoneRT`); `F/Board`'s "voice announcements" describe block enqueues an announcement from exactly that event | passing |
+| FR-DSP-021 template per language from token number, counter label, service name, floor, optional visitor name | §12.3 | unit | `F/Text#buildsTheTemplateFromTokenServiceCounterAndFloorPerLanguage` | passing |
+| FR-DSP-022 visitor name announcement is a per-Service flag, default off | §12.3 | unit, integration | `Cat#announceVisitorNameDefaultsOffAndIsAPerServiceFlagAnAdminMayTurnOn`; `F/Text#neverSpeaksTheVisitorsNameWhenTheServiceFlagIsOff`/`#speaksTheVisitorsNameOnlyWhenTheServiceFlagIsOnAndANameIsPresent` | partial |
+| FR-DSP-023 languages played in sequence in configurable order | §12.3 | unit, integration | `SiteRules#announcementLanguagesAreOrderedDeduplicatedAndMustBeInstalledOrDefaultToEnglish`; `F/Queue#playsAChimeThenSpeaksEachConfiguredLanguageInOrder`; `F/Board#playsAChimeThenSpeaksTheCallInEachConfiguredLanguageInOrder` | passing |
+| FR-DSP-024 clip assembly (offline) and TTS with fallback to clips | §12.3 | unit | `F/Speaker#fallsBackToClipPlaybackWhenTheWebSpeechApiIsUnavailable`/`#fallsBackToClipPlaybackWhenTheWebSpeechApiReportsAnError`/`#toleratesAClipThatFailsToLoadAndStillResolves` | partial |
+| FR-DSP-025 chime selectable and volume-controllable per Zone | §12.3 | unit, integration | `SiteRules#chimeIsOneOfTheShippedChimesAndDefaultsWhenNotGiven`/`#chimeVolumeIsZeroToOneHundredAndDefaultsToEighty`; `Fleet#displayStateShowsWhoIsBeingServedWhereAndTheNextTokenOfEachQueueInTheZone` (`PATCH /zones/{id}` then read back off `display-state`); `F/Speaker#playsTheZonesConfiguredChimeAtItsConfiguredVolume` | passing |
+| FR-DSP-026 announcements queue without overlap; configurable max depth keeps the most recent per Counter | §12.3 | unit | `SiteRules#maxAnnounceQueueDepthIsOneToTwentyAndDefaultsToFive`; `F/Queue#neverOverlaps...`, `#keepsOnlyTheMostRecentCallPerCounterOnceTheQueueExceedsItsConfiguredMaxDepth`, `#aLaterCallForTheSameCounterReplacesItsStillQueuedNotYetPlayingEarlierOne` | passing |
+| FR-DSP-027 quiet periods per Zone suppress audio but not display | §12.3 | unit, integration | `SiteRules#quietTimeParsesHhMm...`/`#aQuietPeriodNeedsBothEndsOrNeither`; `F/Queue#isQuietNow` describe block and `#suppressesAudioDuringTheZonesQuietPeriodButStillConsumesTheItem`; `F/Board#suppressesTheChimeAndSpeechDuringTheZonesConfiguredQuietPeriodWhileTheDisplayStillUpdates` | passing |
+| FR-DSP-028 re-announce fires a repeat up to the repeat limit | §12.3 | integration, unit | the repeat-limit mechanics are ticket 12's (`SessionIT`, `TicketTransition.mayReannounce`); `F/Queue#reAnnouncesAnnounceCountIncrementedAreANewKeyAndDoPlay`, `F/Board#reAnnouncingTheSameTicketANewAnnounceCountPlaysAgain` | passing |
+| FR-QUE-083 dedupe by ticket id + announce_count so replays never re-announce | §21.4 | integration, unit | `ZoneRT#aDisplayWatchesItsOwnZone...` (asserts `announce_count` now rides a first call too, not just a re-announce); `F/Queue#neverReplaysATicketAnnounceCountItAlreadyAnnounced`; `F/Board#neverReplaysACallAResyncRedeliversSoAReconnectNeverReAnnouncesAnOldToken` | passing |
+| FR-DSP-030 per-language spoken prefixes; Bangla speaks numbers in Bangla | §12.4 | unit | `F/Numerals` (Western/Bengali digits -> Bangla and English digit words); `F/Text#speaksThePrefixsConfiguredSpokenFormFollowedByTheDigitsInTheGivenLanguage` | passing |
+| FR-I18N-020 Bangla audio speaks the number in Bangla, whatever the token's on-screen digits | §17 | unit | `F/Numerals#speaksTheSameDigitsInBanglaCorrectlyPronouncedRatherThanTransliterated`, `#convertsBengaliDigitsToTheirSpokenBanglaWordsToo` | passing |
+| FR-I18N-040 each language pack carries a clip set or TTS voice mapping | §17 | manual | `createSpeaker`'s `voices` option and clip-URL convention (`speaker.ts`) are the mechanism; no clip audio files or a bundled voice-preference config ship with this repository yet (see interpretation notes) | manual |
+| FR-I18N-041 a new token prefix prompts for spoken forms before going live | §17 | unit, integration | `CatRules#missingSpokenFormsListsTheEnabledLanguagesNotYetCoveredInTheSitesOrderAndNeverThrows`; `Cat#aNewTokenPrefixIsFlaggedWithMissingSpokenFormsUntilAnAdminRecordsOneForEveryEnabledLanguage` | passing |
+| FR-SEC-021 hook: clinical-sensitivity neutral labels once ticket 54 lands | §25.4 | manual | `AnnouncementData.serviceNames` is the one place a Service's spoken name comes from (`announcementText.ts`); ticket 54 substitutes a neutral label there and in the equivalent display/notification seams, nothing here hard-codes a real Service name | manual |
+| Definition of done §27.5 item 1 (behind configuration, no client-specific code) | §27.5 | — | every setting (chime, volume, quiet period, languages, queue depth, visitor-name flag, spoken forms) is a Zone/Service/prefix column, never a per-client constant | passing |
+| Definition of done §27.5 item 3 (strings in both packs) | §17 | unit | `F/packages/i18n/src/i18n.test.ts` (pack parity; `announcement.*` resolves in en and bn) | passing |
+| Definition of done §27.5 item 4 (permission-checked server-side) | §20.3 | integration | zone audio settings and `announce_visitor_name` reuse `config:org_sites_zones`/`config:service_catalogue` exactly as the rest of their own record (`Fleet`, `Cat`); `PrefixSpokenFormController` the same | passing |
+| Definition of done §27.5 item 5 (events and audit entries) | §18.3 | integration | zone/service updates already write `zone.updated`/`service.updated` with before/after (ticket 05/06's own mechanism, now carrying the new fields); `token_prefix.spoken_form_set` audited in `CatalogueService#upsertSpokenForm` | passing |
+| Definition of done §27.5 item 6 (documented) | §27.5 | manual | covered by this table; `docs/admin-guide.md` is not updated (tickets 25-28 left the same gap, see their own notes) | partial |
+| §18, §26 the V24 migration is forward-only and re-runnable | §18, §26 | integration | `B/platform/MigrationIT#everyMigrationScriptCanBeReExecutedAgainstAnAlreadyMigratedDatabase` (V24) | passing |
+
+**Notes on this ticket's interpretation.** The realtime `ticket.called`/`ticket.reannounced` event (`TicketEvents`,
+tickets 10/12) carries only `ticket_id`, `token_number`, `service_id`, `state`, `counter_id`, `waiting_count`,
+`announce` and now `announce_count`; it never carried counter label, Service name, floor or a token's prefix, and
+adding those would duplicate the whole-zone snapshot already returned by `GET /devices/{id}/display-state` and the
+`zone:` topic's own snapshot frame (ticket 28). `NowServingBoard`'s announcement wiring therefore resolves those
+fields from the Counter's own last-loaded row, exactly like `patchCounter` already does for `service_names` and
+`staff_name` (ticket 28's own precedent): both settle to a Service that just changed at a Counter within the existing
+`REFRESH_INTERVAL_MS` (20 s) window, not instantly. A visitor's name is never included in that row or in any event:
+FR-SEC-020's public-display default is token and counter only, and no existing pipeline exposes a visitor's name to
+a public display surface. This ticket implements `Service.announce_visitor_name` as a real, persisted, audited,
+per-Service flag (FR-DSP-022) and `announcementText`'s conditional handling of a visitor name when one is supplied,
+but does not build the separate (privacy-sensitive) pipe that would carry a real name from a Ticket to a public
+display's event feed -- that is a materially different, security-relevant change this ticket's acceptance criteria do
+not ask for, so FR-DSP-022 is marked partial rather than silently claimed complete.
+
+FR-I18N-041 ("prompt the admin... before the prefix goes live") is implemented the same way this codebase already
+implements the equivalent gap for name translations (`CatalogueRules.missing`/`missing_translations`, tickets 05-06):
+a non-blocking `missing_spoken_forms` list surfaced on the `ServiceEntry`, not a hard refusal at create/update time.
+A hard block was tried first and reverted: dozens of existing tests across `queue`, `session`, `issuance` and
+`catalogue` create Services with arbitrary token prefixes and no spoken form ever registered, so refusing that would
+break fixtures far outside this ticket's scope for a requirement whose own word is "prompt", not "refuse". An admin
+UI that turns `missing_spoken_forms` into an actual on-screen prompt is not built in this pass (no admin screen for
+the service catalogue's audio fields exists in this repo yet, same gap as ticket 28's own "not yet updated" note on
+`docs/admin-guide.md`); the API-level data an admin UI would render that prompt from is real and tested.
+
+FR-DSP-024/FR-DSP-031/FR-I18N-040's clip assembly is a real, working fallback mechanism (`speaker.ts`: try the Web
+Speech API, fall back to one clip per digit/prefix word at `{clipBaseUrl}/{language}/{word}.mp3`, tolerating a missing
+clip rather than stalling the queue) but no actual audio asset files (chimes or per-language digit clips) ship with
+this repository -- there is no existing audio-asset pipeline anywhere in this codebase to extend, and recording or
+sourcing real audio is outside a backend/frontend code ticket. Voice selection per language (FR-DSP-031) is a real,
+tested parameter of `createSpeaker` (`voices: Record<language, voiceName>`) but is not yet wired to a persisted,
+admin-editable setting; nothing in the ticket's acceptance criteria names a storage location for it, and Zone/Service
+already carry six new settings each from this ticket alone.
+
+Chime and quiet-period settings are per Zone (`zone.chime`, `chime_volume`, `quiet_start`, `quiet_end`,
+`announcement_languages`, `max_announce_queue_depth`), reusing `config:org_sites_zones` and the same
+create/update/audit shape `HierarchyService` already has for a Zone's other fields, rather than a new device-level or
+global setting: FR-DSP-025 and FR-DSP-027 both say "per Zone" explicitly, and a physical chime/speaker serves a
+waiting area (a Zone), not one display screen. This is a deliberate difference from the existing per-*display*
+`language_cycle` (ticket 28, still just a registration attribute with no on-screen rotation, per that ticket's own
+notes): announcement language order is a Zone-wide audio setting, screen language cycling is a per-device visual one.
+
 ## Notes
 
 - **Compose.** Verified by hand on 2026-09-19 with OrbStack Docker, from a clean build: `migrate` exited 0, then Postgres,

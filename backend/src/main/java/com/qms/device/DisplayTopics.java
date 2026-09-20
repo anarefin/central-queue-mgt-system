@@ -76,6 +76,9 @@ class DisplayTopics implements TopicSource {
         map.put("service_id", row.serviceId() == null ? null : row.serviceId().toString());
         map.put("service_names", row.serviceNames());
         map.put("staff_name", row.staffName());
+        map.put("token_prefix", row.tokenPrefix());
+        map.put("token_prefix_spoken", row.tokenPrefixSpoken());
+        map.put("announce_visitor_name", row.announceVisitorName());
         return map;
     }
 

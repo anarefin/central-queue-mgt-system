@@ -10,6 +10,7 @@ import com.qms.platform.security.CurrentUser;
 import com.qms.platform.security.ScopeGuard;
 import java.time.Clock;
 import java.time.Instant;
+import java.time.LocalTime;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -171,12 +172,23 @@ public class HierarchyService {
         return zone;
     }
 
+    /** {@code request} is null (or its audio fields are) for a zone created without stating its voice-announcement
+     * settings; those fields then take this build's defaults (FR-DSP-023, FR-DSP-025..027). */
     @PreAuthorize(PERMISSION)
     @Transactional
-    public Zone createZone(UUID siteId, String name, String floorLabel, String buildingLabel, Integer displayOrder) {
+    public Zone createZone(UUID siteId, String name, String floorLabel, String buildingLabel, Integer displayOrder, CreateZoneRequest request) {
         scope.requireSite(siteId);
         requireActiveParent(requireSite(siteId).active());
         Instant now = clock.instant();
+        String chime = request == null ? null : request.chime();
+        Integer chimeVolume = request == null ? null : request.chimeVolume();
+        String quietStartWire = request == null ? null : request.quietStart();
+        String quietEndWire = request == null ? null : request.quietEnd();
+        List<String> announcementLanguages = request == null ? null : request.announcementLanguages();
+        Integer maxAnnounceQueueDepth = request == null ? null : request.maxAnnounceQueueDepth();
+        LocalTime quietStart = SiteRules.quietTime("quiet_start", quietStartWire, null);
+        LocalTime quietEnd = SiteRules.quietTime("quiet_end", quietEndWire, null);
+        SiteRules.quietPeriodComplete(quietStart, quietEnd);
         Zone zone = new Zone(
                 UUID.randomUUID(),
                 siteId,
@@ -185,6 +197,12 @@ public class HierarchyService {
                 SiteRules.required("floor_label", floorLabel, 100),
                 SiteRules.displayOrder(displayOrder),
                 true,
+                SiteRules.chime(chime),
+                SiteRules.chimeVolume(chimeVolume),
+                quietStart,
+                quietEnd,
+                SiteRules.announcementLanguages(announcementLanguages, languages.languages()),
+                SiteRules.maxAnnounceQueueDepth(maxAnnounceQueueDepth),
                 now,
                 now);
         repository.insert(zone);
@@ -197,6 +215,9 @@ public class HierarchyService {
     public Zone updateZone(UUID id, UpdateZoneRequest change) {
         Zone before = requireZone(id);
         scope.requireSite(before.siteId());
+        LocalTime quietStart = SiteRules.quietTime("quiet_start", change.quietStart(), before.quietStart());
+        LocalTime quietEnd = SiteRules.quietTime("quiet_end", change.quietEnd(), before.quietEnd());
+        SiteRules.quietPeriodComplete(quietStart, quietEnd);
         Zone after = new Zone(
                 id,
                 before.siteId(),
@@ -205,6 +226,12 @@ public class HierarchyService {
                 change.floorLabel() == null ? before.floorLabel() : SiteRules.required("floor_label", change.floorLabel(), 100),
                 change.displayOrder() == null ? before.displayOrder() : SiteRules.displayOrder(change.displayOrder()),
                 before.active(),
+                change.chime() == null ? before.chime() : SiteRules.chime(change.chime()),
+                change.chimeVolume() == null ? before.chimeVolume() : SiteRules.chimeVolume(change.chimeVolume()),
+                quietStart,
+                quietEnd,
+                change.announcementLanguages() == null ? before.announcementLanguages() : SiteRules.announcementLanguages(change.announcementLanguages(), languages.languages()),
+                change.maxAnnounceQueueDepth() == null ? before.maxAnnounceQueueDepth() : SiteRules.maxAnnounceQueueDepth(change.maxAnnounceQueueDepth()),
                 before.createdAt(),
                 clock.instant());
         if (snapshot(after).equals(snapshot(before))) return before;
@@ -394,6 +421,12 @@ public class HierarchyService {
         values.put("floor_label", zone.floorLabel());
         values.put("display_order", zone.displayOrder());
         values.put("active", zone.active());
+        values.put("chime", zone.chime());
+        values.put("chime_volume", zone.chimeVolume());
+        values.put("quiet_start", zone.quietStart() == null ? null : zone.quietStart().toString());
+        values.put("quiet_end", zone.quietEnd() == null ? null : zone.quietEnd().toString());
+        values.put("announcement_languages", zone.announcementLanguages());
+        values.put("max_announce_queue_depth", zone.maxAnnounceQueueDepth());
         return values;
     }
 

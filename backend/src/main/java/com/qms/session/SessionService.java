@@ -237,6 +237,9 @@ public class SessionService {
                 payload.put("service_id", chosen.serviceId().toString());
                 payload.put("preference_weight", chosen.preferenceWeight());
                 payload.put("announce", true);
+                // A freshly called ticket has never been announced, so this is always 0 (FR-QUE-083's dedupe key needs it
+                // on every call, not just a re-announce).
+                payload.put("announce_count", 0);
                 events.append(transition(chosen.ticketId(), TicketTransition.CALL, session, payload, now));
                 return view(session);
             }
@@ -281,6 +284,7 @@ public class SessionService {
         payload.put("service_id", ticket.serviceId().toString());
         payload.put("preference_weight", link.weight());
         payload.put("announce", true);
+        payload.put("announce_count", 0);
         payload.put("out_of_order", true);
         payload.put("reason", reason);
         events.append(transition(ticket.id(), TicketTransition.CALL, session, payload, now));

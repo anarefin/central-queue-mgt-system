@@ -19,6 +19,8 @@ public record ServiceEntry(
         @JsonProperty("name_i18n") Map<String, String> nameI18n,
         @JsonProperty("missing_translations") List<String> missingTranslations,
         @JsonProperty("token_prefix") String tokenPrefix,
+        /** Enabled languages of this Service's site with no spoken form yet for {@code token_prefix} (FR-I18N-041); an admin prompt, never a block. */
+        @JsonProperty("missing_spoken_forms") List<String> missingSpokenForms,
         @JsonProperty("expected_minutes") int expectedMinutes,
         @JsonProperty("sla_wait_minutes") int slaWaitMinutes,
         List<String> channels,
@@ -28,6 +30,8 @@ public record ServiceEntry(
         @JsonProperty("booking_mode") String bookingMode,
         @JsonProperty("parallel_serving") boolean parallelServing,
         @JsonProperty("parallel_limit") int parallelLimit,
+        /** Whether a call for this Service speaks the visitor's name (FR-DSP-022), default off: inappropriate in medical settings. */
+        @JsonProperty("announce_visitor_name") boolean announceVisitorName,
         boolean active,
         @JsonProperty("created_at") Instant createdAt,
         @JsonProperty("updated_at") Instant updatedAt) {}

@@ -79,7 +79,9 @@ class DisplayRealtimeIT extends RealServerSupport {
 
         Map<String, Object> event = socket.next(f -> "event".equals(f.get("frame")) && "ticket.called".equals(f.get("type")));
         assertThat(event).containsEntry("topic", "zone:" + zone);
-        assertThat(data(event)).containsEntry("counter_id", w.counter().toString()).containsEntry("token_number", ticket.get("token_number"));
+        // announce_count rides on a first call too (ticket 29), not just a re-announce, so a display's dedupe key
+        // (FR-QUE-083) is always present from the very first time a ticket is ever called.
+        assertThat(data(event)).containsEntry("counter_id", w.counter().toString()).containsEntry("token_number", ticket.get("token_number")).containsEntry("announce_count", 0);
     }
 
     @Test

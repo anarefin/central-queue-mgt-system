@@ -77,6 +77,6 @@ public class SiteController {
     @PostMapping("/{siteId}/zones")
     @ResponseStatus(HttpStatus.CREATED)
     public Zone createZone(@PathVariable UUID siteId, @RequestBody CreateZoneRequest request) {
-        return service.createZone(siteId, request.name(), request.floorLabel(), request.buildingLabel(), request.displayOrder());
+        return service.createZone(siteId, request.name(), request.floorLabel(), request.buildingLabel(), request.displayOrder(), request);
     }
 }

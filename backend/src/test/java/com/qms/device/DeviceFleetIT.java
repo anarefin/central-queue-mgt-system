@@ -2,6 +2,7 @@ package com.qms.device;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 
@@ -529,6 +530,13 @@ class DeviceFleetIT {
         jdbc.update("INSERT INTO team (id, service_group_id, name) VALUES (?, ?, 'Team')", UUID.randomUUID(), group);
         UUID service = newService(group, "AD", "[\"reception\",\"kiosk\"]");
         jdbc.update("INSERT INTO counter_service (counter_id, service_id, preference_weight) VALUES (?, ?, 1)", counter, service);
+        // ticket 29 (FR-DSP-025..027, FR-DSP-030): a zone's audio settings and a token prefix's spoken form.
+        MvcResult zoneUpdated = call(patch("/api/v1/zones/" + zone), admin,
+                "{\"chime\":\"chime_soft\",\"chime_volume\":55,\"quiet_start\":\"22:00\",\"quiet_end\":\"06:00\","
+                        + "\"announcement_languages\":[\"bn\",\"en\"],\"max_announce_queue_depth\":3}");
+        assertThat(status(zoneUpdated)).as(body(zoneUpdated)).isEqualTo(200);
+        MvcResult spokenForm = call(put("/api/v1/token-prefixes/AD/spoken-forms/en"), admin, "{\"spoken_text\":\"A D\"}");
+        assertThat(status(spokenForm)).as(body(spokenForm)).isEqualTo(200);
         Agent agent = agentFor(site, group, "Dr. Karim");
         MvcResult paired = pair(pairingCode(admin, "display", site, zone));
         String displayToken = field(paired, "$.access_token");
@@ -541,6 +549,7 @@ class DeviceFleetIT {
         MvcResult called = call(post("/api/v1/sessions/" + sessionId + "/next"), agent.token(), null);
         assertThat(status(called)).as(body(called)).isEqualTo(200);
         String tokenNumber = field(called, "$.ticket.token_number");
+        assertThat((Integer) field(called, "$.ticket.announce_count")).isZero();
 
         MvcResult state = call(get("/api/v1/devices/" + UUID.fromString(field(paired, "$.device_id")) + "/display-state"), displayToken, null);
         assertThat(status(state)).as(body(state)).isEqualTo(200);
@@ -550,5 +559,16 @@ class DeviceFleetIT {
         assertThat((String) field(state, "$.serving[0].staff_name")).isEqualTo("Dr. Karim");
         assertThat((String) field(state, "$.serving[0].counter_label")).isEqualTo("Desk 1");
         assertThat((List<String>) field(state, "$.next[0].tokens[*].token_number")).hasSize(1);
+        // FR-DSP-030: the calling Service's token prefix, spoken per language.
+        assertThat((String) field(state, "$.serving[0].token_prefix")).isEqualTo("AD");
+        assertThat((String) field(state, "$.serving[0].token_prefix_spoken.en")).isEqualTo("A D");
+        assertThat((Boolean) field(state, "$.serving[0].announce_visitor_name")).as("off by default (FR-DSP-022)").isFalse();
+        // FR-DSP-023, FR-DSP-025, FR-DSP-027: the zone's own voice-announcement settings ride along on this same read.
+        assertThat((String) field(state, "$.zone.chime")).isEqualTo("chime_soft");
+        assertThat((Integer) field(state, "$.zone.chime_volume")).isEqualTo(55);
+        assertThat((String) field(state, "$.zone.quiet_start")).isEqualTo("22:00");
+        assertThat((String) field(state, "$.zone.quiet_end")).isEqualTo("06:00");
+        assertThat((List<String>) field(state, "$.zone.announcement_languages")).containsExactly("bn", "en");
+        assertThat((Integer) field(state, "$.zone.max_announce_queue_depth")).isEqualTo(3);
     }
 }

@@ -175,6 +175,9 @@
   "nowServing.columns.service": "সেবা",
   "nowServing.columns.staff": "কর্মী",
 
+  "announcement.template": "মনোযোগ দিন। টোকেন {token}, {service}, অনুগ্রহ করে {counter}, {floor}-এ যান।",
+  "announcement.templateWithVisitor": "মনোযোগ দিন। {visitorName}, টোকেন {token}, {service}, অনুগ্রহ করে {counter}, {floor}-এ যান।",
+
   "kiosk.language.native.en": "English",
   "kiosk.language.native.bn": "বাংলা",
   "kiosk.idle.title": "স্বাগতম",
