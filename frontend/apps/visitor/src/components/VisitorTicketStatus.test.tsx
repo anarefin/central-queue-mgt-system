@@ -119,4 +119,21 @@ describe("VisitorTicketStatus", () => {
       "This ticket can no longer be cancelled: it has already been called or closed.",
     );
   });
+
+  it("opts out of notifications and shows it took effect (FR-NTF-035)", async () => {
+    const calls = stubApi({
+      "GET /tickets/t1/visitor": () => json(200, VIEW),
+      "POST /tickets/t1/visitor/notification-opt-out": () => json(200, { opted_out: true }),
+    });
+    const user = userEvent.setup();
+
+    renderVisitor(<VisitorTicketStatus ticketId="t1" credential="s3cr3t" streamDeps={NO_WEBSOCKET} />);
+
+    const button = await screen.findByRole("button", { name: "Opt out of notifications" });
+    await user.click(button);
+
+    await waitFor(() => expect(screen.getByRole("button", { name: "Opt back in to notifications" })).toBeInTheDocument());
+    const call = calls.find((c) => c.path === "/tickets/t1/visitor/notification-opt-out");
+    expect(JSON.parse(String(call?.init.body))).toEqual({ opted_out: true, consent_text_version: undefined });
+  });
 });

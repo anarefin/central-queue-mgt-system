@@ -55,6 +55,16 @@ import type {
 } from "./visitors";
 import type { BrandingInput, OrgBranding, PrintTemplate, PrintTemplateInput } from "./branding";
 import type { IssueJourneyInput, JourneyResult, JourneySettings, JourneyTemplateSummary } from "./journeys";
+import type {
+  NotificationMessageQuery,
+  NotificationMessageWithAttempts,
+  NotificationTemplate,
+  NotificationTemplateInput,
+  NotificationTemplatePreview,
+  NotificationTriggerCatalogueEntry,
+  NotificationTriggerSetting,
+  NotificationTriggerSettingInput,
+} from "./notifications";
 
 export const API_BASE_PATH = "/api/v1";
 
@@ -250,6 +260,14 @@ export class ApiClient {
         anonymous: true,
         headers: { [TICKET_CREDENTIAL_HEADER]: credential },
       }),
+    /** Opts the ticket's own visitor record out of (or back into) non-essential notifications (FR-NTF-035, ticket 38). */
+    notificationOptOut: (id: string, credential: string, optedOut: boolean, consentTextVersion?: string) =>
+      this.request<{ opted_out: boolean }>(
+        "POST",
+        `/tickets/${id}/visitor/notification-opt-out`,
+        { opted_out: optedOut, consent_text_version: consentTextVersion },
+        { anonymous: true, headers: { [TICKET_CREDENTIAL_HEADER]: credential } },
+      ),
     /**
      * A paired kiosk issues for itself (ticket 25, §8.2): the device's own access token names the actor and the
      * channel is always `kiosk`, scoped to the device's own site server-side. Same idempotency guarantee as `issue`.
@@ -445,6 +463,36 @@ export class ApiClient {
 
   readonly users = {
     list: (limit = 200) => this.request<UserPage>("GET", `/users?limit=${limit}`),
+  };
+
+  /**
+   * The notification pipeline's admin surface (ticket 38, SRS §14): the read-only trigger catalogue, each trigger's
+   * enabled state and channel order per Site (and, given a `serviceId`, per Service under it, overriding the Site's
+   * own setting, FR-NTF-010), templates per trigger x channel x language with a preview (FR-NTF-020, FR-NTF-021),
+   * and the delivery log filterable by ticket, visitor and status (FR-NTF-032).
+   */
+  readonly notifications = {
+    catalogue: () => this.request<Items<NotificationTriggerCatalogueEntry>>("GET", "/notification-triggers/catalogue"),
+    triggers: (siteId: string, serviceId?: string) =>
+      this.request<Items<NotificationTriggerSetting>>(
+        "GET", `/notification-triggers?site_id=${siteId}${serviceId ? `&service_id=${serviceId}` : ""}`),
+    setTrigger: (triggerKey: string, siteId: string, input: NotificationTriggerSettingInput, serviceId?: string) =>
+      this.request<NotificationTriggerSetting>(
+        "PUT", `/notification-triggers/${triggerKey}?site_id=${siteId}${serviceId ? `&service_id=${serviceId}` : ""}`, input),
+    templatesForTrigger: (triggerKey: string) => this.request<Items<NotificationTemplate>>("GET", `/notification-templates/${triggerKey}`),
+    saveTemplate: (triggerKey: string, channel: string, language: string, input: NotificationTemplateInput) =>
+      this.request<NotificationTemplate>("PUT", `/notification-templates/${triggerKey}/${channel}/${language}`, input),
+    previewTemplate: (triggerKey: string, channel: string, language: string) =>
+      this.request<NotificationTemplatePreview>("GET", `/notification-templates/${triggerKey}/${channel}/${language}/preview`),
+    messages: (query: NotificationMessageQuery = {}) => {
+      const params = new URLSearchParams();
+      if (query.ticketId) params.set("ticket_id", query.ticketId);
+      if (query.visitorId) params.set("visitor_id", query.visitorId);
+      if (query.status) params.set("status", query.status);
+      if (query.limit) params.set("limit", String(query.limit));
+      const qs = params.toString();
+      return this.request<Items<NotificationMessageWithAttempts>>("GET", `/notification-messages${qs ? `?${qs}` : ""}`);
+    },
   };
 
   /**

@@ -10,6 +10,7 @@ public final class Topics {
     public static final String DEVICE = "device:";
     public static final String ZONE = "zone:";
     public static final String TICKET = "ticket:";
+    public static final String STAFF_ALERT = "staff-alert:";
 
     private Topics() {}
 
@@ -34,5 +35,10 @@ public final class Topics {
     /** One Ticket's own state, position and estimate: the visitor ticket page (§21.2, ticket 37, FR-MOB-013). */
     public static String ticket(UUID ticketId) {
         return TICKET + ticketId;
+    }
+
+    /** A Site's staff alerts: the {@code staff_alert} notification channel (ticket 38, SRS §14.1, FR-NTF-005). */
+    public static String staffAlert(UUID siteId) {
+        return STAFF_ALERT + siteId;
     }
 }

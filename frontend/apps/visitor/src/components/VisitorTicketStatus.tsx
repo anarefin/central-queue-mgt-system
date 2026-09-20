@@ -26,6 +26,9 @@ export function VisitorTicketStatus({
   const [cancelling, setCancelling] = useState(false);
   const [cancelError, setCancelError] = useState<string | null>(null);
   const [cancelled, setCancelled] = useState(false);
+  const [optedOut, setOptedOut] = useState(false);
+  const [optOutBusy, setOptOutBusy] = useState(false);
+  const [optOutError, setOptOutError] = useState<string | null>(null);
 
   async function cancel() {
     if (!client || !window.confirm(t("visitor.cancel.confirm"))) return;
@@ -40,6 +43,22 @@ export function VisitorTicketStatus({
       setCancelError(reason === "ticket_already_called" ? t("visitor.cancel.refused.ticket_already_called") : t(`errors.${code}`));
     } finally {
       setCancelling(false);
+    }
+  }
+
+  async function toggleOptOut() {
+    if (!client) return;
+    setOptOutBusy(true);
+    setOptOutError(null);
+    try {
+      const next = !optedOut;
+      await client.tickets.notificationOptOut(ticketId, credential, next);
+      setOptedOut(next);
+    } catch (cause) {
+      const code = cause instanceof ApiRequestError ? cause.code : "network_error";
+      setOptOutError(t(`errors.${code}`));
+    } finally {
+      setOptOutBusy(false);
     }
   }
 
@@ -129,6 +148,14 @@ export function VisitorTicketStatus({
           </Button>
         </Card>
       ) : null}
+
+      <Card>
+        {optOutError && <ErrorAlert>{optOutError}</ErrorAlert>}
+        <p className="qms-muted">{t(optedOut ? "visitor.notifications.optedOut" : "visitor.notifications.intro")}</p>
+        <Button variant="secondary" onClick={() => void toggleOptOut()} disabled={optOutBusy}>
+          {t(optedOut ? "visitor.notifications.optIn" : "visitor.notifications.optOut")}
+        </Button>
+      </Card>
     </Page>
   );
 }

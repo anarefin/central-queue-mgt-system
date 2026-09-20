@@ -220,4 +220,42 @@ class VisitorTicketIT {
         assertThat((String) field(refused, "$.error.details.reason")).isEqualTo("ticket_already_called");
         assertThat((String) jdbc.queryForObject("SELECT state FROM ticket WHERE id = ?", String.class, ticket.id())).isEqualTo("called");
     }
+
+    // ---- notification opt-out (ticket 38, FR-NTF-035, FR-SEC-030) --------------------------------------------------
+
+    @Test
+    void aVisitorOptsOutOfNotificationsWithTheirOwnCredentialAndItIsRecordedWithAConsentVersion() throws Exception {
+        Setup s = setup();
+        IssuedTicket ticket = issue(staffToken(), s.service());
+        UUID visitorId = UUID.randomUUID();
+        jdbc.update("INSERT INTO visitor (id, external_code, name, category, created_at) VALUES (?, ?, 'Karim', 'general', now())", visitorId, "V-" + visitorId.toString().substring(0, 8));
+        jdbc.update("UPDATE ticket SET visitor_id = ? WHERE id = ?", visitorId, ticket.id());
+
+        MvcResult optOut = mvc.perform(post("/api/v1/tickets/" + ticket.id() + "/visitor/notification-opt-out")
+                        .header("X-Ticket-Secret", ticket.secret())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"opted_out\":true,\"consent_text_version\":\"v2\"}"))
+                .andReturn();
+
+        assertThat(status(optOut)).as(body(optOut)).isEqualTo(200);
+        assertThat((Boolean) field(optOut, "$.opted_out")).isTrue();
+        assertThat(jdbc.queryForObject("SELECT opted_out FROM notification_consent WHERE visitor_id = ?", Boolean.class, visitorId)).isTrue();
+        assertThat(jdbc.queryForObject("SELECT consent_text_version FROM notification_consent WHERE visitor_id = ?", String.class, visitorId)).isEqualTo("v2");
+        Integer auditEntries = jdbc.queryForObject("SELECT count(*) FROM audit_log WHERE action = 'notification.consent' AND entity_id = ?", Integer.class, visitorId);
+        assertThat(auditEntries).isEqualTo(1);
+    }
+
+    @Test
+    void aWrongSecretNeverResolvesTheOptOutEitherFR_SEC_033() throws Exception {
+        Setup s = setup();
+        IssuedTicket ticket = issue(staffToken(), s.service());
+
+        MvcResult wrong = mvc.perform(post("/api/v1/tickets/" + ticket.id() + "/visitor/notification-opt-out")
+                        .header("X-Ticket-Secret", "wrong")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"opted_out\":true}"))
+                .andReturn();
+
+        assertThat(status(wrong)).isEqualTo(401);
+    }
 }

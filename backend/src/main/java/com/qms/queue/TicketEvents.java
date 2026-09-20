@@ -1,5 +1,8 @@
 package com.qms.queue;
 
+import com.qms.platform.notifications.NotificationContext;
+import com.qms.platform.notifications.NotificationTrigger;
+import com.qms.platform.notifications.NotificationTriggerKeys;
 import com.qms.platform.realtime.RealtimePublisher;
 import com.qms.platform.realtime.Topics;
 import java.time.Instant;
@@ -9,6 +12,8 @@ import java.time.temporal.ChronoUnit;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -49,16 +54,33 @@ public class TicketEvents {
     /** Written on a system reaction to another ticket's transition, the way {@code EstimateEvents} and the scheduler already do. */
     private static final String SYSTEM = "system";
 
+    /**
+     * The event types §14.2's queue-side triggers fire on (ticket 38, FR-NTF-*): a reannounce or resume also writes
+     * {@code ticket.called}/{@code ticket.serving} but leaves {@code fromState == toState} or isn't in this map, so
+     * {@link #notifyTrigger} only ever fires on a real transition.
+     */
+    private static final Map<String, String> TRIGGER_BY_EVENT = Map.of(
+            "ticket.issued", NotificationTriggerKeys.TICKET_ISSUED,
+            "ticket.called", NotificationTriggerKeys.YOUR_TURN,
+            "ticket.missed", NotificationTriggerKeys.MISSED_BACK_IN_QUEUE,
+            "ticket.no_show", NotificationTriggerKeys.MARKED_NO_SHOW,
+            "ticket.transferred", NotificationTriggerKeys.TICKET_TRANSFERRED,
+            "ticket.completed", NotificationTriggerKeys.SERVICE_COMPLETED_FEEDBACK);
+
     private final JdbcTemplate jdbc;
     private final JsonMapper mapper;
     private final RealtimePublisher realtime;
     private final EstimateEvents estimates;
+    /** Empty outside the {@code serving} profile (the notification pipeline is @Profile(SERVING)-only, ADR-0010); a
+     * transition never has less to do for that (FR-NTF-003). */
+    private final Optional<NotificationTrigger> notifications;
 
-    TicketEvents(JdbcTemplate jdbc, JsonMapper mapper, RealtimePublisher realtime, EstimateEvents estimates) {
+    TicketEvents(JdbcTemplate jdbc, JsonMapper mapper, RealtimePublisher realtime, EstimateEvents estimates, Optional<NotificationTrigger> notifications) {
         this.jdbc = jdbc;
         this.mapper = mapper;
         this.realtime = realtime;
         this.estimates = estimates;
+        this.notifications = notifications;
     }
 
     /** Appends the event and returns its per-ticket sequence number, one more than the ticket's last. */
@@ -147,7 +169,7 @@ public class TicketEvents {
      * behind; it travels with the event so a console can keep its number without asking again.
      */
     private void publish(Transition transition) {
-        var facts = jdbc.queryForMap("SELECT service_id, token_number FROM ticket WHERE id = ?", transition.ticketId());
+        var facts = jdbc.queryForMap("SELECT service_id, token_number, site_id, visitor_id FROM ticket WHERE id = ?", transition.ticketId());
         UUID serviceId = (UUID) facts.get("service_id");
         Integer waiting = jdbc.queryForObject("SELECT count(*) FROM ticket WHERE service_id = ? AND state IN ('waiting', 'paused')", Integer.class, serviceId);
         Map<String, Object> data = new LinkedHashMap<>();
@@ -172,6 +194,20 @@ public class TicketEvents {
         }
         // A transition that moves the queue changes its estimate and the places of the tickets behind it (FR-QUE-042).
         estimates.transitioned(serviceId, transition.fromState(), transition.toState(), transition.deviceTime());
+        notifyTrigger(transition, serviceId, (UUID) facts.get("site_id"), (UUID) facts.get("visitor_id"), (String) facts.get("token_number"));
+    }
+
+    /**
+     * Fires a §14.2 queue-side trigger for this transition, if it maps to one (ticket 38, FR-NTF-003): a single fast
+     * insert that joins this same transaction, never the notification's own send. A reannounce or resume writes the
+     * same event type a real transition would ({@code ticket.called}, {@code ticket.serving}) but leaves
+     * {@code fromState == toState}, so it never reaches the pipeline.
+     */
+    private void notifyTrigger(Transition transition, UUID serviceId, UUID siteId, UUID visitorId, String tokenNumber) {
+        if (Objects.equals(transition.fromState(), transition.toState())) return;
+        String triggerKey = TRIGGER_BY_EVENT.get(transition.eventType());
+        if (triggerKey == null) return;
+        notifications.ifPresent(n -> n.fire(triggerKey, new NotificationContext(siteId, serviceId, transition.ticketId(), visitorId, transition.counterId(), tokenNumber, transition.deviceTime())));
     }
 
     /** The ticket's recorded changes of state, oldest first, for the durations that are worked out from them (Invariant 1). */

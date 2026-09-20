@@ -3,6 +3,8 @@ package com.qms.issuance;
 import com.qms.audit.AuditEvent;
 import com.qms.audit.AuditWriter;
 import com.qms.issuance.TicketRepository.TicketRecord;
+import com.qms.notification.NotificationConsentService;
+import com.qms.notification.NotificationProperties;
 import com.qms.platform.ApiException;
 import com.qms.platform.ErrorCode;
 import com.qms.platform.Profiles;
@@ -13,7 +15,9 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 import org.springframework.context.annotation.Profile;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -38,12 +42,42 @@ class VisitorTicketActions {
     private final TicketEvents events;
     private final AuditWriter audit;
     private final Clock clock;
+    private final JdbcTemplate jdbc;
+    private final NotificationConsentService consent;
+    private final NotificationProperties notificationProperties;
 
-    VisitorTicketActions(TicketRepository tickets, TicketEvents events, AuditWriter audit, Clock clock) {
+    VisitorTicketActions(
+            TicketRepository tickets,
+            TicketEvents events,
+            AuditWriter audit,
+            Clock clock,
+            JdbcTemplate jdbc,
+            NotificationConsentService consent,
+            NotificationProperties notificationProperties) {
         this.tickets = tickets;
         this.events = events;
         this.audit = audit;
         this.clock = clock;
+        this.jdbc = jdbc;
+        this.consent = consent;
+        this.notificationProperties = notificationProperties;
+    }
+
+    /**
+     * The visitor's own opt-out of non-essential notifications (FR-NTF-035, FR-SEC-030, ticket 38): recorded against
+     * their visitor record, so it outlives this one ticket, with a timestamp and the version of the consent text
+     * they saw. A ticket with no visitor record (an anonymous walk-in) has nothing to opt out on.
+     */
+    @Transactional
+    Map<String, Object> setNotificationOptOut(TicketRecord ticket, boolean optedOut, String consentTextVersion) {
+        UUID visitorId = jdbc.query("SELECT visitor_id FROM ticket WHERE id = ?", rs -> rs.next() ? rs.getObject(1, UUID.class) : null, ticket.id());
+        if (visitorId == null) throw new ApiException(ErrorCode.CONFLICT, Map.of("reason", "no_visitor_record"));
+        String version = consentTextVersion == null || consentTextVersion.isBlank() ? notificationProperties.consentTextVersion() : consentTextVersion;
+        consent.setOptOut(visitorId, optedOut, version, clock.instant());
+        audit.record(AuditEvent.of("notification.consent", "visitor", visitorId)
+                .withAfter(Map.of("opted_out", optedOut, "consent_text_version", version))
+                .withReason("visitor_ticket_page"));
+        return Map.of("opted_out", optedOut);
     }
 
     @Transactional
