@@ -22,7 +22,13 @@ final class SessionViews {
     }
 
     static SessionResponse.SessionTicket ticket(
-            BoundTicket t, List<OutcomeRow> outcomes, int announceLimit, int missLimit, boolean callTimedOut, Set<VisitorField> visible) {
+            BoundTicket t,
+            List<OutcomeRow> outcomes,
+            int announceLimit,
+            int missLimit,
+            boolean callTimedOut,
+            Set<VisitorField> visible,
+            List<SessionRepository.JourneyStopRow> otherStops) {
         return new SessionResponse.SessionTicket(
                 t.id(),
                 t.tokenNumber(),
@@ -43,7 +49,10 @@ final class SessionViews {
                 t.missCount(),
                 missLimit,
                 callTimedOut,
-                outcomes.stream().map(o -> new SessionResponse.Outcome(o.id(), o.code(), o.labels())).toList());
+                outcomes.stream().map(o -> new SessionResponse.Outcome(o.id(), o.code(), o.labels())).toList(),
+                otherStops.stream()
+                        .map(s -> new SessionResponse.JourneyStop(s.seq(), new SessionResponse.Named(s.serviceId(), s.serviceNames()), s.state(), s.ticketId(), s.tokenNumber()))
+                        .toList());
     }
 
     /** The visitor fields of the ticket that the caller may see, or null when there are none to show. */

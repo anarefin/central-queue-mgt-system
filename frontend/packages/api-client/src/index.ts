@@ -7,6 +7,7 @@ export * from "./device-session";
 export * from "./devices";
 export * from "./errors";
 export * from "./hierarchy";
+export * from "./journeys";
 export * from "./numbering";
 export * from "./priority";
 export * from "./session";

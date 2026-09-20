@@ -89,6 +89,26 @@ public class IssuanceService {
         ServiceTarget target = tickets.serviceTarget(command.serviceId()).orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND));
         if (command.actorType() == ActorType.STAFF) scope.requireSite(target.siteId());
         Instant now = clock.instant();
+        UUID visitId = UUID.randomUUID();
+        tickets.insertVisit(visitId, target.siteId(), now);
+        return issue(target, command, visitId, now);
+    }
+
+    /**
+     * Issues a ticket for {@code command} into a Visit that already exists, instead of creating one (ticket 31,
+     * FR-ISS-022, ADR-0007): every check {@link #issue(IssueCommand)} makes still runs, only the Visit is not created
+     * here. This is how a multi-stop Journey's stops share one Visit: {@code JourneyService} creates the Visit once and
+     * calls this for each stop it issues, at issuance and again as an ordered Journey completes each stop in turn
+     * (FR-QUE-061, FR-QUE-062).
+     */
+    @Transactional
+    TicketResponse issueIntoVisit(IssueCommand command, UUID visitId) {
+        ServiceTarget target = tickets.serviceTarget(command.serviceId()).orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND));
+        if (command.actorType() == ActorType.STAFF) scope.requireSite(target.siteId());
+        return issue(target, command, visitId, clock.instant());
+    }
+
+    private TicketResponse issue(ServiceTarget target, IssueCommand command, UUID visitId, Instant now) {
         gate.beforeService(command, now);
         requireIssuable(target, command.originChannel());
         gate.forService(target, command, now);
@@ -116,8 +136,6 @@ public class IssuanceService {
         String tokenNumber = rule.format(prefix, sequence);
         String secret = newSecret();
 
-        UUID visitId = UUID.randomUUID();
-        tickets.insertVisit(visitId, target.siteId(), now);
         UUID ticketId = UUID.randomUUID();
         tickets.insertTicket(new NewTicket(
                 ticketId, tokenNumber, sequence, resetKey, target, tickets.waitingZone(target.serviceId()), visitId, command.originChannel(), now, hash(secret), priorityClassId, command.visitorId(),

@@ -839,6 +839,47 @@ never-exact figure a kiosk already shows. `single_counter` falls back to the zon
 `layout_config.counter_id` is not yet set (a display just switched to that layout before an admin picked one), rather
 than rendering nothing.
 
+## Ticket 31, journeys and multi-stop visits
+
+`Pause` = `B/queue/JourneyPauseTest`, `Journey(IT)` = `B/session/JourneyIT`, `Template(IT)` = `B/configuration/catalogue/JourneyTemplateAdminIT`,
+`F/ReceptionDesk` = `F/apps/admin/src/components/ReceptionDesk.test.tsx`, `F/CounterConsole` = `F/apps/console/src/components/CounterConsole.test.tsx`.
+
+| Requirement ID | Section | Test type | Test reference | Status |
+|---|---|---|---|---|
+| FR-QUE-060 a Journey is ordered or unordered, from a template or ad hoc, stored as `journey_stop` on the Visit, each stop realised by a ticket when issued | §4.3, ADR-0007 | unit, integration, unit(F) | V26 migration (`journey_template`, `journey_template_stop`, `journey_stop`, `visit.journey_template_id`/`journey_ordered`); `Journey(IT)#anUnorderedJourneyIssuesEveryStopUpFrontSharingOneVisitAndMarksTheSoonestOne`, `#anOrderedJourneyIssuesOnlyItsFirstStopUpFront`, `#adHocJourneysRequireAtLeastTwoStopsAndAnExplicitOrderedFlag`; `Template(IT)#anOrgAdminCreatesListsAndDeactivatesATemplateScopedToItsGroup`, `#receptionIssuesAJourneyFromAnActiveTemplateOfTheSite`; `F/ReceptionDesk#issuesAnAdHocUnorderedJourneyAndMarksTheSoonestStop`, `#issuesFromATemplateWhoseOwnStopsAndOrderAreUsed` | passing |
+| FR-ISS-022 Reception issues a linked set of tickets for a multi-stop Journey in one action, all sharing one Visit | §8.1 | integration, unit(F) | `JourneyController#issue` / `JourneyService#issue` (one `POST /journeys`, one Visit, an `Idempotency-Key` the same as `POST /tickets`); `Journey(IT)` (every test asserts the issued stops' `ticket.visit_id` match); `F/ReceptionDesk#issuesAnAdHocUnorderedJourneyAndMarksTheSoonestStop` | passing |
+| FR-QUE-061 an ordered Journey's next stop is issued automatically on completion of the one before, inheriting the Priority class | §10.4 | integration | `SessionService#complete` calls `JourneyService#continueAfterCompletion`; `Journey(IT)#anOrderedJourneyIssuesItsNextStopOnCompletionInheritingThePriorityClass` (the second stop's ticket carries the Priority class chosen at issuance, in the same Visit, after the first stop completes) | passing |
+| FR-QUE-062 an unordered Journey's stops are all issued up front and the visitor is shown which is callable soonest | §10.4 | integration, unit(F) | `Journey(IT)#anUnorderedJourneyIssuesEveryStopUpFrontSharingOneVisitAndMarksTheSoonestOne` (`JourneyService#soonestOf`, the stop with the best queue position is marked `soonest`); `F/ReceptionDesk#issuesAnAdHocUnorderedJourneyAndMarksTheSoonestStop` (renders "callable soonest" against the marked stop only) | passing |
+| FR-QUE-063 a visitor is never called at two Counters at once; the Visit's other waiting tickets pause when one is called, and accrue no wait (Invariant 1) | §19.1, Invariant 1 | unit, integration | `Pause` (`TicketTransition.PAUSE`/`UNPAUSE`, and `TicketTimings.accruedWait` excludes a paused stint); `TicketEvents#reactToJourney` (pauses every other `waiting` ticket of the Visit on a call, frees every `paused` one once none is `called`/`serving`/`held`); `Journey(IT)#callingOneStopPausesTheVisitsOtherWaitingStopAndFreesItAgainOnceTheVisitorIsFree` (paused on call, `ticket.paused`/`ticket.unpaused` events, `waiting` again once the called stop completes) | passing |
+| FR-AGT-031 the console shows a Journey visitor's other stops and their status | §11.5 | integration, unit(F) | `SessionRepository#otherJourneyStops`, `SessionResponse.JourneyStop`; `Journey(IT)#callingOneStopPausesTheVisitsOtherWaitingStopAndFreesItAgainOnceTheVisitorIsFree` (`GET /sessions/current` carries `ticket.journey_stops` with the sibling's `paused` state); `F/CounterConsole#showsTheVisitsOtherStopsAndTheirStatusBesideTheCalledTicket`, `#hasNoJourneySectionForATicketThatIsNotPartOfAJourney` | passing |
+| Journey templates per Service group; feature flag "per profile" | ticket 31 AC | integration | `JourneyTemplateController`/`Service`/`Repository` scoped to `service_group_id` (`Template(IT)#anOrgAdminCreatesListsAndDeactivatesATemplateScopedToItsGroup`, `#aTemplateNeedsAtLeastTwoStopsFromItsOwnGroup`); `journey_settings` singleton row, `GET`/`PUT /journey-settings` (`Journey(IT)#journeysAreRefusedUntilTheFeatureFlagIsOn`) | passing |
+| NFR-MNT-004 engine suite covers `waiting` ↔ `paused` without a database | §25.2 | unit | `Pause` (pure `TicketTransition`/`TicketTimings` tests, no Spring context, no Postgres) | passing |
+| Definition of done §27.5 item 3 (strings in both packs) | §27.5 | unit(F) | `F/packages/i18n/src/i18n.test.ts` (pack parity; `reception.journey.*`, `console.journey.*` resolve in en and bn) | passing |
+| Definition of done §27.5 item 4 (permission-checked server-side) | §20.3 | integration | `POST /journeys`, `GET /sites/{id}/journey-templates` require `ticket:issue` (`Journey(IT)`, every call authenticates as `reception_operator`); `journey-templates` admin CRUD and `journey-settings` require `config:service_catalogue` (`Template(IT)`); build-time `ControllerSecurityTest` covers every new controller method | passing |
+| Definition of done §27.5 item 5 (events and audit entries) | §18.3 | integration | `ticket.paused`/`ticket.unpaused` (Invariant 3, one event per transition, via `TicketEvents.append` like every other transition); `visit.journey_issued`, `journey_template.created`/`activated`/`deactivated`, `journey_settings.changed` audited (`JourneyService`, `JourneyTemplateService`) | passing |
+| Definition of done §27.5 item 6 (documented) | §27.5 | manual | covered by this table; `docs/admin-guide.md` is not updated (the same gap tickets 25-30 left) | partial |
+| §18, §26 the V26 migration is forward-only and re-runnable | §18, §26 | integration | `B/platform/MigrationIT#everyMigrationScriptCanBeReExecutedAgainstAnAlreadyMigratedDatabase` (V26) | passing |
+
+**Notes on this ticket's interpretation.** The pause/unpause reaction to FR-QUE-063 lives in `TicketEvents.append`
+(the `queue` package), not scattered across every place a ticket leaves or re-enters the busy states (`called`,
+`serving`, `held`): since Invariant 3 already means every transition of every ticket, from every context, funnels
+through `append`, reacting there once — pause the Visit's other `waiting` tickets when a ticket enters the busy states,
+free its `paused` ones when none of the Visit's tickets is busy any more — covers `SessionService#callNext`/`callTicket`,
+`#complete`, `#miss`/no-show, `#returnToQueue`, `#transfer` and a force-close's returns, and `TicketActions#cancel`,
+without a change to any of them. A Visit outside a Journey never has a second `waiting` ticket, so this is a no-op for
+every ticket ticket 07-30 already issue.
+
+"Feature flag per profile" is read narrowly: Phase 1 is single-tenant (no `organisation`/vertical-profile table exists
+yet, that is ticket 56), so `journey_settings` is the one-row singleton `issuance_settings.maintenance_enabled`
+already established, not a new per-profile table ticket 56 will seed a default into later. Journey template
+*authoring* has a full CRUD API (`JourneyTemplateController`, permission-checked and audited) but no dedicated admin
+page in this ticket: the explicit UI acceptance criteria are Reception issuing and the console showing the other
+stops, both built; an admin screen to author templates (the same `EntityRow`/`*Form` pattern `OutcomeCodesCard`
+already established) is a reasonable follow-up, not named by this ticket's checkboxes, and `Template(IT)` exercises
+the API path a UI would call. A Journey's secret per stop is issued (each ticket keeps its own, `IssuanceService`
+unchanged) but not surfaced in `JourneyResponse`/the Reception result panel, the same scope line: nothing in FR-ISS-022
+or FR-QUE-060..064 asks for it, and Phase 1 has no channel that would read a Journey stop's secret back.
+
 ## Notes
 
 - **Compose.** Verified by hand on 2026-09-19 with OrbStack Docker, from a clean build: `migrate` exited 0, then Postgres,

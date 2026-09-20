@@ -631,3 +631,108 @@ describe("change of priority and cancel from the queue (FR-QUE-012, §5.2)", () 
     expect(screen.getByRole("button", { name: "S-043 বাতিল করুন" })).toBeInTheDocument();
   });
 });
+
+describe("issuing a multi-stop journey in one action (FR-ISS-022, FR-QUE-060, ticket 31)", () => {
+  it("issues an ad hoc unordered journey and marks the soonest stop", async () => {
+    fakeApi(fresh(), {
+      "GET /sites/s1/journey-templates": () => json(200, []),
+      "POST /journeys": () =>
+        json(201, {
+          visit_id: "vis1",
+          ordered: false,
+          stops: [
+            {
+              seq: 1,
+              service_id: "v1",
+              service_names: { en: "Consultation" },
+              state: "waiting",
+              ticket: ticket({ id: "t1", token_number: "S-100", service: { id: "v1", name_i18n: { en: "Consultation" } } }),
+              soonest: true,
+            },
+            {
+              seq: 2,
+              service_id: "v2",
+              service_names: { en: "Lab" },
+              state: "waiting",
+              ticket: ticket({ id: "t2", token_number: "L-050", service: { id: "v2", name_i18n: { en: "Lab" } } }),
+              soonest: false,
+            },
+          ],
+        }),
+    });
+    renderApp(<ReceptionDesk />);
+
+    await userEvent.click(await screen.findByRole("checkbox", { name: "Issue a multi-stop journey instead" }));
+    await userEvent.click(await screen.findByRole("checkbox", { name: "Consultation" }));
+    await userEvent.click(screen.getByRole("checkbox", { name: "ল্যাব" }));
+    await userEvent.click(screen.getByRole("radio", { name: /Unordered/ }));
+    await userEvent.click(screen.getByRole("button", { name: "Issue journey" }));
+
+    expect(await screen.findByTestId("journey-result-stop-1")).toHaveTextContent("S-100");
+    expect(screen.getByTestId("journey-result-stop-1")).toHaveTextContent("callable soonest");
+    expect(screen.getByTestId("journey-result-stop-2")).toHaveTextContent("L-050");
+    expect(screen.getByTestId("journey-result-stop-2")).not.toHaveTextContent("callable soonest");
+  });
+
+  it("refuses to issue with only one stop picked", async () => {
+    fakeApi(fresh(), { "GET /sites/s1/journey-templates": () => json(200, []) });
+    renderApp(<ReceptionDesk />);
+
+    await userEvent.click(await screen.findByRole("checkbox", { name: "Issue a multi-stop journey instead" }));
+    await userEvent.click(await screen.findByRole("checkbox", { name: "Consultation" }));
+
+    expect(screen.getByRole("button", { name: "Issue journey" })).toBeDisabled();
+  });
+
+  it("shows a friendly message when journeys are switched off for this deployment", async () => {
+    fakeApi(fresh(), {
+      "GET /sites/s1/journey-templates": () => json(200, []),
+      "POST /journeys": () => json(409, { error: { code: "conflict", message: "x", details: { reason: "journeys_disabled" }, trace_id: "t" } }),
+    });
+    renderApp(<ReceptionDesk />);
+
+    await userEvent.click(await screen.findByRole("checkbox", { name: "Issue a multi-stop journey instead" }));
+    await userEvent.click(await screen.findByRole("checkbox", { name: "Consultation" }));
+    await userEvent.click(screen.getByRole("checkbox", { name: "ল্যাব" }));
+    await userEvent.click(screen.getByRole("button", { name: "Issue journey" }));
+
+    expect(await screen.findByText(/Journeys are switched off for this deployment/)).toBeInTheDocument();
+  });
+
+  it("issues from a template, whose own stops and order are used", async () => {
+    fakeApi(fresh(), {
+      "GET /sites/s1/journey-templates": () =>
+        json(200, [
+          {
+            id: "tpl1",
+            name_i18n: { en: "New patient" },
+            ordered: true,
+            stops: [
+              { seq: 1, service_id: "v1", service_names: { en: "Consultation" } },
+              { seq: 2, service_id: "v2", service_names: { en: "Lab" } },
+            ],
+          },
+        ]),
+      "POST /journeys": (init) => {
+        const body = JSON.parse(String(init.body)) as Record<string, unknown>;
+        expect(body).toMatchObject({ journey_template_id: "tpl1" });
+        return json(201, {
+          visit_id: "vis2",
+          ordered: true,
+          stops: [
+            { seq: 1, service_id: "v1", service_names: { en: "Consultation" }, state: "waiting", ticket: ticket({ id: "t3", token_number: "S-200" }), soonest: false },
+            { seq: 2, service_id: "v2", service_names: { en: "Lab" }, state: "planned", soonest: false },
+          ],
+        });
+      },
+    });
+    renderApp(<ReceptionDesk />);
+
+    await userEvent.click(await screen.findByRole("checkbox", { name: "Issue a multi-stop journey instead" }));
+    await userEvent.selectOptions(await screen.findByLabelText("Journey"), "New patient");
+    await userEvent.click(screen.getByRole("button", { name: "Issue journey" }));
+
+    expect(await screen.findByTestId("journey-result-stop-1")).toHaveTextContent("S-200");
+    expect(screen.getByTestId("journey-result-stop-2")).toHaveTextContent("not issued yet");
+  });
+});

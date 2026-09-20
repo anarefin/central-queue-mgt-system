@@ -9,6 +9,7 @@ import java.time.temporal.ChronoUnit;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
@@ -42,6 +43,12 @@ public class TicketEvents {
             Instant deviceTime,
             Instant serverTime) {}
 
+    /** The states in which a ticket is bound to a Counter session (ADR-0008): a visitor in one of these is not free (FR-QUE-063). */
+    private static final Set<String> BUSY = Set.of("called", "serving", "held");
+
+    /** Written on a system reaction to another ticket's transition, the way {@code EstimateEvents} and the scheduler already do. */
+    private static final String SYSTEM = "system";
+
     private final JdbcTemplate jdbc;
     private final JsonMapper mapper;
     private final RealtimePublisher realtime;
@@ -74,7 +81,65 @@ public class TicketEvents {
                 ts(transition.deviceTime()),
                 ts(transition.serverTime()));
         publish(transition);
+        reactToJourney(transition);
         return seq;
+    }
+
+    /**
+     * FR-QUE-063: whichever channel just called a ticket, or freed one bound to a session, this keeps the invariant that a
+     * Visit with more than one waiting Ticket never has two callable at once. A ticket that just left {@code waiting} for
+     * {@code called} pauses every other {@code waiting} ticket of its Visit ({@link TicketTransition#PAUSE}); a ticket that
+     * just left the busy states ({@code called}, {@code serving}, {@code held}) for anything else frees them again
+     * ({@link TicketTransition#UNPAUSE}), unless another of the Visit's tickets is still busy (a Visit issued only ad hoc,
+     * single-ticket tickets never has a sibling to pause, so this is a no-op for every ticket outside a Journey).
+     */
+    private void reactToJourney(Transition transition) {
+        // A ticket's first event (issue) has no from-state; Set.of(...) throws on contains(null), so that is never busy.
+        boolean wasBusy = transition.fromState() != null && BUSY.contains(transition.fromState());
+        boolean isBusy = transition.toState() != null && BUSY.contains(transition.toState());
+        if (wasBusy == isBusy) return;
+        UUID visitId = jdbc.query("SELECT visit_id FROM ticket WHERE id = ?", (rs, i) -> rs.getObject("visit_id", UUID.class), transition.ticketId())
+                .stream().findFirst().orElse(null);
+        if (visitId == null) return;
+        if (isBusy) pauseSiblings(visitId, transition);
+        else unpauseSiblings(visitId, transition);
+    }
+
+    private void pauseSiblings(UUID visitId, Transition cause) {
+        for (UUID sibling : siblingsIn(visitId, cause.ticketId(), TicketTransition.PAUSE.from())) {
+            int updated = jdbc.update(
+                    "UPDATE ticket SET state = ?, version = version + 1 WHERE id = ? AND state = ?", TicketTransition.PAUSE.to(), sibling, TicketTransition.PAUSE.from());
+            if (updated != 1) continue;
+            Map<String, Object> payload = new LinkedHashMap<>();
+            payload.put("visit_id", visitId.toString());
+            payload.put("cause_ticket_id", cause.ticketId().toString());
+            append(new Transition(
+                    sibling, TicketTransition.PAUSE.eventType(), TicketTransition.PAUSE.from(), TicketTransition.PAUSE.to(),
+                    cause.actorId(), SYSTEM, null, payload, cause.deviceTime(), cause.serverTime()));
+        }
+    }
+
+    private void unpauseSiblings(UUID visitId, Transition cause) {
+        Boolean stillBusy = jdbc.queryForObject(
+                "SELECT EXISTS (SELECT 1 FROM ticket WHERE visit_id = ? AND id <> ? AND state IN ('called', 'serving', 'held'))",
+                Boolean.class, visitId, cause.ticketId());
+        if (Boolean.TRUE.equals(stillBusy)) return;
+        for (UUID sibling : siblingsIn(visitId, cause.ticketId(), TicketTransition.UNPAUSE.from())) {
+            int updated = jdbc.update(
+                    "UPDATE ticket SET state = ?, version = version + 1 WHERE id = ? AND state = ?", TicketTransition.UNPAUSE.to(), sibling, TicketTransition.UNPAUSE.from());
+            if (updated != 1) continue;
+            Map<String, Object> payload = new LinkedHashMap<>();
+            payload.put("visit_id", visitId.toString());
+            append(new Transition(
+                    sibling, TicketTransition.UNPAUSE.eventType(), TicketTransition.UNPAUSE.from(), TicketTransition.UNPAUSE.to(),
+                    cause.actorId(), SYSTEM, null, payload, cause.deviceTime(), cause.serverTime()));
+        }
+    }
+
+    private List<UUID> siblingsIn(UUID visitId, UUID exceptTicketId, String state) {
+        return jdbc.query(
+                "SELECT id FROM ticket WHERE visit_id = ? AND id <> ? AND state = ? ORDER BY queued_at, id",
+                (rs, i) -> rs.getObject("id", UUID.class), visitId, exceptTicketId, state);
     }
 
     /**

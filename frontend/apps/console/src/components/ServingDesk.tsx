@@ -212,6 +212,21 @@ export function ServingDesk({
               </div>
             )}
             {ticket.purpose_note !== undefined && <p data-testid="purpose-note">{t("console.ticket.purpose", { note: ticket.purpose_note })}</p>}
+            {ticket.journey_stops.length > 0 && (
+              <div data-testid="journey-stops" aria-label={t("console.journey.title")}>
+                <h3 className="qms-label">{t("console.journey.title")}</h3>
+                <ul className="qms-list">
+                  {ticket.journey_stops.map((stop) => (
+                    <li key={stop.seq} data-testid={`journey-stop-${stop.seq}`}>
+                      <span className="qms-token">{stop.token_number ? formatTokenNumber(stop.token_number) : "–"}</span>{" "}
+                      <span className="qms-muted">
+                        {localisedName(stop.service.name_i18n, language)} · {t(`console.journey.state.${stop.state}`)}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
             {ticket.state === "called" && ticket.announce_count > 0 && (
               <p className="qms-muted">
                 {t("console.ticket.announced", { count: formatNumber(ticket.announce_count), limit: formatNumber(ticket.announce_limit) })}

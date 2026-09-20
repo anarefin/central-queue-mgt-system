@@ -76,7 +76,16 @@ public record SessionResponse(
             @JsonProperty("miss_count") int missCount,
             @JsonProperty("miss_limit") int missLimit,
             @JsonProperty("call_timed_out") boolean callTimedOut,
-            List<Outcome> outcomes) {}
+            List<Outcome> outcomes,
+            @JsonProperty("journey_stops") List<JourneyStop> journeyStops) {}
+
+    /**
+     * One other stop of this ticket's Visit's Journey (FR-AGT-031): {@code ticket_id} and {@code token_number} are null
+     * and {@code state} is {@code "planned"} while an ordered Journey has not reached it yet (FR-QUE-061). Empty for a
+     * ticket that is not part of a Journey.
+     */
+    public record JourneyStop(
+            int seq, Named service, String state, @JsonProperty("ticket_id") UUID ticketId, @JsonProperty("token_number") String tokenNumber) {}
 
     /** The visitor of a ticket as the console may see them (FR-AGT-030); a field the role may not see, or the ticket does not have, is absent. */
     @JsonInclude(JsonInclude.Include.NON_NULL)

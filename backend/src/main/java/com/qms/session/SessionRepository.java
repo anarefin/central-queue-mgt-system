@@ -72,6 +72,13 @@ class SessionRepository {
 
     record OutcomeRow(UUID id, String code, Map<String, String> labels) {}
 
+    /**
+     * One other stop of a ticket's own Visit's Journey, in seq order (FR-AGT-031): {@code ticketId} and
+     * {@code tokenNumber} are null and {@code state} is {@code "planned"} for a stop not yet issued (an ordered
+     * Journey's later stops, FR-QUE-061).
+     */
+    record JourneyStopRow(int seq, UUID serviceId, Map<String, String> serviceNames, UUID ticketId, String tokenNumber, String state) {}
+
     /** A ticket as a transfer sees it: its state, its Session binding (null unless it is bound) and where it is queued. */
     record TransferSource(
             UUID id,
@@ -612,6 +619,18 @@ class SessionRepository {
 
     UUID visitOf(UUID ticketId) {
         return jdbc.queryForObject("SELECT visit_id FROM ticket WHERE id = ?", UUID.class, ticketId);
+    }
+
+    /** The other stops of {@code ticketId}'s own Visit (FR-AGT-031); empty when the ticket is not part of a Journey. */
+    List<JourneyStopRow> otherJourneyStops(UUID ticketId) {
+        return jdbc.query(
+                "SELECT js.seq, js.service_id, sv.name_i18n, js.ticket_id, t.token_number, coalesce(t.state, 'planned') AS state FROM journey_stop js"
+                        + " JOIN service sv ON sv.id = js.service_id LEFT JOIN ticket t ON t.id = js.ticket_id"
+                        + " WHERE js.visit_id = (SELECT visit_id FROM ticket WHERE id = ?) AND js.ticket_id IS DISTINCT FROM ? ORDER BY js.seq",
+                (rs, i) -> new JourneyStopRow(
+                        rs.getInt("seq"), rs.getObject("service_id", UUID.class), names(rs.getString("name_i18n")), rs.getObject("ticket_id", UUID.class), rs.getString("token_number"),
+                        rs.getString("state")),
+                ticketId, ticketId);
     }
 
     Optional<TransferService> transferService(UUID serviceId) {

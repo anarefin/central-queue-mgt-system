@@ -37,7 +37,20 @@ public enum TicketTransition {
      * F7: the ticket being served closes as {@code transferred}, terminal, and the visit continues on a successor ticket with the
      * same token number (ADR-0006, Invariant 4). The binding is cleared with the terminal state.
      */
-    TRANSFER("serving", "transferred", "ticket.transferred");
+    TRANSFER("serving", "transferred", "ticket.transferred"),
+    /**
+     * FR-QUE-063: a visitor with a Journey is never called at two Counters at once. Once one of a Visit's tickets is
+     * called, its other waiting tickets pause; a paused ticket keeps its place in the queue but cannot be called
+     * (§19.1). {@link com.qms.queue.TicketEvents} applies this to every ticket that leaves {@code waiting} for
+     * {@code called}, so every channel that calls a ticket gets it for free.
+     */
+    PAUSE("waiting", "paused", "ticket.paused"),
+    /**
+     * The visitor is free again: none of the Visit's tickets is {@code called}, {@code serving} or {@code held} any
+     * more, so a paused sibling stop returns to waiting (FR-QUE-063). {@code queued_at} is never touched, so a paused
+     * stint accrues no wait (Invariant 1).
+     */
+    UNPAUSE("paused", "waiting", "ticket.unpaused");
 
     private final String from;
     private final String to;

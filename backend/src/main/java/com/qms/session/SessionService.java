@@ -2,6 +2,7 @@ package com.qms.session;
 
 import com.qms.audit.AuditEvent;
 import com.qms.audit.AuditWriter;
+import com.qms.issuance.JourneyService;
 import com.qms.platform.ApiException;
 import com.qms.platform.ErrorCode;
 import com.qms.platform.Profiles;
@@ -102,6 +103,7 @@ public class SessionService {
     private final RealtimePublisher realtime;
     private final EstimateEvents estimates;
     private final VisitorFieldPolicy visitorFields;
+    private final JourneyService journeys;
     private final Clock clock;
 
     SessionService(
@@ -116,6 +118,7 @@ public class SessionService {
             RealtimePublisher realtime,
             EstimateEvents estimates,
             VisitorFieldPolicy visitorFields,
+            JourneyService journeys,
             Clock clock) {
         this.sessions = sessions;
         this.queues = queues;
@@ -128,6 +131,7 @@ public class SessionService {
         this.realtime = realtime;
         this.estimates = estimates;
         this.visitorFields = visitorFields;
+        this.journeys = journeys;
         this.clock = clock;
     }
 
@@ -341,6 +345,9 @@ public class SessionService {
         payload.put("service_seconds", timings.serviceSeconds());
         if (outcome != null) payload.put("outcome_code", outcome.code());
         events.append(transition(ticket.id(), TicketTransition.COMPLETE, session, payload, now));
+        // FR-QUE-061: an ordered Journey's next stop is issued now, inheriting this stop's Priority class; a no-op
+        // outside a Journey, or once every stop has been issued.
+        journeys.continueAfterCompletion(ticket.id(), ticket.priorityClassId(), session.agentId());
 
         if ("closing".equals(session.state()) && sessions.unresolved(session.id()).isEmpty()) finish(session, now);
         return view(sessions.session(session.id()).orElseThrow());
@@ -1037,7 +1044,8 @@ public class SessionService {
         boolean timedOut = "called".equals(t.state()) && CallRules.callTimedOut(t.calledAt(), clock.instant(), queueProperties.callTimeoutSeconds());
         // What the caller's role may see of the visitor is decided here, from the token, for every ticket the console is sent (FR-AGT-034).
         var visible = visitorFields.visibleTo(currentUser.get().map(AuthenticatedUser::roles).orElse(Set.of()));
-        return SessionViews.ticket(t, sessions.outcomes(t.serviceId()), queueProperties.announceRepeatLimit(), queueProperties.missLimit(), timedOut, visible);
+        return SessionViews.ticket(
+                t, sessions.outcomes(t.serviceId()), queueProperties.announceRepeatLimit(), queueProperties.missLimit(), timedOut, visible, sessions.otherJourneyStops(t.id()));
     }
 
     private TicketEvents.Transition transition(UUID ticketId, TicketTransition transition, SessionRow session, Object payload, Instant now) {

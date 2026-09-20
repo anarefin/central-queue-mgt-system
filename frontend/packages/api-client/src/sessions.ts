@@ -1,4 +1,5 @@
 import type { Channel, LocalisedText } from "./catalogue";
+import type { TicketState } from "./tickets";
 
 /** Counter sessions and the serving actions inside them (SRS §11, §19.3, §20.4). */
 export type SessionState = "open" | "on_break" | "closing" | "closed" | "force_closed";
@@ -61,6 +62,20 @@ export interface SessionTicket {
   /** A called ticket that has waited for its Agent longer than the call timeout: the Agent may now return it to the queue (FR-QUE-032). */
   call_timed_out: boolean;
   outcomes: SessionOutcome[];
+  /** The other stops of this ticket's own Visit's Journey, in order (FR-AGT-031); empty for a ticket that is not part of a Journey. */
+  journey_stops: JourneyStop[];
+}
+
+/**
+ * One other stop of a Journey visitor's Visit, as the console shows it (FR-AGT-031): `state` is `planned` while an
+ * ordered Journey has not issued it yet (FR-QUE-061), and `ticket_id`/`token_number` are absent until then.
+ */
+export interface JourneyStop {
+  seq: number;
+  service: { id: string; name_i18n: LocalisedText };
+  state: TicketState | "planned";
+  ticket_id?: string;
+  token_number?: string;
 }
 
 /** The break a session is on while its state is `on_break` (FR-AGT-021): its type and when it started, so the console can show its clock. */

@@ -3,9 +3,12 @@
 import {
   ApiRequestError,
   newIdempotencyKey,
+  type JourneyResult,
+  type JourneyTemplateSummary,
   type PriorityClass,
   type QueuedTicket,
   type QueueSnapshot,
+  type SiteServiceItem,
   type SiteServices,
   type Ticket,
   type VisitorMatch,
@@ -214,6 +217,8 @@ export function ReceptionDesk() {
       </Card>
 
       {issued && <IssuedTicket ticket={issued} nameOf={nameOf} />}
+
+      {siteId && services && <JourneySection siteId={siteId} services={services.items} classes={classes ?? []} nameOf={nameOf} />}
 
       <Card>
         {!selectedService && <p className="qms-muted">{t("reception.queue.pick")}</p>}
@@ -476,6 +481,195 @@ function IssuedTicket({ ticket, nameOf }: { ticket: Ticket; nameOf: (names: Reco
           <p>{t("reception.result.secret", { secret: ticket.secret })}</p>
           <p className="qms-muted">{t("reception.result.secretNote")}</p>
         </>
+      )}
+    </Card>
+  );
+}
+
+/** Refusals of `POST /journeys` this screen has a sentence for (ticket 31). */
+const JOURNEY_REFUSALS = new Set(["journeys_disabled", "journey_template_inactive", "journey_cross_site", "journey_template_empty"]);
+
+/**
+ * Issue a multi-stop Journey in one action (FR-ISS-022): from a template, whose own order and stops are used
+ * (FR-QUE-060), or ad hoc, picking the stops and whether they are ordered (FR-QUE-061) or unordered (FR-QUE-062). Off
+ * by a checkbox so a single walk-in ticket, the common case, keeps its own short form above untouched.
+ */
+function JourneySection({
+  siteId,
+  services,
+  classes,
+  nameOf,
+}: {
+  siteId: string;
+  services: SiteServiceItem[];
+  classes: PriorityClass[];
+  nameOf: (names: Record<string, string>) => string;
+}) {
+  const { t } = useI18n();
+  const { client } = useApi();
+  const [open, setOpen] = useState(false);
+  const [templates, setTemplates] = useState<JourneyTemplateSummary[] | null>(null);
+  const [templatesError, setTemplatesError] = useState<unknown>(null);
+  const [templateId, setTemplateId] = useState("");
+  /** Ad hoc stops, in the order they were picked (FR-QUE-060). */
+  const [picked, setPicked] = useState<string[]>([]);
+  const [ordered, setOrdered] = useState(true);
+  const [priority, setPriority] = useState("");
+  const [visitor, setVisitor] = useState<{ id: string; name: string | null } | null>(null);
+  const [note, setNote] = useState("");
+  const [issuing, setIssuing] = useState(false);
+  const [issueError, setIssueError] = useState<string | null>(null);
+  const [result, setResult] = useState<JourneyResult | null>(null);
+  const pending = useRef<{ request: string; key: string } | null>(null);
+
+  useEffect(() => {
+    if (!open || !client || templates !== null) return;
+    client.journeys.templatesForSite(siteId).then(setTemplates, (cause: unknown) => setTemplatesError(cause));
+  }, [open, client, siteId, templates]);
+
+  const template = templates?.find((tpl) => tpl.id === templateId) ?? null;
+  const adHoc = templateId === "";
+
+  function togglePicked(serviceId: string) {
+    setPicked((current) => (current.includes(serviceId) ? current.filter((id) => id !== serviceId) : [...current, serviceId]));
+  }
+
+  function refusalText(cause: unknown): string {
+    const reason = cause instanceof ApiRequestError ? cause.body?.details?.reason : undefined;
+    if (cause instanceof ApiRequestError && cause.code === "conflict" && typeof reason === "string" && JOURNEY_REFUSALS.has(reason)) {
+      return t(`reception.journey.refused.${reason}`);
+    }
+    return describeError(t, cause);
+  }
+
+  async function issue() {
+    if (!client) return;
+    if (adHoc && picked.length < 2) {
+      setIssueError(t("reception.journey.error.min"));
+      return;
+    }
+    const trimmedNote = note.trim();
+    const request = adHoc
+      ? `adhoc|${picked.join(",")}|${ordered}|${priority}|${visitor?.id ?? ""}|${trimmedNote}`
+      : `template:${templateId}|${priority}|${visitor?.id ?? ""}|${trimmedNote}`;
+    if (pending.current?.request !== request) pending.current = { request, key: newIdempotencyKey() };
+    setIssuing(true);
+    setIssueError(null);
+    try {
+      const journey = await client.journeys.issue(
+        {
+          ...(adHoc ? { service_ids: picked, ordered } : { journey_template_id: templateId }),
+          ...(priority === "" ? {} : { priority_class_id: priority }),
+          ...(visitor === null ? {} : { visitor_id: visitor.id }),
+          ...(trimmedNote === "" ? {} : { purpose_note: trimmedNote }),
+        },
+        pending.current.key,
+      );
+      pending.current = null;
+      setResult(journey);
+      setVisitor(null);
+      setNote("");
+      setPicked([]);
+    } catch (cause) {
+      const unknown = cause instanceof ApiRequestError && (cause.code === "network_error" || cause.status >= 500);
+      if (!unknown) pending.current = null;
+      setIssueError(refusalText(cause));
+    } finally {
+      setIssuing(false);
+    }
+  }
+
+  return (
+    <Card>
+      <label className="qms-row">
+        <span>
+          <input type="checkbox" checked={open} onChange={(event) => setOpen(event.target.checked)} /> {t("reception.journey.toggle")}
+        </span>
+      </label>
+      {open && (
+        <div className="qms-stack">
+          {templatesError !== null && <ErrorAlert>{describeError(t, templatesError)}</ErrorAlert>}
+          {templates && (
+            <SelectField
+              id="journey-template"
+              label={t("reception.journey.template.label")}
+              value={templateId}
+              onChange={(event) => {
+                setTemplateId(event.target.value);
+                setPicked([]);
+              }}
+              options={[{ value: "", label: t("reception.journey.template.adHoc") }, ...templates.map((tpl) => ({ value: tpl.id, label: nameOf(tpl.name_i18n) }))]}
+            />
+          )}
+          {!adHoc && template && (
+            <div>
+              <p className="qms-muted">{t(template.ordered ? "reception.journey.ordered.label" : "reception.journey.unordered.label")}</p>
+              <ol className="qms-list">
+                {template.stops.map((stop) => (
+                  <li key={stop.seq}>{nameOf(stop.service_names)}</li>
+                ))}
+              </ol>
+            </div>
+          )}
+          {adHoc && (
+            <fieldset className="qms-stack">
+              <legend className="qms-heading">{t("reception.journey.services.title")}</legend>
+              {services.map((s) => {
+                const index = picked.indexOf(s.id);
+                return (
+                  <div key={s.id} className="qms-row">
+                    <label>
+                      <input type="checkbox" checked={index !== -1} onChange={() => togglePicked(s.id)} /> {nameOf(s.name_i18n)}
+                    </label>
+                    {index !== -1 && <span className="qms-muted">{t("reception.journey.stopNumber", { seq: index + 1 })}</span>}
+                  </div>
+                );
+              })}
+              <div className="qms-row">
+                <label>
+                  <input type="radio" name="journey-ordered" checked={ordered} onChange={() => setOrdered(true)} /> {t("reception.journey.ordered.label")}
+                </label>
+                <label>
+                  <input type="radio" name="journey-ordered" checked={!ordered} onChange={() => setOrdered(false)} /> {t("reception.journey.unordered.label")}
+                </label>
+              </div>
+            </fieldset>
+          )}
+          {classes.length > 0 && (
+            <SelectField
+              id="journey-priority"
+              label={t("reception.priority.label")}
+              value={priority}
+              onChange={(event) => setPriority(event.target.value)}
+              options={[
+                { value: "", label: nameOf(classes.find((c) => c.is_default)?.name_i18n ?? {}) },
+                ...classes.filter((c) => !c.is_default && c.active).map((c) => ({ value: c.id, label: t("reception.priority.option", { name: nameOf(c.name_i18n), minutes: c.headstart_minutes }) })),
+              ]}
+            />
+          )}
+          <VisitorPanel visitor={visitor} onSelect={setVisitor} onClear={() => setVisitor(null)} />
+          <TextField id="journey-note" label={t("reception.note.label")} value={note} maxLength={1000} onChange={(event) => setNote(event.target.value)} />
+          {issueError !== null && <ErrorAlert>{issueError}</ErrorAlert>}
+          <Button type="button" disabled={issuing || (!adHoc && templateId === "") || (adHoc && picked.length < 2)} onClick={() => void issue()}>
+            {t(issuing ? "reception.journey.issuing" : "reception.journey.issue")}
+          </Button>
+        </div>
+      )}
+
+      {result && (
+        <div data-testid="journey-result">
+          <h3 className="qms-heading">{t("reception.journey.result.title")}</h3>
+          <ol className="qms-list">
+            {result.stops.map((stop) => (
+              <li key={stop.seq} data-testid={`journey-result-stop-${stop.seq}`}>
+                {stop.ticket
+                  ? t("reception.journey.result.stop", { service: nameOf(stop.service_names), token: formatTokenNumber(stop.ticket.token_number) })
+                  : t("reception.journey.result.planned", { service: nameOf(stop.service_names) })}
+                {stop.soonest && <span className="qms-muted"> {t("reception.journey.result.soonest")}</span>}
+              </li>
+            ))}
+          </ol>
+        </div>
       )}
     </Card>
   );

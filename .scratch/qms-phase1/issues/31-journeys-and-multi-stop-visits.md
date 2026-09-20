@@ -6,12 +6,12 @@
 
 **Status:** ready-for-agent
 
-- [ ] Journey stored as journey stops on the Visit (ordered or unordered), from a template or ad hoc; Tickets realise stops (FR-QUE-060, ADR-0007)
-- [ ] Reception issues the linked set in one action; all share one Visit (FR-ISS-022)
-- [ ] Ordered: next stop's Ticket created on completion, inheriting Priority class (FR-QUE-061)
-- [ ] Unordered: all Tickets created up front; visitor shown the soonest-callable stop (FR-QUE-062)
-- [ ] When one Ticket is called, the Visit's other waiting Tickets become `paused` and accrue no wait until the visitor is free (FR-QUE-063, Invariant 1)
-- [ ] Console shows the Visit's other stops and status (FR-AGT-031)
-- [ ] Journey templates per Service group; feature flag per profile
-- [ ] Engine suite covers waiting↔paused (NFR-MNT-004)
-- [ ] Definition of done (SRS §27.5): user-facing strings in both en and bn packs; every protected action permission-checked server-side; specified events and audit entries emitted; each requirement ID above mapped to a passing test in the traceability matrix
+- [x] Journey stored as journey stops on the Visit (ordered or unordered), from a template or ad hoc; Tickets realise stops (FR-QUE-060, ADR-0007)
+- [x] Reception issues the linked set in one action; all share one Visit (FR-ISS-022)
+- [x] Ordered: next stop's Ticket created on completion, inheriting Priority class (FR-QUE-061)
+- [x] Unordered: all Tickets created up front; visitor shown the soonest-callable stop (FR-QUE-062)
+- [x] When one Ticket is called, the Visit's other waiting Tickets become `paused` and accrue no wait until the visitor is free (FR-QUE-063, Invariant 1)
+- [x] Console shows the Visit's other stops and status (FR-AGT-031)
+- [x] Journey templates per Service group; feature flag per profile
+- [x] Engine suite covers waiting↔paused (NFR-MNT-004)
+- [x] Definition of done (SRS §27.5): user-facing strings in both en and bn packs; every protected action permission-checked server-side; specified events and audit entries emitted; each requirement ID above mapped to a passing test in the traceability matrix

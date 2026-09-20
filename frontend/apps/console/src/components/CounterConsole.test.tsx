@@ -43,6 +43,7 @@ function ticket(over: Partial<SessionTicket> = {}): SessionTicket {
     miss_limit: 2,
     call_timed_out: false,
     outcomes: OUTCOMES,
+    journey_stops: [],
     ...over,
   };
 }
@@ -1534,6 +1535,44 @@ describe("the visitor of a called ticket (FR-AGT-030, FR-AGT-034)", () => {
     expect(screen.getByText("কোড: 0062")).toBeInTheDocument();
     expect(screen.getByTestId("current-token")).toHaveTextContent("S-042");
     expect(screen.getByText(/অ্যাপয়েন্টমেন্ট আছে/)).toBeInTheDocument();
+  });
+});
+
+describe("the visit's other stops (FR-AGT-031, ticket 31)", () => {
+  it("shows the visit's other stops and their status beside the called ticket", async () => {
+    stubApi({
+      ...AUTH,
+      "GET /sessions/current": () =>
+        json(
+          200,
+          session({
+            ticket: ticket({
+              journey_stops: [
+                { seq: 1, service: { id: "v1", name_i18n: { en: "Consultation" } }, state: "paused", ticket_id: "t0", token_number: "S-041" },
+                { seq: 3, service: { id: "v3", name_i18n: { en: "Pharmacy" } }, state: "planned" },
+              ],
+            }),
+          }),
+        ),
+      "GET /sessions/stats": () => json(200, DAY),
+    });
+    renderApp(<Home />);
+
+    await screen.findByTestId("current-token");
+    const journey = within(screen.getByTestId("journey-stops"));
+    expect(journey.getByTestId("journey-stop-1")).toHaveTextContent("S-041");
+    expect(journey.getByTestId("journey-stop-1")).toHaveTextContent("Consultation");
+    expect(journey.getByTestId("journey-stop-1")).toHaveTextContent("Paused until this stop is done");
+    expect(journey.getByTestId("journey-stop-3")).toHaveTextContent("Pharmacy");
+    expect(journey.getByTestId("journey-stop-3")).toHaveTextContent("Not issued yet");
+  });
+
+  it("has no journey section for a ticket that is not part of a journey", async () => {
+    stubApi({ ...AUTH, "GET /sessions/current": () => json(200, session({ ticket: ticket() })), "GET /sessions/stats": () => json(200, DAY) });
+    renderApp(<Home />);
+
+    await screen.findByTestId("current-token");
+    expect(screen.queryByTestId("journey-stops")).not.toBeInTheDocument();
   });
 });
 

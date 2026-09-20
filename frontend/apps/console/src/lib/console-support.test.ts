@@ -26,6 +26,7 @@ function ticket(over: Partial<SessionTicket> = {}): SessionTicket {
     miss_limit: 2,
     call_timed_out: false,
     outcomes: [],
+    journey_stops: [],
     ...over,
   };
 }

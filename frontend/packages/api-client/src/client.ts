@@ -51,6 +51,7 @@ import type {
   VisitorRegistration,
 } from "./visitors";
 import type { BrandingInput, OrgBranding, PrintTemplate, PrintTemplateInput } from "./branding";
+import type { IssueJourneyInput, JourneyResult, JourneySettings, JourneyTemplateSummary } from "./journeys";
 
 export const API_BASE_PATH = "/api/v1";
 
@@ -281,6 +282,19 @@ export class ApiClient {
     update: (input: BrandingInput) => this.request<OrgBranding>("PUT", "/branding", input),
     template: () => this.request<PrintTemplate>("GET", "/print-template"),
     updateTemplate: (input: PrintTemplateInput) => this.request<PrintTemplate>("PUT", "/print-template", input),
+  };
+
+  /**
+   * Journeys and multi-stop Visits (ticket 31, FR-ISS-022): issuing a Journey needs an `Idempotency-Key`, the same
+   * guarantee as issuing a single ticket. `templatesForSite` lists what Reception's picker offers; `settings` is the
+   * feature flag an Org Admin turns on "per profile" before Reception can issue any Journey at all.
+   */
+  readonly journeys = {
+    issue: (input: IssueJourneyInput, idempotencyKey: string) =>
+      this.request<JourneyResult>("POST", "/journeys", input, { headers: { "Idempotency-Key": idempotencyKey } }),
+    templatesForSite: (siteId: string) => this.request<JourneyTemplateSummary[]>("GET", `/sites/${siteId}/journey-templates`),
+    settings: () => this.request<JourneySettings>("GET", "/journey-settings"),
+    updateSettings: (input: JourneySettings) => this.request<JourneySettings>("PUT", "/journey-settings", input),
   };
 
   readonly queues = {
