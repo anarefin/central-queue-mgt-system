@@ -4,7 +4,7 @@
 
 **Blocked by:** 28 — Display board: now-serving table
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [x] Layouts `split_media`, `single_counter`, `summary_board`, with zone proportions configurable without code (FR-DSP-003)
 - [x] Notice panel renders images, video or rich text uploaded by authorised users, in a scheduled playlist with per-item dates (FR-DSP-006, §5.2 notice-board permission)

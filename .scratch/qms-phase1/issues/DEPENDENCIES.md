@@ -31,7 +31,7 @@
 27-branding-and-print-template             25              done     n/a*     34 files, +1787 −54 7ceebb1..fa9f8c8
 28-display-now-serving-table               24,11           done     51m      31 files, +1868 −37 5a319c3..1eb6a0c
 29-voice-announcements                     28,12           done     n/a*     44 files, +1512 −59 7b04c75..c8252ee
-30-display-layouts-and-notice-board        28              todo     —        —                   —
+30-display-layouts-and-notice-board        28              done     n/a*     82 files, +3891 −123 1eb6a0c..8fcf281
 31-journeys-and-multi-stop-visits          22,10           todo     —        —                   —
 32-appointment-availability                21              todo     —        —                   —
 33-staff-appointment-booking               32,22           todo     —        —                   —
@@ -68,3 +68,5 @@
 #   spans the pause and is not comparable to other tickets' timings.
 # * 27, 29: worker's turn ended waiting on a background gradlew run before committing; resumed
 #   to finish verification and commit. Elapsed wall-clock not comparable either.
+# * 30: commit landed but the run was interrupted before bookkeeping; confirmed done and
+#   backfilled on resume, elapsed wall-clock not recorded.
