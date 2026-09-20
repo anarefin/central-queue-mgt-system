@@ -23,6 +23,10 @@ dependencies {
     implementation("org.springframework.boot:spring-boot-starter-webmvc")
     implementation("org.springframework.boot:spring-boot-starter-websocket")
     implementation("org.springframework.boot:spring-boot-starter-jdbc")
+    // SMTP for the email notification channel (ticket 40, FR-INT-040): JavaMailSender only, configured from
+    // qms.notification.email.* rather than Spring Boot's own spring.mail auto-configuration, the same
+    // roll-your-own-properties convention qms.notification.web-push.* already uses for its own adapter.
+    implementation("org.springframework.boot:spring-boot-starter-mail")
     implementation("org.springframework.boot:spring-boot-starter-flyway")
     implementation("org.springframework.boot:spring-boot-starter-validation")
     implementation("org.springframework.boot:spring-boot-starter-security-oauth2-resource-server")

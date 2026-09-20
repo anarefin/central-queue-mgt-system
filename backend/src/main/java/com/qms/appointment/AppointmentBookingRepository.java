@@ -46,6 +46,9 @@ class AppointmentBookingRepository {
     record WaitlistEntry(
             UUID id, UUID serviceId, UUID visitorId, LocalDate slotDate, LocalTime slotStart, LocalTime slotEnd, String source, String purposeNote, String language) {}
 
+    /** A booked appointment whose reminder at one configured offset is due (FR-APT-050), enough to fire the trigger for it. */
+    record DueReminder(UUID id, String referenceCode, UUID siteId, UUID serviceId, UUID visitorId, LocalDate slotDate, LocalTime slotStart) {}
+
     private static final RowMapper<WaitlistEntry> WAITLIST_ROW = (rs, i) -> new WaitlistEntry(
             rs.getObject("id", UUID.class),
             rs.getObject("service_id", UUID.class),
@@ -276,6 +279,44 @@ class AppointmentBookingRepository {
         Integer count = jdbc.queryForObject(
                 "SELECT count(*) FROM appointment WHERE visitor_id = ? AND state = 'no_show' AND updated_at >= ?", Integer.class, visitorId, ts(since));
         return count == null ? 0 : count;
+    }
+
+    /**
+     * FR-APT-050: every {@code booked} appointment whose slot, in its own Site's time zone, is now within {@code
+     * offsetMinutes} of starting (and hasn't started yet) and has no {@code appointment_reminder_sent} row for this
+     * exact offset yet — claiming each one in the same statement that finds it, the same one-statement
+     * find-and-mark pattern {@link #sweepOverdueNoShows} uses. Several nodes may run this same sweep at once
+     * (ADR-0010): the {@code ON CONFLICT DO NOTHING} on {@code appointment_reminder_sent}'s primary key means only
+     * the node whose insert lands first gets a row back for a given (appointment, offset); the rest find nothing to
+     * send, so a reminder is never sent twice however often the sweep ticks before the slot itself arrives.
+     */
+    List<DueReminder> claimDueReminders(int offsetMinutes, Instant now) {
+        return jdbc.query(
+                "WITH due AS ("
+                        + "  SELECT a.id, a.reference_code, sg.site_id, a.service_id, a.visitor_id, a.slot_date, a.slot_start"
+                        + "  FROM appointment a"
+                        + "  JOIN service sv ON sv.id = a.service_id"
+                        + "  JOIN service_group sg ON sg.id = sv.service_group_id"
+                        + "  JOIN site st ON st.id = sg.site_id"
+                        + "  WHERE a.state = 'booked'"
+                        + "    AND ((a.slot_date + a.slot_start) AT TIME ZONE st.timezone) - make_interval(mins => ?) <= ?"
+                        + "    AND ((a.slot_date + a.slot_start) AT TIME ZONE st.timezone) > ?"
+                        + "), ins AS ("
+                        + "  INSERT INTO appointment_reminder_sent (appointment_id, offset_minutes, sent_at)"
+                        + "  SELECT id, ?, ? FROM due"
+                        + "  ON CONFLICT (appointment_id, offset_minutes) DO NOTHING"
+                        + "  RETURNING appointment_id"
+                        + ")"
+                        + "SELECT due.* FROM due JOIN ins ON ins.appointment_id = due.id",
+                (rs, i) -> new DueReminder(
+                        rs.getObject("id", UUID.class),
+                        rs.getString("reference_code"),
+                        rs.getObject("site_id", UUID.class),
+                        rs.getObject("service_id", UUID.class),
+                        rs.getObject("visitor_id", UUID.class),
+                        rs.getObject("slot_date", LocalDate.class),
+                        rs.getObject("slot_start", LocalTime.class)),
+                offsetMinutes, ts(now), ts(now), offsetMinutes, ts(now));
     }
 
     /** {@code held_slot -> [*]: hold expired} (§19.2): deletes every hold whose window has passed, freeing the capacity it held. */

@@ -11,12 +11,16 @@ import com.qms.appointment.AppointmentBookingViews.AppointmentResponse;
 import com.qms.appointment.AppointmentBookingViews.BookAppointmentRequest;
 import com.qms.appointment.AppointmentBookingViews.CancelAppointmentRequest;
 import com.qms.appointment.AppointmentBookingViews.RescheduleAppointmentRequest;
+import com.qms.appointment.AppointmentBookingRepository.DueReminder;
 import com.qms.audit.AuditEvent;
 import com.qms.audit.AuditWriter;
 import com.qms.platform.ApiException;
 import com.qms.platform.ErrorCode;
 import com.qms.platform.Profiles;
 import com.qms.platform.i18n.LanguageProperties;
+import com.qms.platform.notifications.NotificationContext;
+import com.qms.platform.notifications.NotificationTrigger;
+import com.qms.platform.notifications.NotificationTriggerKeys;
 import com.qms.platform.security.CurrentUser;
 import com.qms.platform.security.ScopeGuard;
 import java.security.SecureRandom;
@@ -29,6 +33,7 @@ import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import org.springframework.context.annotation.Profile;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -71,6 +76,9 @@ public class AppointmentBookingService {
     private final ScopeGuard scope;
     private final CurrentUser currentUser;
     private final Clock clock;
+    /** Empty outside the {@code serving} profile (the notification pipeline is @Profile(SERVING)-only, ADR-0010),
+     * the same {@code com.qms.queue.TicketEvents} pattern (ticket 38, FR-NTF-003, FR-APT-050). */
+    private final Optional<NotificationTrigger> notifications;
 
     AppointmentBookingService(
             AppointmentBookingRepository repository,
@@ -81,7 +89,8 @@ public class AppointmentBookingService {
             AuditWriter audit,
             ScopeGuard scope,
             CurrentUser currentUser,
-            Clock clock) {
+            Clock clock,
+            Optional<NotificationTrigger> notifications) {
         this.repository = repository;
         this.availabilityRepository = availabilityRepository;
         this.availability = availability;
@@ -91,6 +100,7 @@ public class AppointmentBookingService {
         this.scope = scope;
         this.currentUser = currentUser;
         this.clock = clock;
+        this.notifications = notifications;
     }
 
     @PreAuthorize(BOOK)
@@ -160,6 +170,7 @@ public class AppointmentBookingService {
         repository.confirm(id, now); // held_slot -> booked: every detail was already given (§19.2).
 
         audit.record(AuditEvent.of("appointment.booked", "appointment", id).withAfter(bookedSnapshot(referenceCode, parsed, visitorId)));
+        notifyAppointment(NotificationTriggerKeys.APPOINTMENT_CONFIRMED, site.siteId(), parsed.serviceId(), visitorId, referenceCode, parsed.date(), parsed.start(), now);
 
         return new AppointmentResponse(
                 id, referenceCode, parsed.serviceId(), parsed.date().toString(), fmt(parsed.start()), fmt(parsed.end()), "booked", parsed.source(), visitorId,
@@ -217,6 +228,9 @@ public class AppointmentBookingService {
                 .withBefore(slotSnapshot(appointment.referenceCode(), appointment.serviceId(), appointment.slotDate(), appointment.slotStart(), appointment.slotEnd()))
                 .withAfter(slotSnapshot(appointment.referenceCode(), appointment.serviceId(), target.date(), target.start(), target.end()))
                 .withReason(target.reason()));
+        notifyAppointment(
+                NotificationTriggerKeys.APPOINTMENT_RESCHEDULED_OR_CANCELLED, site.siteId(), appointment.serviceId(), appointment.visitorId(),
+                appointment.referenceCode(), target.date(), target.start(), now);
 
         return new AppointmentResponse(
                 id, appointment.referenceCode(), appointment.serviceId(), target.date().toString(), fmt(target.start()), fmt(target.end()), "booked", appointment.source(),
@@ -250,6 +264,9 @@ public class AppointmentBookingService {
         audit.record(AuditEvent.of("appointment.cancelled", "appointment", id)
                 .withBefore(slotSnapshot(appointment.referenceCode(), appointment.serviceId(), appointment.slotDate(), appointment.slotStart(), appointment.slotEnd()))
                 .withReason(reason));
+        notifyAppointment(
+                NotificationTriggerKeys.APPOINTMENT_RESCHEDULED_OR_CANCELLED, site.siteId(), appointment.serviceId(), appointment.visitorId(),
+                appointment.referenceCode(), appointment.slotDate(), appointment.slotStart(), now);
 
         offerToWaitlistIfEnabled(appointment.serviceId(), appointment.slotDate(), appointment.slotStart(), appointment.slotEnd(), now);
     }
@@ -284,6 +301,8 @@ public class AppointmentBookingService {
         repository.markOffered(entry.id(), appointmentId, now);
         audit.record(AuditEvent.of("appointment.waitlist_offered", "appointment", appointmentId)
                 .withAfter(slotSnapshot(referenceCode, entry.serviceId(), entry.slotDate(), entry.slotStart(), entry.slotEnd())));
+        UUID siteId = availabilityRepository.siteContextOfService(entry.serviceId()).map(SiteContext::siteId).orElse(null);
+        notifyAppointment(NotificationTriggerKeys.WAITLIST_SLOT_OFFERED, siteId, entry.serviceId(), entry.visitorId(), referenceCode, entry.slotDate(), entry.slotStart(), now);
     }
 
     /** FR-APT-012, §19.2 {@code held_slot -> [*]: hold expired}: releases every hold whose window has passed, so its capacity is free again. */
@@ -315,6 +334,35 @@ public class AppointmentBookingService {
                     .withBefore(Map.of("reference_code", appointment.referenceCode(), "state", "booked")));
         }
         return marked.size();
+    }
+
+    /**
+     * FR-APT-050: sends every reminder due at any of {@code qms.appointment.reminder-offsets-minutes} (default 24 h
+     * and 1 h before the slot), in the visitor's preferred language (the same fallback-to-Site-default {@link
+     * com.qms.notification.NotificationDispatcher} already gives every trigger, FR-NTF-022). Driven by {@link
+     * AppointmentReminderScheduler}; {@link AppointmentBookingRepository#claimDueReminders} both finds and claims
+     * each one, so a reminder is sent at most once however often this sweep runs (ADR-0010).
+     */
+    @Transactional
+    public int sendDueReminders() {
+        Instant now = clock.instant();
+        int sent = 0;
+        for (int offsetMinutes : properties.reminderOffsetsMinutes()) {
+            for (DueReminder due : repository.claimDueReminders(offsetMinutes, now)) {
+                notifyAppointment(
+                        NotificationTriggerKeys.APPOINTMENT_REMINDER, due.siteId(), due.serviceId(), due.visitorId(), due.referenceCode(), due.slotDate(), due.slotStart(), now);
+                sent++;
+            }
+        }
+        return sent;
+    }
+
+    /** Fires one of §14.2's appointment triggers (ticket 40, FR-APT-050, FR-INT-040): the reference code stands in
+     * for {@code token_number}, the same variable a queue-side ticket fills (FR-NTF-020's fixed variable set is
+     * shared). {@code date}/{@code time} are the one pair {@code com.qms.notification.NotificationDispatcher} can
+     * never look up itself, since it has no appointment table of its own to query. */
+    private void notifyAppointment(String triggerKey, UUID siteId, UUID serviceId, UUID visitorId, String referenceCode, LocalDate date, LocalTime start, Instant now) {
+        notifications.ifPresent(n -> n.fire(triggerKey, new NotificationContext(siteId, serviceId, null, visitorId, null, referenceCode, now, date.toString(), fmt(start))));
     }
 
     private String slotKey(UUID serviceId, LocalDate date, LocalTime start) {

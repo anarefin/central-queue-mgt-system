@@ -75,3 +75,12 @@ qms:
       # NFR-SEC-013: the VAPID key pair is generated on first start and kept outside source control, same convention as key-dir above.
       key-dir: ${QMS_VAPID_KEY_DIR:./keys/vapid}
       subject: ${QMS_VAPID_SUBJECT:mailto:admin@qms.local}
+    email:
+      # FR-INT-040, §27.2: "clients supply an SMTP relay for email"; a blank host (the default) leaves the channel
+      # unconfigured, so it fails clean (smtp_not_configured) instead of trying to connect anywhere.
+      host: ${QMS_SMTP_HOST:}
+      port: ${QMS_SMTP_PORT:587}
+      username: ${QMS_SMTP_USERNAME:}
+      password: ${QMS_SMTP_PASSWORD:}
+      starttls: ${QMS_SMTP_STARTTLS:true}
+      from: ${QMS_SMTP_FROM:noreply@qms.local}

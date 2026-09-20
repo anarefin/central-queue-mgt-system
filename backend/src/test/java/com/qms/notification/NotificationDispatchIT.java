@@ -47,6 +47,7 @@ class NotificationDispatchIT {
         registry.add("qms.security.key-dir", () -> newKeyDir());
         registry.add("qms.notification.send-poll-cron", () -> "-");
         registry.add("qms.appointment.hold-expiry-check-cron", () -> "-");
+        registry.add("qms.appointment.reminder-check-cron", () -> "-");
         registry.add("qms.appointment.no-show-check-cron", () -> "-");
     }
 
@@ -294,11 +295,11 @@ class NotificationDispatchIT {
         template("marked_no_show", "web_push", "en", "No-show {{token_number}}");
         UUID ticket = newTicket(s, null, "waiting", "reception");
         for (int i = 0; i < 4; i++) {
-            notifications.fire("your_turn", new NotificationContext(s.site(), s.service(), ticket, null, s.counter(), tokenOf(ticket), clock.instant()));
+            notifications.fire("your_turn", new NotificationContext(s.site(), s.service(), ticket, null, s.counter(), tokenOf(ticket), clock.instant(), null, null));
         }
         assertThat(messageCount(ticket)).isEqualTo(4);
 
-        notifications.fire("marked_no_show", new NotificationContext(s.site(), s.service(), ticket, null, null, tokenOf(ticket), clock.instant()));
+        notifications.fire("marked_no_show", new NotificationContext(s.site(), s.service(), ticket, null, null, tokenOf(ticket), clock.instant(), null, null));
 
         assertThat(messageCount(ticket)).isEqualTo(5);
         Map<String, Object> suppressed = messageRowByStatus(ticket, "suppressed");
@@ -312,11 +313,11 @@ class NotificationDispatchIT {
         UUID visitor = newVisitor(null);
         for (int i = 0; i < 10; i++) {
             UUID ticket = newTicket(s, visitor, "waiting", "reception");
-            notifications.fire("your_turn", new NotificationContext(s.site(), s.service(), ticket, visitor, s.counter(), tokenOf(ticket), clock.instant()));
+            notifications.fire("your_turn", new NotificationContext(s.site(), s.service(), ticket, visitor, s.counter(), tokenOf(ticket), clock.instant(), null, null));
         }
         UUID eleventh = newTicket(s, visitor, "waiting", "reception");
 
-        notifications.fire("your_turn", new NotificationContext(s.site(), s.service(), eleventh, visitor, s.counter(), tokenOf(eleventh), clock.instant()));
+        notifications.fire("your_turn", new NotificationContext(s.site(), s.service(), eleventh, visitor, s.counter(), tokenOf(eleventh), clock.instant(), null, null));
 
         Map<String, Object> row = messageRow(eleventh);
         assertThat(row.get("status")).isEqualTo("suppressed");
@@ -333,12 +334,12 @@ class NotificationDispatchIT {
         consent.setOptOut(visitor, true, "v1", clock.instant());
 
         UUID firstTicket = newTicket(s, visitor, "called", "reception");
-        notifications.fire("marked_no_show", new NotificationContext(s.site(), s.service(), firstTicket, visitor, null, tokenOf(firstTicket), clock.instant()));
+        notifications.fire("marked_no_show", new NotificationContext(s.site(), s.service(), firstTicket, visitor, null, tokenOf(firstTicket), clock.instant(), null, null));
         assertThat(messageCount(firstTicket)).isZero();
 
         // A new ticket, a later visit: the opt-out is keyed on the visitor, so it still applies (FR-NTF-035).
         UUID secondTicket = newTicket(s, visitor, "called", "reception");
-        notifications.fire("marked_no_show", new NotificationContext(s.site(), s.service(), secondTicket, visitor, null, tokenOf(secondTicket), clock.instant()));
+        notifications.fire("marked_no_show", new NotificationContext(s.site(), s.service(), secondTicket, visitor, null, tokenOf(secondTicket), clock.instant(), null, null));
         assertThat(messageCount(secondTicket)).isZero();
     }
 
@@ -350,7 +351,7 @@ class NotificationDispatchIT {
         consent.setOptOut(visitor, true, "v1", clock.instant());
         UUID ticket = newTicket(s, visitor, "waiting", "reception");
 
-        notifications.fire("your_turn", new NotificationContext(s.site(), s.service(), ticket, visitor, s.counter(), tokenOf(ticket), clock.instant()));
+        notifications.fire("your_turn", new NotificationContext(s.site(), s.service(), ticket, visitor, s.counter(), tokenOf(ticket), clock.instant(), null, null));
 
         assertThat(messageCount(ticket)).isEqualTo(1);
     }
@@ -358,7 +359,7 @@ class NotificationDispatchIT {
     // ---- helpers -----------------------------------------------------------------------------------------------
 
     private void fireYourTurn(Setup s, UUID ticket, UUID visitorId) {
-        notifications.fire("your_turn", new NotificationContext(s.site(), s.service(), ticket, visitorId, s.counter(), tokenOf(ticket), clock.instant()));
+        notifications.fire("your_turn", new NotificationContext(s.site(), s.service(), ticket, visitorId, s.counter(), tokenOf(ticket), clock.instant(), null, null));
     }
 
     private String tokenOf(UUID ticketId) {

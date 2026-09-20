@@ -6,7 +6,7 @@
 
 **Status:** ready-for-agent
 
-- [ ] SMTP adapter behind `NotificationChannel`, configured per installation (§14.1, FR-INT-040)
-- [ ] Appointment confirmed, rescheduled/cancelled and waitlist-offer triggers (§14.2)
-- [ ] Reminders at configurable offsets (default 24 h and 1 h) in preferred language (FR-APT-050)
-- [ ] Definition of done (SRS §27.5): user-facing strings in both en and bn packs; every protected action permission-checked server-side; specified events and audit entries emitted; each requirement ID above mapped to a passing test in the traceability matrix
+- [x] SMTP adapter behind `NotificationChannel`, configured per installation (§14.1, FR-INT-040)
+- [x] Appointment confirmed, rescheduled/cancelled and waitlist-offer triggers (§14.2)
+- [x] Reminders at configurable offsets (default 24 h and 1 h) in preferred language (FR-APT-050)
+- [x] Definition of done (SRS §27.5): user-facing strings in both en and bn packs; every protected action permission-checked server-side; specified events and audit entries emitted; each requirement ID above mapped to a passing test in the traceability matrix

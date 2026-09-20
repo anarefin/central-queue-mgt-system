@@ -14,15 +14,16 @@ import java.util.Set;
  * treats the two as one flag: a message important enough to interrupt quiet hours is important enough that a
  * visitor cannot silence it.
  *
- * <p>Web Push (ticket 39) and email (ticket 40) appear in default orders below though neither adapter is registered
- * yet (FR-NTF-004): {@link NotificationDispatcher} and {@link NotificationSendWorker} skip a channel with no
- * registered adapter and fall to the next one (FR-NTF-033), so adding those channels later is a registration, not a
- * change to this catalogue, a template or a caller (FR-NTF-005, FR-INT-040).
+ * <p>Web Push (ticket 39) and email (ticket 40) both now register their own adapters; {@link NotificationDispatcher}
+ * and {@link NotificationSendWorker} still skip a channel with no registered adapter and fall to the next one
+ * (FR-NTF-033), so a Phase 2 channel (SMS, native push) with nothing behind it yet costs nothing to leave catalogued
+ * here already (FR-NTF-005, FR-INT-040).
  *
- * <p>{@code approaching_turn} and the appointment and operational-alert triggers have no caller wired in this ticket
- * (they need wait-estimate thresholds, the appointment lifecycle and live-dashboard monitoring that later tickets
- * build — 39-40 for appointments, 46-47 for the operational alerts) but are catalogued here with their defaults and
- * variables so their templates and per-site/service settings can already be configured (FR-NTF-010, FR-NTF-020).
+ * <p>{@code approaching_turn} and the operational-alert triggers still have no caller wired (they need wait-estimate
+ * thresholds and live-dashboard monitoring that later tickets build — 46-47 for the operational alerts) but are
+ * catalogued here with their defaults and variables so their templates and per-site/service settings can already be
+ * configured (FR-NTF-010, FR-NTF-020). The appointment triggers (ticket 40, FR-APT-050) are fired from
+ * {@code com.qms.appointment.AppointmentBookingService} and its reminder scheduler.
  */
 public enum NotificationTriggerKey {
     TICKET_ISSUED(NotificationTriggerKeys.TICKET_ISSUED, List.of("web_push", "in_app"), true, false, ticketVars()),
@@ -31,10 +32,10 @@ public enum NotificationTriggerKey {
     MISSED_BACK_IN_QUEUE(NotificationTriggerKeys.MISSED_BACK_IN_QUEUE, List.of("web_push", "in_app"), true, true, ticketVars()),
     MARKED_NO_SHOW(NotificationTriggerKeys.MARKED_NO_SHOW, List.of("web_push", "in_app"), true, false, ticketVars()),
     TICKET_TRANSFERRED(NotificationTriggerKeys.TICKET_TRANSFERRED, List.of("web_push", "in_app"), true, false, ticketVars()),
-    APPOINTMENT_CONFIRMED("appointment_confirmed", List.of("email", "web_push"), true, false, appointmentVars()),
-    APPOINTMENT_REMINDER("appointment_reminder", List.of("email", "web_push"), true, false, appointmentVars()),
-    APPOINTMENT_RESCHEDULED_OR_CANCELLED("appointment_rescheduled_or_cancelled", List.of("email", "web_push"), true, false, appointmentVars()),
-    WAITLIST_SLOT_OFFERED("waitlist_slot_offered", List.of("web_push", "email"), true, true, appointmentVars()),
+    APPOINTMENT_CONFIRMED(NotificationTriggerKeys.APPOINTMENT_CONFIRMED, List.of("email", "web_push"), true, false, appointmentVars()),
+    APPOINTMENT_REMINDER(NotificationTriggerKeys.APPOINTMENT_REMINDER, List.of("email", "web_push"), true, false, appointmentVars()),
+    APPOINTMENT_RESCHEDULED_OR_CANCELLED(NotificationTriggerKeys.APPOINTMENT_RESCHEDULED_OR_CANCELLED, List.of("email", "web_push"), true, false, appointmentVars()),
+    WAITLIST_SLOT_OFFERED(NotificationTriggerKeys.WAITLIST_SLOT_OFFERED, List.of("web_push", "email"), true, true, appointmentVars()),
     SERVICE_COMPLETED_FEEDBACK(NotificationTriggerKeys.SERVICE_COMPLETED_FEEDBACK, List.of("web_push", "in_app"), false, false, ticketVars()),
     QUEUE_SLA_BREACH("queue_sla_breach", List.of("staff_alert"), true, true, staffAlertVars()),
     AGENT_BREAK_OVERRUN("agent_break_overrun", List.of("staff_alert"), true, true, staffAlertVars()),

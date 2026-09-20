@@ -45,6 +45,7 @@ class NotificationSendWorkerIT {
         registry.add("qms.security.key-dir", () -> newKeyDir());
         registry.add("qms.notification.send-poll-cron", () -> "-");
         registry.add("qms.appointment.hold-expiry-check-cron", () -> "-");
+        registry.add("qms.appointment.reminder-check-cron", () -> "-");
         registry.add("qms.appointment.no-show-check-cron", () -> "-");
     }
 
@@ -127,14 +128,14 @@ class NotificationSendWorkerIT {
 
     @Test
     void aChannelWithNoRegisteredAdapterFallsStraightToTheNextOneWithNoWastedRetry() {
-        // email has no adapter until ticket 40; web_push (ticket 39) is registered now, so this test picks the
-        // channel that is still unregistered to exercise the same "no adapter at all" path it always has.
+        // in_app, web_push, email and staff_alert are all registered as of ticket 40; "sms" is Phase 2 (FR-NTF-004)
+        // and has no adapter at all yet, so it still exercises the same "no adapter at all" path this always has.
         UUID site = newSite();
         UUID ticket = newTicket(site);
         template("your_turn", "in_app");
-        UUID id = messages.insertQueued("your_turn", List.of("email", "in_app"), "en", true, site, null, ticket, null, Map.of(), null, "Body", clock.instant());
+        UUID id = messages.insertQueued("your_turn", List.of("sms", "in_app"), "en", true, site, null, ticket, null, Map.of(), null, "Body", clock.instant());
 
-        worker.tick(); // email has no adapter: fails at once and switches to in_app, not yet sent
+        worker.tick(); // sms has no adapter: fails at once and switches to in_app, not yet sent
         Map<String, Object> afterFirstTick = row(id);
         assertThat(afterFirstTick.get("status")).isEqualTo("queued");
         assertThat(afterFirstTick.get("channel")).isEqualTo("in_app");
@@ -145,7 +146,7 @@ class NotificationSendWorkerIT {
         assertThat(status(id)).isEqualTo("sent");
 
         List<AttemptRow> attempts = messages.attemptsOf(id);
-        assertThat(attempts).extracting(AttemptRow::channel).containsExactly("email", "in_app");
+        assertThat(attempts).extracting(AttemptRow::channel).containsExactly("sms", "in_app");
         assertThat(attempts).extracting(AttemptRow::status).containsExactly("failed", "sent");
         assertThat(attempts.get(0).providerResponse()).isEqualTo("no_adapter_registered");
     }

@@ -13,11 +13,8 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
-import java.time.LocalDate;
-import java.time.LocalTime;
-import java.time.ZoneOffset;
-import java.time.temporal.ChronoUnit;
-import java.util.Locale;
+import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -40,22 +37,25 @@ import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 
 /**
- * Ticket 36, FR-APT-042, with {@code qms.appointment.no-show-policy-enabled=true} (default off; {@link
- * AppointmentNoShowIT} covers the default): 3 no-shows in the last 90 days (both defaults) block a visitor from
- * booking any way but walk-in. The policy is written as "every source but walk_in", not "phone or staff", so it
- * already covers the visitor self-service channel ticket 41 adds later (SRS FR-APT-042: "blocks online booking but
- * never blocks walk-in").
+ * {@link AppointmentBookingService#sendDueReminders()} against real PostgreSQL (ticket 40, FR-APT-050): a reminder
+ * fires once its slot is within a configured offset (default 24 h and 1 h) and never twice for the same
+ * (appointment, offset) pair, however often the sweep runs (ADR-0010, {@code appointment_reminder_sent}'s unique
+ * constraint). Kept to a single test in its own database: {@link AppointmentBookingService#sendDueReminders()}
+ * sweeps every {@code booked} appointment with no per-Service or per-Site scope, so a second test method sharing
+ * this class's Testcontainers Postgres would pick up the first one's own leftover booking.
  */
 @SpringBootTest
 @AutoConfigureMockMvc
-@Import({PostgresContainerConfig.class, AppointmentNoShowPolicyIT.Clocks.class})
-class AppointmentNoShowPolicyIT {
+@Import({PostgresContainerConfig.class, AppointmentReminderIT.Clocks.class})
+class AppointmentReminderIT {
 
     static final String PASSWORD = "Correct-Horse-9";
     static final Path KEY_DIR = newKeyDir();
-    /** Saturday 19 September 2026, 10:00 in Dhaka (UTC+6). */
+    /** Saturday 19 September 2026, 10:00 in Dhaka (UTC+6). Monday 21 September is the next Monday. */
     static final Instant BASE = Instant.parse("2026-09-19T04:00:00Z");
     static final String MONDAY = "2026-09-21";
+    /** The 09:00 Dhaka slot on Monday, in UTC. */
+    static final Instant SLOT_START = Instant.parse("2026-09-21T03:00:00Z");
 
     @TestConfiguration
     static class Clocks {
@@ -72,12 +72,11 @@ class AppointmentNoShowPolicyIT {
         registry.add("qms.appointment.hold-expiry-check-cron", () -> "-");
         registry.add("qms.appointment.reminder-check-cron", () -> "-");
         registry.add("qms.appointment.no-show-check-cron", () -> "-");
-        registry.add("qms.appointment.no-show-policy-enabled", () -> "true");
     }
 
     private static Path newKeyDir() {
         try {
-            return Files.createTempDirectory("qms-keys-appointment-no-show-policy");
+            return Files.createTempDirectory("qms-keys-appointment-reminder");
         } catch (IOException e) {
             throw new IllegalStateException(e);
         }
@@ -86,6 +85,7 @@ class AppointmentNoShowPolicyIT {
     @Autowired MockMvc mvc;
     @Autowired JdbcTemplate jdbc;
     @Autowired MutableClock clock;
+    @Autowired AppointmentBookingService bookingService;
 
     @BeforeEach
     void startAtBase() {
@@ -97,7 +97,7 @@ class AppointmentNoShowPolicyIT {
         SecurityContextHolder.clearContext();
     }
 
-    // ---- fixtures ------------------------------------------------------------------------------------------------
+    // ---- fixtures (same shape AppointmentNotificationIT/AppointmentRescheduleCancelIT use) -------------------------
 
     private record Setup(UUID site, UUID group, UUID service) {}
 
@@ -124,7 +124,6 @@ class AppointmentNoShowPolicyIT {
         return id;
     }
 
-    /** A site with one service group and one service, capacity high enough that FR-APT-011 never interferes with these tests. */
     private Setup setup(String prefix) {
         UUID site = newSite();
         UUID group = newGroup(site, "G" + prefix);
@@ -148,7 +147,6 @@ class AppointmentNoShowPolicyIT {
         return id;
     }
 
-    /** Minted at real time whatever the test clock says: tokens are validated against the system clock, not this bean. */
     private String token(Role role, UUID... sites) throws Exception {
         Instant testTime = clock.instant();
         clock.set(Instant.now());
@@ -181,10 +179,6 @@ class AppointmentNoShowPolicyIT {
         return mvc.perform(request).andReturn();
     }
 
-    private static int status(MvcResult result) {
-        return result.getResponse().getStatus();
-    }
-
     private static String body(MvcResult result) throws Exception {
         return result.getResponse().getContentAsString(StandardCharsets.UTF_8);
     }
@@ -193,99 +187,72 @@ class AppointmentNoShowPolicyIT {
         return JsonPath.read(body(result), path);
     }
 
-    private int count(String table, String where, Object... args) {
-        return jdbc.queryForObject("SELECT count(*) FROM " + table + " WHERE " + where, Integer.class, args);
+    private static UUID id(MvcResult result, String path) throws Exception {
+        return UUID.fromString(field(result, path));
     }
 
     private MvcResult putServiceTemplate(String admin, UUID serviceId, int weekday, String start, String end, int slotMinutes, int capacity) throws Exception {
-        String template = String.format(
+        String templateJson = String.format(
                 "{\"items\":[{\"weekday\":%d,\"start\":\"%s\",\"end\":\"%s\",\"slot_minutes\":%d,\"capacity\":%d}]}", weekday, start, end, slotMinutes, capacity);
-        return call(put("/api/v1/appointment-templates/service/" + serviceId), admin, template);
+        return call(put("/api/v1/appointment-templates/service/" + serviceId), admin, templateJson);
     }
 
-    private MvcResult book(String token, UUID serviceId, UUID visitorId, String source, String start, String end) throws Exception {
+    private MvcResult book(String token, UUID serviceId, UUID visitorId, String date, String start, String end) throws Exception {
         return call(
                 post("/api/v1/appointments"), token,
                 String.format(
-                        "{\"service_id\":\"%s\",\"date\":\"%s\",\"start\":\"%s\",\"end\":\"%s\",\"source\":\"%s\",\"visitor_id\":\"%s\"}",
-                        serviceId, MONDAY, start, end, source, visitorId));
+                        "{\"service_id\":\"%s\",\"date\":\"%s\",\"start\":\"%s\",\"end\":\"%s\",\"source\":\"staff\",\"visitor_id\":\"%s\"}", serviceId, date, start, end, visitorId));
     }
 
-    /** A visitor's no-show, marked (state's {@code updated_at}) {@code daysAgo} days before the test clock's current instant. */
-    private void insertNoShowAppointment(UUID serviceId, UUID visitorId, int daysAgo) {
-        UUID appointmentId = UUID.randomUUID();
-        Instant markedAt = clock.instant().minus(daysAgo, ChronoUnit.DAYS);
+    private void template(String triggerKey, String channel, String language, String body) {
         jdbc.update(
-                "INSERT INTO appointment (id, reference_code, service_id, visitor_id, slot_date, slot_start, slot_end, state, source, created_at, updated_at)"
-                        + " VALUES (?, ?, ?, ?, ?, ?, ?, 'no_show', 'staff', ?, ?)",
-                appointmentId, "A-" + appointmentId.toString().substring(0, 8).toUpperCase(Locale.ROOT), serviceId, visitorId, LocalDate.parse(MONDAY).minusDays(daysAgo + 1),
-                LocalTime.of(9, 0), LocalTime.of(9, 30), markedAt.minusSeconds(3600).atOffset(ZoneOffset.UTC), markedAt.atOffset(ZoneOffset.UTC));
+                "INSERT INTO notification_template (id, trigger_key, channel, language, subject, body) VALUES (?, ?, ?, ?, 'Subject', ?)"
+                        + " ON CONFLICT (trigger_key, channel, language) DO UPDATE SET body = EXCLUDED.body",
+                UUID.randomUUID(), triggerKey, channel, language, body);
     }
 
-    // ---- FR-APT-042: blocked once the threshold is reached, but never for walk-in --------------------------------
+    private List<Map<String, Object>> messagesFor(UUID visitorId, String triggerKey) {
+        return jdbc.queryForList(
+                "SELECT * FROM notification_message WHERE visitor_id = ? AND trigger_key = ? ORDER BY created_at", visitorId, triggerKey);
+    }
 
-    @Test
-    void aVisitorWithThreeRecentNoShowsIsRefusedBookingByPhone() throws Exception {
-        Setup s = setup("BLOCK");
-        String admin = token(Role.ORG_ADMIN, s.site());
-        String reception = token(Role.RECEPTION_OPERATOR, s.site());
-        putServiceTemplate(admin, s.service(), 1, "09:00", "12:00", 30, 5);
-        UUID visitor = newVisitor("Repeat", "01700000500");
-        insertNoShowAppointment(s.service(), visitor, 10);
-        insertNoShowAppointment(s.service(), visitor, 20);
-        insertNoShowAppointment(s.service(), visitor, 30);
-
-        MvcResult refused = book(reception, s.service(), visitor, "phone", "09:00", "09:30");
-
-        assertThat(status(refused)).as(body(refused)).isEqualTo(409);
-        assertThat((String) field(refused, "$.error.details.reason")).isEqualTo("no_show_policy");
-        assertThat(count("appointment", "visitor_id = ? AND state = 'booked'", visitor)).isZero();
+    private int reminderSentCount(UUID appointmentId) {
+        Integer count = jdbc.queryForObject("SELECT count(*) FROM appointment_reminder_sent WHERE appointment_id = ?", Integer.class, appointmentId);
+        return count == null ? 0 : count;
     }
 
     @Test
-    void aVisitorWithThreeRecentNoShowsCanStillBeBookedAsAWalkIn() throws Exception {
-        Setup s = setup("WALKIN");
+    void remindersFireAtEachConfiguredOffsetAndNeverTwiceForTheSameOne() throws Exception {
+        template("appointment_reminder", "email", "en", "Reminder: {{token_number}} at {{date}} {{time}}");
+        Setup s = setup("REMIND");
         String admin = token(Role.ORG_ADMIN, s.site());
         String reception = token(Role.RECEPTION_OPERATOR, s.site());
-        putServiceTemplate(admin, s.service(), 1, "09:00", "12:00", 30, 5);
-        UUID visitor = newVisitor("Repeat", "01700000501");
-        insertNoShowAppointment(s.service(), visitor, 10);
-        insertNoShowAppointment(s.service(), visitor, 20);
-        insertNoShowAppointment(s.service(), visitor, 30);
+        putServiceTemplate(admin, s.service(), 1, "09:00", "09:30", 30, 1);
+        UUID visitor = newVisitor("Karim", "01700000305");
+        MvcResult booked = book(reception, s.service(), visitor, MONDAY, "09:00", "09:30");
+        UUID appointmentId = id(booked, "$.id");
 
-        MvcResult booked = book(reception, s.service(), visitor, "walk_in", "09:00", "09:30");
+        // Two days before the slot: outside even the 24h offset window.
+        clock.set(SLOT_START.minusSeconds(2 * 24 * 3600));
+        assertThat(bookingService.sendDueReminders()).isZero();
+        assertThat(messagesFor(visitor, "appointment_reminder")).isEmpty();
 
-        assertThat(status(booked)).as(body(booked)).isEqualTo(201);
-    }
+        // 20 hours before the slot: inside the 24h offset window, not yet the 1h one.
+        clock.set(SLOT_START.minusSeconds(20 * 3600));
+        assertThat(bookingService.sendDueReminders()).isEqualTo(1);
+        assertThat(messagesFor(visitor, "appointment_reminder")).hasSize(1);
+        assertThat(reminderSentCount(appointmentId)).isEqualTo(1);
 
-    @Test
-    void aVisitorWithOnlyTwoRecentNoShowsIsBelowTheDefaultThresholdOfThree() throws Exception {
-        Setup s = setup("BELOW");
-        String admin = token(Role.ORG_ADMIN, s.site());
-        String reception = token(Role.RECEPTION_OPERATOR, s.site());
-        putServiceTemplate(admin, s.service(), 1, "09:00", "12:00", 30, 5);
-        UUID visitor = newVisitor("Twice", "01700000502");
-        insertNoShowAppointment(s.service(), visitor, 10);
-        insertNoShowAppointment(s.service(), visitor, 20);
+        // A second sweep at the same moment sends nothing more (ADR-0010: claimed once per offset).
+        assertThat(bookingService.sendDueReminders()).isZero();
+        assertThat(messagesFor(visitor, "appointment_reminder")).hasSize(1);
 
-        MvcResult booked = book(reception, s.service(), visitor, "staff", "09:00", "09:30");
-
-        assertThat(status(booked)).as(body(booked)).isEqualTo(201);
-    }
-
-    @Test
-    void aNoShowOutsideTheNinetyDayRollingWindowDoesNotCountTowardsTheThreshold() throws Exception {
-        Setup s = setup("WINDOW");
-        String admin = token(Role.ORG_ADMIN, s.site());
-        String reception = token(Role.RECEPTION_OPERATOR, s.site());
-        putServiceTemplate(admin, s.service(), 1, "09:00", "12:00", 30, 5);
-        UUID visitor = newVisitor("Stale", "01700000503");
-        insertNoShowAppointment(s.service(), visitor, 10);
-        insertNoShowAppointment(s.service(), visitor, 20);
-        insertNoShowAppointment(s.service(), visitor, 91); // just outside the default 90-day window
-
-        MvcResult booked = book(reception, s.service(), visitor, "phone", "09:00", "09:30");
-
-        assertThat(status(booked)).as(body(booked)).isEqualTo(201);
+        // 30 minutes before the slot: now inside the 1h offset window too; the 24h one stays claimed.
+        clock.set(SLOT_START.minusSeconds(30 * 60));
+        assertThat(bookingService.sendDueReminders()).isEqualTo(1);
+        List<Map<String, Object>> messages = messagesFor(visitor, "appointment_reminder");
+        assertThat(messages).hasSize(2);
+        assertThat(reminderSentCount(appointmentId)).isEqualTo(2);
+        assertThat((String) messages.get(1).get("rendered_body")).isEqualTo("Reminder: " + field(booked, "$.reference_code") + " at " + MONDAY + " 09:00");
     }
 }

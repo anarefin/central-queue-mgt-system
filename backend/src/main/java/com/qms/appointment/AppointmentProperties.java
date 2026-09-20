@@ -1,5 +1,6 @@
 package com.qms.appointment;
 
+import java.util.List;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.boot.context.properties.bind.DefaultValue;
 
@@ -26,6 +27,11 @@ import org.springframework.boot.context.properties.bind.DefaultValue;
  *     {@code noShowPolicyEnabled} is on (FR-APT-042, default 3)
  * @param noShowPolicyWindowDays the rolling window {@code noShowPolicyThreshold} is counted over (FR-APT-042,
  *     default 90 days)
+ * @param reminderOffsetsMinutes how long before the slot each reminder fires (FR-APT-050, default 24 hours and 1
+ *     hour); a reminder is sent at most once per (appointment, offset) pair, tracked in {@code
+ *     appointment_reminder_sent}, however often {@link AppointmentReminderScheduler} sweeps
+ * @param reminderCheckCron when {@link AppointmentReminderScheduler} sweeps for reminders due; {@code -} disables it
+ *     so a test can drive the sweep itself, the same convention {@code qms.appointment.no-show-check-cron} uses
  */
 @ConfigurationProperties("qms.appointment")
 public record AppointmentProperties(
@@ -39,4 +45,6 @@ public record AppointmentProperties(
         @DefaultValue("*/5 * * * * *") String noShowCheckCron,
         @DefaultValue("false") boolean noShowPolicyEnabled,
         @DefaultValue("3") int noShowPolicyThreshold,
-        @DefaultValue("90") int noShowPolicyWindowDays) {}
+        @DefaultValue("90") int noShowPolicyWindowDays,
+        @DefaultValue({"1440", "60"}) List<Integer> reminderOffsetsMinutes,
+        @DefaultValue("*/5 * * * * *") String reminderCheckCron) {}

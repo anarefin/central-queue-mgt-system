@@ -1,6 +1,8 @@
 package com.qms.appointment;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 
@@ -13,11 +15,8 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
-import java.time.LocalDate;
-import java.time.LocalTime;
-import java.time.ZoneOffset;
-import java.time.temporal.ChronoUnit;
-import java.util.Locale;
+import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -40,20 +39,23 @@ import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 
 /**
- * Ticket 36, FR-APT-042, with {@code qms.appointment.no-show-policy-enabled=true} (default off; {@link
- * AppointmentNoShowIT} covers the default): 3 no-shows in the last 90 days (both defaults) block a visitor from
- * booking any way but walk-in. The policy is written as "every source but walk_in", not "phone or staff", so it
- * already covers the visitor self-service channel ticket 41 adds later (SRS FR-APT-042: "blocks online booking but
- * never blocks walk-in").
+ * Ticket 40 against real PostgreSQL: confirmed, rescheduled/cancelled and waitlist-offer fire the §14.2 appointment
+ * triggers with the appointment's own reference code standing in for {@code token_number} and its slot rendered as
+ * {@code date}/{@code time} (FR-INT-040, FR-APT-050). {@link AppointmentReminderIT} covers {@link
+ * AppointmentBookingService#sendDueReminders()} separately, in its own database, since a reminder sweep matches
+ * every {@code booked} appointment and this class's own tests would otherwise interfere with each other's counts.
+ * Delivery itself (the SMTP adapter and channel selection/fallback) is {@link com.qms.notification.EmailChannelIT}'s
+ * and ticket 38's own coverage; this is only the wiring from the appointment lifecycle into the pipeline's own
+ * queuing seam.
  */
 @SpringBootTest
 @AutoConfigureMockMvc
-@Import({PostgresContainerConfig.class, AppointmentNoShowPolicyIT.Clocks.class})
-class AppointmentNoShowPolicyIT {
+@Import({PostgresContainerConfig.class, AppointmentNotificationIT.Clocks.class})
+class AppointmentNotificationIT {
 
     static final String PASSWORD = "Correct-Horse-9";
     static final Path KEY_DIR = newKeyDir();
-    /** Saturday 19 September 2026, 10:00 in Dhaka (UTC+6). */
+    /** Saturday 19 September 2026, 10:00 in Dhaka (UTC+6). Monday 21 September is the next Monday. */
     static final Instant BASE = Instant.parse("2026-09-19T04:00:00Z");
     static final String MONDAY = "2026-09-21";
 
@@ -72,12 +74,11 @@ class AppointmentNoShowPolicyIT {
         registry.add("qms.appointment.hold-expiry-check-cron", () -> "-");
         registry.add("qms.appointment.reminder-check-cron", () -> "-");
         registry.add("qms.appointment.no-show-check-cron", () -> "-");
-        registry.add("qms.appointment.no-show-policy-enabled", () -> "true");
     }
 
     private static Path newKeyDir() {
         try {
-            return Files.createTempDirectory("qms-keys-appointment-no-show-policy");
+            return Files.createTempDirectory("qms-keys-appointment-notification");
         } catch (IOException e) {
             throw new IllegalStateException(e);
         }
@@ -97,7 +98,7 @@ class AppointmentNoShowPolicyIT {
         SecurityContextHolder.clearContext();
     }
 
-    // ---- fixtures ------------------------------------------------------------------------------------------------
+    // ---- fixtures (same shape AppointmentRescheduleCancelIT uses) --------------------------------------------------
 
     private record Setup(UUID site, UUID group, UUID service) {}
 
@@ -124,7 +125,6 @@ class AppointmentNoShowPolicyIT {
         return id;
     }
 
-    /** A site with one service group and one service, capacity high enough that FR-APT-011 never interferes with these tests. */
     private Setup setup(String prefix) {
         UUID site = newSite();
         UUID group = newGroup(site, "G" + prefix);
@@ -148,7 +148,6 @@ class AppointmentNoShowPolicyIT {
         return id;
     }
 
-    /** Minted at real time whatever the test clock says: tokens are validated against the system clock, not this bean. */
     private String token(Role role, UUID... sites) throws Exception {
         Instant testTime = clock.instant();
         clock.set(Instant.now());
@@ -193,99 +192,116 @@ class AppointmentNoShowPolicyIT {
         return JsonPath.read(body(result), path);
     }
 
-    private int count(String table, String where, Object... args) {
-        return jdbc.queryForObject("SELECT count(*) FROM " + table + " WHERE " + where, Integer.class, args);
+    private static UUID id(MvcResult result, String path) throws Exception {
+        return UUID.fromString(field(result, path));
     }
 
     private MvcResult putServiceTemplate(String admin, UUID serviceId, int weekday, String start, String end, int slotMinutes, int capacity) throws Exception {
-        String template = String.format(
+        String templateJson = String.format(
                 "{\"items\":[{\"weekday\":%d,\"start\":\"%s\",\"end\":\"%s\",\"slot_minutes\":%d,\"capacity\":%d}]}", weekday, start, end, slotMinutes, capacity);
-        return call(put("/api/v1/appointment-templates/service/" + serviceId), admin, template);
+        return call(put("/api/v1/appointment-templates/service/" + serviceId), admin, templateJson);
     }
 
-    private MvcResult book(String token, UUID serviceId, UUID visitorId, String source, String start, String end) throws Exception {
+    private MvcResult enableWaitlist(String admin, UUID serviceId) throws Exception {
+        return call(put("/api/v1/services/" + serviceId + "/appointment-settings"), admin, "{\"waitlist_enabled\":true}");
+    }
+
+    private MvcResult book(String token, UUID serviceId, UUID visitorId, String date, String start, String end) throws Exception {
         return call(
                 post("/api/v1/appointments"), token,
                 String.format(
-                        "{\"service_id\":\"%s\",\"date\":\"%s\",\"start\":\"%s\",\"end\":\"%s\",\"source\":\"%s\",\"visitor_id\":\"%s\"}",
-                        serviceId, MONDAY, start, end, source, visitorId));
+                        "{\"service_id\":\"%s\",\"date\":\"%s\",\"start\":\"%s\",\"end\":\"%s\",\"source\":\"staff\",\"visitor_id\":\"%s\"}", serviceId, date, start, end, visitorId));
     }
 
-    /** A visitor's no-show, marked (state's {@code updated_at}) {@code daysAgo} days before the test clock's current instant. */
-    private void insertNoShowAppointment(UUID serviceId, UUID visitorId, int daysAgo) {
-        UUID appointmentId = UUID.randomUUID();
-        Instant markedAt = clock.instant().minus(daysAgo, ChronoUnit.DAYS);
+    private MvcResult reschedule(String token, UUID appointmentId, String date, String start, String end) throws Exception {
+        String json = "{\"date\":\"" + date + "\",\"start\":\"" + start + "\",\"end\":\"" + end + "\"}";
+        return call(patch("/api/v1/appointments/" + appointmentId), token, json);
+    }
+
+    private MvcResult cancel(String token, UUID appointmentId) throws Exception {
+        return call(delete("/api/v1/appointments/" + appointmentId), token, null);
+    }
+
+    // Templates are global (trigger x channel x language); upsert so several tests can each author their own.
+    private void template(String triggerKey, String channel, String language, String body) {
         jdbc.update(
-                "INSERT INTO appointment (id, reference_code, service_id, visitor_id, slot_date, slot_start, slot_end, state, source, created_at, updated_at)"
-                        + " VALUES (?, ?, ?, ?, ?, ?, ?, 'no_show', 'staff', ?, ?)",
-                appointmentId, "A-" + appointmentId.toString().substring(0, 8).toUpperCase(Locale.ROOT), serviceId, visitorId, LocalDate.parse(MONDAY).minusDays(daysAgo + 1),
-                LocalTime.of(9, 0), LocalTime.of(9, 30), markedAt.minusSeconds(3600).atOffset(ZoneOffset.UTC), markedAt.atOffset(ZoneOffset.UTC));
+                "INSERT INTO notification_template (id, trigger_key, channel, language, subject, body) VALUES (?, ?, ?, ?, 'Subject', ?)"
+                        + " ON CONFLICT (trigger_key, channel, language) DO UPDATE SET body = EXCLUDED.body",
+                UUID.randomUUID(), triggerKey, channel, language, body);
     }
 
-    // ---- FR-APT-042: blocked once the threshold is reached, but never for walk-in --------------------------------
-
-    @Test
-    void aVisitorWithThreeRecentNoShowsIsRefusedBookingByPhone() throws Exception {
-        Setup s = setup("BLOCK");
-        String admin = token(Role.ORG_ADMIN, s.site());
-        String reception = token(Role.RECEPTION_OPERATOR, s.site());
-        putServiceTemplate(admin, s.service(), 1, "09:00", "12:00", 30, 5);
-        UUID visitor = newVisitor("Repeat", "01700000500");
-        insertNoShowAppointment(s.service(), visitor, 10);
-        insertNoShowAppointment(s.service(), visitor, 20);
-        insertNoShowAppointment(s.service(), visitor, 30);
-
-        MvcResult refused = book(reception, s.service(), visitor, "phone", "09:00", "09:30");
-
-        assertThat(status(refused)).as(body(refused)).isEqualTo(409);
-        assertThat((String) field(refused, "$.error.details.reason")).isEqualTo("no_show_policy");
-        assertThat(count("appointment", "visitor_id = ? AND state = 'booked'", visitor)).isZero();
+    private List<Map<String, Object>> messagesFor(UUID visitorId, String triggerKey) {
+        return jdbc.queryForList(
+                "SELECT * FROM notification_message WHERE visitor_id = ? AND trigger_key = ? ORDER BY created_at", visitorId, triggerKey);
     }
 
+    // ---- FR-APT confirmations, reschedule/cancel, waitlist offer ---------------------------------------------------
+
     @Test
-    void aVisitorWithThreeRecentNoShowsCanStillBeBookedAsAWalkIn() throws Exception {
-        Setup s = setup("WALKIN");
+    void bookingFiresAppointmentConfirmedWithTheReferenceCodeAndSlotAsVariables() throws Exception {
+        template("appointment_confirmed", "email", "en", "Ref {{token_number}} on {{date}} at {{time}} for {{service_name}} at {{site_name}}");
+        Setup s = setup("CONFIRM");
         String admin = token(Role.ORG_ADMIN, s.site());
         String reception = token(Role.RECEPTION_OPERATOR, s.site());
-        putServiceTemplate(admin, s.service(), 1, "09:00", "12:00", 30, 5);
-        UUID visitor = newVisitor("Repeat", "01700000501");
-        insertNoShowAppointment(s.service(), visitor, 10);
-        insertNoShowAppointment(s.service(), visitor, 20);
-        insertNoShowAppointment(s.service(), visitor, 30);
+        putServiceTemplate(admin, s.service(), 1, "09:00", "11:00", 30, 2);
+        UUID visitor = newVisitor("Karim", "01700000301");
 
-        MvcResult booked = book(reception, s.service(), visitor, "walk_in", "09:00", "09:30");
+        MvcResult booked = book(reception, s.service(), visitor, MONDAY, "09:00", "09:30");
 
         assertThat(status(booked)).as(body(booked)).isEqualTo(201);
+        String referenceCode = field(booked, "$.reference_code");
+        List<Map<String, Object>> messages = messagesFor(visitor, "appointment_confirmed");
+        assertThat(messages).hasSize(1);
+        Map<String, Object> message = messages.get(0);
+        // appointment_confirmed's default order is [email, web_push]; email is registered, so this starts on it.
+        assertThat(message.get("channel")).isEqualTo("email");
+        assertThat(message.get("status")).isEqualTo("queued");
+        assertThat(message.get("language")).isEqualTo("en"); // visitor has no preference; falls back to the Site default (FR-NTF-022).
+        assertThat((String) message.get("rendered_body")).isEqualTo("Ref " + referenceCode + " on " + MONDAY + " at 09:00 for Consultation at Main campus");
     }
 
     @Test
-    void aVisitorWithOnlyTwoRecentNoShowsIsBelowTheDefaultThresholdOfThree() throws Exception {
-        Setup s = setup("BELOW");
+    void reschedulingFiresAppointmentRescheduledOrCancelledWithTheNewSlot() throws Exception {
+        template("appointment_rescheduled_or_cancelled", "email", "en", "{{token_number}} moved to {{date}} {{time}}");
+        Setup s = setup("RESCH");
         String admin = token(Role.ORG_ADMIN, s.site());
         String reception = token(Role.RECEPTION_OPERATOR, s.site());
-        putServiceTemplate(admin, s.service(), 1, "09:00", "12:00", 30, 5);
-        UUID visitor = newVisitor("Twice", "01700000502");
-        insertNoShowAppointment(s.service(), visitor, 10);
-        insertNoShowAppointment(s.service(), visitor, 20);
+        putServiceTemplate(admin, s.service(), 1, "09:00", "11:00", 30, 2);
+        UUID visitor = newVisitor("Karim", "01700000302");
+        MvcResult booked = book(reception, s.service(), visitor, MONDAY, "09:00", "09:30");
+        UUID appointmentId = id(booked, "$.id");
+        String referenceCode = field(booked, "$.reference_code");
 
-        MvcResult booked = book(reception, s.service(), visitor, "staff", "09:00", "09:30");
+        MvcResult rescheduled = reschedule(reception, appointmentId, MONDAY, "10:00", "10:30");
 
-        assertThat(status(booked)).as(body(booked)).isEqualTo(201);
+        assertThat(status(rescheduled)).as(body(rescheduled)).isEqualTo(200);
+        List<Map<String, Object>> messages = messagesFor(visitor, "appointment_rescheduled_or_cancelled");
+        assertThat(messages).hasSize(1);
+        assertThat((String) messages.get(0).get("rendered_body")).isEqualTo(referenceCode + " moved to " + MONDAY + " 10:00");
     }
 
     @Test
-    void aNoShowOutsideTheNinetyDayRollingWindowDoesNotCountTowardsTheThreshold() throws Exception {
-        Setup s = setup("WINDOW");
+    void cancellingFiresRescheduledOrCancelledAndOffersTheFreedSlotToTheWaitlist() throws Exception {
+        template("appointment_rescheduled_or_cancelled", "email", "en", "{{token_number}} cancelled");
+        template("waitlist_slot_offered", "web_push", "en", "A slot opened up for {{token_number}}");
+        Setup s = setup("CANCELNOTIF");
         String admin = token(Role.ORG_ADMIN, s.site());
         String reception = token(Role.RECEPTION_OPERATOR, s.site());
-        putServiceTemplate(admin, s.service(), 1, "09:00", "12:00", 30, 5);
-        UUID visitor = newVisitor("Stale", "01700000503");
-        insertNoShowAppointment(s.service(), visitor, 10);
-        insertNoShowAppointment(s.service(), visitor, 20);
-        insertNoShowAppointment(s.service(), visitor, 91); // just outside the default 90-day window
+        putServiceTemplate(admin, s.service(), 1, "09:00", "09:30", 30, 1);
+        enableWaitlist(admin, s.service());
+        UUID first = newVisitor("First", "01700000303");
+        UUID second = newVisitor("Second", "01700000304");
+        MvcResult firstBooking = book(reception, s.service(), first, MONDAY, "09:00", "09:30");
+        UUID firstId = id(firstBooking, "$.id");
+        book(reception, s.service(), second, MONDAY, "09:00", "09:30"); // joins the waitlist: the slot is full.
 
-        MvcResult booked = book(reception, s.service(), visitor, "phone", "09:00", "09:30");
+        MvcResult cancelled = cancel(reception, firstId);
 
-        assertThat(status(booked)).as(body(booked)).isEqualTo(201);
+        assertThat(status(cancelled)).as(body(cancelled)).isEqualTo(204);
+        assertThat(messagesFor(first, "appointment_rescheduled_or_cancelled")).hasSize(1);
+        List<Map<String, Object>> offered = messagesFor(second, "waitlist_slot_offered");
+        assertThat(offered).hasSize(1);
+        // waitlist_slot_offered's default order is [web_push, email]; web_push is registered, so this starts on it.
+        assertThat(offered.get(0).get("channel")).isEqualTo("web_push");
     }
 }

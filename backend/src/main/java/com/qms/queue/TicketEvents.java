@@ -207,7 +207,9 @@ public class TicketEvents {
         if (Objects.equals(transition.fromState(), transition.toState())) return;
         String triggerKey = TRIGGER_BY_EVENT.get(transition.eventType());
         if (triggerKey == null) return;
-        notifications.ifPresent(n -> n.fire(triggerKey, new NotificationContext(siteId, serviceId, transition.ticketId(), visitorId, transition.counterId(), tokenNumber, transition.deviceTime())));
+        notifications.ifPresent(n -> n.fire(
+                triggerKey,
+                new NotificationContext(siteId, serviceId, transition.ticketId(), visitorId, transition.counterId(), tokenNumber, transition.deviceTime(), null, null)));
     }
 
     /** The ticket's recorded changes of state, oldest first, for the durations that are worked out from them (Invariant 1). */

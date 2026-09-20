@@ -65,6 +65,7 @@ class WebPushChannelIT {
         registry.add("qms.notification.web-push.allow-insecure-endpoints-for-tests", () -> "true");
         registry.add("qms.notification.send-poll-cron", () -> "-");
         registry.add("qms.appointment.hold-expiry-check-cron", () -> "-");
+        registry.add("qms.appointment.reminder-check-cron", () -> "-");
         registry.add("qms.appointment.no-show-check-cron", () -> "-");
     }
 

@@ -127,6 +127,10 @@ class NotificationDispatcher implements NotificationTrigger {
         values.put("service_name", facts.includeServiceName() ? facts.serviceName() : "");
         values.put("counter_label", facts.counterLabel());
         values.put("site_name", facts.siteName());
+        // FR-APT-050 (ticket 40): an appointment trigger's own slot, already formatted by its caller; null (and so
+        // dropped below) for every queue-side trigger, which has none.
+        values.put("date", context.date());
+        values.put("time", context.time());
         values.values().removeIf(java.util.Objects::isNull);
         values.keySet().retainAll(trigger.variables());
         return values;

@@ -63,6 +63,7 @@ class NotificationAdminIT {
         registry.add("qms.security.key-dir", KEY_DIR::toString);
         registry.add("qms.notification.send-poll-cron", () -> "-");
         registry.add("qms.appointment.hold-expiry-check-cron", () -> "-");
+        registry.add("qms.appointment.reminder-check-cron", () -> "-");
         registry.add("qms.appointment.no-show-check-cron", () -> "-");
     }
 
