@@ -116,3 +116,59 @@ export interface ReportExportJob {
 /** `POST /reports/{key}/export`'s answer: the file itself when it was generated inline, or the job id to poll
  * (`reports.job`) when it crossed the async row threshold (FR-RPT-004). */
 export type ReportExportOutcome = { kind: "ready"; blob: Blob; filename: string } | { kind: "queued"; jobId: string };
+
+/** The six operational report keys ticket 50 adds to the catalogue (SRS §16.1), grouped from `reporting.ticket_fact`
+ * (and, for `counter`, the live counter-session/break tables) to one row per grain value over one requested period.
+ * `break` (ticket 16) is reachable under the same `POST /reports/{key}/run` endpoint but keeps its own request/
+ * response shape (`BreakReportQuery`/`BreakReport`, `./breaks`), unchanged. */
+export type OperationalReportKey = "visitor-flow" | "counter" | "agent" | "service" | "department" | "site";
+
+export const OPERATIONAL_REPORT_KEYS: OperationalReportKey[] = ["visitor-flow", "counter", "agent", "service", "department", "site"];
+
+export type ReportGrain = "hour" | "day" | "month" | "year";
+
+/** FR-RPT-001's filters plus a bounded range (mandatory here, unlike `detailed-token`: a period comparison needs a
+ * period to mirror) and, for `visitor-flow` only, the bucket grain. */
+export interface OperationalReportRequest {
+  from: string;
+  to: string;
+  site_id?: string;
+  zone_id?: string;
+  service_group_id?: string;
+  service_id?: string;
+  agent_id?: string;
+  priority_class_id?: string;
+  channel?: Channel;
+  visitor_category?: string;
+  grain?: ReportGrain;
+}
+
+/** One report row's or one totals block's metrics: numbers, a plain string name/label, a per-language name
+ * (`service`/`department`), or `null`. The exact keys depend on which report key produced it. */
+export type OperationalReportValue = string | number | boolean | LocalisedText | null;
+
+export type OperationalReportRow = Record<string, OperationalReportValue>;
+
+/** One metric's absolute and percentage difference against the previous equivalent period (FR-RPT-010,
+ * FR-MON-011); `percent` is `null` when the previous value was zero (undefined, not infinite). */
+export interface OperationalReportChange {
+  absolute: number;
+  percent: number | null;
+}
+
+/** `POST /reports/{key}/run`'s answer for every operational report key (ticket 50). */
+export interface OperationalReportResponse {
+  key: OperationalReportKey;
+  generated_at: string;
+  from: string;
+  to: string;
+  previous_from: string;
+  previous_to: string;
+  rows: OperationalReportRow[];
+  totals: OperationalReportRow;
+  previous_totals: OperationalReportRow;
+  change: Record<string, OperationalReportChange>;
+  /** Report-specific secondary breakdown that does not fit the row grain (today, only the service report's
+   * "average and P90 wait per hour band" array under `wait_by_hour_band`, §15.3). */
+  extra: Record<string, unknown> | null;
+}

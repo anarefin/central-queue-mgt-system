@@ -61,7 +61,16 @@ import type {
 } from "./visitors";
 import type { BrandingInput, OrgBranding, PrintTemplate, PrintTemplateInput } from "./branding";
 import type { DashboardFilter, DashboardSnapshot } from "./dashboard";
-import type { DetailedTokenReportPage, DetailedTokenReportRequest, ReportExportInput, ReportExportJob, ReportExportOutcome } from "./reports";
+import type {
+  DetailedTokenReportPage,
+  DetailedTokenReportRequest,
+  OperationalReportKey,
+  OperationalReportRequest,
+  OperationalReportResponse,
+  ReportExportInput,
+  ReportExportJob,
+  ReportExportOutcome,
+} from "./reports";
 import type { IssueJourneyInput, JourneyResult, JourneySettings, JourneyTemplateSummary } from "./journeys";
 import type {
   NotificationMessageQuery,
@@ -450,6 +459,10 @@ export class ApiClient {
    */
   readonly reports = {
     run: (key: string, request: DetailedTokenReportRequest = {}) => this.request<DetailedTokenReportPage>("POST", `/reports/${key}/run`, request),
+    /** The six operational report keys (ticket 50, §16.1, §15.2, §15.3): grouped rows for the requested period,
+     * plus a period-over-period comparison (FR-RPT-010, FR-MON-011). */
+    runOperational: (key: OperationalReportKey, request: OperationalReportRequest) =>
+      this.request<OperationalReportResponse>("POST", `/reports/${key}/run`, request),
     /** FR-RPT-003/004: the file itself (200) when the filtered row count is under the configured threshold, or a
      * job id (202) to poll with `job` otherwise. */
     export: (key: string, input: ReportExportInput) => this.requestExport(`/reports/${key}/export`, input),

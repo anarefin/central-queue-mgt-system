@@ -8,7 +8,9 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
 
-/** Reports over HTTP (ticket 48, SRS §16): {@code POST /reports/{key}/run}, filtered, paged and sorted on screen. */
+/** Reports over HTTP (ticket 48, 50, SRS §16): {@code POST /reports/{key}/run}, filtered, paged and sorted on
+ * screen for {@code detailed-token} (ticket 48), grouped with a period comparison for the six operational report
+ * keys (ticket 50), or the existing break report (ticket 16) reused under this catalogue's own path. */
 @RestController
 @Profile(Profiles.SERVING)
 class ReportController {
@@ -21,7 +23,7 @@ class ReportController {
 
     @PreAuthorize(ReportRunService.RUN)
     @PostMapping("/reports/{key}/run")
-    DetailedTokenReportPage run(@PathVariable String key, @RequestBody(required = false) DetailedTokenReportRequest request) {
+    Object run(@PathVariable String key, @RequestBody(required = false) ReportRunRequest request) {
         return service.run(key, request);
     }
 }

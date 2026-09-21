@@ -7,6 +7,7 @@ import { useState } from "react";
 import { describeError, useList } from "../lib/admin-support";
 import { useApi } from "../lib/runtime";
 import { DetailedTokenReportCard } from "./DetailedTokenReportCard";
+import { OperationalReportsCard } from "./OperationalReportsCard";
 
 /** Reports (SRS §16, ticket 48): picks the Site, then the detailed token report for it. Every call is
  * permission-checked and scoped on the server (`reports:run_export`, FR-CFG-106). */
@@ -32,6 +33,7 @@ export function ReportsAdmin() {
         />
       )}
       {site && <DetailedTokenReportCard key={`report-${site.id}`} site={site} />}
+      {site && <OperationalReportsCard key={`operational-report-${site.id}`} site={site} />}
     </div>
   );
 }

@@ -115,11 +115,14 @@ describe("detailed token report (SRS §16.1, ticket 48)", () => {
     const calls = fakeApi({ "POST /reports/detailed-token/run": () => json(200, page()) });
     renderApp(<ReportsAdmin />);
 
-    await screen.findByRole("heading", { name: "Detailed token report" });
-    await within(screen.getByLabelText("Zone")).findByText("Hall");
-    await userEvent.selectOptions(screen.getByLabelText("Zone"), "Hall");
-    await userEvent.type(screen.getByLabelText("Visitor category"), "senior");
-    await userEvent.click(screen.getByRole("button", { name: "Run report" }));
+    const heading = await screen.findByRole("heading", { name: "Detailed token report" });
+    // Ticket 50 adds a second card (operational reports) to this same page, with its own "Zone"/"Visitor category"
+    // fields — scoped to the detailed token report's own <section> (@qms/ui's Card) so this queries only its own.
+    const card = within(heading.closest("section") as HTMLElement);
+    await card.findByText("Hall");
+    await userEvent.selectOptions(card.getByLabelText("Zone"), "Hall");
+    await userEvent.type(card.getByLabelText("Visitor category"), "senior");
+    await userEvent.click(card.getByRole("button", { name: "Run report" }));
 
     expect(await screen.findByRole("status")).toHaveTextContent("1 rows, 1 tickets issued");
     const table = screen.getByRole("table");

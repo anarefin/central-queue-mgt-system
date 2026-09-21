@@ -6,9 +6,9 @@
 
 **Status:** ready-for-agent
 
-- [ ] Visitor flow, counter, agent, break, service, department, site reports per §16.1
-- [ ] Agent KPIs per §15.2 and service/organisation KPIs per §15.3
-- [ ] Percentiles from raw Ticket records, never averages of averages (FR-MON-010)
-- [ ] Any date range with previous-equivalent-period comparison, absolute and % change (FR-MON-011, FR-RPT-010)
-- [ ] Outcome codes and break durations reportable (FR-AGT-033, FR-AGT-022)
-- [ ] Definition of done (SRS §27.5): user-facing strings in both en and bn packs; every protected action permission-checked server-side; specified events and audit entries emitted; each requirement ID above mapped to a passing test in the traceability matrix
+- [x] Visitor flow, counter, agent, break, service, department, site reports per §16.1
+- [x] Agent KPIs per §15.2 and service/organisation KPIs per §15.3
+- [x] Percentiles from raw Ticket records, never averages of averages (FR-MON-010)
+- [x] Any date range with previous-equivalent-period comparison, absolute and % change (FR-MON-011, FR-RPT-010)
+- [x] Outcome codes and break durations reportable (FR-AGT-033, FR-AGT-022)
+- [x] Definition of done (SRS §27.5): user-facing strings in both en and bn packs; every protected action permission-checked server-side; specified events and audit entries emitted; each requirement ID above mapped to a passing test in the traceability matrix

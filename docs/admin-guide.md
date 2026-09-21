@@ -655,6 +655,30 @@ the detailed token report — three separate wait/service times, one per Service
 ticket issued, and each row's own **transfers** column says how many hops separate it from the chain's first ticket
 (0 for the chain head itself).
 
-`POST /reports/{key}/run` is the one endpoint every report will answer through as later tickets (49-51) add exports,
-operational reports and scheduling; only `detailed-token` exists yet, and any other key is `not_found`.
+`POST /reports/{key}/run` is the one endpoint every report answers through. Ticket 49 added CSV/XLSX/PDF export
+(background for large exports, with an expiring download link) for `detailed-token`. Ticket 50 adds six more keys
+below the detailed token report on the same `/admin/reports` screen — `visitor-flow`, `counter`, `agent`, `service`,
+`department` and `site` — plus reuses the pre-existing `break` report (ticket 16) under this same catalogue. Ticket
+51 will add the remaining §16.1 rows (appointment, journey, feedback, notification, audit) and the peak-hours/
+staffing-gap planning views; any key outside the catalogue is `not_found`.
+
+**The six operational reports (SRS §16.1, §15.2, §15.3, ticket 50).** Pick a report from the dropdown, choose a
+**From** and **To** date (both required — a period comparison needs a bounded period to mirror), narrow with the
+same Zone/Service group/Service/Agent/Priority class/channel/visitor-category filters the detailed token report
+uses, and run it:
+
+- **Visitor flow** — issued, served, cancelled and no-show counts by hour, day, month or year, plus the peak number
+  of tickets waiting at once and, for the whole period, the abandonment rate and the mix of tickets by channel.
+- **Counter** — sessions, open hours, tickets served, idle time and utilisation, one row per Counter.
+- **Agent** — the full §15.2 KPI set per Agent: served, cancelled, average wait and service time, total service
+  time, average break time, successful token rate, and login adherence (session open time against the Site's own
+  configured business hours — the closest proxy this system has, since staff rostering itself is out of scope, §28.3).
+- **Service**, **Department**, **Site** — volume, average and 90th-percentile wait, average handling time and SLA
+  attainment, each one rolled up from the one below it (department rolls up Service, Site rolls up Department); the
+  service report also breaks average/P90 wait down by hour of day.
+
+Every report shows the requested period's own totals side by side with the immediately preceding period of the same
+length, and the absolute and percentage change between them (FR-RPT-010, FR-MON-011) — a from/to spanning this
+Monday through Sunday compares against the Monday through Sunday just before it. Percentiles are always computed
+from the raw Ticket rows a filter reaches, never derived from an already-grouped average (FR-MON-010).
 

@@ -39,6 +39,7 @@ const CATALOGUE_FIELDS = new Set([
   "priority_class_id",
   "max_minutes",
   "break_type_id",
+  "grain",
 ]);
 
 /** A localised sentence for a failed call; a validation failure also names the fields to check (SRS §20.3). */
