@@ -1174,5 +1174,15 @@
   "reports.detailedToken.col.counter": "কাউন্টার",
   "reports.detailedToken.col.agent": "এজেন্ট",
   "reports.detailedToken.col.outcome": "ফলাফল",
-  "reports.detailedToken.col.transfers": "স্থানান্তর"
+  "reports.detailedToken.col.transfers": "স্থানান্তর",
+
+  "reports.export.format": "এক্সপোর্ট ফরম্যাট",
+  "reports.export.csv": "CSV",
+  "reports.export.xlsx": "XLSX",
+  "reports.export.pdf": "PDF",
+  "reports.export.button": "এক্সপোর্ট",
+  "reports.export.exporting": "এক্সপোর্ট হচ্ছে…",
+  "reports.export.queued": "আপনার এক্সপোর্ট পটভূমিতে তৈরি হচ্ছে — প্রস্তুত হলে এটি স্বয়ংক্রিয়ভাবে ডাউনলোড হবে।",
+  "reports.export.ready": "আপনার এক্সপোর্ট প্রস্তুত এবং ডাউনলোড হয়ে গেছে।",
+  "reports.export.failed": "এক্সপোর্ট ব্যর্থ হয়েছে। আবার চেষ্টা করুন।"
 }

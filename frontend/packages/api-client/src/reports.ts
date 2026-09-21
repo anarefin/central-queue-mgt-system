@@ -78,3 +78,41 @@ export interface DetailedTokenReportPage {
   tickets_issued: number;
   rows: DetailedTokenReportRow[];
 }
+
+/** Report export (ticket 49, FR-RPT-003): `POST /reports/{key}/export`. */
+export type ReportExportFormat = "csv" | "xlsx" | "pdf";
+
+/** The same nine filters `run` takes (FR-RPT-001), plus the format to export in; there is no paging or sort — an
+ * export is always every row the filter reaches. */
+export interface ReportExportInput {
+  from?: string;
+  to?: string;
+  site_id?: string;
+  zone_id?: string;
+  service_group_id?: string;
+  service_id?: string;
+  agent_id?: string;
+  priority_class_id?: string;
+  channel?: Channel;
+  visitor_category?: string;
+  format: ReportExportFormat;
+}
+
+export type ReportExportJobStatus = "queued" | "running" | "done" | "failed";
+
+/** `GET /reports/jobs/{id}` (FR-RPT-004): a background export's progress and, once `done`, when its download link expires. */
+export interface ReportExportJob {
+  id: string;
+  report_key: string;
+  format: string;
+  status: ReportExportJobStatus;
+  row_count: number | null;
+  requested_at: string;
+  completed_at: string | null;
+  expires_at: string | null;
+  error: string | null;
+}
+
+/** `POST /reports/{key}/export`'s answer: the file itself when it was generated inline, or the job id to poll
+ * (`reports.job`) when it crossed the async row threshold (FR-RPT-004). */
+export type ReportExportOutcome = { kind: "ready"; blob: Blob; filename: string } | { kind: "queued"; jobId: string };

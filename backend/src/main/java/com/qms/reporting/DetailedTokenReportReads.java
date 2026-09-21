@@ -1,5 +1,7 @@
 package com.qms.reporting;
 
+import java.sql.PreparedStatement;
+import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -8,6 +10,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.Consumer;
+import javax.sql.DataSource;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 import tools.jackson.databind.json.JsonMapper;
@@ -66,12 +70,71 @@ class DetailedTokenReportReads {
             Map<String, String> outcomeLabel,
             int transfers) {}
 
+    /** A DB-cursor fetch size for {@link #stream}, small enough that one round-trip's worth of rows is trivial
+     * memory, large enough that a 1,000,000-row export (NFR-PERF-006) is not one round-trip per row. */
+    private static final int STREAM_FETCH_SIZE = 2_000;
+
     private final JdbcTemplate jdbc;
     private final JsonMapper mapper;
+    /** A second template over the same {@link DataSource}, its fetch size set only for {@link #stream}: mutating
+     * {@code jdbc}'s own fetch size would affect every other query this repository runs. Postgres only honours a
+     * fetch size as a real server-side cursor with {@code autoCommit=false}, which is exactly what an active
+     * {@code @Transactional} caller already gives the connection this shares with it. */
+    private final JdbcTemplate streamingJdbc;
 
-    DetailedTokenReportReads(JdbcTemplate jdbc, JsonMapper mapper) {
+    DetailedTokenReportReads(JdbcTemplate jdbc, JsonMapper mapper, DataSource dataSource) {
         this.jdbc = jdbc;
         this.mapper = mapper;
+        this.streamingJdbc = new JdbcTemplate(dataSource);
+        this.streamingJdbc.setFetchSize(STREAM_FETCH_SIZE);
+    }
+
+    /**
+     * Every row a filter reaches, in a stable order (issue time then ticket id, the same tie-break {@code
+     * page}'s own default sort gives), handed one at a time to {@code consumer} rather than collected into a list —
+     * an export (ticket 49, FR-RPT-004) can reach 1,000,000 rows (NFR-PERF-006), and this is the one read path
+     * both the inline and the background export share. Must run inside an active transaction (see {@link
+     * #streamingJdbc}); every caller of this method is itself {@code @Transactional}.
+     */
+    void stream(DetailedTokenReportFilter filter, Set<UUID> allowedSites, Set<UUID> allowedGroups, Consumer<Row> consumer) {
+        StringBuilder sql = new StringBuilder(
+                "SELECT ticket_id, token_number, visitor_code, visitor_name, visitor_category, service_group_name, service_name,"
+                        + " channel, priority_class_name, issued_at, called_at, served_at, closed_at, wait_seconds, service_seconds,"
+                        + " counter_label, agent_name, outcome_label, transfers"
+                        + " FROM reporting.ticket_fact WHERE 1 = 1");
+        List<Object> args = new ArrayList<>();
+        appendFilters(sql, args, filter, allowedSites, allowedGroups);
+        sql.append(" ORDER BY issued_at ASC, ticket_id ASC");
+        streamingJdbc.query(
+                connection -> {
+                    PreparedStatement ps = connection.prepareStatement(sql.toString());
+                    for (int i = 0; i < args.size(); i++) ps.setObject(i + 1, args.get(i));
+                    return ps;
+                },
+                (org.springframework.jdbc.core.RowCallbackHandler) rs -> consumer.accept(mapRow(rs)));
+    }
+
+    private Row mapRow(java.sql.ResultSet rs) throws SQLException {
+        return new Row(
+                rs.getObject("ticket_id", UUID.class),
+                rs.getString("token_number"),
+                rs.getString("visitor_code"),
+                rs.getString("visitor_name"),
+                rs.getString("visitor_category"),
+                names(rs.getString("service_group_name")),
+                names(rs.getString("service_name")),
+                rs.getString("channel"),
+                names(rs.getString("priority_class_name")),
+                instant(rs.getTimestamp("issued_at")),
+                instant(rs.getTimestamp("called_at")),
+                instant(rs.getTimestamp("served_at")),
+                instant(rs.getTimestamp("closed_at")),
+                (Integer) rs.getObject("wait_seconds"),
+                (Integer) rs.getObject("service_seconds"),
+                rs.getString("counter_label"),
+                rs.getString("agent_name"),
+                names(rs.getString("outcome_label")),
+                rs.getInt("transfers"));
     }
 
     long totalRows(DetailedTokenReportFilter filter, Set<UUID> allowedSites, Set<UUID> allowedGroups) {

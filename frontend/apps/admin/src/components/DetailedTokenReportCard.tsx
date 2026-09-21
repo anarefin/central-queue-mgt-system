@@ -7,6 +7,8 @@ import {
   type DetailedTokenReportPage,
   type DetailedTokenReportRequest,
   type PriorityClass,
+  type ReportExportFormat,
+  type ReportExportJob,
   type ReportSort,
   type ServiceEntry,
   type ServiceGroup,
@@ -17,9 +19,25 @@ import {
 } from "@qms/api-client";
 import { useI18n } from "@qms/i18n/react";
 import { Button, Card, ErrorAlert, SelectField, TextField } from "@qms/ui";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { describeError, localisedName, useList, useSubmit } from "../lib/admin-support";
 import { useApi } from "../lib/runtime";
+
+const EXPORT_FORMATS: ReportExportFormat[] = ["csv", "xlsx", "pdf"];
+const JOB_POLL_MS = 2000;
+
+/** Saves `blob` to disk under `filename`, the same object-URL-anchor trick every browser supports with no library. */
+function downloadBlob(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  try {
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = filename;
+    anchor.click();
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
 
 /** §16.1's own column order; each header names the {@link ReportSort} key clicking it sorts by (FR-RPT-002). */
 const COLUMNS: { key: string; sort: ReportSort }[] = [
@@ -77,6 +95,59 @@ export function DetailedTokenReportCard({ site }: { site: Site }) {
   const [direction, setDirection] = useState<SortDirection>("desc");
   const [result, setResult] = useState<DetailedTokenReportPage | null>(null);
   const { busy, error, run } = useSubmit();
+
+  const [format, setFormat] = useState<ReportExportFormat>("csv");
+  const [job, setJob] = useState<ReportExportJob | null>(null);
+  const exporting = useSubmit();
+  const pollTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // FR-RPT-004: a background export is polled at GET /reports/jobs/{id} until it leaves queued/running, then its
+  // finished file is pulled and handed to the browser the same way an inline export already is.
+  useEffect(() => {
+    if (!job || !client || (job.status !== "queued" && job.status !== "running")) return;
+    pollTimer.current = setInterval(() => {
+      void client.reports.job(job.id).then(
+        (next) => {
+          setJob(next);
+          if (next.status === "done") {
+            void client.reports.download(next.id).then((ready) => downloadBlob(ready.blob, ready.filename));
+          }
+        },
+        () => setJob((current) => (current ? { ...current, status: "failed" } : current)),
+      );
+    }, JOB_POLL_MS);
+    return () => {
+      if (pollTimer.current) clearInterval(pollTimer.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [job?.id, job?.status, client]);
+
+  function exportFilter(): Omit<DetailedTokenReportRequest, "page" | "size" | "sort" | "direction"> {
+    return {
+      site_id: site.id,
+      from: from ? new Date(from).toISOString() : undefined,
+      to: to ? new Date(to).toISOString() : undefined,
+      zone_id: zoneId || undefined,
+      service_group_id: groupId || undefined,
+      service_id: serviceId || undefined,
+      agent_id: agentId || undefined,
+      priority_class_id: priorityClassId || undefined,
+      channel: channel || undefined,
+      visitor_category: visitorCategory || undefined,
+    };
+  }
+
+  async function exportReport() {
+    setJob(null);
+    await exporting.run(async () => {
+      const outcome = await client!.reports.export(DETAILED_TOKEN_REPORT_KEY, { ...exportFilter(), format });
+      if (outcome.kind === "ready") {
+        downloadBlob(outcome.blob, outcome.filename);
+      } else {
+        setJob({ id: outcome.jobId, report_key: DETAILED_TOKEN_REPORT_KEY, format, status: "queued", row_count: null, requested_at: new Date().toISOString(), completed_at: null, expires_at: null, error: null });
+      }
+    });
+  }
 
   const nameOf = (names: Record<string, string>) => localisedName(names, language, site.default_language);
   const dateTime = (iso: string | null) => (iso ? `${formatDate(new Date(iso))} ${formatTime(new Date(iso))}` : "—");
@@ -178,8 +249,22 @@ export function DetailedTokenReportCard({ site }: { site: Site }) {
         <Button type="button" disabled={busy} onClick={() => runReport({ page: 0 })}>
           {t(busy ? "reports.running" : "reports.run")}
         </Button>
+        <SelectField
+          id="report-export-format"
+          label={t("reports.export.format")}
+          value={format}
+          onChange={(e) => setFormat(e.target.value as ReportExportFormat)}
+          options={EXPORT_FORMATS.map((f) => ({ value: f, label: t(`reports.export.${f}`) }))}
+        />
+        <Button type="button" variant="secondary" disabled={exporting.busy || job?.status === "queued" || job?.status === "running"} onClick={() => void exportReport()}>
+          {t(exporting.busy ? "reports.export.exporting" : "reports.export.button")}
+        </Button>
       </div>
       {error && <ErrorAlert>{error}</ErrorAlert>}
+      {exporting.error && <ErrorAlert>{exporting.error}</ErrorAlert>}
+      {job && (job.status === "queued" || job.status === "running") && <p role="status">{t("reports.export.queued")}</p>}
+      {job && job.status === "done" && <p role="status">{t("reports.export.ready")}</p>}
+      {job && job.status === "failed" && <ErrorAlert>{t("reports.export.failed")}</ErrorAlert>}
       {result && (
         <>
           <p role="status">{t("reports.summary", { total: result.total_rows, issued: result.tickets_issued })}</p>

@@ -1174,5 +1174,15 @@
   "reports.detailedToken.col.counter": "Counter",
   "reports.detailedToken.col.agent": "Agent",
   "reports.detailedToken.col.outcome": "Outcome",
-  "reports.detailedToken.col.transfers": "Transfers"
+  "reports.detailedToken.col.transfers": "Transfers",
+
+  "reports.export.format": "Export format",
+  "reports.export.csv": "CSV",
+  "reports.export.xlsx": "XLSX",
+  "reports.export.pdf": "PDF",
+  "reports.export.button": "Export",
+  "reports.export.exporting": "Exporting…",
+  "reports.export.queued": "Preparing your export in the background — it will download automatically once ready.",
+  "reports.export.ready": "Your export is ready and has been downloaded.",
+  "reports.export.failed": "The export failed. Please try again."
 }

@@ -61,7 +61,7 @@ import type {
 } from "./visitors";
 import type { BrandingInput, OrgBranding, PrintTemplate, PrintTemplateInput } from "./branding";
 import type { DashboardFilter, DashboardSnapshot } from "./dashboard";
-import type { DetailedTokenReportPage, DetailedTokenReportRequest } from "./reports";
+import type { DetailedTokenReportPage, DetailedTokenReportRequest, ReportExportInput, ReportExportJob, ReportExportOutcome } from "./reports";
 import type { IssueJourneyInput, JourneyResult, JourneySettings, JourneyTemplateSummary } from "./journeys";
 import type {
   NotificationMessageQuery,
@@ -450,6 +450,12 @@ export class ApiClient {
    */
   readonly reports = {
     run: (key: string, request: DetailedTokenReportRequest = {}) => this.request<DetailedTokenReportPage>("POST", `/reports/${key}/run`, request),
+    /** FR-RPT-003/004: the file itself (200) when the filtered row count is under the configured threshold, or a
+     * job id (202) to poll with `job` otherwise. */
+    export: (key: string, input: ReportExportInput) => this.requestExport(`/reports/${key}/export`, input),
+    job: (id: string) => this.request<ReportExportJob>("GET", `/reports/jobs/${id}`),
+    /** The finished file behind a `done` job's own expiring link (FR-RPT-004); `not_found` once expired. */
+    download: (id: string) => this.requestBlob(`/reports/jobs/${id}/download`),
   };
 
   /**
@@ -710,6 +716,49 @@ export class ApiClient {
     }
     throw error;
   }
+
+  /** {@code POST /reports/{key}/export}: unlike every other call, its 200 body is the file itself, not JSON, so it
+   * cannot go through {@link request}. A 202 is the async job id instead (FR-RPT-004). */
+  private async requestExport(path: string, body: unknown): Promise<ReportExportOutcome> {
+    const response = await this.rawFetch("POST", path, body);
+    if (response.status === 202) {
+      const job = (await response.json()) as { id: string };
+      return { kind: "queued", jobId: job.id };
+    }
+    if (!response.ok) throw await toError(response);
+    return { kind: "ready", blob: await response.blob(), filename: filenameFromDisposition(response.headers.get("Content-Disposition")) };
+  }
+
+  /** {@code GET /reports/jobs/{id}/download}: the finished export file. */
+  private async requestBlob(path: string): Promise<{ kind: "ready"; blob: Blob; filename: string }> {
+    const response = await this.rawFetch("GET", path);
+    if (!response.ok) throw await toError(response);
+    return { kind: "ready", blob: await response.blob(), filename: filenameFromDisposition(response.headers.get("Content-Disposition")) };
+  }
+
+  private async rawFetch(method: string, path: string, body?: unknown): Promise<Response> {
+    const headers: Record<string, string> = { Accept: "application/json, */*" };
+    const token = this.getAccessToken();
+    if (token) headers.Authorization = `Bearer ${token}`;
+    const language = this.getLanguage();
+    if (language) headers["Accept-Language"] = language;
+    if (body !== undefined) headers["Content-Type"] = "application/json";
+    try {
+      return await this.fetchImpl(`${this.origin}${API_BASE_PATH}${path}`, {
+        method,
+        headers,
+        body: body === undefined ? undefined : JSON.stringify(body),
+        credentials: "same-origin",
+      });
+    } catch (cause) {
+      throw new ApiRequestError(0, "network_error", String(cause));
+    }
+  }
+}
+
+function filenameFromDisposition(header: string | null): string {
+  const match = header?.match(/filename="([^"]+)"/);
+  return match?.[1] ?? "export";
 }
 
 async function toError(response: Response): Promise<ApiRequestError> {

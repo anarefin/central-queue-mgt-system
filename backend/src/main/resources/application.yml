@@ -84,6 +84,19 @@ qms:
       password: ${QMS_SMTP_PASSWORD:}
       starttls: ${QMS_SMTP_STARTTLS:true}
       from: ${QMS_SMTP_FROM:noreply@qms.local}
+  reporting:
+    export:
+      # FR-RPT-004: a report export over this many rows is generated in the background, notified with an expiring
+      # link, rather than answered inline.
+      async-threshold-rows: ${QMS_REPORT_EXPORT_ASYNC_THRESHOLD:50000}
+      # FR-RPT-004: how long a finished export's download link stays valid.
+      link-ttl-hours: ${QMS_REPORT_EXPORT_LINK_TTL_HOURS:24}
+      # Where a background export's finished file is kept until its link expires (or is swept, ticket 49's own
+      # scope ends at generating and serving it; a retention sweep is not part of this ticket).
+      storage-dir: ${QMS_REPORT_EXPORT_STORAGE_DIR:./data/report-exports}
+      # How often ReportExportJobScheduler sweeps queued jobs; "-" disables it so a test can drive a tick itself,
+      # the same convention qms.reporting.refresh-cron uses.
+      poll-cron: ${QMS_REPORT_EXPORT_POLL_CRON:*/3 * * * * *}
   connectivity:
     # FR-QUE-202, FR-MOB-041, ADR-0001, ticket 44: external URLs InternetConnectivityMonitor probes to detect this
     # Site's own loss of internet (its public origin, a Web Push provider, or both); empty (the default) leaves

@@ -30,6 +30,11 @@ dependencies {
     implementation("org.springframework.boot:spring-boot-starter-flyway")
     implementation("org.springframework.boot:spring-boot-starter-validation")
     implementation("org.springframework.boot:spring-boot-starter-security-oauth2-resource-server")
+    // Report export formats (ticket 49, FR-RPT-003): XLSX (streaming SXSSF, so a large export stays in bounded
+    // memory, NFR-PERF-006) and PDF. CSV needs no library (AuditCsv's own precedent).
+    implementation("org.apache.poi:poi:5.3.0")
+    implementation("org.apache.poi:poi-ooxml:5.3.0")
+    implementation("org.apache.pdfbox:pdfbox:3.0.3")
     runtimeOnly("org.flywaydb:flyway-database-postgresql")
     runtimeOnly("org.postgresql:postgresql")
 
@@ -47,6 +52,8 @@ tasks.withType<Test>().configureEach {
     systemProperty("qms.security.key-dir", layout.buildDirectory.dir("test-keys").get().asFile.absolutePath)
     // The scheduled numbering reset is driven by hand in tests; a clock-driven one would race with them.
     systemProperty("qms.numbering.scheduler.cron", "-")
+    // Report export files (ticket 49) land under build/, never the source tree, the same convention test-keys uses.
+    systemProperty("qms.reporting.export.storage-dir", layout.buildDirectory.dir("test-report-exports").get().asFile.absolutePath)
 }
 
 // Unit and slice tests run without Docker; `*IT` classes use Testcontainers against real PostgreSQL.

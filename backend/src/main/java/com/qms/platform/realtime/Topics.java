@@ -14,6 +14,7 @@ public final class Topics {
     public static final String SITE_PREFIX = "site:";
     public static final String DASHBOARD_SUFFIX = ":dashboard";
     public static final String ALERTS_SUFFIX = ":alerts";
+    public static final String REPORT_EXPORT = "report-export:";
 
     private Topics() {}
 
@@ -58,5 +59,12 @@ public final class Topics {
      * persisted, acknowledgeable {@code alert} row itself. */
     public static String alerts(UUID siteId) {
         return SITE_PREFIX + siteId + ALERTS_SUFFIX;
+    }
+
+    /** A staff user's own background report exports (ticket 49, FR-RPT-004): the "notified" of an async export's
+     * expiring download link, watched only by the user who requested it — never a Site-wide broadcast, since two
+     * users asking for the same report do not each want the other's job. */
+    public static String reportExport(UUID userId) {
+        return REPORT_EXPORT + userId;
     }
 }
