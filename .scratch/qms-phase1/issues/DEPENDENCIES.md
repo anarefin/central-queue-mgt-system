@@ -47,7 +47,7 @@
 43-remote-arrival-and-forfeit              42,39,12        done     44m      32 files, +1623 −18 c9536a0..de8f5f2
 44-internet-loss-degradation               43              done     n/a*     23 files, +722 −17  54a6355..bb513dd
 45-post-service-feedback                   37              done     34m      27 files, +1306 −6  927c92b..ba47e54
-46-live-dashboard                          18,16,11        todo     —        —                   —
+46-live-dashboard                          18,16,11        done     n/a*     23 files, +2278 −9  68dff54..cc0d99f
 47-threshold-alerts                        46,24,38        todo     —        —                   —
 48-reporting-store-and-token-report        10,15           todo     —        —                   —
 49-report-exports                          48,38           todo     —        —                   —
@@ -70,7 +70,7 @@
 #   resumed to finish verification and commit. Elapsed wall-clock not comparable either.
 # * 30: commit landed but the run was interrupted before bookkeeping; confirmed done and
 #   backfilled on resume, elapsed wall-clock not recorded.
-# * 36: worker stalled (no progress 600s) mid-verification; resumed to finish and commit.
+# * 36, 46: worker stalled (no progress 600s) mid-verification; resumed to finish and commit.
 # * 37: mid-flight background security review flagged a secret-in-URL issue (ticket secret in
 #   query string); relayed to the worker before commit, fixed (fragment + replaceState +
 #   no-referrer) and verified in the landed diff.

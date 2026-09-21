@@ -4,7 +4,7 @@
 
 **Blocked by:** 18 — Re-prioritise and staff cancel; 16 — Breaks and agent availability; 11 — Realtime hub
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [x] Refreshes via `site:{id}:dashboard` topic, ≤ 5 s stale (FR-MON-001, NFR-PERF-004)
 - [x] Filters by Site, Zone, Service group, Service, Priority class, shareable as a URL (FR-MON-002)
