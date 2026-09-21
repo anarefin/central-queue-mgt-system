@@ -4,7 +4,7 @@
 
 **Blocked by:** 46 — Live dashboard; 24 — Device pairing and fleet management; 38 — Notification pipeline and in-app channel
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [x] Thresholds per Service: queue length, longest wait, idle counters with waiting queue, no-show rate, device offline duration (FR-MON-020)
 - [x] Breach raises an in-app alert to the relevant Team Admin, optional escalation to Org Admin after a delay (FR-MON-021)

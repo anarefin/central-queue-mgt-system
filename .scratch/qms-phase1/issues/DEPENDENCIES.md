@@ -48,7 +48,7 @@
 44-internet-loss-degradation               43              done     n/a*     23 files, +722 −17  54a6355..bb513dd
 45-post-service-feedback                   37              done     34m      27 files, +1306 −6  927c92b..ba47e54
 46-live-dashboard                          18,16,11        done     n/a*     23 files, +2278 −9  68dff54..cc0d99f
-47-threshold-alerts                        46,24,38        todo     —        —                   —
+47-threshold-alerts                        46,24,38        done     41m      44 files, +2443 −20 5765d45..1f93cfa
 48-reporting-store-and-token-report        10,15           todo     —        —                   —
 49-report-exports                          48,38           todo     —        —                   —
 50-operational-reports                     48              todo     —        —                   —
