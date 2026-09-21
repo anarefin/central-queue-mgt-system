@@ -6,6 +6,6 @@
 
 **Status:** ready-for-agent
 
-- [ ] Daily / weekly / monthly schedules with recipients and format (FR-RPT-005)
-- [ ] Runs once cluster-wide; failures visible in the delivery log
-- [ ] Definition of done (SRS §27.5): user-facing strings in both en and bn packs; every protected action permission-checked server-side; specified events and audit entries emitted; each requirement ID above mapped to a passing test in the traceability matrix
+- [x] Daily / weekly / monthly schedules with recipients and format (FR-RPT-005)
+- [x] Runs once cluster-wide; failures visible in the delivery log
+- [x] Definition of done (SRS §27.5): user-facing strings in both en and bn packs; every protected action permission-checked server-side; specified events and audit entries emitted; each requirement ID above mapped to a passing test in the traceability matrix

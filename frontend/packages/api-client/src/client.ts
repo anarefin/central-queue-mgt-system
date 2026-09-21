@@ -78,6 +78,9 @@ import type {
   ReportExportInput,
   ReportExportJob,
   ReportExportOutcome,
+  ReportSchedule,
+  ReportScheduleDelivery,
+  ReportScheduleInput,
   StaffingGapResponse,
 } from "./reports";
 import type { IssueJourneyInput, JourneyResult, JourneySettings, JourneyTemplateSummary } from "./journeys";
@@ -487,6 +490,18 @@ export class ApiClient {
     job: (id: string) => this.request<ReportExportJob>("GET", `/reports/jobs/${id}`),
     /** The finished file behind a `done` job's own expiring link (FR-RPT-004); `not_found` once expired. */
     download: (id: string) => this.requestBlob(`/reports/jobs/${id}/download`),
+    /** Scheduled report delivery (ticket 52, FR-RPT-005): any report key from the catalogue above, emailed to a
+     * named list daily, weekly or monthly, in a chosen format. Creating or changing a schedule needs `reports:
+     * run_export` and `visitor_pii:view`, the same gate an export itself already carries; viewing one or its
+     * delivery log only needs `reports:run_export`. */
+    schedules: {
+      list: () => this.request<Items<ReportSchedule>>("GET", "/reports/schedules"),
+      get: (id: string) => this.request<ReportSchedule>("GET", `/reports/schedules/${id}`),
+      create: (input: ReportScheduleInput) => this.request<ReportSchedule>("POST", "/reports/schedules", input),
+      update: (id: string, input: ReportScheduleInput) => this.request<ReportSchedule>("PUT", `/reports/schedules/${id}`, input),
+      remove: (id: string) => this.request<void>("DELETE", `/reports/schedules/${id}`),
+      deliveries: (id: string) => this.request<Items<ReportScheduleDelivery>>("GET", `/reports/schedules/${id}/deliveries`),
+    },
   };
 
   /**

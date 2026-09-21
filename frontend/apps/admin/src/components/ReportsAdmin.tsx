@@ -10,6 +10,7 @@ import { DetailedTokenReportCard } from "./DetailedTokenReportCard";
 import { DomainReportsCard } from "./DomainReportsCard";
 import { OperationalReportsCard } from "./OperationalReportsCard";
 import { PlanningViewsCard } from "./PlanningViewsCard";
+import { ReportScheduleCard } from "./ReportScheduleCard";
 
 /** Reports (SRS §16, ticket 48): picks the Site, then the detailed token report for it. Every call is
  * permission-checked and scoped on the server (`reports:run_export`, FR-CFG-106). */
@@ -38,6 +39,7 @@ export function ReportsAdmin() {
       {site && <OperationalReportsCard key={`operational-report-${site.id}`} site={site} />}
       {site && <DomainReportsCard key={`domain-report-${site.id}`} site={site} />}
       {site && <PlanningViewsCard key={`planning-view-${site.id}`} site={site} />}
+      {site && <ReportScheduleCard key={`report-schedule-${site.id}`} site={site} />}
     </div>
   );
 }

@@ -303,3 +303,71 @@ export interface StaffingGapResponse {
   to: string;
   rows: StaffingGapRow[];
 }
+
+/** Scheduled report delivery (ticket 52, SRS §16, FR-RPT-005): any report key already in the catalogue above can
+ * be scheduled — `detailed-token`, `break`, the six operational keys, the five domain keys (including `audit`) and
+ * the two planning views. */
+export const SCHEDULABLE_REPORT_KEYS: string[] = [
+  DETAILED_TOKEN_REPORT_KEY,
+  "break",
+  ...OPERATIONAL_REPORT_KEYS,
+  ...DOMAIN_REPORT_KEYS,
+  "audit",
+  ...PLANNING_VIEW_KEYS,
+];
+
+export type ReportScheduleCadence = "daily" | "weekly" | "monthly";
+
+/** FR-RPT-001's filters that apply across the whole catalogue, minus `from`/`to` — a schedule computes its own
+ * report window fresh on every run from its own cadence, never a fixed range. */
+export interface ReportScheduleFilter {
+  site_id?: string;
+  zone_id?: string;
+  service_group_id?: string;
+  service_id?: string;
+  agent_id?: string;
+  priority_class_id?: string;
+  channel?: Channel;
+  visitor_category?: string;
+}
+
+/** The body of `POST /reports/schedules` and `PUT /reports/schedules/{id}` (ticket 52). `report_key` is immutable
+ * once created; `enabled` is ignored on create (a new schedule always starts enabled). */
+export interface ReportScheduleInput {
+  report_key: string;
+  cadence: ReportScheduleCadence;
+  format: ReportExportFormat;
+  recipients: string[];
+  filter?: ReportScheduleFilter;
+  enabled?: boolean;
+}
+
+/** A schedule as the API answers it. */
+export interface ReportSchedule {
+  id: string;
+  report_key: string;
+  cadence: ReportScheduleCadence;
+  format: ReportExportFormat;
+  recipients: string[];
+  filter: ReportScheduleFilter;
+  enabled: boolean;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+  next_run_at: string;
+  last_run_at: string | null;
+}
+
+export type ReportScheduleDeliveryStatus = "sent" | "failed";
+
+/** One attempted delivery, most recent first (`GET /reports/schedules/{id}/deliveries`) — a schedule's own
+ * delivery log; `recipient` is `null` when the report itself failed to generate. */
+export interface ReportScheduleDelivery {
+  id: string;
+  run_at: string;
+  recipient: string | null;
+  status: ReportScheduleDeliveryStatus;
+  row_count: number | null;
+  error: string | null;
+  attempted_at: string;
+}
