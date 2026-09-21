@@ -49,7 +49,7 @@
 45-post-service-feedback                   37              done     34m      27 files, +1306 −6  927c92b..ba47e54
 46-live-dashboard                          18,16,11        done     n/a*     23 files, +2278 −9  68dff54..cc0d99f
 47-threshold-alerts                        46,24,38        done     41m      44 files, +2443 −20 5765d45..1f93cfa
-48-reporting-store-and-token-report        10,15           todo     —        —                   —
+48-reporting-store-and-token-report        10,15           done     56m      24 files, +1868 −10 f3074b4..4f7c431
 49-report-exports                          48,38           todo     —        —                   —
 50-operational-reports                     48              todo     —        —                   —
 51-domain-reports-and-planning-views       50,36,31,45     todo     —        —                   —

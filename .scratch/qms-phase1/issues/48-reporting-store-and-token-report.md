@@ -4,7 +4,7 @@
 
 **Blocked by:** 10 — Counter session: call next, start service, complete; 15 — Transfer to a Successor ticket
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [x] Separate reporting schema of fact/dimension tables refreshed from ticket and ticket_event, ≤ 60 s behind (§16, FR-RPT-020, §18.5)
 - [x] Reports never query live transactional tables
