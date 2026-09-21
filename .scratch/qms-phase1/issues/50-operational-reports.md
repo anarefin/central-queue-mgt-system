@@ -4,7 +4,7 @@
 
 **Blocked by:** 48 — Reporting store and detailed token report
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [x] Visitor flow, counter, agent, break, service, department, site reports per §16.1
 - [x] Agent KPIs per §15.2 and service/organisation KPIs per §15.3
