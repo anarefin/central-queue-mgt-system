@@ -1,6 +1,6 @@
 "use client";
 
-import type { DashboardFilter, DashboardSnapshot } from "@qms/api-client";
+import type { Alert, DashboardFilter, DashboardSnapshot } from "@qms/api-client";
 import { useI18n } from "@qms/i18n/react";
 import { Button, Card, ErrorAlert, TextField } from "@qms/ui";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -103,6 +103,7 @@ export function LiveDashboard() {
           <ServedPerCounterCard snapshot={snapshot} client={client} onChanged={load} />
           <AgentStatusCard client={client} onChanged={load} />
           <StaffAlertCard filter={filter} client={client} />
+          <AlertsCard filter={filter} client={client} />
         </div>
       )}
     </div>
@@ -426,6 +427,86 @@ function StaffAlertCard({ filter, client }: { filter: DashboardFilter; client: {
         </Button>
       </div>
       {sent && <p className="qms-muted">{t("dashboard.actions.sendAlert.sent")}</p>}
+      {error && <ErrorAlert>{error}</ErrorAlert>}
+    </Card>
+  );
+}
+
+interface AlertsApiLike {
+  alerts: {
+    list: (siteId: string, state?: "open" | "acknowledged") => Promise<{ items: Alert[] }>;
+    acknowledge: (id: string, note?: string) => Promise<Alert>;
+  };
+}
+
+/**
+ * Threshold alerts (SRS §15.4, ticket 47): the Site's current open alerts, refreshed through `site:{id}:alerts`
+ * (`alert.raised` / `alert.acknowledged`, FR-MON-021) the same way the rest of this dashboard refreshes through its
+ * own topic — a signal only, so every one re-asks the caller's own scoped `GET /sites/{id}/alerts` rather than trust
+ * a broadcast payload (FR-CFG-105). Acknowledging with an optional note is FR-MON-022.
+ */
+function AlertsCard({ filter, client }: { filter: DashboardFilter; client: AlertsApiLike | null }) {
+  const { t, formatNumber } = useI18n();
+  const [alerts, setAlerts] = useState<Alert[]>([]);
+  const [notes, setNotes] = useState<Record<string, string>>({});
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = useCallback(() => {
+    if (!client) return;
+    client.alerts.list(filter.site_id, "open").then(
+      (result) => {
+        setAlerts(result.items);
+        setError(null);
+      },
+      (cause) => setError(describeError(t, cause)),
+    );
+  }, [client, filter.site_id, t]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  useTopics(filter ? [`site:${filter.site_id}:alerts`] : [], load);
+
+  async function acknowledge(id: string) {
+    if (!client) return;
+    setBusyId(id);
+    try {
+      await client.alerts.acknowledge(id, notes[id]?.trim() || undefined);
+      setError(null);
+      load();
+    } catch (cause) {
+      setError(describeError(t, cause));
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  return (
+    <Card>
+      <h3 className="qms-label">{t("dashboard.tiles.alerts")}</h3>
+      {alerts.length === 0 && <p className="qms-muted">{t("dashboard.alerts.empty")}</p>}
+      <ul className="qms-list">
+        {alerts.map((a) => (
+          <li key={a.id} className="qms-row">
+            <span>
+              {t(`dashboard.alerts.type.${a.threshold_type}`)}:{" "}
+              {t("dashboard.alerts.row", { measured: formatNumber(a.measured_value), threshold: formatNumber(a.threshold_value), count: formatNumber(a.breach_count) })}
+              {a.escalated_at && <span className="qms-badge qms-badge--down"> {t("dashboard.alerts.escalated")}</span>}
+            </span>
+            <TextField
+              id={`alert-note-${a.id}`}
+              label={t("dashboard.alerts.note")}
+              value={notes[a.id] ?? ""}
+              onChange={(e) => setNotes((n) => ({ ...n, [a.id]: e.target.value }))}
+            />
+            <Button type="button" disabled={busyId === a.id} onClick={() => acknowledge(a.id)}>
+              {t("dashboard.alerts.acknowledge")}
+            </Button>
+          </li>
+        ))}
+      </ul>
       {error && <ErrorAlert>{error}</ErrorAlert>}
     </Card>
   );

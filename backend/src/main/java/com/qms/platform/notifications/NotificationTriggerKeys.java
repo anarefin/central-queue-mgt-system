@@ -23,6 +23,14 @@ public final class NotificationTriggerKeys {
     public static final String APPOINTMENT_REMINDER = "appointment_reminder";
     public static final String APPOINTMENT_RESCHEDULED_OR_CANCELLED = "appointment_rescheduled_or_cancelled";
     public static final String WAITLIST_SLOT_OFFERED = "waitlist_slot_offered";
+    // The operational-alert triggers (§14.2, ticket 47): fired by com.qms.dashboard's own threshold sweep
+    // (queue_sla_breach, counter_unattended, kiosk_display_offline) and com.qms.session's break-overrun sweep
+    // (agent_break_overrun), neither of which may depend on com.qms.notification (ArchitectureTest's package-cycle
+    // rule), the same reason every other trigger key above is named here rather than in NotificationTriggerKey itself.
+    public static final String QUEUE_SLA_BREACH = "queue_sla_breach";
+    public static final String AGENT_BREAK_OVERRUN = "agent_break_overrun";
+    public static final String COUNTER_UNATTENDED = "counter_unattended";
+    public static final String KIOSK_DISPLAY_OFFLINE = "kiosk_display_offline";
 
     private NotificationTriggerKeys() {}
 }

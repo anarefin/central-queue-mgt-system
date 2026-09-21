@@ -6,6 +6,7 @@ import { ErrorAlert, SelectField } from "@qms/ui";
 import { useState } from "react";
 import { describeError, useList } from "../lib/admin-support";
 import { useApi } from "../lib/runtime";
+import { AlertThresholdsCard } from "./AlertThresholdsCard";
 import { NotificationLogCard } from "./NotificationLogCard";
 import { NotificationTemplatesCard } from "./NotificationTemplatesCard";
 import { NotificationTriggersCard } from "./NotificationTriggersCard";
@@ -37,6 +38,7 @@ export function NotificationsAdmin() {
         />
       )}
       {site && <NotificationTriggersCard key={`triggers-${site.id}`} site={site} />}
+      {site && <AlertThresholdsCard key={`thresholds-${site.id}`} site={site} />}
       <NotificationTemplatesCard />
       <NotificationLogCard />
     </div>

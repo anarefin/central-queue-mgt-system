@@ -13,6 +13,7 @@ public final class Topics {
     public static final String STAFF_ALERT = "staff-alert:";
     public static final String SITE_PREFIX = "site:";
     public static final String DASHBOARD_SUFFIX = ":dashboard";
+    public static final String ALERTS_SUFFIX = ":alerts";
 
     private Topics() {}
 
@@ -50,5 +51,12 @@ public final class Topics {
      * subscriber of the topic. */
     public static String dashboard(UUID siteId) {
         return SITE_PREFIX + siteId + DASHBOARD_SUFFIX;
+    }
+
+    /** A Site's threshold alerts (ticket 47, §21.2, §15.4): {@code alert.raised} and {@code alert.acknowledged},
+     * distinct from {@link #staffAlert(UUID)}'s own free-text/notification firehose — this one carries the
+     * persisted, acknowledgeable {@code alert} row itself. */
+    public static String alerts(UUID siteId) {
+        return SITE_PREFIX + siteId + ALERTS_SUFFIX;
     }
 }

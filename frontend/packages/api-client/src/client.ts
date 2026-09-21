@@ -1,4 +1,5 @@
 import { ApiRequestError, isApiErrorCode, type ApiErrorBody } from "./errors";
+import type { Alert, AlertState, AlertThreshold, AlertThresholdInput } from "./alerts";
 import type { Appointment, Availability, BookAppointmentInput, RescheduleAppointmentInput } from "./appointments";
 import type { AppointmentSummary, SavedSite, TicketSummary, VisitorMe, VisitorTokenResponse } from "./visitor-account";
 import type { RemoteJoinInput, RemoteJoinPolicy } from "./remote-join";
@@ -440,6 +441,19 @@ export class ApiClient {
     /** A supervisor's own free-text message to the Site's team and org admins (FR-MON-004), on the same
      * `staff-alert:{site_id}` channel ticket 38 already gives the automatic threshold alerts of ticket 47. */
     sendStaffAlert: (siteId: string, message: string) => this.request<void>("POST", `/dashboard/${siteId}/staff-alert`, { message }),
+  };
+
+  /**
+   * Threshold alerts (SRS §15.4, §11.3 FR-AGT-023, ticket 47): a Service's own thresholds (FR-MON-020), a Site's
+   * current alerts on `site:{id}:alerts` (`alert.raised` / `alert.acknowledged`), and acknowledging one with an
+   * optional note (FR-MON-022). Raising an alert is system-driven; there is no write here for it.
+   */
+  readonly alerts = {
+    thresholds: (serviceId: string) => this.request<AlertThreshold>("GET", `/services/${serviceId}/alert-thresholds`),
+    setThresholds: (serviceId: string, input: AlertThresholdInput) =>
+      this.request<AlertThreshold>("PUT", `/services/${serviceId}/alert-thresholds`, input),
+    list: (siteId: string, state?: AlertState) => this.request<Items<Alert>>("GET", `/sites/${siteId}/alerts${state ? `?state=${state}` : ""}`),
+    acknowledge: (id: string, note?: string) => this.request<Alert>("POST", `/alerts/${id}/acknowledge`, note ? { note } : undefined),
   };
 
   /**

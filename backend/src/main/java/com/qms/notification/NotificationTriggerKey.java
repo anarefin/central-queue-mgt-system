@@ -19,9 +19,9 @@ import java.util.Set;
  * (FR-NTF-033), so a Phase 2 channel (SMS, native push) with nothing behind it yet costs nothing to leave catalogued
  * here already (FR-NTF-005, FR-INT-040).
  *
- * <p>The operational-alert triggers still have no caller wired (they need live-dashboard monitoring that later
- * tickets build — 46-47) but are catalogued here with their defaults and variables so their templates and per-site
- * settings can already be configured (FR-NTF-010, FR-NTF-020). {@code approaching_turn} is fired by
+ * <p>The operational-alert triggers are fired by {@code com.qms.dashboard}'s own threshold sweep ({@code
+ * queue_sla_breach}, {@code counter_unattended}, {@code kiosk_display_offline}, FR-MON-020..023) and {@code
+ * com.qms.session}'s break-overrun sweep ({@code agent_break_overrun}, FR-AGT-023) — ticket 47. {@code approaching_turn} is fired by
  * {@code com.qms.queue.RemoteArrivalService}'s own sweep (ticket 43, FR-MOB-020), the same wait-estimate threshold
  * this catalogue already anticipated; {@code ticket_forfeited} likewise (ticket 43, FR-MOB-022). The appointment
  * triggers (ticket 40, FR-APT-050) are fired from {@code com.qms.appointment.AppointmentBookingService} and its
@@ -40,10 +40,10 @@ public enum NotificationTriggerKey {
     APPOINTMENT_RESCHEDULED_OR_CANCELLED(NotificationTriggerKeys.APPOINTMENT_RESCHEDULED_OR_CANCELLED, List.of("email", "web_push"), true, false, appointmentVars()),
     WAITLIST_SLOT_OFFERED(NotificationTriggerKeys.WAITLIST_SLOT_OFFERED, List.of("web_push", "email"), true, true, appointmentVars()),
     SERVICE_COMPLETED_FEEDBACK(NotificationTriggerKeys.SERVICE_COMPLETED_FEEDBACK, List.of("web_push", "in_app"), false, false, ticketVars()),
-    QUEUE_SLA_BREACH("queue_sla_breach", List.of("staff_alert"), true, true, staffAlertVars()),
-    AGENT_BREAK_OVERRUN("agent_break_overrun", List.of("staff_alert"), true, true, staffAlertVars()),
-    COUNTER_UNATTENDED("counter_unattended", List.of("staff_alert"), true, true, staffAlertVars()),
-    KIOSK_DISPLAY_OFFLINE("kiosk_display_offline", List.of("staff_alert"), true, true, staffAlertVars());
+    QUEUE_SLA_BREACH(NotificationTriggerKeys.QUEUE_SLA_BREACH, List.of("staff_alert"), true, true, staffAlertVars()),
+    AGENT_BREAK_OVERRUN(NotificationTriggerKeys.AGENT_BREAK_OVERRUN, List.of("staff_alert"), true, true, staffAlertVars()),
+    COUNTER_UNATTENDED(NotificationTriggerKeys.COUNTER_UNATTENDED, List.of("staff_alert"), true, true, staffAlertVars()),
+    KIOSK_DISPLAY_OFFLINE(NotificationTriggerKeys.KIOSK_DISPLAY_OFFLINE, List.of("staff_alert"), true, true, staffAlertVars());
 
     private static List<String> ticketVars() {
         return List.of("token_number", "service_group_name", "service_name", "site_name");
