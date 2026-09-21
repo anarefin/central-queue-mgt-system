@@ -50,7 +50,7 @@
 46-live-dashboard                          18,16,11        done     n/a*     23 files, +2278 −9  68dff54..cc0d99f
 47-threshold-alerts                        46,24,38        done     41m      44 files, +2443 −20 5765d45..1f93cfa
 48-reporting-store-and-token-report        10,15           done     56m      24 files, +1868 −10 f3074b4..4f7c431
-49-report-exports                          48,38           todo     —        —                   —
+49-report-exports                          48,38           done     n/a*     34 files, +2129 −12 1fc9582..f7da914
 50-operational-reports                     48              todo     —        —                   —
 51-domain-reports-and-planning-views       50,36,31,45     todo     —        —                   —
 52-scheduled-report-delivery               49,40           todo     —        —                   —
@@ -77,6 +77,11 @@
 # * 39: mid-flight background security review flagged an SSRF issue (unvalidated push
 #   subscription endpoint URL); relayed to the worker before commit, fixed
 #   (PushEndpointSecurity host/scheme validation) and verified in the landed diff.
+# * 49: worker ended its turn twice waiting on a backgrounded gradlew check without seeing
+#   the result; resumed twice with an explicit foreground-verification instruction before it
+#   finished. Also flagged a KNOWN PRE-EXISTING FLAKE, not caused by this ticket: some
+#   com.qms.appointment tests hardcode today's real calendar date, so they can collide with
+#   actual test-run dates; suite was green this run but worth a follow-up ticket.
 # * Out-of-band fix (commit fde12f4, parent, not tied to a ticket): a follow-up security
 #   review found the already-landed ticket-39 PushEndpointSecurity had an IPv6 ULA
 #   (fc00::/7) and IPv4-mapped-address bypass; fixed directly since the active worker at

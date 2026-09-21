@@ -4,7 +4,7 @@
 
 **Blocked by:** 48 — Reporting store and detailed token report; 38 — Notification pipeline and in-app channel
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [x] CSV, XLSX (raw values) and PDF (FR-RPT-003)
 - [x] Header block: name, filters, generation timestamp with timezone, user (FR-RPT-006)
