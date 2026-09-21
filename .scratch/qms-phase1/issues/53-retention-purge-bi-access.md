@@ -6,10 +6,10 @@
 
 **Status:** ready-for-agent
 
-- [ ] Ticket detail retention configurable (default 24 months), then purged or reduced to anonymised aggregates (FR-RPT-021)
-- [ ] Aggregates retained longer (default 7 years) and survive detail purge (FR-RPT-022)
-- [ ] Retention per data class; purge job logs removed volumes in aggregate (FR-SEC-032)
-- [ ] Audit retention independent, default 24 months (FR-SEC-043)
-- [ ] Provisionable read-only reporting DB user with documented views stable across minor releases (FR-RPT-023)
-- [ ] Nightly Parquet or CSV extract to a configured location (FR-INT-060)
-- [ ] Definition of done (SRS §27.5): user-facing strings in both en and bn packs; every protected action permission-checked server-side; specified events and audit entries emitted; each requirement ID above mapped to a passing test in the traceability matrix
+- [x] Ticket detail retention configurable (default 24 months), then purged or reduced to anonymised aggregates (FR-RPT-021)
+- [x] Aggregates retained longer (default 7 years) and survive detail purge (FR-RPT-022)
+- [x] Retention per data class; purge job logs removed volumes in aggregate (FR-SEC-032)
+- [x] Audit retention independent, default 24 months (FR-SEC-043)
+- [x] Provisionable read-only reporting DB user with documented views stable across minor releases (FR-RPT-023)
+- [x] Nightly Parquet or CSV extract to a configured location (FR-INT-060)
+- [x] Definition of done (SRS §27.5): user-facing strings in both en and bn packs; every protected action permission-checked server-side; specified events and audit entries emitted; each requirement ID above mapped to a passing test in the traceability matrix

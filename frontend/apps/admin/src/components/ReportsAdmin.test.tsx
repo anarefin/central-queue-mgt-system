@@ -103,6 +103,7 @@ function fakeApi(extra: Routes = {}): Recorded[] {
     "GET /priority-classes": () => json(200, { items: [NORMAL] }),
     "GET /users?limit=200": () => json(200, USERS),
     "GET /reports/schedules": () => json(200, { items: [] }),
+    "GET /retention/policies": () => json(200, { items: [] }),
     ...extra,
   });
 }

@@ -97,6 +97,15 @@ qms:
       # How often ReportExportJobScheduler sweeps queued jobs; "-" disables it so a test can drive a tick itself,
       # the same convention qms.reporting.refresh-cron uses.
       poll-cron: ${QMS_REPORT_EXPORT_POLL_CRON:*/3 * * * * *}
+    extract:
+      # FR-INT-060: a nightly CSV extract of the reporting fact tables (bi.ticket_fact_v1), for clients who run
+      # their own warehouse. A client-specified location; "-" disables the schedule so a test can drive it itself.
+      location: ${QMS_REPORTING_EXTRACT_LOCATION:./data/reporting-extracts}
+      cron: ${QMS_REPORTING_EXTRACT_CRON:0 0 3 * * *}
+  retention:
+    # FR-RPT-021/022, FR-SEC-032/043: how often RetentionPurgeRunner sweeps reporting.retention_policy's own three
+    # data classes (ticket_detail, ticket_aggregate, audit). "-" disables it so a test can drive a tick itself.
+    purge-cron: ${QMS_RETENTION_PURGE_CRON:0 30 2 * * *}
   connectivity:
     # FR-QUE-202, FR-MOB-041, ADR-0001, ticket 44: external URLs InternetConnectivityMonitor probes to detect this
     # Site's own loss of internet (its public origin, a Web Push provider, or both); empty (the default) leaves

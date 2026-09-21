@@ -1359,5 +1359,19 @@
   "reports.schedule.deliveries.empty": "এখনও কোনো ডেলিভারি নেই।",
   "reports.schedule.deliveries.sent": "{recipient}-কে পাঠানো হয়েছে",
   "reports.schedule.deliveries.failed": "{recipient}-এর জন্য ব্যর্থ: {error}",
-  "reports.schedule.deliveries.generationFailed": "প্রতিবেদনটি তৈরি করতেই ব্যর্থ হয়েছে: {error}"
+  "reports.schedule.deliveries.generationFailed": "প্রতিবেদনটি তৈরি করতেই ব্যর্থ হয়েছে: {error}",
+  "retention.title": "সংরক্ষণ, মুছে ফেলা এবং BI অ্যাক্সেস",
+  "retention.intro": "নিয়মিত মুছে ফেলার কাজ চালানোর আগে প্রতিটি ডেটা শ্রেণি কত দিন সংরক্ষিত থাকবে (SRS §16.3, §25.4-25.5, FR-RPT-021/022, FR-SEC-032/043)।",
+  "retention.dataClass.ticket_detail": "টিকিটের বিস্তারিত তথ্য",
+  "retention.dataClass.ticket_aggregate": "টিকিটের সমষ্টিগত তথ্য",
+  "retention.dataClass.audit": "অডিট লগ",
+  "retention.retentionMonths": "সংরক্ষণকাল (মাস)",
+  "retention.mode": "সংরক্ষণকাল শেষ হলে",
+  "retention.mode.purge": "সম্পূর্ণ মুছে ফেলা হবে",
+  "retention.mode.anonymize": "পরিচয়হীন সমষ্টিগত তথ্যে রূপান্তরিত হবে",
+  "retention.updatedAt": "সর্বশেষ পরিবর্তন {date}",
+  "retention.save": "সংরক্ষণ করুন",
+  "retention.saving": "সংরক্ষণ করা হচ্ছে…",
+  "sites.fields.retention_months": "সংরক্ষণকাল (মাস)",
+  "sites.fields.mode": "মোড"
 }

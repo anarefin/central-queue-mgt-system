@@ -83,6 +83,7 @@ import type {
   ReportScheduleInput,
   StaffingGapResponse,
 } from "./reports";
+import type { RetentionDataClass, RetentionPolicy, RetentionPolicyInput } from "./retention";
 import type { IssueJourneyInput, JourneyResult, JourneySettings, JourneyTemplateSummary } from "./journeys";
 import type {
   NotificationMessageQuery,
@@ -502,6 +503,18 @@ export class ApiClient {
       remove: (id: string) => this.request<void>("DELETE", `/reports/schedules/${id}`),
       deliveries: (id: string) => this.request<Items<ReportScheduleDelivery>>("GET", `/reports/schedules/${id}/deliveries`),
     },
+  };
+
+  /**
+   * Retention, purge and BI access (ticket 53, SRS §16.3, §25.4-25.5; FR-RPT-021/022, FR-SEC-032/043): how long
+   * each data class (`ticket_detail`, `ticket_aggregate`, `audit`) is kept, and, for `ticket_detail` alone,
+   * whether it is purged outright or reduced to an anonymised aggregate once its own retention passes. Gated on
+   * `audit:read` (System/Org Admin only) server-side.
+   */
+  readonly retention = {
+    policies: () => this.request<Items<RetentionPolicy>>("GET", "/retention/policies"),
+    updatePolicy: (dataClass: RetentionDataClass, input: RetentionPolicyInput) =>
+      this.request<RetentionPolicy>("PUT", `/retention/policies/${dataClass}`, input),
   };
 
   /**

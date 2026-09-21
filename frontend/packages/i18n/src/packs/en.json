@@ -1359,5 +1359,19 @@
   "reports.schedule.deliveries.empty": "No deliveries yet.",
   "reports.schedule.deliveries.sent": "Sent to {recipient}",
   "reports.schedule.deliveries.failed": "Failed for {recipient}: {error}",
-  "reports.schedule.deliveries.generationFailed": "The report itself failed to generate: {error}"
+  "reports.schedule.deliveries.generationFailed": "The report itself failed to generate: {error}",
+  "retention.title": "Retention, purge and BI access",
+  "retention.intro": "How long each data class is kept before the nightly purge job acts on it (SRS §16.3, §25.4-25.5, FR-RPT-021/022, FR-SEC-032/043).",
+  "retention.dataClass.ticket_detail": "Ticket detail",
+  "retention.dataClass.ticket_aggregate": "Ticket aggregate",
+  "retention.dataClass.audit": "Audit log",
+  "retention.retentionMonths": "Retention (months)",
+  "retention.mode": "When retention passes",
+  "retention.mode.purge": "Purge outright",
+  "retention.mode.anonymize": "Reduce to an anonymised aggregate",
+  "retention.updatedAt": "Last changed {date}",
+  "retention.save": "Save",
+  "retention.saving": "Saving…",
+  "sites.fields.retention_months": "Retention (months)",
+  "sites.fields.mode": "Mode"
 }
