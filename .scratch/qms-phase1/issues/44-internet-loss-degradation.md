@@ -4,7 +4,7 @@
 
 **Blocked by:** 43 — Remote arrival, check-in and forfeit
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [x] Backend detects loss of internet reachability for push services and the public origin
 - [x] Remote join and Web Push shown as unavailable with explanation, not failing silently (FR-QUE-202, FR-MOB-041)

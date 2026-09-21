@@ -45,7 +45,7 @@
 41-visitor-otp-login-self-service          37,40,34        done     42m      50 files, +2980 −57 187eea8..ba82c7b
 42-remote-join                             37,21           done     38m      35 files, +1627 −26 7100b01..c00380c
 43-remote-arrival-and-forfeit              42,39,12        done     44m      32 files, +1623 −18 c9536a0..de8f5f2
-44-internet-loss-degradation               43              todo     —        —                   —
+44-internet-loss-degradation               43              done     n/a*     23 files, +722 −17  54a6355..bb513dd
 45-post-service-feedback                   37              todo     —        —                   —
 46-live-dashboard                          18,16,11        todo     —        —                   —
 47-threshold-alerts                        46,24,38        todo     —        —                   —
@@ -64,8 +64,8 @@
 60-installer-upgrades-backup               59              todo     —        —                   —
 61-acceptance-suite                        56,44,51,60     todo     —        —                   —
 
-# * 26, 35, 40: worker hit a session rate limit mid-ticket, was resumed after reset; elapsed
-#   wall-clock spans the pause and is not comparable to other tickets' timings.
+# * 26, 35, 40, 44: worker hit a session rate limit mid-ticket, was resumed after reset;
+#   elapsed wall-clock spans the pause and is not comparable to other tickets' timings.
 # * 27, 29, 32, 34: worker's turn ended waiting on a background gradlew run before committing;
 #   resumed to finish verification and commit. Elapsed wall-clock not comparable either.
 # * 30: commit landed but the run was interrupted before bookkeeping; confirmed done and
