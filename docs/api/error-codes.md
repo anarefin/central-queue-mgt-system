@@ -128,5 +128,16 @@ and `config:org_sites_zones` respectively, an unknown Service or Site is `not_fo
 `max_distance_m` (must be positive when given), `max_remote_share_pct` (1 to 100), `join_window_minutes` /
 `arrival_deadline_minutes` (0 to 1440, at least 1 for the deadline), and `latitude` / `longitude` (WGS84 range).
 
+A visitor's own post-service feedback (`POST /tickets/{id}/feedback`, §13.4, ticket 45, FR-MOB-033) is reached the same
+anonymous way as the rest of the visitor ticket page (ticket id plus `X-Ticket-Secret`); it refuses with `conflict` and
+`details.reason` `ticket_not_completed` (the ticket has not reached `completed` yet) or `feedback_already_submitted`
+(one per ticket, ever). `rating` is required and must be an integer 1 to 5 (`validation_failed` naming `rating`,
+`code` `required` or `out_of_range`); a `comment` over 2000 characters is `validation_failed` naming `comment`. A Team
+Admin's review of a comment (`GET /feedback/pending-comments`, `POST /feedback/{id}/approve-comment`) and an Agent's
+own read (`GET /feedback/mine`) need `hasRole('TEAM_ADMIN')` / `hasRole('AGENT')` respectively — neither has a row in
+the SRS §5.2 permission matrix, so both are checked by role directly rather than by a permission. Approving a
+feedback with no comment (nothing to approve) is `conflict` with `details.reason` `no_comment`; an unknown feedback id
+is `not_found`.
+
 The client library also synthesises two codes that never come from the server: `network_error` (no response) and
 `unexpected_response` (a reply that is not a §20.3 envelope, such as a proxy error page).

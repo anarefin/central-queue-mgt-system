@@ -6,6 +6,7 @@ import { Button, Card, ErrorAlert, Page, StatusBadge } from "@qms/ui";
 import { useEffect, useState } from "react";
 import { useApi } from "../lib/runtime";
 import { useTicketStream, type TicketStreamDeps } from "../lib/ticketStream";
+import { FeedbackForm } from "./FeedbackForm";
 import { PushOptIn } from "./PushOptIn";
 import { RemoteCheckIn } from "./RemoteCheckIn";
 
@@ -139,6 +140,8 @@ export function VisitorTicketStatus({
             : t("visitor.nowServingNone")}
         </p>
       </Card>
+
+      {view.state === "completed" && <FeedbackForm ticketId={ticketId} credential={credential} />}
 
       <Card>
         {view.zone ? (

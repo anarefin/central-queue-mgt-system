@@ -1,4 +1,4 @@
-import type { AgentDay, BreakType, CounterSession, SessionBreak, SessionCounterOption, SessionOutcome, SessionTicket, TransferResult, TransferTargets } from "@qms/api-client";
+import type { AgentDay, BreakType, CounterSession, MyFeedback, SessionBreak, SessionCounterOption, SessionOutcome, SessionTicket, TransferResult, TransferTargets } from "@qms/api-client";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -1654,5 +1654,52 @@ describe("the agent's own day (FR-AGT-040)", () => {
     const day = within(await screen.findByTestId("day"));
     expect(day.getByText("সেবা দেওয়া হয়েছে: ১২")).toBeInTheDocument();
     expect(day.getByText("গড় সেবার সময়: ৫ মিনিট ১২ সেকেন্ড")).toBeInTheDocument();
+  });
+});
+
+describe("the agent's own feedback (FR-MOB-033)", () => {
+  const FEEDBACK: MyFeedback[] = [
+    { ticket_id: "t9", token_number: "S-039", rating: 5, comment: "Friendly and quick.", submitted_at: STAMP },
+  ];
+
+  it("shows the rating and an already-approved comment", async () => {
+    stubApi({ ...AUTH, "GET /sessions/current": () => json(200, session()), "GET /feedback/mine": () => json(200, { items: FEEDBACK }) });
+    renderApp(<Home />);
+
+    const feedback = within(await screen.findByTestId("feedback"));
+    expect(feedback.getByText("S-039 — rating 5/5")).toBeInTheDocument();
+    expect(feedback.getByText("Friendly and quick.")).toBeInTheDocument();
+  });
+
+  it("shows the rating alone while the comment is still awaiting Team Admin approval", async () => {
+    stubApi({
+      ...AUTH,
+      "GET /sessions/current": () => json(200, session()),
+      "GET /feedback/mine": () => json(200, { items: [{ ...FEEDBACK[0]!, comment: null }] }),
+    });
+    renderApp(<Home />);
+
+    const feedback = within(await screen.findByTestId("feedback"));
+    expect(feedback.getByText("S-039 — rating 5/5")).toBeInTheDocument();
+    expect(feedback.queryByText("Friendly and quick.")).not.toBeInTheDocument();
+  });
+
+  it("says there is no feedback yet", async () => {
+    stubApi({ ...AUTH, "GET /sessions/current": () => json(200, session()), "GET /feedback/mine": () => json(200, { items: [] }) });
+    renderApp(<Home />);
+
+    expect(await screen.findByText("No feedback yet.")).toBeInTheDocument();
+  });
+
+  it("says quietly that feedback is not available and leaves the desk working", async () => {
+    stubApi({
+      ...AUTH,
+      "GET /sessions/current": () => json(200, session({ ticket: ticket() })),
+      "GET /feedback/mine": () => json(500, { error: { code: "internal_error", message: "x", trace_id: "t" } }),
+    });
+    renderApp(<Home />);
+
+    expect(await screen.findByText("Your feedback is not available right now.")).toBeInTheDocument();
+    expect(screen.getByTestId("current-token")).toHaveTextContent("S-042");
   });
 });

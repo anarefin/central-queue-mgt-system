@@ -1,5 +1,6 @@
 package com.qms.issuance;
 
+import com.qms.feedback.FeedbackService;
 import com.qms.platform.ApiException;
 import com.qms.platform.ErrorCode;
 import com.qms.platform.Profiles;
@@ -29,11 +30,13 @@ class VisitorTicketController {
     private final TicketCredentialAccess access;
     private final VisitorTicketViews views;
     private final VisitorTicketActions actions;
+    private final FeedbackService feedback;
 
-    VisitorTicketController(TicketCredentialAccess access, VisitorTicketViews views, VisitorTicketActions actions) {
+    VisitorTicketController(TicketCredentialAccess access, VisitorTicketViews views, VisitorTicketActions actions, FeedbackService feedback) {
         this.access = access;
         this.views = views;
         this.actions = actions;
+        this.feedback = feedback;
     }
 
     @PublicEndpoint("Anonymous visitor reads only their own ticket, by id plus its secret (§20.2, FR-SEC-033)")
@@ -101,5 +104,16 @@ class VisitorTicketController {
     public Map<String, Object> delay(@PathVariable UUID id, @RequestHeader(value = SECRET_HEADER, required = false) String secret) {
         var ticket = access.verify(id, secret).orElseThrow(() -> new ApiException(ErrorCode.UNAUTHENTICATED));
         return views.view(actions.delay(ticket));
+    }
+
+    /** Body: {@code rating} (1-5, required) and an optional {@code comment} (ticket 45, FR-MOB-033). */
+    public record FeedbackRequest(Integer rating, String comment) {}
+
+    @PublicEndpoint("Anonymous visitor leaves optional feedback on their own completed ticket, once (FR-MOB-033, §20.2)")
+    @PostMapping("/tickets/{id}/feedback")
+    public Map<String, Object> feedback(
+            @PathVariable UUID id, @RequestHeader(value = SECRET_HEADER, required = false) String secret, @RequestBody FeedbackRequest request) {
+        var ticket = access.verify(id, secret).orElseThrow(() -> new ApiException(ErrorCode.UNAUTHENTICATED));
+        return feedback.submit(ticket.id(), request.rating(), request.comment());
     }
 }

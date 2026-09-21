@@ -538,6 +538,11 @@
   "console.day.averageNone": "Average service time: none yet",
   "console.day.breaks": "Break time: {duration}",
   "console.day.unavailable": "Your day's counts are not available right now.",
+
+  "console.feedback.title": "Feedback on your tickets",
+  "console.feedback.none": "No feedback yet.",
+  "console.feedback.entry": "{token} — rating {rating}/5",
+  "console.feedback.unavailable": "Your feedback is not available right now.",
   "console.outcome.label": "Outcome",
   "console.outcome.choose": "Choose an outcome",
   "console.outcome.required": "Choose an outcome before completing.",
@@ -905,6 +910,15 @@
   "visitor.push.unavailable": "Notifications are temporarily unavailable because the site has lost its internet connection. Please check your ticket status on this page instead.",
   "visitor.push.iosInstallHint": "On iPhone or iPad, add this page to your Home Screen first (Share, then \"Add to Home Screen\"), then open it from there to turn on notifications.",
   "visitor.accountLink": "Sign in to see your tickets and appointments",
+  "visitor.feedback.title": "How was your visit?",
+  "visitor.feedback.intro": "Your feedback is optional and helps us improve. Comments are only shared with your agent once a team admin has reviewed them.",
+  "visitor.feedback.ratingLabel": "Rating",
+  "visitor.feedback.ratingPlaceholder": "Choose a rating",
+  "visitor.feedback.commentLabel": "Comment (optional)",
+  "visitor.feedback.submit": "Send feedback",
+  "visitor.feedback.submitting": "Sending…",
+  "visitor.feedback.skip": "Not now",
+  "visitor.feedback.thanks": "Thank you for your feedback.",
 
   "remoteJoin.title": "Join remotely",
   "remoteJoin.intro": "Hold your place in the queue from here, then travel to the site in time for your turn.",
@@ -970,6 +984,14 @@
   "account.error.generic": "Something went wrong. Please try again.",
 
   "admin.home.notifications": "Notifications",
+  "admin.home.feedback": "Visitor feedback",
+
+  "feedback.admin.title": "Comments awaiting approval",
+  "feedback.admin.intro": "A comment is shown to the agent it is about only once you approve it here (FR-MOB-033). Ratings are never gated and feed the feedback report directly.",
+  "feedback.admin.none": "No comments are waiting for a decision.",
+  "feedback.admin.rating": "Rating: {rating}/5",
+  "feedback.admin.approve": "Approve for the agent to see",
+  "feedback.admin.approved": "Approved.",
 
   "notifications.title": "Notifications",
   "notifications.intro": "Triggers, templates and the delivery log of the notification pipeline (SRS §14). Every action here is permission-checked and scoped on the server.",

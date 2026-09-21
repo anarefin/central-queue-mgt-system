@@ -9,6 +9,7 @@ import { counterMovedOn, counterTopic, describeError, estimateFrom, localisedNam
 import { useTopics } from "../lib/realtime";
 import { useApi } from "../lib/runtime";
 import { DayCard } from "./DayCard";
+import { MyFeedbackCard } from "./MyFeedbackCard";
 import { OpenSessionCard } from "./OpenSessionCard";
 import { ServingDesk, type DeskActions } from "./ServingDesk";
 
@@ -372,6 +373,7 @@ export function CounterConsole() {
         />
       )}
       {session !== undefined && <DayCard refreshKey={dayKey} />}
+      {session !== undefined && <MyFeedbackCard />}
     </div>
   );
 }

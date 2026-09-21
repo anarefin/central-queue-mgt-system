@@ -49,6 +49,7 @@ import {
   type TicketChange,
   type VisitorTicketView,
 } from "./tickets";
+import type { FeedbackInput, MyFeedback, PendingFeedbackComment, SubmittedFeedback } from "./feedback";
 import type {
   RegisterVisitorInput,
   VisitorImportMapping,
@@ -299,6 +300,15 @@ export class ApiClient {
      */
     delay: (id: string, credential: string) =>
       this.request<VisitorTicketView>("POST", `/tickets/${id}/delay`, undefined, {
+        anonymous: true,
+        headers: { [TICKET_CREDENTIAL_HEADER]: credential },
+      }),
+    /**
+     * A visitor's own optional feedback on their own completed ticket, once (ticket 45, FR-MOB-033). Refused with
+     * `conflict` / `ticket_not_completed` or `feedback_already_submitted`.
+     */
+    submitFeedback: (id: string, credential: string, input: FeedbackInput) =>
+      this.request<SubmittedFeedback>("POST", `/tickets/${id}/feedback`, input, {
         anonymous: true,
         headers: { [TICKET_CREDENTIAL_HEADER]: credential },
       }),
@@ -610,6 +620,17 @@ export class ApiClient {
     update: (id: string, input: NoticeInput) => this.request<Notice>("PUT", `/notices/${id}`, input),
     deactivate: (id: string) => this.request<Notice>("POST", `/notices/${id}/deactivate`),
     activate: (id: string) => this.request<Notice>("POST", `/notices/${id}/activate`),
+  };
+
+  /**
+   * The staff side of post-service feedback (ticket 45, FR-MOB-033): a Team Admin's own review queue and decision on
+   * an individual comment, and an Agent's own read of their feedback, comment included only once approved. Neither
+   * has a row in the SRS §5.2 permission matrix, so both are role-checked server-side rather than by a permission.
+   */
+  readonly feedback = {
+    pendingComments: () => this.request<Items<PendingFeedbackComment>>("GET", "/feedback/pending-comments"),
+    approveComment: (id: string) => this.request<{ id: string; ticket_id: string; comment_approved: boolean }>("POST", `/feedback/${id}/approve-comment`),
+    mine: () => this.request<Items<MyFeedback>>("GET", "/feedback/mine"),
   };
 
   /**

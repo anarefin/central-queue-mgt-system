@@ -1386,3 +1386,50 @@ to `in_app` through ticket 39's own retry/fallback machinery, which this ticket 
 check-in and walk-in issuance needed no new code to stay unaffected, only a placement decision proven by a test: the
 connectivity check lives solely in `IssuanceGate#forRemoteJoin`, the one method only a remote join ever reaches, never
 in `beforeService`/`forService` (shared by every issuance path) or on the check-in action at all.
+
+## Ticket 45, post-service feedback
+
+`Feedback(IT)` = `B/feedback/FeedbackIT` (visitor submit, Team Admin approval, the Agent's own read, all over real
+HTTP with a real Postgres); `FeedbackForm` = `F/apps/visitor/src/components/FeedbackForm.test.tsx`; `FeedbackAdmin` =
+`F/apps/admin/src/components/FeedbackAdmin.test.tsx`; `MyFeedback` = the "the agent's own feedback" describe block in
+`F/apps/console/src/components/CounterConsole.test.tsx`.
+
+| Requirement ID | Section | Test type | Test reference | Status |
+|---|---|---|---|---|
+| FR-MOB-033 an optional 1-5 rating and comment after completion, stored against the Ticket and Agent | §13.4, §18.3 | integration + unit | `V39__feedback.sql` (`feedback` table: `ticket_id`, `rating` 1-5, `comment`); no separate `agent_id` column — the Agent is the Ticket's own `ticket.agent_id`, kept as history past a terminal state since ticket 9, so "against the Ticket and Agent" is one join, not two facts to keep in sync. `B/feedback/FeedbackService#submit` (rating required and range-checked, comment optional and trimmed, refused once already given or before `completed`); `B/issuance/VisitorTicketController#feedback` (`POST /tickets/{id}/feedback`, anonymous by ticket id + secret, §20.2); `Feedback(IT)#aVisitorSubmitsFeedbackOnceTheirTicketIsCompleted`, `#feedbackIsOptionalAndTheRatingAloneIsEnoughWithNoComment`, `#aVisitorCannotSubmitFeedbackBeforeTheirTicketIsCompleted`, `#aVisitorCannotSubmitFeedbackTwiceOnTheSameTicket`, `#aWrongOrMissingSecretNeverSubmitsFeedbackEitherFR_SEC_033`, `#aRatingOutsideOneToFiveOrMissingIsValidationFailed`. Frontend: `F/apps/visitor/src/components/FeedbackForm.tsx` (shown only once `VisitorTicketView#state === "completed"`, ticket 37's own view); `FeedbackForm`'s "cannot be submitted before a rating is chosen", "submits the chosen rating and comment...", "sends no comment when the box is left blank" | passing |
+| FR-MOB-033 an individual comment is never shown to the Agent without Team Admin approval; the rating itself is never gated | §13.4 | integration + unit | `feedback.comment_approved_by`/`comment_approved_at` (null until approved); `B/feedback/FeedbackRepository#mine` (a `CASE` on `comment_approved_at`, never returns an unapproved comment, the rating always); `B/feedback/FeedbackService#approveComment` (refused with `no_comment` when there is nothing to approve), `#pendingComments`; `B/feedback/FeedbackController` (`GET /feedback/pending-comments`, `POST /feedback/{id}/approve-comment`, `GET /feedback/mine`); `Feedback(IT)#aTeamAdminApprovesAPendingCommentAndOnlyThenDoesTheAgentSeeIt` (the Agent's own `GET /feedback/mine` shows `comment: null` before approval and the real text after, from the exact same row), `#approvingAFeedbackWithNoCommentIsRefused`. Frontend: `F/apps/admin/src/components/FeedbackAdmin.tsx` (a Team Admin's review queue, one Approve action per comment); `F/apps/console/src/components/MyFeedbackCard.tsx` (an Agent's own read, the same "quiet gap, not an error" shape `DayCard` already uses); `FeedbackAdmin`'s "lists a comment waiting for a decision...", "approves a comment and it leaves the queue"; `MyFeedback`'s "shows the rating and an already-approved comment", "shows the rating alone while the comment is still awaiting Team Admin approval" | passing |
+| §14.2 a feedback-request trigger exists, default off | §14.2 | unit | Already built by ticket 38 and unchanged here: `NotificationTriggerKey.SERVICE_COMPLETED_FEEDBACK` (`defaultEnabled = false`); `com.qms.queue.TicketEvents#TRIGGER_BY_EVENT` already maps `ticket.completed` to it, so every ticket this ticket marks `completed` already fires it with no new wiring; `NotificationTriggerKeyTest#serviceCompletedFeedbackStartsOffEveryOtherQueueTriggerStartsOn` (asserts `SERVICE_COMPLETED_FEEDBACK.defaultEnabled("mobile")` is `false`) | passing |
+| Definition of done §27.5 item 3 (strings in both packs) | §27.5 | unit | `visitor.feedback.*` (9 keys), `feedback.admin.*` (6 keys, plus `admin.home.feedback`), `console.feedback.*` (4 keys) in `F/packages/i18n/src/packs/en.json`/`bn.json`; `F/packages/i18n/src/i18n.test.ts` pack-parity test (unchanged, still green) | passing |
+| Definition of done §27.5 item 4 (permission-checked server-side) | §20.3, §5.2 | integration | The visitor's own submit is `@PublicEndpoint`, added to `SecurityConfig.PUBLIC_PATHS`, and still resolves the ticket only by its own secret (`TicketCredentialAccess#verify`) exactly like every other visitor ticket-page action; the Team Admin and Agent actions have no row in the SRS §5.2 permission matrix (it is not one of that table's fixed permissions, so adding a `Permission` enum value would drift `PermissionMatrixTest` from the SRS itself), so both are `@PreAuthorize("hasRole(...)")`, the same direct-role shape device and visitor roles already use (`Role`'s own doc comment); `ControllerSecurityTest#everyControllerMethodIsSecuredOrExplicitlyPublic` and `#thePermitAllListAndThePublicEndpointMarkersDescribeTheSameEndpoints` see the new controller methods and the new permit-all pattern and stay green; `Feedback(IT)#onlyATeamAdminMayReadTheQueueOrApprove`, `#onlyAnAgentMayReadTheirOwnFeedback` (403, not merely a hidden UI control) | passing |
+| Definition of done §27.5 item 5 (events and audit entries) | §18.3, FR-SEC-041 | integration | `feedback.submitted` (actor `null`, the same anonymous-visitor shape ticket 37's own audit entries already are, `before`/`after` carrying the rating and whether a comment was given, reason `visitor_ticket_page`) and `feedback.comment_approved` (actor the Team Admin, reason `team_admin_approval`), both through `AuditWriter`, joining the same transaction as the write (`FeedbackService#submit`/`#approveComment`); asserted directly by `Feedback(IT)#aVisitorSubmitsFeedbackOnceTheirTicketIsCompleted` and `#aTeamAdminApprovesAPendingCommentAndOnlyThenDoesTheAgentSeeIt` (`SELECT count(*) FROM audit_log WHERE action = ...`) | passing |
+| Definition of done §27.5 item 6 (documented) | §27.5 | manual | Covered by this table and the doc comments on every new class (`com.qms.feedback.*`, `FeedbackForm.tsx`, `FeedbackAdmin.tsx`, `MyFeedbackCard.tsx`); `docs/api/error-codes.md` gained this ticket's own paragraph (`ticket_not_completed`, `feedback_already_submitted`, `no_comment`) | passing |
+
+**Notes on this ticket's interpretation.** The SRS's own `feedback` table (§18.3) lists only `id`, `ticket_id`, `rating`,
+`comment`, `submitted_at` — no approval flag — the same way earlier tickets' tables were a starting sketch, not an
+exhaustive schema (`V6__tickets.sql`'s own comment: "columns that belong to later tickets are added by the ticket that
+first writes them"). This ticket adds `comment_approved_by`/`comment_approved_at` on that same principle: two nullable
+columns are enough to answer "has this been decided, by whom, when", with no separate boolean to keep in sync (a row is
+approved exactly when `comment_approved_at IS NOT NULL`). `com.qms.feedback` is a fresh bounded context rather than more
+of `com.qms.issuance`, because the two other things ticket 45 names — a Team Admin's decision and an Agent's own read —
+are staff-facing surfaces with nothing to do with a ticket's own lifecycle, the same reasoning that already keeps
+`com.qms.audit` and `com.qms.notification` apart from the contexts that trigger them; it depends on nothing else
+(`FeedbackRepository` reads the `ticket` table directly, the same "read the column, don't import the context" seam
+`com.qms.queue.TicketEvents` already is), so `com.qms.issuance.VisitorTicketController` can depend on `FeedbackService`
+for the one visitor-facing action with no risk of an ArchitectureTest package cycle. The Team Admin/Agent split was
+deliberately not modelled on the existing maker-checker `com.qms.configuration.approval` machinery (FR-CFG-102): that
+one is specifically "a Team Admin asks, an Org Admin decides" for team membership and counter allocation, a different
+shape (a request an Org Admin either lets through or refuses) from this ticket's "a Team Admin themselves decides
+whether an Agent may see one comment" — a single-actor decision with no requester, on a subject (§5.2 names no
+permission for it at all) the fixed permission matrix was never asked to cover. `GET /feedback/pending-comments` is
+organisation-wide (no site or service-group scoping), matching the matrix's own silence on this permission — nothing in
+FR-MOB-033 or §5.2 asks for it, and the fixed roles a Team Admin already holds elsewhere are themselves scoped by
+service group assignment, not by this feature. The Agent's own read is threaded into the console (`MyFeedbackCard`,
+next to `DayCard`, ticket 10's own "agent's own day" surface) since that is where an Agent already looks for their own
+figures; the Team Admin's queue is threaded into the admin app (`FeedbackAdmin`, next to the other Team Admin config
+screens) for the same reason. Feedback is deliberately not exposed on the visitor ticket page beyond the single
+submit-once form: SRS §13.4 offers it once, after completion, and §18.2's Feedback report (ticket 48+) is where the
+aggregate view belongs, not a second visitor-facing surface this ticket has no requirement to build. The §14.2
+feedback-request trigger and its firing on `ticket.completed` were both already built and tested by ticket 38
+(`NotificationTriggerKey.SERVICE_COMPLETED_FEEDBACK`, `TicketEvents#TRIGGER_BY_EVENT`); this ticket verified rather than
+rebuilt that seam; no notification is actually sent by this ticket's own tests (that is ticket 38/39/40's own,
+unchanged, delivery path).

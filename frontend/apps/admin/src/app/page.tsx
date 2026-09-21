@@ -51,6 +51,12 @@ export default function Home() {
             <Link href="/notice-board/">{t("admin.home.noticeBoard")}</Link>
           </div>
         )}
+        {/* Feedback comment approval is a Team Admin action (FR-MOB-033); the API is the one that actually checks it. */}
+        {user?.roles.includes("team_admin") && (
+          <div className="qms-row">
+            <Link href="/feedback/">{t("admin.home.feedback")}</Link>
+          </div>
+        )}
         {user?.roles.includes("reception_operator") && (
           <div className="qms-row">
             <Link href="/reception/">{t("admin.home.reception")}</Link>

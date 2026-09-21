@@ -538,6 +538,11 @@
   "console.day.averageNone": "গড় সেবার সময়: এখনও নেই",
   "console.day.breaks": "বিরতির সময়: {duration}",
   "console.day.unavailable": "আপনার দিনের হিসাব এখন পাওয়া যাচ্ছে না।",
+
+  "console.feedback.title": "আপনার টিকিটের মতামত",
+  "console.feedback.none": "এখনো কোনো মতামত নেই।",
+  "console.feedback.entry": "{token} — রেটিং {rating}/৫",
+  "console.feedback.unavailable": "আপনার মতামত এখন পাওয়া যাচ্ছে না।",
   "console.outcome.label": "ফলাফল",
   "console.outcome.choose": "ফলাফল বেছে নিন",
   "console.outcome.required": "সম্পন্ন করার আগে একটি ফলাফল বেছে নিন।",
@@ -905,6 +910,15 @@
   "visitor.push.unavailable": "সাইটের ইন্টারনেট সংযোগ বিচ্ছিন্ন থাকায় বিজ্ঞপ্তি সাময়িকভাবে বন্ধ আছে। অনুগ্রহ করে এই পাতা থেকেই আপনার টিকিটের অবস্থা দেখুন।",
   "visitor.push.iosInstallHint": "আইফোন বা আইপ্যাডে, প্রথমে এই পাতাটি হোম স্ক্রিনে যোগ করুন (শেয়ার, তারপর \"হোম স্ক্রিনে যোগ করুন\"), তারপর সেখান থেকে খুলে বিজ্ঞপ্তি চালু করুন।",
   "visitor.accountLink": "আপনার টোকেন ও অ্যাপয়েন্টমেন্ট দেখতে সাইন ইন করুন",
+  "visitor.feedback.title": "আপনার সেবা কেমন লেগেছে?",
+  "visitor.feedback.intro": "আপনার মতামত ঐচ্ছিক এবং আমাদের উন্নতিতে সাহায্য করে। মন্তব্য কেবল টিম অ্যাডমিনের অনুমোদনের পরেই আপনার এজেন্টের সাথে শেয়ার করা হয়।",
+  "visitor.feedback.ratingLabel": "রেটিং",
+  "visitor.feedback.ratingPlaceholder": "একটি রেটিং বেছে নিন",
+  "visitor.feedback.commentLabel": "মন্তব্য (ঐচ্ছিক)",
+  "visitor.feedback.submit": "মতামত পাঠান",
+  "visitor.feedback.submitting": "পাঠানো হচ্ছে…",
+  "visitor.feedback.skip": "এখন নয়",
+  "visitor.feedback.thanks": "আপনার মতামতের জন্য ধন্যবাদ।",
 
   "remoteJoin.title": "দূরবর্তী (রিমোট) জয়েন",
   "remoteJoin.intro": "এখান থেকেই সারিতে আপনার জায়গা ধরে রাখুন, তারপর আপনার পালার সময় হওয়ার আগে সাইটে পৌঁছে যান।",
@@ -970,6 +984,14 @@
   "account.error.generic": "কিছু একটা ভুল হয়েছে। আবার চেষ্টা করুন।",
 
   "admin.home.notifications": "বিজ্ঞপ্তি",
+  "admin.home.feedback": "ভিজিটর মতামত",
+
+  "feedback.admin.title": "অনুমোদনের অপেক্ষায় থাকা মন্তব্য",
+  "feedback.admin.intro": "কোনো মন্তব্য সংশ্লিষ্ট এজেন্টকে কেবল আপনি এখানে অনুমোদন করার পরেই দেখানো হয় (FR-MOB-033)। রেটিং কখনো আটকানো হয় না এবং সরাসরি মতামত প্রতিবেদনে যুক্ত হয়।",
+  "feedback.admin.none": "সিদ্ধান্তের অপেক্ষায় কোনো মন্তব্য নেই।",
+  "feedback.admin.rating": "রেটিং: {rating}/৫",
+  "feedback.admin.approve": "এজেন্টের জন্য অনুমোদন করুন",
+  "feedback.admin.approved": "অনুমোদিত হয়েছে।",
 
   "notifications.title": "বিজ্ঞপ্তি",
   "notifications.intro": "বিজ্ঞপ্তি পাইপলাইনের ট্রিগার, টেমপ্লেট এবং ডেলিভারি লগ (SRS §14)। এখানে প্রতিটি কাজ সার্ভারে অনুমতি-যাচাই এবং সীমাবদ্ধ।",

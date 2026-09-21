@@ -7,6 +7,7 @@ export * from "./config";
 export * from "./device-session";
 export * from "./devices";
 export * from "./errors";
+export * from "./feedback";
 export * from "./hierarchy";
 export * from "./journeys";
 export * from "./notifications";
