@@ -52,7 +52,7 @@
 48-reporting-store-and-token-report        10,15           done     56m      24 files, +1868 −10 f3074b4..4f7c431
 49-report-exports                          48,38           done     n/a*     34 files, +2129 −12 1fc9582..f7da914
 50-operational-reports                     48              done     n/a*     24 files, +2506 −25 bf9d047..6e14811
-51-domain-reports-and-planning-views       50,36,31,45     todo     —        —                   —
+51-domain-reports-and-planning-views       50,36,31,45     done     —        27 files, +3153 −11 86022ac..9af9cb3
 52-scheduled-report-delivery               49,40           todo     —        —                   —
 53-retention-purge-bi-access               50              todo     —        —                   —
 54-privacy-controls                        22,28,38        todo     —        —                   —
@@ -85,6 +85,9 @@
 # * 50: same background-check pattern as 49 (worker ended turn once waiting on it despite the
 #   dispatch prompt now warning against it); resumed once with an explicit foreground
 #   instruction and it finished cleanly.
+# * 51: found already partway done as uncommitted working-tree state (not started via the
+#   normal dispatch) when this run began; a worker was dispatched to review, finish, and
+#   commit that existing code rather than redo it. Elapsed wall-clock not comparable.
 # * Out-of-band fix (commit fde12f4, parent, not tied to a ticket): a follow-up security
 #   review found the already-landed ticket-39 PushEndpointSecurity had an IPv6 ULA
 #   (fc00::/7) and IPv4-mapped-address bypass; fixed directly since the active worker at
