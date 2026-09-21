@@ -61,6 +61,7 @@ import type {
 } from "./visitors";
 import type { BrandingInput, OrgBranding, PrintTemplate, PrintTemplateInput } from "./branding";
 import type { DashboardFilter, DashboardSnapshot } from "./dashboard";
+import type { DetailedTokenReportPage, DetailedTokenReportRequest } from "./reports";
 import type { IssueJourneyInput, JourneyResult, JourneySettings, JourneyTemplateSummary } from "./journeys";
 import type {
   NotificationMessageQuery,
@@ -441,6 +442,14 @@ export class ApiClient {
     /** A supervisor's own free-text message to the Site's team and org admins (FR-MON-004), on the same
      * `staff-alert:{site_id}` channel ticket 38 already gives the automatic threshold alerts of ticket 47. */
     sendStaffAlert: (siteId: string, message: string) => this.request<void>("POST", `/dashboard/${siteId}/staff-alert`, { message }),
+  };
+
+  /**
+   * Reports (SRS §16, ticket 48): {@code run} answers one report's page, filtered (FR-RPT-001), paged and sorted
+   * on screen (FR-RPT-002). Only {@code detailed-token} exists yet; later tickets (49-51) grow the catalogue.
+   */
+  readonly reports = {
+    run: (key: string, request: DetailedTokenReportRequest = {}) => this.request<DetailedTokenReportPage>("POST", `/reports/${key}/run`, request),
   };
 
   /**

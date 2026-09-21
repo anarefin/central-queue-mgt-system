@@ -636,3 +636,25 @@ without a second round trip: site branding and enabled languages, its own zone's
 display, and the site's active service tree — nothing here needs a staff permission, since the device authenticates
 with its own kiosk/display role instead.
 `visitor.import.mapping_updated`.
+
+## 19. Reports
+
+A System Admin, Org Admin or Team Admin (`reports:run_export`, §5.2) runs reports from `/admin/reports`: pick a Site,
+then the detailed token report (SRS §16.1, ticket 48) — one row per Ticket with every timing, the Counter, Agent,
+outcome and transfers, filtered by date range, Zone, Service group, Service, Agent, Priority class, channel and
+visitor category, server-side paged and sortable by clicking any column header.
+
+**Reports never run against the live queue.** They run against a separate `reporting` schema, refreshed from `ticket`
+and its event log roughly every 15 seconds and never more than 60 seconds behind (FR-RPT-020, §16). A ticket that just
+completed will not appear until the next refresh sweep; a heavy report can never slow down a counter calling its next
+ticket, because the two never touch the same tables.
+
+**"Tickets issued" always means chain heads**, not rows: a transfer closes the ticket in service and opens a
+successor with the same token and visit (ADR-0006, ticket 15), so a visit that was transferred twice is three rows in
+the detailed token report — three separate wait/service times, one per Service it actually queued for — but one
+ticket issued, and each row's own **transfers** column says how many hops separate it from the chain's first ticket
+(0 for the chain head itself).
+
+`POST /reports/{key}/run` is the one endpoint every report will answer through as later tickets (49-51) add exports,
+operational reports and scheduling; only `detailed-token` exists yet, and any other key is `not_found`.
+

@@ -49,6 +49,7 @@ export default function Home() {
           <div className="qms-row">
             <Link href="/availability/">{t("admin.home.availability")}</Link>
             <Link href="/notice-board/">{t("admin.home.noticeBoard")}</Link>
+            <Link href="/reports/">{t("admin.home.reports")}</Link>
           </div>
         )}
         {/* Feedback comment approval is a Team Admin action (FR-MOB-033); the API is the one that actually checks it. */}
