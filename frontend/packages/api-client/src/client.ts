@@ -62,14 +62,23 @@ import type {
 import type { BrandingInput, OrgBranding, PrintTemplate, PrintTemplateInput } from "./branding";
 import type { DashboardFilter, DashboardSnapshot } from "./dashboard";
 import type {
+  AuditReportPage,
+  AuditReportRequest,
   DetailedTokenReportPage,
   DetailedTokenReportRequest,
+  DomainReportKey,
+  DomainReportPage,
+  DomainReportRequest,
   OperationalReportKey,
   OperationalReportRequest,
   OperationalReportResponse,
+  PeakHoursResponse,
+  PlanningViewKey,
+  PlanningViewRequest,
   ReportExportInput,
   ReportExportJob,
   ReportExportOutcome,
+  StaffingGapResponse,
 } from "./reports";
 import type { IssueJourneyInput, JourneyResult, JourneySettings, JourneyTemplateSummary } from "./journeys";
 import type {
@@ -463,6 +472,15 @@ export class ApiClient {
      * plus a period-over-period comparison (FR-RPT-010, FR-MON-011). */
     runOperational: (key: OperationalReportKey, request: OperationalReportRequest) =>
       this.request<OperationalReportResponse>("POST", `/reports/${key}/run`, request),
+    /** The four row-shaped report keys ticket 51 adds (§16.1: appointment, journey, feedback, notification). */
+    runDomain: (key: DomainReportKey, request: DomainReportRequest = {}) =>
+      this.request<DomainReportPage>("POST", `/reports/${key}/run`, request),
+    /** The Audit report key (ticket 51, §16.1): reuses the existing `/audit` read under this catalogue's own
+     * path, cursor-paged rather than `page`/`size`. Additionally gated on `audit:read` server-side. */
+    runAudit: (request: AuditReportRequest = {}) => this.request<AuditReportPage>("POST", "/reports/audit/run", request),
+    /** The two staffing-planning views ticket 51 adds (§16.2: peak-hours FR-RPT-011, staffing-gap FR-RPT-012). */
+    runPlanningView: (key: PlanningViewKey, request: PlanningViewRequest) =>
+      this.request<PeakHoursResponse | StaffingGapResponse>("POST", `/reports/${key}/run`, request),
     /** FR-RPT-003/004: the file itself (200) when the filtered row count is under the configured threshold, or a
      * job id (202) to poll with `job` otherwise. */
     export: (key: string, input: ReportExportInput) => this.requestExport(`/reports/${key}/export`, input),

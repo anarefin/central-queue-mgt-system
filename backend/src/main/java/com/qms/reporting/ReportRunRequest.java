@@ -28,10 +28,15 @@ record ReportRunRequest(
         Integer page,
         Integer size,
         String sort,
-        String direction) {
+        String direction,
+        /** {@code audit}'s own cursor (ticket 51): the one key in the catalogue whose read path
+         * ({@link com.qms.audit.AuditQueryService}) pages by an opaque cursor rather than {@code page}/{@code size},
+         * the same "a field a given key ignores is simply left out" growth this record's own class comment already
+         * documents. */
+        String cursor) {
 
     static final ReportRunRequest EMPTY =
-            new ReportRunRequest(null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null);
+            new ReportRunRequest(null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null);
 
     DetailedTokenReportRequest asDetailedToken() {
         return new DetailedTokenReportRequest(

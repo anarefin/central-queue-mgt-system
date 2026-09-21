@@ -11,6 +11,7 @@ import java.time.Clock;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import org.springframework.context.annotation.Profile;
@@ -21,7 +22,9 @@ import org.springframework.transaction.annotation.Transactional;
 /**
  * {@code POST /reports/{key}/run} (ticket 48, 50, §16): dispatches across the whole report catalogue by key —
  * {@code detailed-token} (ticket 48, one row per ticket), {@code break} (ticket 16's {@link BreakReportService},
- * reused unchanged) and the six operational keys {@link OperationalReportKey} names (ticket 50). An unknown key is
+ * reused unchanged), the six operational keys {@link OperationalReportKey} names (ticket 50), the five domain keys
+ * {@link DomainReportKey} names (ticket 51: appointment, journey, feedback, notification, audit) and the two
+ * staffing-planning views {@link PlanningViewKey} names (ticket 51: peak-hours, staffing-gap). An unknown key is
  * {@code not_found} rather than silently answering the wrong shape, the same rule ticket 48's own comment
  * ("Later tickets (49, 50, 51) grow the catalogue") anticipated this dispatch would grow to enforce.
  *
@@ -44,6 +47,8 @@ public class ReportRunService {
 
     private final DetailedTokenReportReads reads;
     private final OperationalReportService operational;
+    private final DomainReportService domainReports;
+    private final PlanningViewService planningViews;
     private final BreakReportService breakReports;
     private final CurrentUser currentUser;
     private final ScopeGuard scope;
@@ -52,12 +57,16 @@ public class ReportRunService {
     ReportRunService(
             DetailedTokenReportReads reads,
             OperationalReportService operational,
+            DomainReportService domainReports,
+            PlanningViewService planningViews,
             BreakReportService breakReports,
             CurrentUser currentUser,
             ScopeGuard scope,
             Clock clock) {
         this.reads = reads;
         this.operational = operational;
+        this.domainReports = domainReports;
+        this.planningViews = planningViews;
         this.breakReports = breakReports;
         this.currentUser = currentUser;
         this.scope = scope;
@@ -70,6 +79,10 @@ public class ReportRunService {
         ReportRunRequest r = request == null ? ReportRunRequest.EMPTY : request;
         if (DETAILED_TOKEN_KEY.equals(key)) return runDetailedToken(r.asDetailedToken());
         if (BREAK_KEY.equals(key)) return breakReports.report(r.from(), r.to(), r.agentId(), r.breakTypeId());
+        Optional<DomainReportKey> domainKey = DomainReportKey.fromWire(key);
+        if (domainKey.isPresent()) return domainReports.run(domainKey.get(), r);
+        Optional<PlanningViewKey> planningKey = PlanningViewKey.fromWire(key);
+        if (planningKey.isPresent()) return planningViews.run(planningKey.get(), r);
         return OperationalReportKey.fromWire(key)
                 .map(opKey -> operational.run(opKey, r))
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND));
