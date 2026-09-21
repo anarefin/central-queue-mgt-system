@@ -11,6 +11,8 @@ public final class Topics {
     public static final String ZONE = "zone:";
     public static final String TICKET = "ticket:";
     public static final String STAFF_ALERT = "staff-alert:";
+    public static final String SITE_PREFIX = "site:";
+    public static final String DASHBOARD_SUFFIX = ":dashboard";
 
     private Topics() {}
 
@@ -40,5 +42,13 @@ public final class Topics {
     /** A Site's staff alerts: the {@code staff_alert} notification channel (ticket 38, SRS §14.1, FR-NTF-005). */
     public static String staffAlert(UUID siteId) {
         return STAFF_ALERT + siteId;
+    }
+
+    /** A Site's live dashboard (ticket 46, §21.2, FR-MON-001): a refresh signal, not the tile data itself — a
+     * subscriber whose reach is scoped to their own Service groups (FR-CFG-105) must always pull the payload through
+     * its own authenticated {@code GET /dashboard/live}, never a broadcast the hub fans out unfiltered to every
+     * subscriber of the topic. */
+    public static String dashboard(UUID siteId) {
+        return SITE_PREFIX + siteId + DASHBOARD_SUFFIX;
     }
 }

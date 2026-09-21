@@ -24,6 +24,9 @@ export default function Home() {
           <h1 className="qms-heading">{t("console.title")}</h1>
           <div className="qms-row">
             {user && <span className="qms-muted">{t("auth.signedInAs", { name: user.display_name ?? user.username })}</span>}
+            <Button variant="secondary" type="button" onClick={() => router.push("/dashboard/")}>
+              {t("dashboard.title")}
+            </Button>
             <Button variant="secondary" type="button" onClick={signOut}>
               {t("common.signOut")}
             </Button>

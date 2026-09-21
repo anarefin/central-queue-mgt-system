@@ -59,6 +59,7 @@ import type {
   VisitorRegistration,
 } from "./visitors";
 import type { BrandingInput, OrgBranding, PrintTemplate, PrintTemplateInput } from "./branding";
+import type { DashboardFilter, DashboardSnapshot } from "./dashboard";
 import type { IssueJourneyInput, JourneyResult, JourneySettings, JourneyTemplateSummary } from "./journeys";
 import type {
   NotificationMessageQuery,
@@ -421,6 +422,24 @@ export class ApiClient {
     /** The queue in computed order with every term of every score (FR-QUE-023); `strategy` tries another one without saving it. */
     dryRun: (serviceId: string, strategy?: QueueStrategy) =>
       this.request<QueueDryRun>("GET", `/queues/${serviceId}/dry-run${strategy ? `?strategy=${strategy}` : ""}`),
+  };
+
+  /**
+   * The supervisor's live dashboard (SRS §15.1, ticket 46): {@code live} answers every FR-MON-003 tile under a filter
+   * that is also this screen's own shareable URL (FR-MON-002) — the caller decides what the query string holds,
+   * this just forwards it. `site:{id}:dashboard` (the realtime channel FR-MON-001 refreshes through) carries no tile
+   * data of its own, only a refresh signal, so a live view re-calls `live` on every one rather than trust a broadcast
+   * payload that could not be scoped to the caller's own reach (FR-CFG-105).
+   */
+  readonly dashboard = {
+    live: (filter: DashboardFilter) => {
+      const params = new URLSearchParams();
+      for (const [key, value] of Object.entries(filter)) if (value) params.set(key, value);
+      return this.request<DashboardSnapshot>("GET", `/dashboard/live?${params.toString()}`);
+    },
+    /** A supervisor's own free-text message to the Site's team and org admins (FR-MON-004), on the same
+     * `staff-alert:{site_id}` channel ticket 38 already gives the automatic threshold alerts of ticket 47. */
+    sendStaffAlert: (siteId: string, message: string) => this.request<void>("POST", `/dashboard/${siteId}/staff-alert`, { message }),
   };
 
   /**
