@@ -6,6 +6,7 @@ import com.qms.issuance.TicketRepository.ServiceTarget;
 import com.qms.platform.ApiException;
 import com.qms.platform.ErrorCode;
 import com.qms.platform.Profiles;
+import com.qms.platform.connectivity.InternetConnectivityMonitor;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -34,9 +35,11 @@ class IssuanceGate {
     private static final Duration VISITOR_WINDOW = Duration.ofHours(1);
 
     private final IssuanceRulesRepository rules;
+    private final InternetConnectivityMonitor connectivity;
 
-    IssuanceGate(IssuanceRulesRepository rules) {
+    IssuanceGate(IssuanceRulesRepository rules, InternetConnectivityMonitor connectivity) {
         this.rules = rules;
+        this.connectivity = connectivity;
     }
 
     /** Refuses at once what no Service could be issued: maintenance, an unknown visitor, and an actor that is issuing too fast. */
@@ -91,6 +94,11 @@ class IssuanceGate {
      * Service's own maximum distance from its Site and the maximum share of the queue a remote ticket may hold.
      */
     void forRemoteJoin(ServiceTarget target, IssueCommand command, Instant now, Double latitude, Double longitude) {
+        // FR-QUE-202, FR-MOB-041, ticket 44: remote join needs the Site's internet uplink (the visitor is not yet
+        // on the LAN); checked first, ahead of every per-Service rule below, since it is a Site-wide condition, not
+        // a Service one. Walk-in issuance never reaches this method, so it is unaffected (ADR-0001).
+        if (!connectivity.reachable()) throw conflict("internet_unreachable", Map.of());
+
         IssuanceRulesRepository.RemoteRule rule = rules.remoteRule(target.serviceId());
         if (!rule.virtualQueueEnabled()) throw conflict("virtual_queue_disabled", Map.of());
 

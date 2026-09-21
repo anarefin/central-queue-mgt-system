@@ -902,6 +902,7 @@
   "visitor.push.enabled": "Notifications are on for this ticket. You'll be notified even if you close this page.",
   "visitor.push.error": "Could not turn on notifications. Please try again.",
   "visitor.push.permissionDenied": "Notifications are blocked for this site in your browser settings.",
+  "visitor.push.unavailable": "Notifications are temporarily unavailable because the site has lost its internet connection. Please check your ticket status on this page instead.",
   "visitor.push.iosInstallHint": "On iPhone or iPad, add this page to your Home Screen first (Share, then \"Add to Home Screen\"), then open it from there to turn on notifications.",
   "visitor.accountLink": "Sign in to see your tickets and appointments",
 
@@ -931,6 +932,7 @@
   "remoteJoin.refused.no_agent_rostered": "No agent is assigned to this service, so tickets cannot be issued for it.",
   "remoteJoin.refused.duplicate_ticket": "You already have an active ticket for this service.",
   "remoteJoin.refused.site_location_unset": "Remote join for this service is temporarily unavailable.",
+  "remoteJoin.refused.internet_unreachable": "Remote join is temporarily unavailable because the site has lost its internet connection. You can still join once you arrive at the site.",
 
   "account.login.title": "Sign in",
   "account.login.intro": "Enter your email address and we'll send you a one-time code.",

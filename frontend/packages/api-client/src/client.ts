@@ -304,9 +304,15 @@ export class ApiClient {
       }),
   };
 
-  /** The Web Push public key every visitor's browser needs before it can subscribe (ticket 39, RFC 8292); not sensitive, anonymous. */
+  /**
+   * The Web Push public key every visitor's browser needs before it can subscribe (ticket 39, RFC 8292); not
+   * sensitive, anonymous. `available` (ticket 44, FR-QUE-202, FR-MOB-041) is the Site's own internet reachability:
+   * false means push delivery cannot reach the visitor right now, even though the browser could still register a
+   * subscription; treated as available when absent, for a fixture or an older backend that predates this field.
+   */
   readonly webPush = {
-    publicKey: () => this.request<{ public_key: string }>("GET", "/notification-config/web-push-key", undefined, { anonymous: true }),
+    publicKey: () =>
+      this.request<{ public_key: string; available?: boolean }>("GET", "/notification-config/web-push-key", undefined, { anonymous: true }),
   };
 
   /**

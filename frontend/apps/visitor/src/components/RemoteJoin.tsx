@@ -25,6 +25,7 @@ const REFUSALS = new Set([
   "no_agent_rostered",
   "duplicate_ticket",
   "site_location_unset",
+  "internet_unreachable",
 ]);
 
 /** The visitor's own device position, or null when geolocation is unavailable, denied, or times out. */
@@ -133,6 +134,17 @@ export function RemoteJoin({ serviceId }: { serviceId: string }) {
       <Page>
         <Card>
           <p className="qms-muted">{t("common.loading")}</p>
+        </Card>
+      </Page>
+    );
+  }
+
+  if (policy.internet_available === false) {
+    return (
+      <Page>
+        <Card>
+          <h1 className="qms-heading">{t("remoteJoin.title")}</h1>
+          <ErrorAlert>{t("remoteJoin.refused.internet_unreachable")}</ErrorAlert>
         </Card>
       </Page>
     );

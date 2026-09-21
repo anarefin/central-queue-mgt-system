@@ -16,14 +16,22 @@ export function PushOptIn({ ticketId, credential }: { ticketId: string; credenti
   const { t } = useI18n();
   const { client } = useApi();
   const [state, setState] = useState<"idle" | "subscribing" | "subscribed" | "error">("idle");
-  const [errorCode, setErrorCode] = useState<"permission_denied" | "generic" | null>(null);
+  const [errorCode, setErrorCode] = useState<"permission_denied" | "generic" | "unavailable" | null>(null);
 
   async function enable() {
     if (!client) return;
     setState("subscribing");
     setErrorCode(null);
     try {
-      const { public_key: vapidPublicKey } = await client.webPush.publicKey();
+      const { public_key: vapidPublicKey, available } = await client.webPush.publicKey();
+      // ticket 44, FR-QUE-202, FR-MOB-041: the site has lost internet, so a subscription made now could never be
+      // delivered to. Say so up front rather than letting the browser subscribe successfully and the visitor
+      // believe notifications are on when they can never arrive (the "not failing silently" the ticket asks for).
+      if (available === false) {
+        setState("error");
+        setErrorCode("unavailable");
+        return;
+      }
       const subscription = await subscribeToPush(vapidPublicKey);
       if (!subscription.endpoint || !subscription.keys?.p256dh || !subscription.keys?.auth) throw new SubscribeError("error");
       await client.tickets.pushSubscribe(ticketId, credential, {
@@ -50,7 +58,17 @@ export function PushOptIn({ ticketId, credential }: { ticketId: string; credenti
 
   return (
     <>
-      {state === "error" && <ErrorAlert>{t(errorCode === "permission_denied" ? "visitor.push.permissionDenied" : "visitor.push.error")}</ErrorAlert>}
+      {state === "error" && (
+        <ErrorAlert>
+          {t(
+            errorCode === "permission_denied"
+              ? "visitor.push.permissionDenied"
+              : errorCode === "unavailable"
+                ? "visitor.push.unavailable"
+                : "visitor.push.error",
+          )}
+        </ErrorAlert>
+      )}
       <Button variant="secondary" onClick={() => void enable()} disabled={state === "subscribing"}>
         {state === "subscribing" ? t("visitor.push.subscribing") : t("visitor.push.enable")}
       </Button>

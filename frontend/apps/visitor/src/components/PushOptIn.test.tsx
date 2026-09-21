@@ -91,6 +91,19 @@ describe("PushOptIn", () => {
     expect(subscribe).not.toHaveBeenCalled();
   });
 
+  it("shows Web Push as unavailable with an explanation when the site has lost internet, instead of subscribing silently (ticket 44, FR-QUE-202)", async () => {
+    const { subscribe } = stubPushCapableBrowser();
+    stubApi({ "GET /notification-config/web-push-key": () => json(200, { public_key: "dGVzdA", available: false }) });
+    const user = userEvent.setup();
+
+    renderVisitor(<PushOptIn ticketId="t1" credential="s3cr3t" />);
+
+    await user.click(await screen.findByRole("button", { name: "Notify me when it's my turn" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(/lost its internet connection/i);
+    expect(subscribe).not.toHaveBeenCalled();
+  });
+
   it("shows a specific message when the visitor denies the browser permission prompt", async () => {
     stubPushCapableBrowser({ permission: "denied" });
     stubApi({ "GET /notification-config/web-push-key": () => json(200, { public_key: "dGVzdA" }) });

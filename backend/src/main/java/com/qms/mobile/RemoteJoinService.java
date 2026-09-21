@@ -8,6 +8,7 @@ import com.qms.issuance.TicketResponse;
 import com.qms.platform.ApiException;
 import com.qms.platform.ErrorCode;
 import com.qms.platform.Profiles;
+import com.qms.platform.connectivity.InternetConnectivityMonitor;
 import com.qms.platform.security.CurrentUser;
 import java.util.UUID;
 import org.springframework.context.annotation.Profile;
@@ -28,11 +29,13 @@ class RemoteJoinService {
     private final RemoteJoinRepository repository;
     private final IssuanceService issuance;
     private final CurrentUser currentUser;
+    private final InternetConnectivityMonitor connectivity;
 
-    RemoteJoinService(RemoteJoinRepository repository, IssuanceService issuance, CurrentUser currentUser) {
+    RemoteJoinService(RemoteJoinRepository repository, IssuanceService issuance, CurrentUser currentUser, InternetConnectivityMonitor connectivity) {
         this.repository = repository;
         this.issuance = issuance;
         this.currentUser = currentUser;
+        this.connectivity = connectivity;
     }
 
     /** What the join screen shows before the visitor commits (FR-MOB-023): the policy alone, not yet its enforcement. */
@@ -40,7 +43,13 @@ class RemoteJoinService {
         if (!repository.serviceExists(serviceId)) throw new ApiException(ErrorCode.NOT_FOUND);
         RemoteJoinRepository.Policy policy = repository.policyOf(serviceId);
         return new RemoteJoinViews.PolicyView(
-                serviceId, policy.virtualQueueEnabled(), policy.maxDistanceMeters(), policy.maxRemoteSharePct(), policy.joinWindowMinutes(), policy.arrivalDeadlineMinutes());
+                serviceId,
+                policy.virtualQueueEnabled(),
+                policy.maxDistanceMeters(),
+                policy.maxRemoteSharePct(),
+                policy.joinWindowMinutes(),
+                policy.arrivalDeadlineMinutes(),
+                connectivity.reachable());
     }
 
     TicketResponse join(UUID serviceId, Double latitude, Double longitude) {

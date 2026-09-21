@@ -84,3 +84,12 @@ qms:
       password: ${QMS_SMTP_PASSWORD:}
       starttls: ${QMS_SMTP_STARTTLS:true}
       from: ${QMS_SMTP_FROM:noreply@qms.local}
+  connectivity:
+    # FR-QUE-202, FR-MOB-041, ADR-0001, ticket 44: external URLs InternetConnectivityMonitor probes to detect this
+    # Site's own loss of internet (its public origin, a Web Push provider, or both); empty (the default) leaves
+    # checking off and the Site assumed reachable (fail open). How often it probes (blank/"-" default: off; a test
+    # drives the check directly instead) is qms.connectivity.check-cron.
+    probe-targets: ${QMS_CONNECTIVITY_PROBE_TARGETS:}
+    check-cron: ${QMS_CONNECTIVITY_CHECK_CRON:-}
+    failure-threshold: ${QMS_CONNECTIVITY_FAILURE_THRESHOLD:3}
+    timeout: ${QMS_CONNECTIVITY_TIMEOUT:3s}

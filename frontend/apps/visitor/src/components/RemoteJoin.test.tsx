@@ -79,6 +79,33 @@ describe("RemoteJoin (ticket 42, FR-MOB-010, FR-MOB-023)", () => {
     expect(JSON.parse(String(join?.init.body))).toEqual({});
   });
 
+  it("shows remote join as unavailable with an explanation when the site has lost internet (ticket 44, FR-MOB-041)", async () => {
+    stubApi({
+      ...AUTHENTICATED_ROUTES,
+      "GET /remote-join/s1": () => json(200, { ...POLICY_OPEN, internet_available: false }),
+    });
+
+    renderVisitor(<RemoteJoin serviceId="s1" />);
+
+    expect(await screen.findByText(/lost its internet connection/i)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /join the queue/i })).not.toBeInTheDocument();
+  });
+
+  it("refuses the join itself with the same explanation when the site loses internet after the policy was shown (ticket 44, FR-QUE-202)", async () => {
+    stubApi({
+      ...AUTHENTICATED_ROUTES,
+      "GET /remote-join/s1": () => json(200, POLICY_OPEN),
+      "POST /remote-join/s1": () =>
+        json(409, { error: { code: "conflict", message: "x", details: { reason: "internet_unreachable" }, trace_id: "t" } }),
+    });
+    const user = userEvent.setup();
+
+    renderVisitor(<RemoteJoin serviceId="s1" />);
+    await user.click(await screen.findByRole("button", { name: /join the queue/i }));
+
+    expect(await screen.findByText(/lost its internet connection/i)).toBeInTheDocument();
+  });
+
   it("shows a specific message when the visitor is too far from the site", async () => {
     stubApi({
       ...AUTHENTICATED_ROUTES,
