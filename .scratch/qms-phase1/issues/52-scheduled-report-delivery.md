@@ -4,7 +4,7 @@
 
 **Blocked by:** 49 — Report exports; 40 — Email channel and appointment messages
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [x] Daily / weekly / monthly schedules with recipients and format (FR-RPT-005)
 - [x] Runs once cluster-wide; failures visible in the delivery log

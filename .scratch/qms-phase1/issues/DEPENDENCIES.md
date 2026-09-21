@@ -53,8 +53,8 @@
 49-report-exports                          48,38           done     n/a*     34 files, +2129 −12 1fc9582..f7da914
 50-operational-reports                     48              done     n/a*     24 files, +2506 −25 bf9d047..6e14811
 51-domain-reports-and-planning-views       50,36,31,45     done     —        27 files, +3153 −11 86022ac..9af9cb3
-52-scheduled-report-delivery               49,40           todo     —        —                   —
-53-retention-purge-bi-access               50              todo     —        —                   —
+52-scheduled-report-delivery               49,40           done     50m      29 files, +2455 −5  596af46..68aba5d
+53-retention-purge-bi-access               50              done     32m      28 files, +1319 −9  68aba5d..ccad7a1
 54-privacy-controls                        22,28,38        todo     —        —                   —
 55-config-versioning-and-bundle            09,08,21        todo     —        —                   —
 56-vertical-profiles-and-setup-wizard      55,29,27        todo     —        —                   —

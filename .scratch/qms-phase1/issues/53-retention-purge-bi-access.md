@@ -4,7 +4,7 @@
 
 **Blocked by:** 50 — Operational reports and KPIs
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [x] Ticket detail retention configurable (default 24 months), then purged or reduced to anonymised aggregates (FR-RPT-021)
 - [x] Aggregates retained longer (default 7 years) and survive detail purge (FR-RPT-022)
