@@ -46,7 +46,7 @@
 42-remote-join                             37,21           done     38m      35 files, +1627 −26 7100b01..c00380c
 43-remote-arrival-and-forfeit              42,39,12        done     44m      32 files, +1623 −18 c9536a0..de8f5f2
 44-internet-loss-degradation               43              done     n/a*     23 files, +722 −17  54a6355..bb513dd
-45-post-service-feedback                   37              todo     —        —                   —
+45-post-service-feedback                   37              done     34m      27 files, +1306 −6  927c92b..ba47e54
 46-live-dashboard                          18,16,11        todo     —        —                   —
 47-threshold-alerts                        46,24,38        todo     —        —                   —
 48-reporting-store-and-token-report        10,15           todo     —        —                   —

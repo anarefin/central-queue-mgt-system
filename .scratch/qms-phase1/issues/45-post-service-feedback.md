@@ -4,7 +4,7 @@
 
 **Blocked by:** 37 — Visitor ticket page (PWA)
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [x] Optional 1–5 rating and comment after completion, stored against Ticket and Agent (FR-MOB-033)
 - [x] Individual comments visible to the Agent only after Team Admin approval (FR-MOB-033)
