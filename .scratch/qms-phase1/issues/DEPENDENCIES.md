@@ -57,7 +57,7 @@
 53-retention-purge-bi-access               50              done     32m      28 files, +1319 −9  68aba5d..ccad7a1
 54-privacy-controls                        22,28,38        done*    123m     66 files, +2287 −141 3f4489a..814273b
 55-config-versioning-and-bundle            09,08,21        done     52m      33 files, +1637 −17  f8d620d..811cb74
-56-vertical-profiles-and-setup-wizard      55,29,27        todo     —        —                   —
+56-vertical-profiles-and-setup-wizard      55,29,27        done     34m      39 files, +2132 −9   43dee84..e4f6457
 57-outbound-webhooks                       11              todo     —        —                   —
 58-service-accounts-host-api               33,04           todo     —        —                   —
 59-multi-node-operation                    11,08           todo     —        —                   —

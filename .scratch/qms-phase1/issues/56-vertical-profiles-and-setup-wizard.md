@@ -4,7 +4,7 @@
 
 **Blocked by:** 55 — Configuration versioning, revert and bundle; 29 — Voice announcements; 27 — Branding and printed token template
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [x] Five shipped profiles carrying label overrides, starter catalogue, priority classes, numbering, report/KPI defaults, feature flags (§3.3, §3.4) — starter catalogue/numbering are Site-scoped and carried in the profile data for the wizard's later "services and numbering" step to seed (no Site exists yet when a profile is picked); see traceability matrix note
 - [x] Terminology remapping via label keys resolved through pack and profile (§3.2)
