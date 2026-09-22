@@ -4,7 +4,7 @@
 
 **Blocked by:** 59 — Multi-node operation
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [x] Offline artefact bundle with backend image, PostgreSQL, reverse proxy and static app bundles; no downloads at install (NFR-POR-004, ADR-0012) — `deploy/bundle.sh` + `deploy/install.sh`; not run end to end in this sandbox (see traceability matrix)
 - [x] Runs on Linux x86-64 with Docker/Podman and installs on Windows Server (NFR-POR-001) — `deploy/preflight.sh` (run and verified here) + `deploy/windows/install.ps1` (reviewed, not runnable here)

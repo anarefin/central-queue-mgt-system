@@ -61,7 +61,7 @@
 57-outbound-webhooks                       11              done*    125m     48 files, +3064 −10  214d9c5..f6b98ea
 58-service-accounts-host-api               33,04           done*    n/a*     20 files, +1029 −21  78757d0..35e4477
 59-multi-node-operation                    11,08           done     89m      9 files, +685 −17    d4dc1b8..a86e96e
-60-installer-upgrades-backup               59              todo     —        —                   —
+60-installer-upgrades-backup               59              done*    47m      32 files, +1724 −13  2a60777..c7e69be
 61-acceptance-suite                        56,44,51,60     todo     —        —                   —
 
 # * 26, 35, 40, 44: worker hit a session rate limit mid-ticket, was resumed after reset;
@@ -107,6 +107,14 @@
 #   consistent with the known flake noted at ticket 49. No rate-limiting infra exists for
 #   any principal in this codebase yet, so "same rate limits as other principals" is
 #   satisfied by construction (host system uses the same guarded endpoints, no bypass).
+# * 60: several criteria are scripts/docs (deploy/bundle.sh, install.ps1, TLS config,
+#   kiosk launch script, backup/restore, site-survey checklist) reviewed and
+#   syntax-checked but not run end to end — the sandbox has no Windows, no PostgreSQL
+#   client tools, and no offline air-gapped target to install onto. Preflight checks and
+#   the diagnostics endpoint WERE run and verified; the encrypted-backup round trip's
+#   encryption/URL-parsing logic was verified but the live pg_dump/restore drill was not.
+#   The pre-go-live drill instructions are in docs/ops/backup-restore.md. Also hit the
+#   same pre-existing SetupWizardIT flake as noted at 58/59, confirmed on the base commit.
 # * Out-of-band fix (commit fde12f4, parent, not tied to a ticket): a follow-up security
 #   review found the already-landed ticket-39 PushEndpointSecurity had an IPv6 ULA
 #   (fc00::/7) and IPv4-mapped-address bypass; fixed directly since the active worker at
