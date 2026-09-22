@@ -540,6 +540,14 @@ export class ApiClient {
   };
 
   /**
+   * Day-two operations (ticket 60, FR-OPS-040, §26.5): the one-click support diagnostics bundle (versions, a
+   * redacted config snapshot, recent audit events), System Administrator only (`ops:diagnostics_export`).
+   */
+  readonly ops = {
+    diagnostics: () => this.requestBlob("/ops/diagnostics"),
+  };
+
+  /**
    * Privacy controls (SRS §25.3-25.4, ticket 54): the two visitor-field surfaces this ticket makes Org
    * Admin-configurable at runtime (`config:org_sites_zones`), and a visitor's own data export and deletion
    * (`FR-SEC-031`, the same permission).

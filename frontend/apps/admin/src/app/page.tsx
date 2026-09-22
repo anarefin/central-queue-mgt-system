@@ -48,6 +48,13 @@ export default function Home() {
             <Link href="/webhooks/">{t("admin.home.webhooks")}</Link>
           </div>
         )}
+        {/* Diagnostics carries a config snapshot, so it is narrower than the rest of this admin-only row (System
+            Administrator only, `ops:diagnostics_export`); the API decides for real. */}
+        {user?.roles.includes("system_admin") && (
+          <div className="qms-row">
+            <Link href="/ops/">{t("admin.home.ops")}</Link>
+          </div>
+        )}
         {user?.roles.some((role) => role === "system_admin" || role === "org_admin" || role === "team_admin") && (
           <div className="qms-row">
             <Link href="/availability/">{t("admin.home.availability")}</Link>

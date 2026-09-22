@@ -112,6 +112,10 @@ qms:
       # verified with. Blank (the default) leaves export and import unconfigured; set the same value on the source
       # and the target installation to clone a client's configuration into staging or training.
       secret: ${QMS_CONFIG_BUNDLE_SECRET:}
+  ops:
+    # FR-OPS-040: the app version line in a diagnostics bundle. Kept in sync by hand with `version` in
+    # backend/build.gradle.kts (no build-time injection wired for this ticket, to avoid a build-graph change).
+    version: ${QMS_VERSION:0.1.0}
   connectivity:
     # FR-QUE-202, FR-MOB-041, ADR-0001, ticket 44: external URLs InternetConnectivityMonitor probes to detect this
     # Site's own loss of internet (its public origin, a Web Push provider, or both); empty (the default) leaves

@@ -32,6 +32,7 @@ public final class Authorities {
     public static final String AUDIT_READ = "perm:audit:read";
     public static final String APPOINTMENT_BOOK = "perm:appointment:book";
     public static final String APPOINTMENT_CHECKIN = "perm:appointment:checkin";
+    public static final String OPS_DIAGNOSTICS_EXPORT = "perm:ops:diagnostics_export";
 
     private Authorities() {}
 }

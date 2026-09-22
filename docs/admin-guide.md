@@ -682,3 +682,29 @@ length, and the absolute and percentage change between them (FR-RPT-010, FR-MON-
 Monday through Sunday compares against the Monday through Sunday just before it. Percentiles are always computed
 from the raw Ticket rows a filter reaches, never derived from an already-grouped average (FR-MON-010).
 
+## 20. Operations: installation, upgrades, backups and diagnostics
+
+Ticket 60, SRS §26. This section is the administrator-facing summary; `docs/ops/` carries the full procedures a
+consultant runs at a site.
+
+- **Installing and upgrading** — `docs/ops/installer.md`: single-node, multi-node and air-gapped modes, the offline
+  artefact bundle (`deploy/bundle.sh` / `deploy/install.sh` / `deploy/windows/install.ps1`), the prerequisite checks
+  every install and upgrade runs first (`deploy/preflight.sh`, including mandatory clock synchronisation,
+  FR-OPS-002), and how an upgrade keeps every waiting Ticket and open Counter Session intact across a restart
+  (FR-OPS-021).
+- **Rollback and release notes** — `docs/ops/rollback-and-release-notes.md`: the template every release fills in for
+  its own rollback path and any changed configuration default (FR-OPS-022, FR-OPS-023).
+- **Backup and restore** — `docs/ops/backup-restore.md`: encrypted full and incremental (WAL-archive) backups
+  including the configuration bundle and uploaded media, the restore procedure, and the acceptance drill that
+  verifies RPO ≤ 5 min / RTO ≤ 60 min (FR-OPS-030, FR-OPS-031, NFR-SEC-012, NFR-AVL-003).
+- **TLS and the kiosk/display packaged shell** — `docs/ops/tls-and-kiosk-display-shell.md`: the production TLS proxy
+  config and per-platform kiosk lockdown (NFR-SEC-010, NFR-POR-003, NFR-SEC-052).
+- **Site survey and hardware spec** — `docs/ops/site-survey-checklist.md`: the checklist to complete before
+  installing at a site, and the hardware specification to hand a client's vendor (NFR-ENV-001..003, SRS §24).
+- **Support diagnostics bundle** (FR-OPS-040, §26.5) — a System Administrator opens **Operations** from the admin
+  home page (`/ops/`) and clicks **Download diagnostics bundle**. The zip carries `versions.txt` (application and
+  runtime versions), `config.txt` (a fixed allow-list of non-secret configuration values — no property outside that
+  list, and never anything that looks like a password or secret, ever leaves the server this way), and
+  `recent-events.txt` (the last 200 audit-log entries). Downloading it is itself recorded in the audit log
+  (`ops.diagnostics_exported`), so a support export is traceable like any other privileged read.
+

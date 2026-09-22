@@ -26,3 +26,4 @@ notice_board:manage                 | Y | Y | Y | - | -
 audit:read                          | Y | Y | - | - | -
 appointment:book                    | Y | Y | Y | - | Y
 appointment:checkin                 | Y | Y | Y | - | Y
+ops:diagnostics_export              | Y | - | - | - | -

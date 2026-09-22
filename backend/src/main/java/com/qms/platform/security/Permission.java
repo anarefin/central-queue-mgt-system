@@ -28,7 +28,8 @@ public enum Permission {
     NOTICE_BOARD_MANAGE("notice_board:manage"),
     AUDIT_READ("audit:read"),
     APPOINTMENT_BOOK("appointment:book"),
-    APPOINTMENT_CHECKIN("appointment:checkin");
+    APPOINTMENT_CHECKIN("appointment:checkin"),
+    OPS_DIAGNOSTICS_EXPORT("ops:diagnostics_export");
 
     private final String wire;
 

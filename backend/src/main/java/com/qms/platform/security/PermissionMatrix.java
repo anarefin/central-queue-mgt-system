@@ -48,6 +48,9 @@ public final class PermissionMatrix {
         allow(AUDIT_READ, SYSTEM_ADMIN, ORG_ADMIN);
         allow(APPOINTMENT_BOOK, SYSTEM_ADMIN, ORG_ADMIN, TEAM_ADMIN, RECEPTION_OPERATOR);
         allow(APPOINTMENT_CHECKIN, SYSTEM_ADMIN, ORG_ADMIN, TEAM_ADMIN, RECEPTION_OPERATOR);
+        // FR-OPS-040: the diagnostics bundle carries a redacted configuration snapshot alongside recent audit
+        // events, so it is restricted to System Administrator, narrower than plain audit:read (Org Admin too).
+        allow(OPS_DIAGNOSTICS_EXPORT, SYSTEM_ADMIN);
     }
 
     private PermissionMatrix() {}
