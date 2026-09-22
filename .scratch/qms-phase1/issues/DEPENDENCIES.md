@@ -58,7 +58,7 @@
 54-privacy-controls                        22,28,38        done*    123m     66 files, +2287 −141 3f4489a..814273b
 55-config-versioning-and-bundle            09,08,21        done     52m      33 files, +1637 −17  f8d620d..811cb74
 56-vertical-profiles-and-setup-wizard      55,29,27        done     34m      39 files, +2132 −9   43dee84..e4f6457
-57-outbound-webhooks                       11              todo     —        —                   —
+57-outbound-webhooks                       11              done*    125m     48 files, +3064 −10  214d9c5..f6b98ea
 58-service-accounts-host-api               33,04           todo     —        —                   —
 59-multi-node-operation                    11,08           todo     —        —                   —
 60-installer-upgrades-backup               59              todo     —        —                   —
@@ -97,6 +97,9 @@
 #   the worker to flag this; everything else on the ticket is fully satisfied. OVERRUN:
 #   ~123m agent compute (largest ticket in the run so far) — worth a follow-up ticket for
 #   the PII fields if full-coverage encryption is later required.
+# * 57: OVERRUN, ~125m — worker ran the full backend suite three separate times chasing
+#   down slow/flaky publish overhead before landing a clean run; all criteria satisfied,
+#   nothing left unresolved.
 # * Out-of-band fix (commit fde12f4, parent, not tied to a ticket): a follow-up security
 #   review found the already-landed ticket-39 PushEndpointSecurity had an IPv6 ULA
 #   (fc00::/7) and IPv4-mapped-address bypass; fixed directly since the active worker at

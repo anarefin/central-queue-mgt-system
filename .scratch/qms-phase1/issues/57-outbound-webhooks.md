@@ -4,7 +4,7 @@
 
 **Blocked by:** 11 — Realtime hub
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [x] Every §21.4 event type subscribable per endpoint with a secret (FR-INT-020)
 - [x] HMAC-SHA256 over body + timestamp; retry with backoff; delivery log with replay (FR-INT-021)
