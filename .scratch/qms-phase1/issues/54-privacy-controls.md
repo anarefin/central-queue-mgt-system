@@ -4,7 +4,7 @@
 
 **Blocked by:** 22 — Visitor directory and walk-in registration; 28 — Display board: now-serving table; 38 — Notification pipeline and in-app channel
 
-**Status:** ready-for-agent
+**Status:** done (NFR-SEC-011 partial — see checkbox note and DEPENDENCIES.md)
 
 - [x] Configurable visitor field set per surface with §25.3 defaults (FR-SEC-020)
 - [x] Clinical sensitivity per Site replaces service/group names with neutral labels on displays, announcements, notifications (FR-SEC-021)

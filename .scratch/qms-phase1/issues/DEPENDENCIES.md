@@ -55,7 +55,7 @@
 51-domain-reports-and-planning-views       50,36,31,45     done     —        27 files, +3153 −11 86022ac..9af9cb3
 52-scheduled-report-delivery               49,40           done     50m      29 files, +2455 −5  596af46..68aba5d
 53-retention-purge-bi-access               50              done     32m      28 files, +1319 −9  68aba5d..ccad7a1
-54-privacy-controls                        22,28,38        todo     —        —                   —
+54-privacy-controls                        22,28,38        done*    123m     66 files, +2287 −141 3f4489a..814273b
 55-config-versioning-and-bundle            09,08,21        todo     —        —                   —
 56-vertical-profiles-and-setup-wizard      55,29,27        todo     —        —                   —
 57-outbound-webhooks                       11              todo     —        —                   —
@@ -88,6 +88,15 @@
 # * 51: found already partway done as uncommitted working-tree state (not started via the
 #   normal dispatch) when this run began; a worker was dispatched to review, finish, and
 #   commit that existing code rather than redo it. Elapsed wall-clock not comparable.
+# * 54: NFR-SEC-011 (app-layer encryption of visitor name/phone/email/notes) delivered in
+#   full only for ticket.purpose_note; visitor.name/.phone/.email deliberately left
+#   unencrypted — phone/email are FR-INT-010/OTP sign-in's own equality-lookup keys,
+#   visitor.name is copied by a raw-SQL INSERT...SELECT into the reporting warehouse, and
+#   all three are written by raw-SQL fixtures in ~20 other tickets' own ITs. Reasoning in
+#   full in the NFR-SEC-011 row of docs/traceability-matrix.md. Checkbox left unticked by
+#   the worker to flag this; everything else on the ticket is fully satisfied. OVERRUN:
+#   ~123m agent compute (largest ticket in the run so far) — worth a follow-up ticket for
+#   the PII fields if full-coverage encryption is later required.
 # * Out-of-band fix (commit fde12f4, parent, not tied to a ticket): a follow-up security
 #   review found the already-landed ticket-39 PushEndpointSecurity had an IPv6 ULA
 #   (fc00::/7) and IPv4-mapped-address bypass; fixed directly since the active worker at
