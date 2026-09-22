@@ -59,7 +59,7 @@
 55-config-versioning-and-bundle            09,08,21        done     52m      33 files, +1637 −17  f8d620d..811cb74
 56-vertical-profiles-and-setup-wizard      55,29,27        done     34m      39 files, +2132 −9   43dee84..e4f6457
 57-outbound-webhooks                       11              done*    125m     48 files, +3064 −10  214d9c5..f6b98ea
-58-service-accounts-host-api               33,04           todo     —        —                   —
+58-service-accounts-host-api               33,04           done*    n/a*     20 files, +1029 −21  78757d0..35e4477
 59-multi-node-operation                    11,08           todo     —        —                   —
 60-installer-upgrades-backup               59              todo     —        —                   —
 61-acceptance-suite                        56,44,51,60     todo     —        —                   —
@@ -100,6 +100,13 @@
 # * 57: OVERRUN, ~125m — worker ran the full backend suite three separate times chasing
 #   down slow/flaky publish overhead before landing a clean run; all criteria satisfied,
 #   nothing left unresolved.
+# * 58: worker hit a session rate limit mid-ticket, was resumed after reset. Elapsed
+#   wall-clock spans the pause and is not comparable. Worker also hit intermittent IT
+#   failures (a different, unrelated test each time) that it verified pre-exist on the
+#   unmodified base commit too — pre-existing suite flakiness, not caused by this ticket,
+#   consistent with the known flake noted at ticket 49. No rate-limiting infra exists for
+#   any principal in this codebase yet, so "same rate limits as other principals" is
+#   satisfied by construction (host system uses the same guarded endpoints, no bypass).
 # * Out-of-band fix (commit fde12f4, parent, not tied to a ticket): a follow-up security
 #   review found the already-landed ticket-39 PushEndpointSecurity had an IPv6 ULA
 #   (fc00::/7) and IPv4-mapped-address bypass; fixed directly since the active worker at

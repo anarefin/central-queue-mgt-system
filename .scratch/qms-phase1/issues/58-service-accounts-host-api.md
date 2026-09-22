@@ -4,7 +4,7 @@
 
 **Blocked by:** 33 — Staff appointment booking; 04 — Roles, scopes, user administration and audit log
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [x] Client id + secret exchanged for a scoped JWT (reporting role or host-system scope) (§20.2)
 - [x] Host system can create a Ticket, book an appointment, query queue status and cancel (FR-INT-030)
