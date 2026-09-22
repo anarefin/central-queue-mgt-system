@@ -2,6 +2,7 @@ package com.qms.issuance;
 
 import com.qms.audit.AuditEvent;
 import com.qms.audit.AuditWriter;
+import com.qms.configuration.privacy.VisitorFieldConfigService;
 import com.qms.platform.ApiException;
 import com.qms.platform.ErrorCode;
 import com.qms.platform.Profiles;
@@ -34,13 +35,21 @@ class VisitorService {
     private final VisitorDirectoryGateway gateway;
     private final VisitorRepository visitors;
     private final VisitorProperties properties;
+    private final VisitorFieldConfigService fieldConfig;
     private final AuditWriter audit;
     private final Clock clock;
 
-    VisitorService(VisitorDirectoryGateway gateway, VisitorRepository visitors, VisitorProperties properties, AuditWriter audit, Clock clock) {
+    VisitorService(
+            VisitorDirectoryGateway gateway,
+            VisitorRepository visitors,
+            VisitorProperties properties,
+            VisitorFieldConfigService fieldConfig,
+            AuditWriter audit,
+            Clock clock) {
         this.gateway = gateway;
         this.visitors = visitors;
         this.properties = properties;
+        this.fieldConfig = fieldConfig;
         this.audit = audit;
         this.clock = clock;
     }
@@ -58,7 +67,12 @@ class VisitorService {
      */
     KioskVisitorIdentifyResponse identifyForKiosk(String query) {
         VisitorDirectory.Match match = gateway.lookup(query).orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND));
-        return new KioskVisitorIdentifyResponse(match.id(), match.name(), match.category());
+        // FR-SEC-020's "Kiosk confirmation | Name, category" row, now Org Admin-configurable (ticket 54): a field
+        // turned off here is left out of the response entirely, not merely hidden by the kiosk's own screen.
+        return new KioskVisitorIdentifyResponse(
+                match.id(),
+                fieldConfig.isVisible("kiosk_confirmation", "name") ? match.name() : null,
+                fieldConfig.isVisible("kiosk_confirmation", "category") ? match.category() : null);
     }
 
     /** {@code POST /visitors} (FR-ISS-021): a minimal record and a pass reference for an unknown walk-in. */
@@ -66,7 +80,17 @@ class VisitorService {
     VisitorRegistrationResponse register(RegisterVisitorRequest request) {
         if (request == null || blank(request.name()) == null) throw invalid("name", "required");
         if (blank(request.phone()) == null) throw invalid("phone", "required");
-        Captured captured = capture(request, properties);
+        // FR-SEC-023, ticket 54: an Org Admin's runtime `capture` field config (com.qms.configuration.privacy) is a
+        // second, narrower gate on top of the deploy-time `qms.visitor.registration-fields` capture() already
+        // enforces — a field reaches the insert only when BOTH allow it, so turning one off at either layer is
+        // enough to stop it being captured or retained.
+        Captured capturedByConfig = capture(request, properties);
+        Captured captured = new Captured(
+                capturedByConfig.name(),
+                capturedByConfig.phone(),
+                fieldConfig.isVisible("capture", "email") ? capturedByConfig.email() : null,
+                fieldConfig.isVisible("capture", "category") ? capturedByConfig.category() : null,
+                fieldConfig.isVisible("capture", "purpose") ? capturedByConfig.purpose() : null);
 
         Instant now = clock.instant();
         Insert inserted = insertWithFreshPassReference(captured.name(), captured.phone(), captured.email(), captured.category(), now);

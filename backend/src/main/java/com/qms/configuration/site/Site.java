@@ -18,5 +18,8 @@ public record Site(
         @JsonProperty("default_language") String defaultLanguage,
         @JsonProperty("enabled_languages") List<String> enabledLanguages,
         boolean active,
+        /** FR-SEC-021, ticket 54: when on, service and service-group names are replaced by a neutral label on public
+         * displays, announcements and notifications for this Site (required for medical deployments). */
+        @JsonProperty("clinical_sensitivity") boolean clinicalSensitivity,
         @JsonProperty("created_at") Instant createdAt,
         @JsonProperty("updated_at") Instant updatedAt) {}

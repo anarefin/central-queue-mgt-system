@@ -1,6 +1,5 @@
 {
   "fallback.text": "Text unavailable",
-
   "app.name": "Queue Management System",
   "app.admin": "Administration",
   "app.console": "Agent console",
@@ -8,11 +7,9 @@
   "app.display": "Display",
   "app.visitor": "Visitor",
   "placeholder.comingSoon": "This app is coming soon.",
-
   "common.loading": "Loading…",
   "common.retry": "Try again",
   "common.signOut": "Sign out",
-
   "errors.unauthenticated": "Please sign in to continue.",
   "errors.invalid_credentials": "The username or password is incorrect.",
   "errors.token_invalid": "Your session token is invalid or has expired.",
@@ -29,7 +26,6 @@
   "errors.unavailable": "The service is currently unavailable.",
   "errors.network_error": "Could not reach the server. Check your connection.",
   "errors.unexpected_response": "The server sent an unexpected response.",
-
   "admin.health.title": "System health",
   "admin.health.checking": "Checking…",
   "admin.health.unreachable": "The backend cannot be reached.",
@@ -40,7 +36,6 @@
   "admin.health.up": "Up",
   "admin.health.down": "Down",
   "admin.health.not_configured": "Not configured",
-
   "auth.title": "Sign in",
   "auth.username": "Username",
   "auth.password": "Password",
@@ -50,16 +45,13 @@
   "auth.signInAgain": "Sign in again",
   "auth.retryIn": "Try again in {minutes} minute(s).",
   "auth.signedInAs": "Signed in as {name}",
-
   "roles.system_admin": "System Administrator",
   "roles.org_admin": "Organisation Admin",
   "roles.team_admin": "Team Admin",
   "roles.agent": "Agent",
   "roles.reception_operator": "Reception Operator",
-
   "admin.home.sites": "Sites, zones and counters",
   "admin.home.devices": "Device pairing and fleet",
-
   "admin.action.save": "Save",
   "admin.action.saving": "Saving…",
   "admin.action.cancel": "Cancel",
@@ -67,13 +59,10 @@
   "admin.action.deactivate": "Deactivate",
   "admin.action.confirmDeactivate": "Confirm deactivation",
   "admin.action.activate": "Activate",
-
   "admin.status.active": "Active",
   "admin.status.inactive": "Inactive",
-
   "languages.en": "English",
   "languages.bn": "Bangla",
-
   "sites.title": "Sites, zones and counters",
   "sites.back": "Back to administration",
   "sites.invalidFields": "Check these fields: {fields}",
@@ -113,7 +102,6 @@
   "sites.counters.add": "Add a counter",
   "sites.counter.note": "Location: {note}",
   "sites.counter.confirm": "Deactivate {name}? Existing records keep pointing at it.",
-
   "devices.title": "Devices",
   "devices.back": "Back to administration",
   "devices.list.title": "Devices",
@@ -141,7 +129,6 @@
   "devices.reload": "Push reload",
   "devices.pushConfig": "Push config update",
   "devices.pushed": "Sent.",
-
   "devices.display.settings": "Display settings",
   "devices.display.columnsLegend": "Serving table columns",
   "devices.display.columns.token": "Token",
@@ -167,7 +154,6 @@
   "devices.display.queueIds": "Service IDs (comma-separated)",
   "devices.display.save": "Save display settings",
   "devices.display.saved": "Display settings saved.",
-
   "display.notices.empty": "No notices are scheduled right now.",
   "display.notices.label": "Notices",
   "display.singleCounter.none": "No counter is configured for this display yet.",
@@ -176,7 +162,6 @@
   "display.summary.estimate": "Estimated wait",
   "display.summary.estimateRange": "About {low}–{high} min",
   "display.summary.empty": "No services to show yet.",
-
   "noticeBoard.title": "Notice board",
   "noticeBoard.back": "Back to administration",
   "noticeBoard.intro": "Schedule images, video or text for the notice panel of a zone's split-media displays (FR-DSP-006).",
@@ -196,7 +181,6 @@
   "noticeBoard.create": "Create notice",
   "noticeBoard.confirmDeactivate": "Deactivate this notice? It will stop showing on any display.",
   "noticeBoard.selectZonePrompt": "Choose a zone to see and manage its notices.",
-
   "devicePairing.title": "Pair this device",
   "devicePairing.instructions": "Ask an administrator for a pairing code, then enter it below.",
   "devicePairing.codeLabel": "Pairing code",
@@ -204,7 +188,6 @@
   "devicePairing.pairing": "Pairing…",
   "devicePairing.loadingConfig": "Loading configuration…",
   "devicePairing.configError": "Could not load this device's configuration.",
-
   "nowServing.loadError": "Could not load the now-serving board.",
   "nowServing.stale": "Update delayed — information may be out of date",
   "nowServing.nextLabel": "Next tokens",
@@ -212,10 +195,8 @@
   "nowServing.columns.counter": "Counter",
   "nowServing.columns.service": "Service",
   "nowServing.columns.staff": "Staff",
-
   "announcement.template": "Attention please. Token {token}, {service}, please proceed to {counter}, {floor}.",
   "announcement.templateWithVisitor": "Attention please. {visitorName}, token {token}, {service}, please proceed to {counter}, {floor}.",
-
   "kiosk.language.native.en": "English",
   "kiosk.language.native.bn": "বাংলা",
   "kiosk.idle.title": "Welcome",
@@ -264,7 +245,6 @@
   "kiosk.result.done": "Done",
   "kiosk.accessibility.highContrast": "High contrast",
   "kiosk.accessibility.largeText": "Large text",
-
   "admin.home.catalogue": "Service catalogue",
   "catalogue.title": "Service catalogue",
   "catalogue.site.pick": "Site",
@@ -538,7 +518,6 @@
   "console.day.averageNone": "Average service time: none yet",
   "console.day.breaks": "Break time: {duration}",
   "console.day.unavailable": "Your day's counts are not available right now.",
-
   "console.feedback.title": "Feedback on your tickets",
   "console.feedback.none": "No feedback yet.",
   "console.feedback.entry": "{token} — rating {rating}/5",
@@ -773,10 +752,8 @@
   "visitorImport.runs.noFilename": "(no file name)",
   "visitorImport.runs.source.manual": "Manual upload",
   "visitorImport.runs.source.scheduled": "Scheduled folder pickup",
-
   "admin.home.branding": "Branding and printed token",
   "admin.home.noticeBoard": "Notice board",
-
   "branding.title": "Branding and printed token",
   "branding.intro": "Set the organisation's logo, colour and name once, and edit the printed token's layout — preview and test print it here without issuing a real ticket (FR-CFG-030..032).",
   "branding.section.orgBranding": "Organisation branding",
@@ -819,7 +796,6 @@
   "branding.preview.sampleCounter": "Counter 3",
   "branding.preview.sampleEstimatedWait": "10–15 min",
   "branding.logoAlt": "{org} logo",
-
   "sites.fields.org_name": "Organisation name",
   "sites.fields.primary_color": "Primary colour",
   "sites.fields.logo_url": "Logo URL",
@@ -835,7 +811,6 @@
   "sites.fields.layout_config.split_percent": "Serving table width",
   "sites.fields.layout_config.counter_id": "Counter to show",
   "sites.fields.language_cycle_seconds": "Language cycle interval",
-
   "kiosk.printSlip.fields.token_number": "Token",
   "kiosk.printSlip.fields.building": "Building",
   "kiosk.printSlip.fields.floor": "Floor",
@@ -848,9 +823,7 @@
   "kiosk.printSlip.fields.issue_time": "Issued",
   "kiosk.printSlip.fields.estimated_wait": "Estimated wait",
   "kiosk.printSlip.logoAlt": "{org} logo",
-
   "devicePairing.logoAlt": "{org} logo",
-
   "visitor.missingReference": "This link is missing your ticket reference. Scan the QR code on your token again.",
   "visitor.notifications.intro": "You can opt out of non-essential notifications about this ticket at any time.",
   "visitor.notifications.optedOut": "You have opted out of non-essential notifications.",
@@ -919,7 +892,6 @@
   "visitor.feedback.submitting": "Sending…",
   "visitor.feedback.skip": "Not now",
   "visitor.feedback.thanks": "Thank you for your feedback.",
-
   "remoteJoin.title": "Join remotely",
   "remoteJoin.intro": "Hold your place in the queue from here, then travel to the site in time for your turn.",
   "remoteJoin.signInFirst": "Sign in to join this queue remotely.",
@@ -947,7 +919,6 @@
   "remoteJoin.refused.duplicate_ticket": "You already have an active ticket for this service.",
   "remoteJoin.refused.site_location_unset": "Remote join for this service is temporarily unavailable.",
   "remoteJoin.refused.internet_unreachable": "Remote join is temporarily unavailable because the site has lost its internet connection. You can still join once you arrive at the site.",
-
   "account.login.title": "Sign in",
   "account.login.intro": "Enter your email address and we'll send you a one-time code.",
   "account.login.email": "Email address",
@@ -982,21 +953,17 @@
   "account.sites.empty": "You have not saved any sites yet.",
   "account.sites.remove": "Remove",
   "account.error.generic": "Something went wrong. Please try again.",
-
   "admin.home.notifications": "Notifications",
   "admin.home.feedback": "Visitor feedback",
   "admin.home.reports": "Reports",
-
   "feedback.admin.title": "Comments awaiting approval",
   "feedback.admin.intro": "A comment is shown to the agent it is about only once you approve it here (FR-MOB-033). Ratings are never gated and feed the feedback report directly.",
   "feedback.admin.none": "No comments are waiting for a decision.",
   "feedback.admin.rating": "Rating: {rating}/5",
   "feedback.admin.approve": "Approve for the agent to see",
   "feedback.admin.approved": "Approved.",
-
   "notifications.title": "Notifications",
   "notifications.intro": "Triggers, templates and the delivery log of the notification pipeline (SRS §14). Every action here is permission-checked and scoped on the server.",
-
   "notifications.triggers.title": "Triggers",
   "notifications.triggers.intro": "Turn a trigger on or off for the whole Site, or for one Service under it, which overrides the Site's own setting.",
   "notifications.triggers.scope": "Apply to",
@@ -1007,7 +974,6 @@
   "notifications.triggers.overriddenService": "Set for this Service",
   "notifications.triggers.enable": "Enable",
   "notifications.triggers.disable": "Disable",
-
   "notifications.templates.title": "Templates",
   "notifications.templates.trigger": "Trigger",
   "notifications.templates.channel": "Channel",
@@ -1016,7 +982,6 @@
   "notifications.templates.subject": "Subject (some channels only)",
   "notifications.templates.body": "Body",
   "notifications.templates.preview": "Preview",
-
   "notifications.log.title": "Delivery log",
   "notifications.log.ticketId": "Ticket ID",
   "notifications.log.visitorId": "Visitor ID",
@@ -1024,17 +989,14 @@
   "notifications.log.anyStatus": "Any status",
   "notifications.log.search": "Search",
   "notifications.log.empty": "No messages match this filter.",
-
   "notifications.channel.in_app": "In-app",
   "notifications.channel.staff_alert": "Staff alert",
   "notifications.channel.web_push": "Web Push",
   "notifications.channel.email": "Email",
-
   "notifications.status.queued": "Queued",
   "notifications.status.sent": "Sent",
   "notifications.status.failed": "Failed",
   "notifications.status.suppressed": "Suppressed",
-
   "notifications.trigger.ticket_issued": "Ticket issued",
   "notifications.trigger.approaching_turn": "Approaching turn",
   "notifications.trigger.your_turn": "Your turn / called",
@@ -1050,7 +1012,6 @@
   "notifications.trigger.agent_break_overrun": "Agent break overrun",
   "notifications.trigger.counter_unattended": "Counter unattended with waiting queue",
   "notifications.trigger.kiosk_display_offline": "Kiosk or display offline",
-
   "dashboard.title": "Live dashboard",
   "dashboard.needsSite": "Choose a Site to see its live dashboard.",
   "dashboard.loading": "Loading the dashboard…",
@@ -1130,7 +1091,6 @@
   "alerts.thresholds.field.device_offline_minutes_max": "Device offline (minutes)",
   "alerts.thresholds.field.group_window_minutes": "Grouping window (minutes)",
   "alerts.thresholds.field.escalation_delay_minutes": "Escalation delay (minutes)",
-
   "reports.title": "Reports",
   "reports.intro": "Reports run against the reporting store, refreshed from live tickets within about a minute, never against the live queue itself.",
   "reports.detailedToken.title": "Detailed token report",
@@ -1175,7 +1135,6 @@
   "reports.detailedToken.col.agent": "Agent",
   "reports.detailedToken.col.outcome": "Outcome",
   "reports.detailedToken.col.transfers": "Transfers",
-
   "reports.export.format": "Export format",
   "reports.export.csv": "CSV",
   "reports.export.xlsx": "XLSX",
@@ -1185,9 +1144,7 @@
   "reports.export.queued": "Preparing your export in the background — it will download automatically once ready.",
   "reports.export.ready": "Your export is ready and has been downloaded.",
   "reports.export.failed": "The export failed. Please try again.",
-
   "catalogue.fields.grain": "Grain",
-
   "reports.operational.title": "Operational reports",
   "reports.operational.intro": "Visitor flow, counter, agent, service, department and site reports (SRS §16.1), each compared against the previous equivalent period.",
   "reports.operational.pickReport": "Report",
@@ -1206,7 +1163,6 @@
   "reports.operational.waitByHourBand": "Average and P90 wait by hour of day",
   "reports.operational.hourBand": "Hour",
   "reports.operational.channelMix": "Channel mix",
-
   "reports.visitorFlow.title": "Visitor flow report",
   "reports.visitorFlow.intro": "Issued, served, cancelled, no-show and peak concurrent waiting, by hour, day, month or year (§16.1).",
   "reports.counter.title": "Counter report",
@@ -1219,7 +1175,6 @@
   "reports.department.intro": "The service report rolled up to service group (§16.1).",
   "reports.site.title": "Site report",
   "reports.site.intro": "The department report rolled up to site (§16.1).",
-
   "reports.metric.bucket": "Period",
   "reports.metric.counter_label": "Counter",
   "reports.metric.zone_name": "Zone",
@@ -1373,5 +1328,27 @@
   "retention.save": "Save",
   "retention.saving": "Saving…",
   "sites.fields.retention_months": "Retention (months)",
-  "sites.fields.mode": "Mode"
+  "sites.fields.mode": "Mode",
+  "admin.home.privacy": "Privacy controls",
+  "sites.fields.clinical_sensitivity": "Clinical sensitivity mode",
+  "sites.hint.clinicalSensitivity": "Replaces service and service-group names with a neutral label on this Site's public displays, announcements and notifications (SRS §25.3, FR-SEC-021). Required for medical deployments.",
+  "privacy.title": "Privacy controls",
+  "privacy.back": "Back to administration",
+  "privacy.fieldConfig.title": "Configurable visitor fields",
+  "privacy.fieldConfig.intro": "Which optional visitor fields are captured at registration, and which reach the kiosk confirmation screen (SRS §25.3, FR-SEC-020, FR-SEC-023).",
+  "privacy.fieldConfig.surface.capture": "Captured at walk-in registration",
+  "privacy.fieldConfig.surface.kiosk_confirmation": "Shown on the kiosk confirmation screen",
+  "privacy.fieldConfig.field.name": "Name",
+  "privacy.fieldConfig.field.category": "Category",
+  "privacy.fieldConfig.field.email": "Email",
+  "privacy.fieldConfig.field.purpose": "Purpose note",
+  "privacy.fieldConfig.field.phone": "Phone",
+  "privacy.visitorData.title": "Visitor data export and deletion",
+  "privacy.visitorData.intro": "Export everything held about one visitor, or anonymise their record. Deletion anonymises their ticket rows rather than removing them, so operational statistics survive (FR-SEC-031).",
+  "privacy.visitorData.visitorId": "Visitor ID",
+  "privacy.visitorData.export": "Export",
+  "privacy.visitorData.anonymize": "Delete (anonymise)",
+  "privacy.visitorData.confirmAnonymize": "This permanently removes this visitor's name, phone, email and category, and clears the note on every one of their tickets. This cannot be undone. Continue?",
+  "privacy.visitorData.anonymized": "Anonymised at {date}",
+  "privacy.visitorData.tickets": "Tickets on record"
 }

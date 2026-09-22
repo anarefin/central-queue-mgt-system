@@ -257,6 +257,31 @@ class NotificationDispatchIT {
         assertThat((String) messageRow(ticket).get("rendered_body")).isEqualTo("[] token " + tokenOf(ticket));
     }
 
+    // ---- FR-SEC-021 (ticket 54): a clinical-sensitivity Site never names the real service in a notification -------
+
+    @Test
+    void aClinicalSensitivitySiteReplacesTheServiceNameWithANeutralLabel() {
+        Setup s = setup("CLINICAL");
+        jdbc.update("UPDATE site SET clinical_sensitivity = true WHERE id = ?", s.site());
+        template("your_turn", "web_push", "en", "[{{service_name}}/{{service_group_name}}] token {{token_number}}");
+        UUID ticket = newTicket(s, null, "waiting", "reception");
+
+        fireYourTurn(s, ticket, null);
+
+        assertThat((String) messageRow(ticket).get("rendered_body")).isEqualTo("[Service/Service] token " + tokenOf(ticket));
+    }
+
+    @Test
+    void aNonClinicalSiteStillNamesTheRealService() {
+        Setup s = setup("NONCLINICAL");
+        template("your_turn", "web_push", "en", "[{{service_name}}] token {{token_number}}");
+        UUID ticket = newTicket(s, null, "waiting", "reception");
+
+        fireYourTurn(s, ticket, null);
+
+        assertThat((String) messageRow(ticket).get("rendered_body")).isEqualTo("[Consultation] token " + tokenOf(ticket));
+    }
+
     // ---- FR-NTF-031: quiet hours suppress non-urgent messages, essential ones bypass -------------------------------
 
     @Test

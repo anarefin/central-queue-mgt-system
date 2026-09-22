@@ -10,6 +10,9 @@ export interface Site {
   /** In display order (FR-I18N-002). */
   enabled_languages: string[];
   active: boolean;
+  /** FR-SEC-021 (ticket 54): when on, service/service-group names are replaced by a neutral label on public
+   * displays, announcements and notifications for this Site. */
+  clinical_sensitivity: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -21,6 +24,7 @@ export interface SiteInput {
   address: string;
   default_language: string;
   enabled_languages: string[];
+  clinical_sensitivity?: boolean;
 }
 
 export interface Zone {

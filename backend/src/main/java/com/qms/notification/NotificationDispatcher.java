@@ -1,6 +1,7 @@
 package com.qms.notification;
 
 import com.qms.platform.Profiles;
+import com.qms.platform.i18n.Messages;
 import com.qms.platform.notifications.NotificationContext;
 import com.qms.platform.notifications.NotificationTrigger;
 import java.time.Clock;
@@ -35,6 +36,7 @@ class NotificationDispatcher implements NotificationTrigger {
     private final NotificationConsentService consent;
     private final NotificationMessageRepository messages;
     private final NotificationProperties properties;
+    private final Messages i18n;
     private final Clock clock;
 
     NotificationDispatcher(
@@ -45,6 +47,7 @@ class NotificationDispatcher implements NotificationTrigger {
             NotificationConsentService consent,
             NotificationMessageRepository messages,
             NotificationProperties properties,
+            Messages i18n,
             Clock clock) {
         this.jdbc = jdbc;
         this.mapper = mapper;
@@ -53,6 +56,7 @@ class NotificationDispatcher implements NotificationTrigger {
         this.consent = consent;
         this.messages = messages;
         this.properties = properties;
+        this.i18n = i18n;
         this.clock = clock;
     }
 
@@ -72,7 +76,7 @@ class NotificationDispatcher implements NotificationTrigger {
         if (!essential && consent.isOptedOut(context.visitorId())) return;
 
         String language = resolveLanguage(facts.visitorLanguage(), facts.siteDefaultLanguage());
-        Map<String, String> variables = buildVariables(trigger, facts, context);
+        Map<String, String> variables = buildVariables(trigger, facts, context, language);
         String firstChannel = effective.channelOrder().get(0);
         Optional<NotificationTemplateService.Rendered> rendered = templates.render(trigger.key(), firstChannel, language, variables);
         if (rendered.isEmpty()) {
@@ -120,11 +124,16 @@ class NotificationDispatcher implements NotificationTrigger {
         return !local.isBefore(start) || local.isBefore(end);
     }
 
-    private Map<String, String> buildVariables(NotificationTriggerKey trigger, Facts facts, NotificationContext context) {
+    private Map<String, String> buildVariables(NotificationTriggerKey trigger, Facts facts, NotificationContext context, String language) {
         Map<String, String> values = new LinkedHashMap<>();
+        // FR-SEC-021, ticket 54: a clinical-sensitivity Site never sends a real service/service-group name in a
+        // notification, replaced with the same neutral label key the Site's own displays and announcements show
+        // (device.DisplayStateReads.NEUTRAL_LABEL_KEY, duplicated as a literal rather than a cross-package constant
+        // since the two contexts otherwise have nothing to do with each other).
+        String neutralLabel = facts.clinical() ? i18n.text("privacy.neutralService", language) : null;
         values.put("token_number", context.tokenNumber());
-        values.put("service_group_name", facts.serviceGroupName());
-        values.put("service_name", facts.includeServiceName() ? facts.serviceName() : "");
+        values.put("service_group_name", facts.clinical() ? neutralLabel : facts.serviceGroupName());
+        values.put("service_name", facts.includeServiceName() ? (facts.clinical() ? neutralLabel : facts.serviceName()) : "");
         values.put("counter_label", facts.counterLabel());
         values.put("site_name", facts.siteName());
         // FR-APT-050 (ticket 40): an appointment trigger's own slot, already formatted by its caller; null (and so
@@ -147,18 +156,20 @@ class NotificationDispatcher implements NotificationTrigger {
             boolean includeServiceName,
             String counterLabel,
             String originChannel,
-            String visitorLanguage) {}
+            String visitorLanguage,
+            boolean clinical) {}
 
-    private record SiteRow(String name, ZoneId timezone, LocalTime quietStart, LocalTime quietEnd, String defaultLanguage) {}
+    private record SiteRow(
+            String name, ZoneId timezone, LocalTime quietStart, LocalTime quietEnd, String defaultLanguage, boolean clinicalSensitivity) {}
 
     private record ServiceRow(String nameI18n, String groupNameI18n, boolean includeServiceName) {}
 
     private Facts loadFacts(NotificationContext context) {
         SiteRow site = jdbc.query(
-                        "SELECT name, timezone, quiet_hours_start, quiet_hours_end, default_language FROM site WHERE id = ?",
+                        "SELECT name, timezone, quiet_hours_start, quiet_hours_end, default_language, clinical_sensitivity FROM site WHERE id = ?",
                         (rs, i) -> new SiteRow(
                                 rs.getString("name"), ZoneId.of(rs.getString("timezone")), rs.getObject("quiet_hours_start", LocalTime.class),
-                                rs.getObject("quiet_hours_end", LocalTime.class), rs.getString("default_language")),
+                                rs.getObject("quiet_hours_end", LocalTime.class), rs.getString("default_language"), rs.getBoolean("clinical_sensitivity")),
                         context.siteId())
                 .stream().findFirst().orElseThrow();
 
@@ -189,7 +200,7 @@ class NotificationDispatcher implements NotificationTrigger {
 
         return new Facts(
                 site.name(), site.timezone(), site.quietStart(), site.quietEnd(), site.defaultLanguage(),
-                serviceGroupName, serviceName, includeServiceName, counterLabel, originChannel, visitorLanguage);
+                serviceGroupName, serviceName, includeServiceName, counterLabel, originChannel, visitorLanguage, site.clinicalSensitivity());
     }
 
     @SuppressWarnings("unchecked")

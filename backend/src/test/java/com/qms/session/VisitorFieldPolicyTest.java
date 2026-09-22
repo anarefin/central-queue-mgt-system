@@ -58,4 +58,26 @@ class VisitorFieldPolicyTest {
         assertThatThrownBy(() -> new ConsoleProperties(Map.of("agent", List.of("phone")))).hasMessageContaining("unknown visitor field 'phone'");
         assertThatThrownBy(() -> new ConsoleProperties(Map.of("janitor", List.of("code")))).hasMessageContaining("not a role");
     }
+
+    // ---- FR-SEC-022 (ticket 54): the note needs an explicit permission on top of the config above -----------------
+
+    @Test
+    void everyRoleThatMayReachTheConsoleAlreadyCarriesVisitorPiiViewSoTheNoteStaysVisible() {
+        // §5.2's own matrix: every one of these has visitor_pii:view, allowed or (for Agent) own.
+        for (Role role : new Role[] {Role.SYSTEM_ADMIN, Role.ORG_ADMIN, Role.TEAM_ADMIN, Role.AGENT, Role.RECEPTION_OPERATOR}) {
+            assertThat(seenBy(bind(Map.of()), role)).as(role.wire()).contains(VisitorField.PURPOSE_NOTE);
+        }
+    }
+
+    @Test
+    void notesGatedStripsTheNoteWhenNoRoleCarriesTheExplicitPermission() {
+        Set<VisitorField> withNote = EnumSet.of(VisitorField.CODE, VisitorField.PURPOSE_NOTE);
+        assertThat(VisitorFieldPolicy.notesGated(Set.of(), withNote)).containsExactly(VisitorField.CODE);
+    }
+
+    @Test
+    void notesGatedLeavesEverythingElseAlone() {
+        Set<VisitorField> noNoteToBeginWith = EnumSet.of(VisitorField.CODE, VisitorField.CATEGORY);
+        assertThat(VisitorFieldPolicy.notesGated(Set.of(), noNoteToBeginWith)).isEqualTo(noNoteToBeginWith);
+    }
 }

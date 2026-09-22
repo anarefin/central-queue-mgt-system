@@ -14,6 +14,7 @@ const SITE: Site = {
   default_language: "bn",
   enabled_languages: ["bn", "en"],
   active: true,
+  clinical_sensitivity: false,
   created_at: "2026-09-19T20:30:00Z",
   updated_at: "2026-09-19T20:30:00Z",
 };
@@ -126,6 +127,7 @@ describe("site administration screen", () => {
       address: "2 North Road",
       default_language: "bn",
       enabled_languages: ["bn", "en"],
+      clinical_sensitivity: false,
     });
     expect(screen.queryByText("There are no sites yet. Add the first one below.")).not.toBeInTheDocument();
   });

@@ -48,6 +48,7 @@ class VisitorTicketActions {
     private final Clock clock;
     private final JdbcTemplate jdbc;
     private final NotificationConsentService consent;
+    private final RetentionConsentService retentionConsent;
     private final NotificationProperties notificationProperties;
     private final WebPushSubscriptionService webPush;
     private final QueueReads queues;
@@ -60,6 +61,7 @@ class VisitorTicketActions {
             Clock clock,
             JdbcTemplate jdbc,
             NotificationConsentService consent,
+            RetentionConsentService retentionConsent,
             NotificationProperties notificationProperties,
             WebPushSubscriptionService webPush,
             QueueReads queues,
@@ -70,6 +72,7 @@ class VisitorTicketActions {
         this.clock = clock;
         this.jdbc = jdbc;
         this.consent = consent;
+        this.retentionConsent = retentionConsent;
         this.notificationProperties = notificationProperties;
         this.webPush = webPush;
         this.queues = queues;
@@ -91,6 +94,27 @@ class VisitorTicketActions {
                 .withAfter(Map.of("opted_out", optedOut, "consent_text_version", version))
                 .withReason("visitor_ticket_page"));
         return Map.of("opted_out", optedOut);
+    }
+
+    /** The default consent-text version when the caller sends none, the same fallback shape {@link
+     * NotificationProperties#consentTextVersion()} already gives notification consent. */
+    private static final String DEFAULT_RETENTION_CONSENT_VERSION = "v1";
+
+    /**
+     * The visitor's own consent for retention (FR-SEC-030, ticket 54): recorded against their visitor record with a
+     * timestamp and the version of the consent text they saw, the same shape {@link #setNotificationOptOut} already
+     * gives consent for notifications. A ticket with no visitor record has nothing to record consent on.
+     */
+    @Transactional
+    Map<String, Object> setRetentionConsent(TicketRecord ticket, boolean granted, String consentTextVersion) {
+        UUID visitorId = jdbc.query("SELECT visitor_id FROM ticket WHERE id = ?", rs -> rs.next() ? rs.getObject(1, UUID.class) : null, ticket.id());
+        if (visitorId == null) throw new ApiException(ErrorCode.CONFLICT, Map.of("reason", "no_visitor_record"));
+        String version = consentTextVersion == null || consentTextVersion.isBlank() ? DEFAULT_RETENTION_CONSENT_VERSION : consentTextVersion;
+        retentionConsent.setConsent(visitorId, granted, version, clock.instant());
+        audit.record(AuditEvent.of("retention.consent", "visitor", visitorId)
+                .withAfter(Map.of("granted", granted, "consent_text_version", version))
+                .withReason("visitor_ticket_page"));
+        return Map.of("granted", granted);
     }
 
     /**

@@ -1,6 +1,5 @@
 {
   "fallback.text": "লেখা পাওয়া যায়নি",
-
   "app.name": "কিউ ব্যবস্থাপনা সিস্টেম",
   "app.admin": "প্রশাসন",
   "app.console": "এজেন্ট কনসোল",
@@ -8,11 +7,9 @@
   "app.display": "ডিসপ্লে",
   "app.visitor": "ভিজিটর",
   "placeholder.comingSoon": "এই অ্যাপটি শীঘ্রই আসছে।",
-
   "common.loading": "লোড হচ্ছে…",
   "common.retry": "আবার চেষ্টা করুন",
   "common.signOut": "সাইন আউট",
-
   "errors.unauthenticated": "চালিয়ে যেতে অনুগ্রহ করে সাইন ইন করুন।",
   "errors.invalid_credentials": "ব্যবহারকারীর নাম বা পাসওয়ার্ড সঠিক নয়।",
   "errors.token_invalid": "আপনার সেশন টোকেনটি বৈধ নয় অথবা মেয়াদ শেষ হয়েছে।",
@@ -29,7 +26,6 @@
   "errors.unavailable": "সেবাটি এই মুহূর্তে পাওয়া যাচ্ছে না।",
   "errors.network_error": "সার্ভারে পৌঁছানো যায়নি। আপনার সংযোগ পরীক্ষা করুন।",
   "errors.unexpected_response": "সার্ভার থেকে অপ্রত্যাশিত উত্তর এসেছে।",
-
   "admin.health.title": "সিস্টেমের অবস্থা",
   "admin.health.checking": "যাচাই করা হচ্ছে…",
   "admin.health.unreachable": "ব্যাকএন্ডে পৌঁছানো যাচ্ছে না।",
@@ -40,7 +36,6 @@
   "admin.health.up": "চালু",
   "admin.health.down": "বন্ধ",
   "admin.health.not_configured": "কনফিগার করা হয়নি",
-
   "auth.title": "সাইন ইন করুন",
   "auth.username": "ব্যবহারকারীর নাম",
   "auth.password": "পাসওয়ার্ড",
@@ -50,16 +45,13 @@
   "auth.signInAgain": "আবার সাইন ইন করুন",
   "auth.retryIn": "{minutes} মিনিট পরে আবার চেষ্টা করুন।",
   "auth.signedInAs": "{name} হিসেবে সাইন ইন করা আছে",
-
   "roles.system_admin": "সিস্টেম অ্যাডমিনিস্ট্রেটর",
   "roles.org_admin": "প্রতিষ্ঠান অ্যাডমিন",
   "roles.team_admin": "টিম অ্যাডমিন",
   "roles.agent": "এজেন্ট",
   "roles.reception_operator": "রিসেপশন অপারেটর",
-
   "admin.home.sites": "সাইট, জোন ও কাউন্টার",
   "admin.home.devices": "ডিভাইস পেয়ারিং ও ফ্লিট",
-
   "admin.action.save": "সংরক্ষণ করুন",
   "admin.action.saving": "সংরক্ষণ হচ্ছে…",
   "admin.action.cancel": "বাতিল করুন",
@@ -67,13 +59,10 @@
   "admin.action.deactivate": "নিষ্ক্রিয় করুন",
   "admin.action.confirmDeactivate": "নিষ্ক্রিয়করণ নিশ্চিত করুন",
   "admin.action.activate": "সক্রিয় করুন",
-
   "admin.status.active": "সক্রিয়",
   "admin.status.inactive": "নিষ্ক্রিয়",
-
   "languages.en": "ইংরেজি",
   "languages.bn": "বাংলা",
-
   "sites.title": "সাইট, জোন ও কাউন্টার",
   "sites.back": "প্রশাসনে ফিরে যান",
   "sites.invalidFields": "এই ঘরগুলো পরীক্ষা করুন: {fields}",
@@ -113,7 +102,6 @@
   "sites.counters.add": "কাউন্টার যোগ করুন",
   "sites.counter.note": "অবস্থান: {note}",
   "sites.counter.confirm": "{name} নিষ্ক্রিয় করবেন? আগের রেকর্ডগুলো এটিকেই নির্দেশ করবে।",
-
   "devices.title": "ডিভাইস",
   "devices.back": "প্রশাসনে ফিরে যান",
   "devices.list.title": "ডিভাইস",
@@ -141,7 +129,6 @@
   "devices.reload": "রিলোড পাঠান",
   "devices.pushConfig": "কনফিগ আপডেট পাঠান",
   "devices.pushed": "পাঠানো হয়েছে।",
-
   "devices.display.settings": "ডিসপ্লে সেটিংস",
   "devices.display.columnsLegend": "সার্ভিং টেবিলের কলাম",
   "devices.display.columns.token": "টোকেন",
@@ -167,7 +154,6 @@
   "devices.display.queueIds": "সেবা আইডি (কমা দিয়ে পৃথক)",
   "devices.display.save": "ডিসপ্লে সেটিংস সংরক্ষণ করুন",
   "devices.display.saved": "ডিসপ্লে সেটিংস সংরক্ষিত হয়েছে।",
-
   "display.notices.empty": "এই মুহূর্তে কোনো নোটিশ নির্ধারিত নেই।",
   "display.notices.label": "নোটিশ",
   "display.singleCounter.none": "এই ডিসপ্লের জন্য এখনো কোনো কাউন্টার নির্ধারণ করা হয়নি।",
@@ -176,7 +162,6 @@
   "display.summary.estimate": "আনুমানিক অপেক্ষার সময়",
   "display.summary.estimateRange": "আনুমানিক {low}–{high} মিনিট",
   "display.summary.empty": "দেখানোর মতো কোনো সেবা নেই।",
-
   "noticeBoard.title": "নোটিশ বোর্ড",
   "noticeBoard.back": "প্রশাসনে ফিরে যান",
   "noticeBoard.intro": "জোনের স্প্লিট-মিডিয়া ডিসপ্লের নোটিশ প্যানেলের জন্য ছবি, ভিডিও বা লেখা নির্ধারণ করুন (FR-DSP-006)।",
@@ -196,7 +181,6 @@
   "noticeBoard.create": "নোটিশ তৈরি করুন",
   "noticeBoard.confirmDeactivate": "এই নোটিশ নিষ্ক্রিয় করবেন? এটি যেকোনো ডিসপ্লেতে দেখানো বন্ধ হয়ে যাবে।",
   "noticeBoard.selectZonePrompt": "কোনো জোনের নোটিশ দেখতে ও পরিচালনা করতে একটি জোন নির্বাচন করুন।",
-
   "devicePairing.title": "এই ডিভাইসটি পেয়ার করুন",
   "devicePairing.instructions": "একজন প্রশাসকের কাছ থেকে একটি পেয়ারিং কোড নিন, তারপর নিচে লিখুন।",
   "devicePairing.codeLabel": "পেয়ারিং কোড",
@@ -204,7 +188,6 @@
   "devicePairing.pairing": "পেয়ার হচ্ছে…",
   "devicePairing.loadingConfig": "কনফিগারেশন লোড হচ্ছে…",
   "devicePairing.configError": "এই ডিভাইসের কনফিগারেশন লোড করা যায়নি।",
-
   "nowServing.loadError": "নাউ-সার্ভিং বোর্ড লোড করা যায়নি।",
   "nowServing.stale": "আপডেট বিলম্বিত — তথ্য পুরনো হতে পারে",
   "nowServing.nextLabel": "পরবর্তী টোকেন",
@@ -212,10 +195,8 @@
   "nowServing.columns.counter": "কাউন্টার",
   "nowServing.columns.service": "সেবা",
   "nowServing.columns.staff": "কর্মী",
-
   "announcement.template": "মনোযোগ দিন। টোকেন {token}, {service}, অনুগ্রহ করে {counter}, {floor}-এ যান।",
   "announcement.templateWithVisitor": "মনোযোগ দিন। {visitorName}, টোকেন {token}, {service}, অনুগ্রহ করে {counter}, {floor}-এ যান।",
-
   "kiosk.language.native.en": "English",
   "kiosk.language.native.bn": "বাংলা",
   "kiosk.idle.title": "স্বাগতম",
@@ -264,7 +245,6 @@
   "kiosk.result.done": "সম্পন্ন",
   "kiosk.accessibility.highContrast": "উচ্চ কনট্রাস্ট",
   "kiosk.accessibility.largeText": "বড় লেখা",
-
   "admin.home.catalogue": "সেবা তালিকা",
   "catalogue.title": "সেবা তালিকা",
   "catalogue.site.pick": "সাইট",
@@ -538,7 +518,6 @@
   "console.day.averageNone": "গড় সেবার সময়: এখনও নেই",
   "console.day.breaks": "বিরতির সময়: {duration}",
   "console.day.unavailable": "আপনার দিনের হিসাব এখন পাওয়া যাচ্ছে না।",
-
   "console.feedback.title": "আপনার টিকিটের মতামত",
   "console.feedback.none": "এখনো কোনো মতামত নেই।",
   "console.feedback.entry": "{token} — রেটিং {rating}/৫",
@@ -773,10 +752,8 @@
   "visitorImport.runs.noFilename": "(কোনো ফাইলের নাম নেই)",
   "visitorImport.runs.source.manual": "ম্যানুয়াল আপলোড",
   "visitorImport.runs.source.scheduled": "নির্ধারিত ফোল্ডার পিকআপ",
-
   "admin.home.branding": "ব্র্যান্ডিং ও প্রিন্ট করা টোকেন",
   "admin.home.noticeBoard": "নোটিশ বোর্ড",
-
   "branding.title": "ব্র্যান্ডিং ও প্রিন্ট করা টোকেন",
   "branding.intro": "প্রতিষ্ঠানের লোগো, রং ও নাম একবার সেট করুন, এবং প্রিন্ট করা টোকেনের লেআউট সম্পাদনা করুন — কোনো প্রকৃত টোকেন ইস্যু না করেই এখানে প্রিভিউ ও টেস্ট প্রিন্ট করুন (FR-CFG-030..032)।",
   "branding.section.orgBranding": "প্রতিষ্ঠানের ব্র্যান্ডিং",
@@ -819,7 +796,6 @@
   "branding.preview.sampleCounter": "কাউন্টার 3",
   "branding.preview.sampleEstimatedWait": "10–15 মিনিট",
   "branding.logoAlt": "{org} লোগো",
-
   "sites.fields.org_name": "প্রতিষ্ঠানের নাম",
   "sites.fields.primary_color": "প্রধান রং",
   "sites.fields.logo_url": "লোগো URL",
@@ -835,7 +811,6 @@
   "sites.fields.layout_config.split_percent": "সার্ভিং টেবিলের প্রস্থ",
   "sites.fields.layout_config.counter_id": "দেখানোর কাউন্টার",
   "sites.fields.language_cycle_seconds": "ভাষা চক্রের ব্যবধান",
-
   "kiosk.printSlip.fields.token_number": "টোকেন",
   "kiosk.printSlip.fields.building": "ভবন",
   "kiosk.printSlip.fields.floor": "তলা",
@@ -848,9 +823,7 @@
   "kiosk.printSlip.fields.issue_time": "ইস্যু হয়েছে",
   "kiosk.printSlip.fields.estimated_wait": "আনুমানিক অপেক্ষার সময়",
   "kiosk.printSlip.logoAlt": "{org} লোগো",
-
   "devicePairing.logoAlt": "{org} লোগো",
-
   "visitor.missingReference": "এই লিংকে আপনার টিকিট রেফারেন্স নেই। আপনার টোকেনের QR কোডটি আবার স্ক্যান করুন।",
   "visitor.notifications.intro": "আপনি যেকোনো সময় এই টিকিট সম্পর্কিত অপ্রয়োজনীয় বিজ্ঞপ্তি থেকে অপ্ট-আউট করতে পারেন।",
   "visitor.notifications.optedOut": "আপনি অপ্রয়োজনীয় বিজ্ঞপ্তি থেকে অপ্ট-আউট করেছেন।",
@@ -919,7 +892,6 @@
   "visitor.feedback.submitting": "পাঠানো হচ্ছে…",
   "visitor.feedback.skip": "এখন নয়",
   "visitor.feedback.thanks": "আপনার মতামতের জন্য ধন্যবাদ।",
-
   "remoteJoin.title": "দূরবর্তী (রিমোট) জয়েন",
   "remoteJoin.intro": "এখান থেকেই সারিতে আপনার জায়গা ধরে রাখুন, তারপর আপনার পালার সময় হওয়ার আগে সাইটে পৌঁছে যান।",
   "remoteJoin.signInFirst": "এই সারিতে দূরবর্তীভাবে যোগ দিতে সাইন ইন করুন।",
@@ -947,7 +919,6 @@
   "remoteJoin.refused.duplicate_ticket": "এই সেবার জন্য আপনার একটি সক্রিয় টোকেন আগে থেকেই আছে।",
   "remoteJoin.refused.site_location_unset": "এই সেবার জন্য দূরবর্তী জয়েন সাময়িকভাবে বন্ধ আছে।",
   "remoteJoin.refused.internet_unreachable": "সাইটের ইন্টারনেট সংযোগ বিচ্ছিন্ন থাকায় দূরবর্তী (রিমোট) জয়েন সাময়িকভাবে বন্ধ আছে। সাইটে পৌঁছানোর পর আপনি যোগ দিতে পারবেন।",
-
   "account.login.title": "সাইন ইন",
   "account.login.intro": "আপনার ইমেইল ঠিকানা দিন, আমরা আপনাকে একটি ওয়ান-টাইম কোড পাঠাব।",
   "account.login.email": "ইমেইল ঠিকানা",
@@ -982,21 +953,17 @@
   "account.sites.empty": "আপনি এখনো কোনো কেন্দ্র সংরক্ষণ করেননি।",
   "account.sites.remove": "সরিয়ে ফেলুন",
   "account.error.generic": "কিছু একটা ভুল হয়েছে। আবার চেষ্টা করুন।",
-
   "admin.home.notifications": "বিজ্ঞপ্তি",
   "admin.home.feedback": "ভিজিটর মতামত",
   "admin.home.reports": "প্রতিবেদন",
-
   "feedback.admin.title": "অনুমোদনের অপেক্ষায় থাকা মন্তব্য",
   "feedback.admin.intro": "কোনো মন্তব্য সংশ্লিষ্ট এজেন্টকে কেবল আপনি এখানে অনুমোদন করার পরেই দেখানো হয় (FR-MOB-033)। রেটিং কখনো আটকানো হয় না এবং সরাসরি মতামত প্রতিবেদনে যুক্ত হয়।",
   "feedback.admin.none": "সিদ্ধান্তের অপেক্ষায় কোনো মন্তব্য নেই।",
   "feedback.admin.rating": "রেটিং: {rating}/৫",
   "feedback.admin.approve": "এজেন্টের জন্য অনুমোদন করুন",
   "feedback.admin.approved": "অনুমোদিত হয়েছে।",
-
   "notifications.title": "বিজ্ঞপ্তি",
   "notifications.intro": "বিজ্ঞপ্তি পাইপলাইনের ট্রিগার, টেমপ্লেট এবং ডেলিভারি লগ (SRS §14)। এখানে প্রতিটি কাজ সার্ভারে অনুমতি-যাচাই এবং সীমাবদ্ধ।",
-
   "notifications.triggers.title": "ট্রিগার",
   "notifications.triggers.intro": "পুরো সাইটের জন্য, অথবা এর অধীনে একটি সেবার জন্য একটি ট্রিগার চালু বা বন্ধ করুন, যা সাইটের নিজস্ব সেটিং প্রতিস্থাপন করে।",
   "notifications.triggers.scope": "প্রযোজ্য",
@@ -1007,7 +974,6 @@
   "notifications.triggers.overriddenService": "এই সেবার জন্য নির্ধারিত",
   "notifications.triggers.enable": "চালু করুন",
   "notifications.triggers.disable": "বন্ধ করুন",
-
   "notifications.templates.title": "টেমপ্লেট",
   "notifications.templates.trigger": "ট্রিগার",
   "notifications.templates.channel": "চ্যানেল",
@@ -1016,7 +982,6 @@
   "notifications.templates.subject": "বিষয় (শুধু কিছু চ্যানেলে)",
   "notifications.templates.body": "মূল লেখা",
   "notifications.templates.preview": "পূর্বরূপ",
-
   "notifications.log.title": "ডেলিভারি লগ",
   "notifications.log.ticketId": "টিকিট আইডি",
   "notifications.log.visitorId": "ভিজিটর আইডি",
@@ -1024,17 +989,14 @@
   "notifications.log.anyStatus": "যেকোনো অবস্থা",
   "notifications.log.search": "অনুসন্ধান",
   "notifications.log.empty": "এই ফিল্টারের সাথে কোনো বার্তা মেলে না।",
-
   "notifications.channel.in_app": "অ্যাপের ভেতরে",
   "notifications.channel.staff_alert": "স্টাফ সতর্কতা",
   "notifications.channel.web_push": "ওয়েব পুশ",
   "notifications.channel.email": "ইমেইল",
-
   "notifications.status.queued": "সারিবদ্ধ",
   "notifications.status.sent": "পাঠানো হয়েছে",
   "notifications.status.failed": "ব্যর্থ",
   "notifications.status.suppressed": "দমিত",
-
   "notifications.trigger.ticket_issued": "টিকিট ইস্যু হয়েছে",
   "notifications.trigger.approaching_turn": "পালা কাছে আসছে",
   "notifications.trigger.your_turn": "আপনার পালা / ডাকা হয়েছে",
@@ -1050,7 +1012,6 @@
   "notifications.trigger.agent_break_overrun": "এজেন্ট বিরতি বেশি সময়",
   "notifications.trigger.counter_unattended": "কাউন্টার অনুপস্থিত, সারি অপেক্ষমাণ",
   "notifications.trigger.kiosk_display_offline": "কিয়স্ক বা ডিসপ্লে অফলাইন",
-
   "dashboard.title": "লাইভ ড্যাশবোর্ড",
   "dashboard.needsSite": "লাইভ ড্যাশবোর্ড দেখতে একটি সাইট নির্বাচন করুন।",
   "dashboard.loading": "ড্যাশবোর্ড লোড হচ্ছে…",
@@ -1130,7 +1091,6 @@
   "alerts.thresholds.field.device_offline_minutes_max": "ডিভাইস অফলাইন (মিনিট)",
   "alerts.thresholds.field.group_window_minutes": "গ্রুপিং উইন্ডো (মিনিট)",
   "alerts.thresholds.field.escalation_delay_minutes": "উর্ধ্বমুখী বিলম্ব (মিনিট)",
-
   "reports.title": "প্রতিবেদন",
   "reports.intro": "প্রতিবেদনগুলো রিপোর্টিং স্টোরের বিপরীতে চলে, যা লাইভ টিকিট থেকে প্রায় এক মিনিটের মধ্যে রিফ্রেশ হয়, কখনো সরাসরি লাইভ সারির বিপরীতে নয়।",
   "reports.detailedToken.title": "বিস্তারিত টোকেন প্রতিবেদন",
@@ -1175,7 +1135,6 @@
   "reports.detailedToken.col.agent": "এজেন্ট",
   "reports.detailedToken.col.outcome": "ফলাফল",
   "reports.detailedToken.col.transfers": "স্থানান্তর",
-
   "reports.export.format": "এক্সপোর্ট ফরম্যাট",
   "reports.export.csv": "CSV",
   "reports.export.xlsx": "XLSX",
@@ -1185,9 +1144,7 @@
   "reports.export.queued": "আপনার এক্সপোর্ট পটভূমিতে তৈরি হচ্ছে — প্রস্তুত হলে এটি স্বয়ংক্রিয়ভাবে ডাউনলোড হবে।",
   "reports.export.ready": "আপনার এক্সপোর্ট প্রস্তুত এবং ডাউনলোড হয়ে গেছে।",
   "reports.export.failed": "এক্সপোর্ট ব্যর্থ হয়েছে। আবার চেষ্টা করুন।",
-
   "catalogue.fields.grain": "গ্রেইন",
-
   "reports.operational.title": "কার্যক্রম প্রতিবেদন",
   "reports.operational.intro": "ভিজিটর ফ্লো, কাউন্টার, এজেন্ট, সার্ভিস, ডিপার্টমেন্ট ও সাইট প্রতিবেদন (SRS §16.1), প্রতিটি আগের সমতুল্য সময়ের সাথে তুলনা করা।",
   "reports.operational.pickReport": "প্রতিবেদন",
@@ -1206,7 +1163,6 @@
   "reports.operational.waitByHourBand": "দিনের ঘণ্টা অনুযায়ী গড় এবং P90 অপেক্ষা",
   "reports.operational.hourBand": "ঘণ্টা",
   "reports.operational.channelMix": "চ্যানেল মিশ্রণ",
-
   "reports.visitorFlow.title": "ভিজিটর ফ্লো প্রতিবেদন",
   "reports.visitorFlow.intro": "ইস্যু, সেবা প্রদান, বাতিল, নো-শো এবং সর্বোচ্চ একযোগে অপেক্ষা, ঘণ্টা, দিন, মাস বা বছর অনুযায়ী (§16.1)।",
   "reports.counter.title": "কাউন্টার প্রতিবেদন",
@@ -1219,7 +1175,6 @@
   "reports.department.intro": "সার্ভিস প্রতিবেদন সার্ভিস গ্রুপ পর্যায়ে একত্রিত (§16.1)।",
   "reports.site.title": "সাইট প্রতিবেদন",
   "reports.site.intro": "ডিপার্টমেন্ট প্রতিবেদন সাইট পর্যায়ে একত্রিত (§16.1)।",
-
   "reports.metric.bucket": "সময়কাল",
   "reports.metric.counter_label": "কাউন্টার",
   "reports.metric.zone_name": "জোন",
@@ -1373,5 +1328,27 @@
   "retention.save": "সংরক্ষণ করুন",
   "retention.saving": "সংরক্ষণ করা হচ্ছে…",
   "sites.fields.retention_months": "সংরক্ষণকাল (মাস)",
-  "sites.fields.mode": "মোড"
+  "sites.fields.mode": "মোড",
+  "admin.home.privacy": "গোপনীয়তা নিয়ন্ত্রণ",
+  "sites.fields.clinical_sensitivity": "ক্লিনিক্যাল সংবেদনশীলতা মোড",
+  "sites.hint.clinicalSensitivity": "এই সাইটের পাবলিক ডিসপ্লে, ঘোষণা এবং বিজ্ঞপ্তিতে সেবা ও সেবা-গোষ্ঠীর নাম একটি নিরপেক্ষ লেবেল দিয়ে প্রতিস্থাপন করে (SRS §25.3, FR-SEC-021)। চিকিৎসা স্থাপনার জন্য আবশ্যক।",
+  "privacy.title": "গোপনীয়তা নিয়ন্ত্রণ",
+  "privacy.back": "প্রশাসনে ফিরে যান",
+  "privacy.fieldConfig.title": "কনফিগারযোগ্য ভিজিটর ক্ষেত্র",
+  "privacy.fieldConfig.intro": "নিবন্ধনের সময় কোন ঐচ্ছিক ভিজিটর ক্ষেত্র সংগ্রহ করা হয়, এবং কোনটি কিয়স্ক নিশ্চিতকরণ স্ক্রিনে পৌঁছায় (SRS §25.3, FR-SEC-020, FR-SEC-023)।",
+  "privacy.fieldConfig.surface.capture": "ওয়াক-ইন নিবন্ধনে সংগৃহীত",
+  "privacy.fieldConfig.surface.kiosk_confirmation": "কিয়স্ক নিশ্চিতকরণ স্ক্রিনে প্রদর্শিত",
+  "privacy.fieldConfig.field.name": "নাম",
+  "privacy.fieldConfig.field.category": "শ্রেণী",
+  "privacy.fieldConfig.field.email": "ইমেইল",
+  "privacy.fieldConfig.field.purpose": "উদ্দেশ্য নোট",
+  "privacy.fieldConfig.field.phone": "ফোন",
+  "privacy.visitorData.title": "ভিজিটর তথ্য রপ্তানি ও মুছে ফেলা",
+  "privacy.visitorData.intro": "একজন ভিজিটর সম্পর্কে ধারণকৃত সমস্ত তথ্য রপ্তানি করুন, অথবা তাদের রেকর্ড নামহীন করুন। মুছে ফেলা তাদের টিকিট সারিগুলোকে সরানোর বদলে নামহীন করে, যাতে কার্যক্রম পরিসংখ্যান টিকে থাকে (FR-SEC-031)।",
+  "privacy.visitorData.visitorId": "ভিজিটর আইডি",
+  "privacy.visitorData.export": "রপ্তানি",
+  "privacy.visitorData.anonymize": "মুছুন (নামহীন করুন)",
+  "privacy.visitorData.confirmAnonymize": "এটি স্থায়ীভাবে এই ভিজিটরের নাম, ফোন, ইমেইল ও শ্রেণী সরিয়ে দেবে এবং তাদের প্রতিটি টিকিটের নোট মুছে দেবে। এটি পূর্বাবস্থায় ফেরানো যাবে না। চালিয়ে যাবেন?",
+  "privacy.visitorData.anonymized": "{date} তারিখে নামহীন করা হয়েছে",
+  "privacy.visitorData.tickets": "রেকর্ডে থাকা টিকিট"
 }

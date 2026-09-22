@@ -57,6 +57,7 @@ class VisitorDirectoryIT {
 
     @Autowired MockMvc mvc;
     @Autowired JdbcTemplate jdbc;
+    @Autowired com.qms.configuration.privacy.PiiCipher cipher;
 
     @AfterEach
     void clearSecurityContext() {
@@ -278,7 +279,10 @@ class VisitorDirectoryIT {
         assertThat(status(issued)).as(body(issued)).isEqualTo(201);
         UUID ticketId = UUID.fromString(field(issued, "$.id"));
         assertThat(jdbc.queryForObject("SELECT visitor_id FROM ticket WHERE id = ?", UUID.class, ticketId)).isEqualTo(visitorId);
-        assertThat(jdbc.queryForObject("SELECT purpose_note FROM ticket WHERE id = ?", String.class, ticketId)).isEqualTo("Needs wheelchair access");
+        // Stored encrypted at the application layer (NFR-SEC-011, ticket 54); the raw column is ciphertext, so the
+        // assertion decrypts it back rather than reading the plaintext straight off the row.
+        String storedNote = jdbc.queryForObject("SELECT purpose_note FROM ticket WHERE id = ?", String.class, ticketId);
+        assertThat(cipher.decrypt(storedNote)).isEqualTo("Needs wheelchair access");
     }
 
     /** FR-INT-013: POST /tickets never touches the visitor directory at all, so a ticket issues with no visitor details. */

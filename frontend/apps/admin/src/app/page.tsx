@@ -43,6 +43,7 @@ export default function Home() {
             <Link href="/visitor-import/">{t("admin.home.visitorImport")}</Link>
             <Link href="/branding/">{t("admin.home.branding")}</Link>
             <Link href="/notifications/">{t("admin.home.notifications")}</Link>
+            <Link href="/privacy/">{t("admin.home.privacy")}</Link>
           </div>
         )}
         {user?.roles.some((role) => role === "system_admin" || role === "org_admin" || role === "team_admin") && (

@@ -15,6 +15,7 @@ export * from "./journeys";
 export * from "./notifications";
 export * from "./numbering";
 export * from "./priority";
+export * from "./privacy";
 export * from "./remote-join";
 export * from "./reports";
 export * from "./retention";

@@ -89,6 +89,7 @@ public class HierarchyService {
                 language,
                 SiteRules.languages(language, enabledLanguages, languages.languages()),
                 true,
+                false,
                 now,
                 now);
         try {
@@ -116,6 +117,7 @@ public class HierarchyService {
                 defaultLanguage,
                 SiteRules.languages(defaultLanguage, enabled, languages.languages()),
                 before.active(),
+                change.clinicalSensitivity() == null ? before.clinicalSensitivity() : change.clinicalSensitivity(),
                 before.createdAt(),
                 clock.instant());
         if (snapshot(after).equals(snapshot(before))) return before;
@@ -415,6 +417,7 @@ public class HierarchyService {
         values.put("default_language", site.defaultLanguage());
         values.put("enabled_languages", site.enabledLanguages());
         values.put("active", site.active());
+        values.put("clinical_sensitivity", site.clinicalSensitivity());
         return values;
     }
 

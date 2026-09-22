@@ -1,5 +1,6 @@
 package com.qms.issuance;
 
+import com.qms.configuration.privacy.PiiCipher;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
@@ -108,10 +109,12 @@ class TicketRepository {
 
     private final JdbcTemplate jdbc;
     private final JsonMapper mapper;
+    private final PiiCipher cipher;
 
-    TicketRepository(JdbcTemplate jdbc, JsonMapper mapper) {
+    TicketRepository(JdbcTemplate jdbc, JsonMapper mapper, PiiCipher cipher) {
         this.jdbc = jdbc;
         this.mapper = mapper;
+        this.cipher = cipher;
     }
 
     // ---- what a ticket copies at issue ------------------------------------------------------------------------
@@ -244,6 +247,7 @@ class TicketRepository {
         jdbc.update("INSERT INTO visit (id, site_id, started_at) VALUES (?, ?, ?)", id, siteId, ts(startedAt));
     }
 
+    /** {@code purpose_note} is encrypted at the application layer before it is stored (NFR-SEC-011, {@link PiiCipher}). */
     void insertTicket(NewTicket t) {
         jdbc.update(
                 "INSERT INTO ticket (id, token_number, sequence_no, reset_key, service_id, service_group_id, site_id, zone_id, visit_id,"
@@ -252,7 +256,7 @@ class TicketRepository {
                         + " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 t.id(), t.tokenNumber(), t.sequenceNo(), t.resetKey(), t.target().serviceId(), t.target().groupId(), t.target().siteId(), t.zoneId(),
                 t.visitId(), t.originChannel(), t.initialState(), ts(t.issuedAt()), ts(t.queuedAt()), t.secretHash(), t.priorityClassId(), t.visitorId(),
-                t.purposeNote(), t.targetAgentId(), t.customLevelId(), t.appointmentBonusMinutes());
+                cipher.encrypt(t.purposeNote()), t.targetAgentId(), t.customLevelId(), t.appointmentBonusMinutes());
     }
 
     // ---- reads ------------------------------------------------------------------------------------------------

@@ -15,6 +15,7 @@ const SITE: Site = {
   default_language: "bn",
   enabled_languages: ["bn", "en"],
   active: true,
+  clinical_sensitivity: false,
   created_at: STAMP,
   updated_at: STAMP,
 };

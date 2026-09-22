@@ -1,5 +1,6 @@
 package com.qms.session;
 
+import com.qms.configuration.privacy.PiiCipher;
 import com.qms.queue.TicketTransition;
 import java.time.Instant;
 import java.time.OffsetDateTime;
@@ -115,10 +116,12 @@ class SessionRepository {
 
     private final JdbcTemplate jdbc;
     private final JsonMapper mapper;
+    private final PiiCipher cipher;
 
-    SessionRepository(JdbcTemplate jdbc, JsonMapper mapper) {
+    SessionRepository(JdbcTemplate jdbc, JsonMapper mapper, PiiCipher cipher) {
         this.jdbc = jdbc;
         this.mapper = mapper;
+        this.cipher = cipher;
     }
 
     // ---- counters and what an agent may occupy ----------------------------------------------------------------
@@ -794,7 +797,7 @@ class SessionRepository {
                 rs.getString("visitor_code"),
                 rs.getString("visitor_name"),
                 rs.getString("visitor_category"),
-                rs.getString("purpose_note"));
+                cipher.decrypt(rs.getString("purpose_note")));
     }
 
     private static Instant instant(java.sql.ResultSet rs, String column) throws java.sql.SQLException {

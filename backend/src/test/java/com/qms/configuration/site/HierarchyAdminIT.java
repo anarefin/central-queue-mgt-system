@@ -245,6 +245,31 @@ class HierarchyAdminIT {
         assertThat((List<String>) field(listed, "$.items[*].id")).contains(id.toString());
     }
 
+    // ---- FR-SEC-021 (ticket 54): clinical sensitivity is a per-Site flag, off by default ----------------------------
+
+    @Test
+    void clinicalSensitivityDefaultsOffAndAnOrgAdminCanToggleItWithAnAuditEntry() throws Exception {
+        String token = tokenFor(Role.ORG_ADMIN);
+        MvcResult created = call(post("/api/v1/sites"), token, siteJson(unique("CS")));
+        assertThat((Boolean) field(created, "$.clinical_sensitivity")).isFalse();
+        UUID id = UUID.fromString(field(created, "$.id"));
+
+        MvcResult turnedOn = call(patch("/api/v1/sites/" + id), token, "{\"clinical_sensitivity\":true}");
+        assertThat(status(turnedOn)).as(body(turnedOn)).isEqualTo(200);
+        assertThat((Boolean) field(turnedOn, "$.clinical_sensitivity")).isTrue();
+        var audit = audit("site.updated", id);
+        assertThat((String) audit.get("before")).contains("\"clinical_sensitivity\": false");
+        assertThat((String) audit.get("after")).contains("\"clinical_sensitivity\": true");
+
+        // Leaving it out of the request keeps the current value (the same "absent fields are unchanged" rule every
+        // other field on this request already follows).
+        MvcResult renamedOnly = call(patch("/api/v1/sites/" + id), token, "{\"name\":\"Still clinical\"}");
+        assertThat((Boolean) field(renamedOnly, "$.clinical_sensitivity")).isTrue();
+
+        MvcResult turnedOff = call(patch("/api/v1/sites/" + id), token, "{\"clinical_sensitivity\":false}");
+        assertThat((Boolean) field(turnedOff, "$.clinical_sensitivity")).isFalse();
+    }
+
     @Test
     void invalidTimezonesLanguagesAndCodesAreRefusedWithTheFieldNamed() throws Exception {
         String token = tokenFor(Role.ORG_ADMIN);

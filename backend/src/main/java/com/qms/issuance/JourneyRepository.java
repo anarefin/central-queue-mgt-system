@@ -1,5 +1,6 @@
 package com.qms.issuance;
 
+import com.qms.configuration.privacy.PiiCipher;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
@@ -36,10 +37,12 @@ class JourneyRepository {
 
     private final JdbcTemplate jdbc;
     private final JsonMapper mapper;
+    private final PiiCipher cipher;
 
-    JourneyRepository(JdbcTemplate jdbc, JsonMapper mapper) {
+    JourneyRepository(JdbcTemplate jdbc, JsonMapper mapper, PiiCipher cipher) {
         this.jdbc = jdbc;
         this.mapper = mapper;
+        this.cipher = cipher;
     }
 
     boolean enabled() {
@@ -152,7 +155,9 @@ class JourneyRepository {
         return jdbc.query(
                         "SELECT js.visit_id, v.journey_ordered, t.visitor_id, t.purpose_note FROM journey_stop js"
                                 + " JOIN visit v ON v.id = js.visit_id JOIN ticket t ON t.id = js.ticket_id WHERE js.ticket_id = ?",
-                        (rs, i) -> new StopContext(rs.getObject("visit_id", UUID.class), rs.getBoolean("journey_ordered"), rs.getObject("visitor_id", UUID.class), rs.getString("purpose_note")),
+                        (rs, i) -> new StopContext(
+                                rs.getObject("visit_id", UUID.class), rs.getBoolean("journey_ordered"), rs.getObject("visitor_id", UUID.class),
+                                cipher.decrypt(rs.getString("purpose_note"))),
                         ticketId)
                 .stream().findFirst();
     }

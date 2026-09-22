@@ -84,6 +84,7 @@ import type {
   StaffingGapResponse,
 } from "./reports";
 import type { RetentionDataClass, RetentionPolicy, RetentionPolicyInput } from "./retention";
+import type { VisitorAnonymizeResult, VisitorExport, VisitorFieldConfig, VisitorFieldSurface } from "./privacy";
 import type { IssueJourneyInput, JourneyResult, JourneySettings, JourneyTemplateSummary } from "./journeys";
 import type {
   NotificationMessageQuery,
@@ -515,6 +516,19 @@ export class ApiClient {
     policies: () => this.request<Items<RetentionPolicy>>("GET", "/retention/policies"),
     updatePolicy: (dataClass: RetentionDataClass, input: RetentionPolicyInput) =>
       this.request<RetentionPolicy>("PUT", `/retention/policies/${dataClass}`, input),
+  };
+
+  /**
+   * Privacy controls (SRS §25.3-25.4, ticket 54): the two visitor-field surfaces this ticket makes Org
+   * Admin-configurable at runtime (`config:org_sites_zones`), and a visitor's own data export and deletion
+   * (`FR-SEC-031`, the same permission).
+   */
+  readonly privacy = {
+    fieldConfig: (surface: VisitorFieldSurface) => this.request<Items<VisitorFieldConfig>>("GET", `/privacy/field-config/${surface}`),
+    setFieldConfig: (surface: VisitorFieldSurface, field: string, visible: boolean) =>
+      this.request<VisitorFieldConfig>("PUT", `/privacy/field-config/${surface}/${field}`, { visible }),
+    exportVisitor: (visitorId: string) => this.request<VisitorExport>("GET", `/visitors/${visitorId}/export`),
+    anonymizeVisitor: (visitorId: string) => this.request<VisitorAnonymizeResult>("POST", `/visitors/${visitorId}/anonymize`),
   };
 
   /**

@@ -66,6 +66,18 @@ class VisitorTicketController {
         return actions.setNotificationOptOut(ticket, request.optedOut(), request.consentTextVersion());
     }
 
+    /** Body: {@code {"granted": boolean, "consent_text_version": string?}} (FR-SEC-030, ticket 54). */
+    public record RetentionConsentRequest(
+            boolean granted, @com.fasterxml.jackson.annotation.JsonProperty("consent_text_version") String consentTextVersion) {}
+
+    @PublicEndpoint("Anonymous visitor records their own consent for retention on their own visitor record (FR-SEC-030, §20.2)")
+    @PostMapping("/tickets/{id}/visitor/retention-consent")
+    public Map<String, Object> retentionConsent(
+            @PathVariable UUID id, @RequestHeader(value = SECRET_HEADER, required = false) String secret, @RequestBody RetentionConsentRequest request) {
+        var ticket = access.verify(id, secret).orElseThrow(() -> new ApiException(ErrorCode.UNAUTHENTICATED));
+        return actions.setRetentionConsent(ticket, request.granted(), request.consentTextVersion());
+    }
+
     /** Body: the shape of a browser's own {@code PushSubscription.toJSON()} (ticket 39, §18.3, FR-INT-040). */
     public record PushSubscriptionRequest(String endpoint, Keys keys) {
         public record Keys(String p256dh, String auth) {}

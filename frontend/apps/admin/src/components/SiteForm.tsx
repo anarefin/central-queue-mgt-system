@@ -15,13 +15,25 @@ interface SiteFormProps {
   onCancel?: () => void;
 }
 
-const EMPTY: SiteInput = { name: "", code: "", timezone: "", address: "", default_language: SHIPPED_LANGUAGES[0] ?? "en", enabled_languages: [] };
+const EMPTY: SiteInput = {
+  name: "",
+  code: "",
+  timezone: "",
+  address: "",
+  default_language: SHIPPED_LANGUAGES[0] ?? "en",
+  enabled_languages: [],
+  clinical_sensitivity: false,
+};
 
 /** Site fields (FR-CFG-002, FR-I18N-002). Enabled languages are typed as a comma list because their order matters. */
 export function SiteForm({ initial = EMPTY, submitLabel, onSubmit, onDone, onCancel }: SiteFormProps) {
   const { t } = useI18n();
   const id = useId();
-  const [values, setValues] = useState({ ...initial, enabled_languages: initial.enabled_languages.join(", ") });
+  const [values, setValues] = useState({
+    ...initial,
+    enabled_languages: initial.enabled_languages.join(", "),
+    clinical_sensitivity: initial.clinical_sensitivity ?? false,
+  });
   const { busy, error, run } = useSubmit();
   const set = (field: keyof typeof values) => (event: { target: { value: string } }) => setValues({ ...values, [field]: event.target.value });
 
@@ -60,6 +72,16 @@ export function SiteForm({ initial = EMPTY, submitLabel, onSubmit, onDone, onCan
         placeholder="bn, en"
       />
       <p className="qms-muted">{t("sites.hint.languages")}</p>
+      <label htmlFor={`${id}-clinical`} className="qms-row">
+        <input
+          id={`${id}-clinical`}
+          type="checkbox"
+          checked={values.clinical_sensitivity}
+          onChange={(event) => setValues({ ...values, clinical_sensitivity: event.target.checked })}
+        />
+        {t("sites.fields.clinical_sensitivity")}
+      </label>
+      <p className="qms-muted">{t("sites.hint.clinicalSensitivity")}</p>
       {error && <ErrorAlert>{error}</ErrorAlert>}
       <div className="qms-row">
         <Button type="submit" disabled={busy}>

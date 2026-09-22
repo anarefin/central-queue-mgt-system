@@ -18,7 +18,8 @@ import tools.jackson.databind.json.JsonMapper;
 @Repository
 class HierarchyRepository {
 
-    private static final String SITE = "id, name, code, timezone, address, default_language, enabled_languages, active, created_at, updated_at";
+    private static final String SITE =
+            "id, name, code, timezone, address, default_language, enabled_languages, active, clinical_sensitivity, created_at, updated_at";
     private static final String ZONE = "id, site_id, name, building_label, floor_label, display_order, active,"
             + " chime, chime_volume, quiet_start, quiet_end, announcement_languages, max_announce_queue_depth, wayfinding_image_url, created_at, updated_at";
     private static final String COUNTER =
@@ -44,17 +45,18 @@ class HierarchyRepository {
 
     void insert(Site site) {
         jdbc.update(
-                "INSERT INTO site (id, name, code, timezone, address, default_language, enabled_languages, active, created_at, updated_at)"
-                        + " VALUES (?, ?, ?, ?, ?, ?, ?::jsonb, ?, ?, ?)",
+                "INSERT INTO site (id, name, code, timezone, address, default_language, enabled_languages, active, clinical_sensitivity, created_at, updated_at)"
+                        + " VALUES (?, ?, ?, ?, ?, ?, ?::jsonb, ?, ?, ?, ?)",
                 site.id(), site.name(), site.code(), site.timezone(), site.address(), site.defaultLanguage(),
-                mapper.writeValueAsString(site.enabledLanguages()), site.active(), ts(site.createdAt()), ts(site.updatedAt()));
+                mapper.writeValueAsString(site.enabledLanguages()), site.active(), site.clinicalSensitivity(), ts(site.createdAt()), ts(site.updatedAt()));
     }
 
     void update(Site site) {
         jdbc.update(
-                "UPDATE site SET name = ?, code = ?, timezone = ?, address = ?, default_language = ?, enabled_languages = ?::jsonb, updated_at = ? WHERE id = ?",
+                "UPDATE site SET name = ?, code = ?, timezone = ?, address = ?, default_language = ?, enabled_languages = ?::jsonb,"
+                        + " clinical_sensitivity = ?, updated_at = ? WHERE id = ?",
                 site.name(), site.code(), site.timezone(), site.address(), site.defaultLanguage(),
-                mapper.writeValueAsString(site.enabledLanguages()), ts(site.updatedAt()), site.id());
+                mapper.writeValueAsString(site.enabledLanguages()), site.clinicalSensitivity(), ts(site.updatedAt()), site.id());
     }
 
     void setSiteActive(UUID id, boolean active, Instant now) {
@@ -148,6 +150,7 @@ class HierarchyRepository {
                 rs.getString("default_language"),
                 List.copyOf(Arrays.asList(mapper.readValue(rs.getString("enabled_languages"), String[].class))),
                 rs.getBoolean("active"),
+                rs.getBoolean("clinical_sensitivity"),
                 instant(rs, "created_at"),
                 instant(rs, "updated_at"));
     }

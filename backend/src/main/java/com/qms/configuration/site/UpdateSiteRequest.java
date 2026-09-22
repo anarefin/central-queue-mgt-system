@@ -10,4 +10,5 @@ record UpdateSiteRequest(
         String timezone,
         String address,
         @JsonProperty("default_language") String defaultLanguage,
-        @JsonProperty("enabled_languages") List<String> enabledLanguages) {}
+        @JsonProperty("enabled_languages") List<String> enabledLanguages,
+        @JsonProperty("clinical_sensitivity") Boolean clinicalSensitivity) {}
