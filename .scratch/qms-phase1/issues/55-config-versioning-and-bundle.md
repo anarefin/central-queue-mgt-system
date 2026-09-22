@@ -4,7 +4,7 @@
 
 **Blocked by:** 09 — Queue ordering engine; 08 — Configurable token numbering and scheduled resets; 21 — Issuance rules
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [x] Versioned config with author/timestamp, revertible to any prior version (FR-CFG-040)
 - [x] Warning when a change affects waiting Tickets; no retroactive renumber/reprioritise (FR-CFG-041)

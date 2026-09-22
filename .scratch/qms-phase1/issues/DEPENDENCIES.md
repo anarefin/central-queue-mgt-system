@@ -56,7 +56,7 @@
 52-scheduled-report-delivery               49,40           done     50m      29 files, +2455 −5  596af46..68aba5d
 53-retention-purge-bi-access               50              done     32m      28 files, +1319 −9  68aba5d..ccad7a1
 54-privacy-controls                        22,28,38        done*    123m     66 files, +2287 −141 3f4489a..814273b
-55-config-versioning-and-bundle            09,08,21        todo     —        —                   —
+55-config-versioning-and-bundle            09,08,21        done     52m      33 files, +1637 −17  f8d620d..811cb74
 56-vertical-profiles-and-setup-wizard      55,29,27        todo     —        —                   —
 57-outbound-webhooks                       11              todo     —        —                   —
 58-service-accounts-host-api               33,04           todo     —        —                   —
