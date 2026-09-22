@@ -45,6 +45,7 @@ export default function Home() {
             <Link href="/branding/">{t("admin.home.branding")}</Link>
             <Link href="/notifications/">{t("admin.home.notifications")}</Link>
             <Link href="/privacy/">{t("admin.home.privacy")}</Link>
+            <Link href="/webhooks/">{t("admin.home.webhooks")}</Link>
           </div>
         )}
         {user?.roles.some((role) => role === "system_admin" || role === "org_admin" || role === "team_admin") && (

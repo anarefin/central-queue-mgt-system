@@ -20,6 +20,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.function.Supplier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.AuthenticationException;
@@ -68,6 +69,7 @@ public class RealtimeHub implements RealtimePublisher, AutoCloseable {
     private final JsonMapper mapper;
     private final Clock clock;
     private final Optional<TokenVerifier> verifier;
+    private final ApplicationEventPublisher events;
     /** When each subject last changed: a token issued before that is no longer good for a socket. */
     private final Map<String, Instant> changes = new ConcurrentHashMap<>();
     private final Map<String, Topic> topics = new ConcurrentHashMap<>();
@@ -75,12 +77,19 @@ public class RealtimeHub implements RealtimePublisher, AutoCloseable {
     private ScheduledExecutorService scheduler;
     private volatile boolean closed;
 
-    RealtimeHub(List<TopicSource> sources, RealtimeProperties properties, JsonMapper mapper, Clock clock, Optional<TokenVerifier> verifier) {
+    RealtimeHub(
+            List<TopicSource> sources,
+            RealtimeProperties properties,
+            JsonMapper mapper,
+            Clock clock,
+            Optional<TokenVerifier> verifier,
+            ApplicationEventPublisher events) {
         this.verifier = verifier;
         this.sources = List.copyOf(sources);
         this.properties = properties;
         this.mapper = mapper;
         this.clock = clock;
+        this.events = events;
     }
 
     // ---- publishing -------------------------------------------------------------------------------------------
@@ -94,6 +103,14 @@ public class RealtimeHub implements RealtimePublisher, AutoCloseable {
             } catch (RuntimeException failure) {
                 // The change is committed; a failed fan-out must not turn it into an error for the caller.
                 log.warn("realtime publish to {} failed: {}", topic, failure.toString());
+            }
+            try {
+                // A second, decoupled fan-out (ticket 57, FR-INT-020): whoever is listening for the raw event, not
+                // this one topic's subscribers. A failure here must never affect the topic delivery above or the
+                // caller's own transition (FR-INT-022).
+                events.publishEvent(new RealtimeEventOccurred(topic, type, occurredAt, payload));
+            } catch (RuntimeException failure) {
+                log.warn("realtime event publication for {} failed: {}", topic, failure.toString());
             }
         };
         afterCommit(dispatch);

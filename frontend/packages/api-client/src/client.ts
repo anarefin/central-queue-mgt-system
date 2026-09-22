@@ -97,6 +97,7 @@ import type {
   NotificationTriggerSetting,
   NotificationTriggerSettingInput,
 } from "./notifications";
+import type { WebhookDeliveryQuery, WebhookDeliveryWithAttempts, WebhookEndpoint, WebhookEndpointInput } from "./webhooks";
 
 export const API_BASE_PATH = "/api/v1";
 
@@ -724,6 +725,36 @@ export class ApiClient {
       if (query.limit) params.set("limit", String(query.limit));
       const qs = params.toString();
       return this.request<Items<NotificationMessageWithAttempts>>("GET", `/notification-messages${qs ? `?${qs}` : ""}`);
+    },
+  };
+
+  /**
+   * Outbound webhooks (ticket 57, SRS §22.3, FR-INT-020..022): admin CRUD of endpoints (`config:org_sites_zones`,
+   * the same permission {@code breaks} uses for a comparably small org-wide admin surface), each subscribed to any
+   * §21.4 event type with a secret shown back only on `create`/`rotateSecret`, and the delivery log — `search` needs
+   * only `audit:read`, `replay` needs `config:org_sites_zones` since it has a real side effect.
+   */
+  readonly webhooks = {
+    endpoints: {
+      list: () => this.request<Items<WebhookEndpoint>>("GET", "/webhook-endpoints"),
+      get: (id: string) => this.request<WebhookEndpoint>("GET", `/webhook-endpoints/${id}`),
+      create: (input: WebhookEndpointInput) => this.request<WebhookEndpoint>("POST", "/webhook-endpoints", input),
+      update: (id: string, input: WebhookEndpointInput) => this.request<WebhookEndpoint>("PUT", `/webhook-endpoints/${id}`, input),
+      rotateSecret: (id: string) => this.request<WebhookEndpoint>("POST", `/webhook-endpoints/${id}/rotate-secret`),
+      deactivate: (id: string) => this.request<WebhookEndpoint>("POST", `/webhook-endpoints/${id}/deactivate`),
+      activate: (id: string) => this.request<WebhookEndpoint>("POST", `/webhook-endpoints/${id}/activate`),
+    },
+    deliveries: {
+      search: (query: WebhookDeliveryQuery = {}) => {
+        const params = new URLSearchParams();
+        if (query.endpointId) params.set("endpoint_id", query.endpointId);
+        if (query.eventType) params.set("event_type", query.eventType);
+        if (query.status) params.set("status", query.status);
+        if (query.limit) params.set("limit", String(query.limit));
+        const qs = params.toString();
+        return this.request<Items<WebhookDeliveryWithAttempts>>("GET", `/webhook-deliveries${qs ? `?${qs}` : ""}`);
+      },
+      replay: (id: string) => this.request<WebhookDeliveryWithAttempts>("POST", `/webhook-deliveries/${id}/replay`),
     },
   };
 

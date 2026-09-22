@@ -94,10 +94,11 @@ class RealtimeHubTest {
     RealtimeProperties properties = RealtimeProperties.defaults();
     RealtimeHub hub;
     Authentication agent = new TestingAuthenticationToken("agent-1", "n/a", "perm:ticket:call_serve_complete:own");
+    final List<Object> publishedEvents = new ArrayList<>();
 
     @BeforeEach
     void newHub() {
-        hub = new RealtimeHub(List.of(source), properties, MAPPER, clock, Optional.empty());
+        hub = new RealtimeHub(List.of(source), properties, MAPPER, clock, Optional.empty(), publishedEvents::add);
     }
 
     @AfterEach
@@ -156,6 +157,20 @@ class RealtimeHubTest {
                 .containsEntry("type", "session.opened")
                 .containsEntry("occurred_at", "2026-09-18T06:16:41Z")
                 .containsEntry("data", Map.of("session_id", "s-1"));
+    }
+
+    /** Every {@link RealtimeHub#publish} also raises a {@link RealtimeEventOccurred} (ticket 57, FR-INT-020): the
+     * decoupled seam a downstream consumer such as outbound webhooks listens from, with no subscriber needed. */
+    @Test
+    void everyPublishAlsoRaisesARealtimeEventOccurredForADecoupledConsumer() {
+        hub.publish(COUNTER, "session.opened", Instant.parse("2026-09-18T06:16:41Z"), Map.of("session_id", "s-1"));
+
+        assertThat(publishedEvents).hasSize(1);
+        RealtimeEventOccurred event = (RealtimeEventOccurred) publishedEvents.get(0);
+        assertThat(event.topic()).isEqualTo(COUNTER);
+        assertThat(event.type()).isEqualTo("session.opened");
+        assertThat(event.occurredAt()).isEqualTo(Instant.parse("2026-09-18T06:16:41Z"));
+        assertThat(event.data()).isEqualTo(Map.of("session_id", "s-1"));
     }
 
     @Test

@@ -69,7 +69,7 @@ class RealtimeReauthTest {
 
     @BeforeEach
     void newHub() {
-        hub = new RealtimeHub(List.of(source), RealtimeProperties.defaults(), MAPPER, clock, Optional.of(verifier));
+        hub = new RealtimeHub(List.of(source), RealtimeProperties.defaults(), MAPPER, clock, Optional.of(verifier), event -> {});
     }
 
     @AfterEach
