@@ -60,10 +60,15 @@ import org.springframework.transaction.annotation.Transactional;
 @Profile(Profiles.SERVING)
 public class AppointmentBookingService {
 
-    /** Staff with {@code appointment:book}, or a registered visitor acting on their own appointment (§5.2 "S" for
-     * Visitor, ticket 41) — {@code book}/{@code reschedule}/{@code cancel} each add the object-level "own" check
-     * FR-CFG-105 requires for the visitor branch, since {@code PermissionMatrix} itself is staff-only. */
-    static final String BOOK = "hasAuthority(T(com.qms.platform.security.Authorities).APPOINTMENT_BOOK) or hasRole('VISITOR')";
+    /** Staff with {@code appointment:book}, a registered visitor acting on their own appointment (§5.2 "S" for
+     * Visitor, ticket 41), or a host system's service account (ticket 58, SRS §22.4, FR-INT-030) booking on a
+     * client's behalf the same way a phone booking already does — {@code book}/{@code reschedule}/{@code cancel}
+     * each add the object-level "own" check FR-CFG-105 requires for the visitor branch, since {@code
+     * PermissionMatrix} itself is staff-only. A host system caller takes the same request shape a staff booking
+     * already does (its own {@code source}, one of {@code phone}/{@code walk_in}/{@code staff}, and either an
+     * existing visitor id or minimal contact fields): it is never treated as the "own visitor" branch below, which
+     * is reserved for a signed-in visitor's JWT naming exactly one visitor of their own. */
+    static final String BOOK = "hasAuthority(T(com.qms.platform.security.Authorities).APPOINTMENT_BOOK) or hasRole('VISITOR') or hasRole('HOST_SYSTEM')";
 
     /** Excludes characters easy to misread when read aloud or printed: 0/O, 1/I. */
     private static final char[] CODE_ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ".toCharArray();
@@ -113,6 +118,7 @@ public class AppointmentBookingService {
     public AppointmentResponse book(BookAppointmentRequest request) {
         AuthenticatedUser caller = currentUser.require();
         boolean visitorCaller = caller.roles().contains(Role.VISITOR);
+        boolean hostSystemCaller = caller.roles().contains(Role.HOST_SYSTEM);
         Parsed parsed = AppointmentBookingFields.parse(request, languages.languages(), visitorCaller ? caller.userId() : null);
 
         SiteContext site = availabilityRepository.siteContextOfService(parsed.serviceId()).orElseThrow(() -> AppointmentBookingFields.invalid("service_id", "not_found"));
@@ -167,9 +173,10 @@ public class AppointmentBookingService {
             throw conflict("slot_full", Map.of());
         }
 
-        // `booked_by` is a staff user (FK to `users`); a visitor's own booking has none — the row's own `visitor_id`
-        // already names who it is for, the same way a phone or walk-in booking's caller and its visitor differ.
-        UUID actor = visitorCaller ? null : caller.userId();
+        // `booked_by` is a staff user (FK to `users`); a visitor's own booking has none, and neither does a host
+        // system's (its caller id is a `service_account`, not a `users` row) — the row's own `visitor_id` already
+        // names who it is for, the same way a phone or walk-in booking's caller and its visitor differ.
+        UUID actor = visitorCaller || hostSystemCaller ? null : caller.userId();
         Instant holdExpiresAt = now.plus(Duration.ofMinutes(properties.holdMinutes()));
         UUID id = UUID.randomUUID();
         String referenceCode = insertHeldWithFreshReference(

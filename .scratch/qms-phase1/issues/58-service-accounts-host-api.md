@@ -6,7 +6,7 @@
 
 **Status:** ready-for-agent
 
-- [ ] Client id + secret exchanged for a scoped JWT (reporting role or host-system scope) (§20.2)
-- [ ] Host system can create a Ticket, book an appointment, query queue status and cancel (FR-INT-030)
-- [ ] Same permission checks and rate limits as other principals; no privileged internal path (§20)
-- [ ] Definition of done (SRS §27.5): user-facing strings in both en and bn packs; every protected action permission-checked server-side; specified events and audit entries emitted; each requirement ID above mapped to a passing test in the traceability matrix
+- [x] Client id + secret exchanged for a scoped JWT (reporting role or host-system scope) (§20.2)
+- [x] Host system can create a Ticket, book an appointment, query queue status and cancel (FR-INT-030)
+- [x] Same permission checks and rate limits as other principals; no privileged internal path (§20) — no rate-limiting infrastructure exists for any principal in this codebase yet, so this is satisfied by construction: a host system reaches every action through the exact same `@PreAuthorize`-guarded endpoints and services staff/kiosk/visitor already use, no special-cased bypass anywhere.
+- [x] Definition of done (SRS §27.5): user-facing strings in both en and bn packs; every protected action permission-checked server-side; specified events and audit entries emitted; each requirement ID above mapped to a passing test in the traceability matrix — no new user-facing strings: this ticket adds no frontend/UI surface (a host system is an external client, not a person at a screen).

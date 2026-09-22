@@ -92,7 +92,11 @@ public class IssuanceService {
     @Transactional
     public TicketResponse issue(IssueCommand command) {
         ServiceTarget target = tickets.serviceTarget(command.serviceId()).orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND));
-        if (command.actorType() == ActorType.STAFF) scope.requireSite(target.siteId());
+        // A staff actor and a host system's service account (ticket 58, FR-INT-030) both carry a real, checkable
+        // site scope in their token and are both authorised for this same shared path; a device actor is
+        // deliberately left unscoped here so its own channel adapter can decide the shape of its authorisation
+        // instead (KioskTicketController's own doc comment).
+        if (command.actorType() == ActorType.STAFF || command.actorType() == ActorType.HOST_SYSTEM) scope.requireSite(target.siteId());
         Instant now = clock.instant();
         UUID visitId = UUID.randomUUID();
         tickets.insertVisit(visitId, target.siteId(), now);
