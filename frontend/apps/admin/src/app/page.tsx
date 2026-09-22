@@ -34,6 +34,7 @@ export default function Home() {
         {/* A convenience only: the API decides who may configure sites (FR-CFG-103). */}
         {user?.roles.some((role) => role === "system_admin" || role === "org_admin") && (
           <div className="qms-row">
+            <Link href="/setup/">{t("admin.home.setup")}</Link>
             <Link href="/sites/">{t("admin.home.sites")}</Link>
             <Link href="/devices/">{t("admin.home.devices")}</Link>
             <Link href="/catalogue/">{t("admin.home.catalogue")}</Link>

@@ -1,0 +1,33 @@
+{
+  "id": "government",
+  "labels": {
+    "entity.visitor": { "en": "Applicant", "bn": "আবেদনকারী" },
+    "entity.visitor_id": { "en": "Reference number", "bn": "রেফারেন্স নম্বর" },
+    "entity.service_group": { "en": "Department", "bn": "বিভাগ" },
+    "entity.counter": { "en": "Counter", "bn": "কাউন্টার" },
+    "entity.agent": { "en": "Officer", "bn": "কর্মকর্তা" },
+    "entity.category": { "en": "Category", "bn": "বিভাগ" },
+    "entity.ticket": { "en": "Token", "bn": "টোকেন" }
+  },
+  "starter_services": [
+    { "name_i18n": { "en": "Application submission", "bn": "আবেদন জমা" }, "token_prefix": "A" },
+    { "name_i18n": { "en": "Verification", "bn": "যাচাইকরণ" }, "token_prefix": "B" },
+    { "name_i18n": { "en": "Payment", "bn": "পেমেন্ট" }, "token_prefix": "C" },
+    { "name_i18n": { "en": "Collection", "bn": "সংগ্রহ" }, "token_prefix": "D" }
+  ],
+  "priority_classes": [
+    { "name_i18n": { "en": "Senior citizen", "bn": "প্রবীণ নাগরিক" }, "headstart_minutes": 10 },
+    { "name_i18n": { "en": "Differently abled", "bn": "ভিন্নভাবে সক্ষম" }, "headstart_minutes": 10 }
+  ],
+  "numbering_defaults": { "sequence_start": 1, "padding": 3, "reset_boundary": "daily" },
+  "report_defaults": ["operational_summary"],
+  "kpi_thresholds": { "max_wait_minutes": 20 },
+  "feature_flags": {
+    "appointment": true,
+    "virtual_queue": false,
+    "journey": false,
+    "multi_site": false,
+    "visitor_code_lookup": false,
+    "announce_visitor_name": false
+  }
+}

@@ -21,6 +21,7 @@ export * from "./reports";
 export * from "./retention";
 export * from "./session";
 export * from "./sessions";
+export * from "./setup";
 export * from "./stream";
 export * from "./tickets";
 export * from "./visitor-account";

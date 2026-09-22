@@ -1,0 +1,27 @@
+{
+  "id": "generic",
+  "labels": {
+    "entity.visitor": { "en": "Visitor", "bn": "ভিজিটর" },
+    "entity.visitor_id": { "en": "Visitor ID", "bn": "ভিজিটর আইডি" },
+    "entity.service_group": { "en": "Department", "bn": "বিভাগ" },
+    "entity.counter": { "en": "Counter", "bn": "কাউন্টার" },
+    "entity.agent": { "en": "Officer", "bn": "কর্মকর্তা" },
+    "entity.category": { "en": "Category", "bn": "বিভাগ" },
+    "entity.ticket": { "en": "Token", "bn": "টোকেন" }
+  },
+  "starter_services": [
+    { "name_i18n": { "en": "General enquiry", "bn": "সাধারণ অনুসন্ধান" }, "token_prefix": "A" }
+  ],
+  "priority_classes": [],
+  "numbering_defaults": { "sequence_start": 1, "padding": 3, "reset_boundary": "daily" },
+  "report_defaults": ["operational_summary"],
+  "kpi_thresholds": { "max_wait_minutes": 30 },
+  "feature_flags": {
+    "appointment": false,
+    "virtual_queue": false,
+    "journey": false,
+    "multi_site": false,
+    "visitor_code_lookup": false,
+    "announce_visitor_name": false
+  }
+}

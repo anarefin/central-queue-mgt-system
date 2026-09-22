@@ -29,6 +29,7 @@ import type {
   PairingCodeResponse,
 } from "./devices";
 import type { Counter, CounterInput, Items, Site, SiteInput, Zone, ZoneInput } from "./hierarchy";
+import type { ActiveProfile, SetupState, VerticalProfile } from "./setup";
 import type { Channel } from "./catalogue";
 import type { AgentAvailability, AvailabilityInput, BreakReport, BreakReportQuery, BreakType, BreakTypeInput } from "./breaks";
 import type { ConfigImpact, PriorityClass, PriorityClassInput, PriorityDefaults, QueueDryRun, QueueStrategy, RoutingStrategy } from "./priority";
@@ -426,6 +427,25 @@ export class ApiClient {
     update: (input: BrandingInput) => this.request<OrgBranding>("PUT", "/branding", input),
     template: () => this.request<PrintTemplate>("GET", "/print-template"),
     updateTemplate: (input: PrintTemplateInput) => this.request<PrintTemplate>("PUT", "/print-template", input),
+  };
+
+  /** Terminology remapping (§3.2): every visitor-facing noun a screen shows, resolved through the active profile,
+   * then editable one key at a time (CFG-003). */
+  readonly labels = {
+    get: (lang: string) => this.request<Record<string, string>>("GET", `/labels?lang=${lang}`),
+    update: (key: string, input: { lang: string; value: string }) => this.request<Record<string, string>>("PUT", `/labels/${key}`, input),
+  };
+
+  /** The first-run setup wizard (SRS §26.2, FR-OPS-010, ticket 56): vertical profiles, wizard progress, and the
+   * test token go-live is gated on. */
+  readonly setup = {
+    profiles: () => this.request<VerticalProfile[]>("GET", "/setup/profiles"),
+    applyProfile: (profileId: string) => this.request<ActiveProfile>("POST", "/setup/profile", { profile_id: profileId }),
+    resetProfile: (profileId: string) => this.request<ActiveProfile>("POST", "/setup/profile/reset", { profile_id: profileId }),
+    state: () => this.request<SetupState>("GET", "/setup/state"),
+    issueTestToken: (serviceId: string) => this.request<Ticket>("POST", "/setup/test-token", { service_id: serviceId }),
+    confirmPrint: (ticketId: string) => this.request<SetupState>("POST", `/setup/test-token/${ticketId}/confirm-print`),
+    goLive: () => this.request<{ go_live_at: string }>("POST", "/setup/go-live"),
   };
 
   /**

@@ -1,0 +1,35 @@
+{
+  "id": "producer_services",
+  "labels": {
+    "entity.visitor": { "en": "Producer", "bn": "প্রডিউসার" },
+    "entity.visitor_id": { "en": "Producer code", "bn": "প্রডিউসার কোড" },
+    "entity.service_group": { "en": "Department", "bn": "বিভাগ" },
+    "entity.counter": { "en": "Desk", "bn": "ডেস্ক" },
+    "entity.agent": { "en": "Officer", "bn": "কর্মকর্তা" },
+    "entity.category": { "en": "Producer category (e.g. Children Tailoring)", "bn": "প্রডিউসার বিভাগ (যেমন: চিলড্রেন টেইলারিং)" },
+    "entity.ticket": { "en": "Token", "bn": "টোকেন" }
+  },
+  "starter_services": [
+    { "name_i18n": { "en": "Helpdesk query", "bn": "হেল্পডেস্ক জিজ্ঞাসা" }, "token_prefix": "A" },
+    { "name_i18n": { "en": "Sample", "bn": "নমুনা" }, "token_prefix": "B" },
+    { "name_i18n": { "en": "Order and costing", "bn": "অর্ডার ও খরচ নির্ধারণ" }, "token_prefix": "C" },
+    { "name_i18n": { "en": "Pre-QC", "bn": "প্রি-কিউসি" }, "token_prefix": "D" },
+    { "name_i18n": { "en": "Voucher", "bn": "ভাউচার" }, "token_prefix": "E" },
+    { "name_i18n": { "en": "Documentation", "bn": "ডকুমেন্টেশন" }, "token_prefix": "F" }
+  ],
+  "priority_classes": [
+    { "name_i18n": { "en": "Distant-district producer", "bn": "দূরবর্তী জেলার প্রডিউসার" }, "headstart_minutes": 20 },
+    { "name_i18n": { "en": "Scheduled visit", "bn": "নির্ধারিত ভিজিট" }, "headstart_minutes": 10 }
+  ],
+  "numbering_defaults": { "sequence_start": 1, "padding": 3, "reset_boundary": "daily" },
+  "report_defaults": ["operational_summary"],
+  "kpi_thresholds": { "max_wait_minutes": 30 },
+  "feature_flags": {
+    "appointment": false,
+    "virtual_queue": false,
+    "journey": true,
+    "multi_site": true,
+    "visitor_code_lookup": true,
+    "announce_visitor_name": false
+  }
+}

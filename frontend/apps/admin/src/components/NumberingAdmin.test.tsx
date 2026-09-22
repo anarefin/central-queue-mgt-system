@@ -121,7 +121,9 @@ describe("token numbering screen", () => {
     renderApp(<NumberingAdmin />);
 
     expect(await screen.findByText("Token numbering of Main campus")).toBeInTheDocument();
-    expect(screen.getByText("Prefix: The service group's prefix · Separator: - · Digits: 3 · First number: 1 · Restarts every day at 04:00")).toBeInTheDocument();
+    // The rule text depends on a second round of fetches (groups, services, rules) after the site itself loads, so
+    // it can still be in flight the instant the heading above appears; await it rather than assuming it is already there.
+    expect(await screen.findByText("Prefix: The service group's prefix · Separator: - · Digits: 3 · First number: 1 · Restarts every day at 04:00")).toBeInTheDocument();
     expect(screen.getByText("No rule of its own: follows its service group's rule.")).toBeInTheDocument();
     expect(screen.getByText("Prefix: fixed text VIP · Separator: (none) · Digits: 0 · First number: 10 · Never restarts")).toBeInTheDocument();
     expect(screen.getByText("Consultation")).toBeInTheDocument();

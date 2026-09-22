@@ -1,0 +1,36 @@
+{
+  "id": "banking",
+  "labels": {
+    "entity.visitor": { "en": "Customer", "bn": "গ্রাহক" },
+    "entity.visitor_id": { "en": "Account / CIF number", "bn": "অ্যাকাউন্ট / সিআইএফ নম্বর" },
+    "entity.service_group": { "en": "Branch function", "bn": "শাখার কার্যক্রম" },
+    "entity.counter": { "en": "Counter", "bn": "কাউন্টার" },
+    "entity.agent": { "en": "Officer", "bn": "কর্মকর্তা" },
+    "entity.category": { "en": "Segment (Retail, Priority)", "bn": "বিভাগ (খুচরা, অগ্রাধিকার)" },
+    "entity.ticket": { "en": "Token", "bn": "টোকেন" }
+  },
+  "starter_services": [
+    { "name_i18n": { "en": "Cash deposit", "bn": "নগদ জমা" }, "token_prefix": "A" },
+    { "name_i18n": { "en": "Cash withdrawal", "bn": "নগদ উত্তোলন" }, "token_prefix": "B" },
+    { "name_i18n": { "en": "Account opening", "bn": "অ্যাকাউন্ট খোলা" }, "token_prefix": "C" },
+    { "name_i18n": { "en": "Loan enquiry", "bn": "ঋণ অনুসন্ধান" }, "token_prefix": "D" },
+    { "name_i18n": { "en": "Card services", "bn": "কার্ড সেবা" }, "token_prefix": "E" },
+    { "name_i18n": { "en": "Remittance", "bn": "রেমিট্যান্স" }, "token_prefix": "F" }
+  ],
+  "priority_classes": [
+    { "name_i18n": { "en": "Priority banking", "bn": "অগ্রাধিকার ব্যাংকিং" }, "headstart_minutes": 15 },
+    { "name_i18n": { "en": "Senior citizen", "bn": "প্রবীণ নাগরিক" }, "headstart_minutes": 10 },
+    { "name_i18n": { "en": "Differently abled", "bn": "ভিন্নভাবে সক্ষম" }, "headstart_minutes": 10 }
+  ],
+  "numbering_defaults": { "sequence_start": 1, "padding": 3, "reset_boundary": "daily" },
+  "report_defaults": ["operational_summary", "token_report"],
+  "kpi_thresholds": { "max_wait_minutes": 15 },
+  "feature_flags": {
+    "appointment": true,
+    "virtual_queue": true,
+    "journey": false,
+    "multi_site": false,
+    "visitor_code_lookup": false,
+    "announce_visitor_name": false
+  }
+}

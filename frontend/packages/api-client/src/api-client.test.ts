@@ -620,3 +620,69 @@ describe("ApiClient remote join (ticket 42, FR-MOB-010..012)", () => {
     expect(JSON.parse(String(init.body))).toEqual({ latitude: 23.81, longitude: 90.41 });
   });
 });
+
+describe("setup", () => {
+  it("lists the shipped vertical profiles", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(json(200, [{ id: "banking" }]));
+    const client = new ApiClient({ apiOrigin: "", fetch: fetchImpl as unknown as typeof fetch, getAccessToken: () => "tok" });
+
+    await expect(client.setup.profiles()).resolves.toEqual([{ id: "banking" }]);
+
+    const [url, init] = fetchImpl.mock.calls[0] as [string, RequestInit];
+    expect(`${init.method} ${url}`).toBe("GET /api/v1/setup/profiles");
+  });
+
+  it("applies a profile by id", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(json(200, { id: "banking", applied_at: "2026-01-01T00:00:00Z", applied_by: "u1" }));
+    const client = new ApiClient({ apiOrigin: "", fetch: fetchImpl as unknown as typeof fetch, getAccessToken: () => "tok" });
+
+    await client.setup.applyProfile("banking");
+
+    const [url, init] = fetchImpl.mock.calls[0] as [string, RequestInit];
+    expect(`${init.method} ${url}`).toBe("POST /api/v1/setup/profile");
+    expect(JSON.parse(String(init.body))).toEqual({ profile_id: "banking" });
+  });
+
+  it("issues the wizard's test token for a Service", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(json(201, { id: "t1", token_number: "A-001" }));
+    const client = new ApiClient({ apiOrigin: "", fetch: fetchImpl as unknown as typeof fetch, getAccessToken: () => "tok" });
+
+    await client.setup.issueTestToken("svc-1");
+
+    const [url, init] = fetchImpl.mock.calls[0] as [string, RequestInit];
+    expect(`${init.method} ${url}`).toBe("POST /api/v1/setup/test-token");
+    expect(JSON.parse(String(init.body))).toEqual({ service_id: "svc-1" });
+  });
+
+  it("confirms go-live", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(json(200, { go_live_at: "2026-01-01T00:00:00Z" }));
+    const client = new ApiClient({ apiOrigin: "", fetch: fetchImpl as unknown as typeof fetch, getAccessToken: () => "tok" });
+
+    await expect(client.setup.goLive()).resolves.toEqual({ go_live_at: "2026-01-01T00:00:00Z" });
+
+    const [url, init] = fetchImpl.mock.calls[0] as [string, RequestInit];
+    expect(`${init.method} ${url}`).toBe("POST /api/v1/setup/go-live");
+  });
+});
+
+describe("labels", () => {
+  it("reads resolved labels for a language", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(json(200, { "entity.visitor": "Customer" }));
+    const client = new ApiClient({ apiOrigin: "", fetch: fetchImpl as unknown as typeof fetch, getAccessToken: () => "tok" });
+
+    await expect(client.labels.get("en")).resolves.toEqual({ "entity.visitor": "Customer" });
+
+    expect(fetchImpl.mock.calls[0]?.[0]).toBe("/api/v1/labels?lang=en");
+  });
+
+  it("updates one label key (CFG-003)", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(json(200, { "entity.visitor": "Client" }));
+    const client = new ApiClient({ apiOrigin: "", fetch: fetchImpl as unknown as typeof fetch, getAccessToken: () => "tok" });
+
+    await client.labels.update("entity.visitor", { lang: "en", value: "Client" });
+
+    const [url, init] = fetchImpl.mock.calls[0] as [string, RequestInit];
+    expect(`${init.method} ${url}`).toBe("PUT /api/v1/labels/entity.visitor");
+    expect(JSON.parse(String(init.body))).toEqual({ lang: "en", value: "Client" });
+  });
+});

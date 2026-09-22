@@ -6,9 +6,9 @@
 
 **Status:** ready-for-agent
 
-- [ ] Five shipped profiles carrying label overrides, starter catalogue, priority classes, numbering, report/KPI defaults, feature flags (§3.3, §3.4)
-- [ ] Terminology remapping via label keys resolved through pack and profile (§3.2)
-- [ ] No industry branches in code — variation only via config, labels, flags (CFG-001, NFR-MNT-005)
-- [ ] Profile applied only at first run or explicit reset; never on upgrade (CFG-002)
-- [ ] Setup wizard steps per §26.2; go-live blocked until an end-to-end test token passes (FR-OPS-010)
-- [ ] Definition of done (SRS §27.5): user-facing strings in both en and bn packs; every protected action permission-checked server-side; specified events and audit entries emitted; each requirement ID above mapped to a passing test in the traceability matrix
+- [x] Five shipped profiles carrying label overrides, starter catalogue, priority classes, numbering, report/KPI defaults, feature flags (§3.3, §3.4) — starter catalogue/numbering are Site-scoped and carried in the profile data for the wizard's later "services and numbering" step to seed (no Site exists yet when a profile is picked); see traceability matrix note
+- [x] Terminology remapping via label keys resolved through pack and profile (§3.2)
+- [x] No industry branches in code — variation only via config, labels, flags (CFG-001, NFR-MNT-005)
+- [x] Profile applied only at first run or explicit reset; never on upgrade (CFG-002)
+- [x] Setup wizard steps per §26.2; go-live blocked until an end-to-end test token passes (FR-OPS-010)
+- [x] Definition of done (SRS §27.5): user-facing strings in both en and bn packs; every protected action permission-checked server-side; specified events and audit entries emitted; each requirement ID above mapped to a passing test in the traceability matrix

@@ -1,0 +1,37 @@
+{
+  "id": "healthcare",
+  "labels": {
+    "entity.visitor": { "en": "Patient", "bn": "রোগী" },
+    "entity.visitor_id": { "en": "Patient ID / MRN", "bn": "রোগী আইডি / এমআরএন" },
+    "entity.service_group": { "en": "Department / clinic", "bn": "বিভাগ / ক্লিনিক" },
+    "entity.counter": { "en": "Consultation room", "bn": "পরামর্শ কক্ষ" },
+    "entity.agent": { "en": "Doctor / technician", "bn": "ডাক্তার / টেকনিশিয়ান" },
+    "entity.category": { "en": "Visit type (New, Follow-up)", "bn": "ভিজিটের ধরন (নতুন, ফলো-আপ)" },
+    "entity.ticket": { "en": "Token", "bn": "টোকেন" }
+  },
+  "starter_services": [
+    { "name_i18n": { "en": "Registration", "bn": "নিবন্ধন" }, "token_prefix": "A" },
+    { "name_i18n": { "en": "Consultation", "bn": "পরামর্শ" }, "token_prefix": "B" },
+    { "name_i18n": { "en": "Sample collection", "bn": "নমুনা সংগ্রহ" }, "token_prefix": "C" },
+    { "name_i18n": { "en": "Pharmacy", "bn": "ফার্মেসি" }, "token_prefix": "D" },
+    { "name_i18n": { "en": "Billing", "bn": "বিলিং" }, "token_prefix": "E" },
+    { "name_i18n": { "en": "Report collection", "bn": "রিপোর্ট সংগ্রহ" }, "token_prefix": "F" }
+  ],
+  "priority_classes": [
+    { "name_i18n": { "en": "Emergency", "bn": "জরুরি" }, "headstart_minutes": 30 },
+    { "name_i18n": { "en": "Elderly", "bn": "প্রবীণ" }, "headstart_minutes": 10 },
+    { "name_i18n": { "en": "Pregnancy", "bn": "গর্ভাবস্থা" }, "headstart_minutes": 10 },
+    { "name_i18n": { "en": "Follow-up", "bn": "ফলো-আপ" }, "headstart_minutes": 5 }
+  ],
+  "numbering_defaults": { "sequence_start": 1, "padding": 3, "reset_boundary": "daily" },
+  "report_defaults": ["operational_summary", "domain_reports"],
+  "kpi_thresholds": { "max_wait_minutes": 20 },
+  "feature_flags": {
+    "appointment": true,
+    "virtual_queue": false,
+    "journey": true,
+    "multi_site": false,
+    "visitor_code_lookup": false,
+    "announce_visitor_name": false
+  }
+}
