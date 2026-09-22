@@ -223,6 +223,17 @@ class IssuanceRulesRepository {
         return count == null ? 0 : count;
     }
 
+    /** Tickets still queued anywhere a business-hours scope applies (FR-CFG-041's warning): a Service's own queue, or,
+     * for a Site, every Service under it. */
+    int waitingTicketsForScope(String scopeType, UUID scopeId) {
+        if (SERVICE.equals(scopeType)) return activeQueueCount(scopeId);
+        Integer count = jdbc.queryForObject(
+                "SELECT count(*) FROM ticket t JOIN service v ON v.id = t.service_id JOIN service_group g ON g.id = v.service_group_id"
+                        + " WHERE g.site_id = ? AND t.state IN ('waiting', 'paused', 'remote')",
+                Integer.class, scopeId);
+        return count == null ? 0 : count;
+    }
+
     /** Of those, how many are still remote (not yet checked in). */
     int remoteCount(UUID serviceId) {
         Integer count = jdbc.queryForObject("SELECT count(*) FROM ticket WHERE service_id = ? AND state = 'remote'", Integer.class, serviceId);

@@ -1,5 +1,6 @@
 package com.qms.issuance;
 
+import com.qms.configuration.versioning.ConfigVersionView;
 import com.qms.platform.Profiles;
 import java.util.List;
 import java.util.UUID;
@@ -8,6 +9,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
@@ -24,6 +26,9 @@ public class NumberingController {
 
     /** A bounded list response: a site has few rules. */
     public record Rules(List<NumberingRuleView> items) {}
+
+    /** A bounded list response: a scope's own version history (FR-CFG-040). */
+    public record Versions(List<ConfigVersionView> items) {}
 
     private final NumberingService numbering;
 
@@ -61,6 +66,19 @@ public class NumberingController {
         return numbering.preview(NumberingRule.SERVICE, id);
     }
 
+    /** History of a Service's own numbering rule, newest first (FR-CFG-040). */
+    @PreAuthorize(PERMISSION)
+    @GetMapping("/services/{id}/numbering-rule/versions")
+    public Versions serviceRuleVersions(@PathVariable UUID id) {
+        return new Versions(numbering.versions(NumberingRule.SERVICE, id));
+    }
+
+    @PreAuthorize(PERMISSION)
+    @PostMapping("/services/{id}/numbering-rule/versions/{versionId}/revert")
+    public NumberingRuleChange revertServiceRule(@PathVariable UUID id, @PathVariable UUID versionId) {
+        return numbering.revert(NumberingRule.SERVICE, id, versionId);
+    }
+
     @PreAuthorize(PERMISSION)
     @GetMapping("/service-groups/{id}/numbering-rule")
     public NumberingRuleView groupRule(@PathVariable UUID id) {
@@ -83,5 +101,18 @@ public class NumberingController {
     @GetMapping("/service-groups/{id}/numbering-preview")
     public NumberingPreview groupPreview(@PathVariable UUID id) {
         return numbering.preview(NumberingRule.SERVICE_GROUP, id);
+    }
+
+    /** History of a Service group's own numbering rule, newest first (FR-CFG-040). */
+    @PreAuthorize(PERMISSION)
+    @GetMapping("/service-groups/{id}/numbering-rule/versions")
+    public Versions groupRuleVersions(@PathVariable UUID id) {
+        return new Versions(numbering.versions(NumberingRule.SERVICE_GROUP, id));
+    }
+
+    @PreAuthorize(PERMISSION)
+    @PostMapping("/service-groups/{id}/numbering-rule/versions/{versionId}/revert")
+    public NumberingRuleChange revertGroupRule(@PathVariable UUID id, @PathVariable UUID versionId) {
+        return numbering.revert(NumberingRule.SERVICE_GROUP, id, versionId);
     }
 }

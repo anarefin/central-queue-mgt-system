@@ -6,9 +6,9 @@
 
 **Status:** ready-for-agent
 
-- [ ] Versioned config with author/timestamp, revertible to any prior version (FR-CFG-040)
-- [ ] Warning when a change affects waiting Tickets; no retroactive renumber/reprioritise (FR-CFG-041)
-- [ ] Signed JSON bundle export/import of full configuration (CFG-004)
-- [ ] Every profile-set value editable in admin (CFG-003)
-- [ ] `config.changed` event reaches devices
-- [ ] Definition of done (SRS §27.5): user-facing strings in both en and bn packs; every protected action permission-checked server-side; specified events and audit entries emitted; each requirement ID above mapped to a passing test in the traceability matrix
+- [x] Versioned config with author/timestamp, revertible to any prior version (FR-CFG-040)
+- [x] Warning when a change affects waiting Tickets; no retroactive renumber/reprioritise (FR-CFG-041)
+- [x] Signed JSON bundle export/import of full configuration (CFG-004) — scoped to the four FR-CFG-040 configuration areas (Priority classes/defaults, routing strategy, numbering rules, business hours), not the org hierarchy/catalogue those areas are keyed by; see the traceability matrix note for why
+- [x] Every profile-set value editable in admin (CFG-003)
+- [x] `config.changed` event reaches devices
+- [x] Definition of done (SRS §27.5): user-facing strings in both en and bn packs; every protected action permission-checked server-side; specified events and audit entries emitted; each requirement ID above mapped to a passing test in the traceability matrix

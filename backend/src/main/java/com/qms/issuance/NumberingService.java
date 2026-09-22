@@ -2,12 +2,17 @@ package com.qms.issuance;
 
 import com.qms.audit.AuditEvent;
 import com.qms.audit.AuditWriter;
+import com.qms.configuration.versioning.ConfigVersion;
+import com.qms.configuration.versioning.ConfigVersionCodec;
+import com.qms.configuration.versioning.ConfigVersionView;
+import com.qms.configuration.versioning.ConfigVersions;
 import com.qms.issuance.NumberingRepository.ActiveService;
 import com.qms.issuance.NumberingRepository.Scope;
 import com.qms.issuance.TokenNumbering.Period;
 import com.qms.platform.ApiException;
 import com.qms.platform.ErrorCode;
 import com.qms.platform.Profiles;
+import com.qms.platform.devices.DeviceConfigNotifier;
 import com.qms.platform.security.ScopeGuard;
 import java.time.Clock;
 import java.time.Instant;
@@ -37,20 +42,33 @@ public class NumberingService {
 
     private static final String PERMISSION = "hasAuthority(T(com.qms.platform.security.Authorities).CONFIG_SERVICE_CATALOGUE)";
     static final String DEFAULT_SOURCE = "default";
+    static final String ENTITY = "numbering_rule";
 
     private final NumberingRepository repository;
     private final NumberingResets resets;
     private final SequenceBlocks sequences;
     private final AuditWriter audit;
     private final ScopeGuard scope;
+    private final ConfigVersions versions;
+    private final Optional<DeviceConfigNotifier> deviceNotifier;
     private final Clock clock;
 
-    NumberingService(NumberingRepository repository, NumberingResets resets, SequenceBlocks sequences, AuditWriter audit, ScopeGuard scope, Clock clock) {
+    NumberingService(
+            NumberingRepository repository,
+            NumberingResets resets,
+            SequenceBlocks sequences,
+            AuditWriter audit,
+            ScopeGuard scope,
+            ConfigVersions versions,
+            Optional<DeviceConfigNotifier> deviceNotifier,
+            Clock clock) {
         this.repository = repository;
         this.resets = resets;
         this.sequences = sequences;
         this.audit = audit;
         this.scope = scope;
+        this.versions = versions;
+        this.deviceNotifier = deviceNotifier;
         this.clock = clock;
     }
 
@@ -81,12 +99,16 @@ public class NumberingService {
             after = new NumberingRule(UUID.randomUUID(), where.siteId(), scopeType, scopeId, spec, now, now);
             repository.insert(after);
             audit.record(AuditEvent.of("numbering_rule.created", "numbering_rule", after.id()).withAfter(snapshot(after)));
+            versions.record(ENTITY, scopeId, snapshot(after));
+            deviceNotifier.ifPresent(n -> n.notifySite(where.siteId()));
         } else if (before.get().spec().equals(spec)) {
             after = before.get();
         } else {
             after = new NumberingRule(before.get().id(), where.siteId(), scopeType, scopeId, spec, before.get().createdAt(), now);
             repository.update(after);
             audit.record(AuditEvent.of("numbering_rule.updated", "numbering_rule", after.id()).withBefore(snapshot(before.get())).withAfter(snapshot(after)));
+            versions.record(ENTITY, scopeId, snapshot(after));
+            deviceNotifier.ifPresent(n -> n.notifySite(where.siteId()));
         }
         return new NumberingRuleChange(NumberingRuleView.of(after), repository.waitingTickets(scopeType, scopeId));
     }
@@ -95,11 +117,42 @@ public class NumberingService {
     @PreAuthorize(PERMISSION)
     @Transactional
     public NumberingRuleChange removeRule(String scopeType, UUID scopeId) {
-        requireScope(scopeType, scopeId);
+        Scope where = requireScope(scopeType, scopeId);
         NumberingRule rule = repository.rule(scopeType, scopeId).orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND));
         repository.delete(rule.id());
         audit.record(AuditEvent.of("numbering_rule.deleted", "numbering_rule", rule.id()).withBefore(snapshot(rule)));
+        versions.record(ENTITY, scopeId, Map.of("deleted", true, "scope_type", scopeType, "scope_id", scopeId.toString()));
+        deviceNotifier.ifPresent(n -> n.notifySite(where.siteId()));
         return new NumberingRuleChange(null, repository.waitingTickets(scopeType, scopeId));
+    }
+
+    /** History of one scope's numbering rule (FR-CFG-040), newest first; survives the rule being removed and re-created. */
+    @PreAuthorize(PERMISSION)
+    @Transactional(readOnly = true)
+    public List<ConfigVersionView> versions(String scopeType, UUID scopeId) {
+        requireScope(scopeType, scopeId);
+        return versions.history(ENTITY, scopeId);
+    }
+
+    /** Reverts a scope's numbering rule to a prior version, including a version that recorded its removal (FR-CFG-040). */
+    @PreAuthorize(PERMISSION)
+    @Transactional
+    public NumberingRuleChange revert(String scopeType, UUID scopeId, UUID versionId) {
+        requireScope(scopeType, scopeId);
+        ConfigVersion version = versions.find(ENTITY, versionId).filter(v -> v.entityId().equals(scopeId)).orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND));
+        Map<String, Object> payload = version.payload();
+        if (ConfigVersionCodec.asBoolean(payload.get("deleted"))) {
+            return repository.rule(scopeType, scopeId).isPresent() ? removeRule(scopeType, scopeId) : new NumberingRuleChange(null, repository.waitingTickets(scopeType, scopeId));
+        }
+        NumberingRuleRequest request = new NumberingRuleRequest(
+                ConfigVersionCodec.asString(payload.get("prefix_source")),
+                ConfigVersionCodec.asString(payload.get("fixed_prefix")),
+                ConfigVersionCodec.asLong(payload.get("sequence_start")),
+                ConfigVersionCodec.asInt(payload.get("padding")),
+                ConfigVersionCodec.asString(payload.get("reset_boundary")),
+                ConfigVersionCodec.asString(payload.get("reset_time")),
+                ConfigVersionCodec.asString(payload.get("separator")));
+        return setRule(scopeType, scopeId, request);
     }
 
     /**

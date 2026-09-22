@@ -83,3 +83,12 @@ export interface PriorityDefaults {
   channels: { channel: Channel; priority_class_id: string | null }[];
   services: { service_id: string; priority_class_id: string }[];
 }
+
+/**
+ * The warning FR-CFG-041 asks for, ahead of a change to a Priority class, a routing strategy, a numbering rule or a
+ * business-hours week: how many Tickets already waiting sit under the scope about to change. Nothing is renumbered
+ * or reprioritised retroactively either way; this is informational only.
+ */
+export interface ConfigImpact {
+  affected_waiting_tickets: number;
+}

@@ -3,9 +3,15 @@ package com.qms.configuration.priority;
 import com.qms.audit.AuditEvent;
 import com.qms.audit.AuditWriter;
 import com.qms.configuration.priority.PriorityRepository.GroupRef;
+import com.qms.configuration.versioning.ConfigImpact;
+import com.qms.configuration.versioning.ConfigVersion;
+import com.qms.configuration.versioning.ConfigVersionCodec;
+import com.qms.configuration.versioning.ConfigVersionView;
+import com.qms.configuration.versioning.ConfigVersions;
 import com.qms.platform.ApiException;
 import com.qms.platform.ErrorCode;
 import com.qms.platform.Profiles;
+import com.qms.platform.devices.DeviceConfigNotifier;
 import com.qms.platform.i18n.LanguageProperties;
 import com.qms.platform.security.ScopeGuard;
 import com.qms.queue.QueueStrategy;
@@ -38,18 +44,31 @@ public class PriorityService {
     private static final String PERMISSION = "hasAuthority(T(com.qms.platform.security.Authorities).CONFIG_PRIORITY_ROUTING)";
     private static final String READ = "hasAnyAuthority(T(com.qms.platform.security.Authorities).CONFIG_PRIORITY_ROUTING,"
             + " T(com.qms.platform.security.Authorities).TICKET_ISSUE)";
+    static final String CLASS_ENTITY = "priority_class";
+    static final String STRATEGY_ENTITY = "routing_strategy";
 
     private final PriorityRepository repository;
     private final AuditWriter audit;
     private final ScopeGuard scope;
     private final LanguageProperties languages;
+    private final ConfigVersions versions;
+    private final Optional<DeviceConfigNotifier> deviceNotifier;
     private final Clock clock;
 
-    PriorityService(PriorityRepository repository, AuditWriter audit, ScopeGuard scope, LanguageProperties languages, Clock clock) {
+    PriorityService(
+            PriorityRepository repository,
+            AuditWriter audit,
+            ScopeGuard scope,
+            LanguageProperties languages,
+            ConfigVersions versions,
+            Optional<DeviceConfigNotifier> deviceNotifier,
+            Clock clock) {
         this.repository = repository;
         this.audit = audit;
         this.scope = scope;
         this.languages = languages;
+        this.versions = versions;
+        this.deviceNotifier = deviceNotifier;
         this.clock = clock;
     }
 
@@ -77,6 +96,37 @@ public class PriorityService {
                 now);
         repository.insert(created);
         audit.record(AuditEvent.of("priority_class.created", "priority_class", created.id()).withAfter(snapshot(created)));
+        versions.record(CLASS_ENTITY, created.id(), snapshot(created));
+        deviceNotifier.ifPresent(DeviceConfigNotifier::notifyEverySite);
+        return created;
+    }
+
+    /**
+     * Inserts or replaces a Priority class at a specific id (config bundle import, CFG-004): the id travels with the
+     * class across environments so routing, numbering and a Ticket's own history that reference it stay meaningful.
+     * A class the target does not have yet is created with the source's id; the seeded default class is never
+     * fabricated this way, only ever replaced (every environment already has exactly one from its own migration).
+     */
+    @PreAuthorize(PERMISSION)
+    @Transactional
+    public PriorityClass restore(UUID id, PriorityClassRequest request, boolean isDefault) {
+        if (repository.find(id).isPresent()) return replace(id, request);
+        if (isDefault) throw new ApiException(ErrorCode.CONFLICT, Map.of("reason", "default_priority_class_missing"));
+        Instant now = clock.instant();
+        PriorityClass created = new PriorityClass(
+                id,
+                PriorityRules.names(request.nameI18n(), languages.systemDefaultLanguage(), languages.languages()),
+                PriorityRules.headstart(request.headstartMinutes()),
+                PriorityRules.maxWait(request.maxWaitMinutes()),
+                PriorityRules.prefix(request.tokenPrefixOverride()),
+                false,
+                true,
+                now,
+                now);
+        repository.insert(created);
+        audit.record(AuditEvent.of("priority_class.created", "priority_class", created.id()).withAfter(snapshot(created)));
+        versions.record(CLASS_ENTITY, created.id(), snapshot(created));
+        deviceNotifier.ifPresent(DeviceConfigNotifier::notifyEverySite);
         return created;
     }
 
@@ -102,7 +152,10 @@ public class PriorityService {
         if (snapshot(after).equals(snapshot(before))) return before;
         repository.update(after);
         audit.record(AuditEvent.of("priority_class.updated", "priority_class", id).withBefore(snapshot(before)).withAfter(snapshot(after)));
-        return require(id);
+        PriorityClass saved = require(id);
+        versions.record(CLASS_ENTITY, id, snapshot(saved));
+        deviceNotifier.ifPresent(DeviceConfigNotifier::notifyEverySite);
+        return saved;
     }
 
     @PreAuthorize(PERMISSION)
@@ -113,7 +166,10 @@ public class PriorityService {
         if (!current.active()) return current;
         repository.setActive(id, false, clock.instant());
         audit.record(activeFlag("priority_class.deactivated", id, false).withReason(reason));
-        return require(id);
+        PriorityClass saved = require(id);
+        versions.record(CLASS_ENTITY, id, snapshot(saved));
+        deviceNotifier.ifPresent(DeviceConfigNotifier::notifyEverySite);
+        return saved;
     }
 
     @PreAuthorize(PERMISSION)
@@ -123,7 +179,43 @@ public class PriorityService {
         if (current.active()) return current;
         repository.setActive(id, true, clock.instant());
         audit.record(activeFlag("priority_class.activated", id, true));
-        return require(id);
+        PriorityClass saved = require(id);
+        versions.record(CLASS_ENTITY, id, snapshot(saved));
+        deviceNotifier.ifPresent(DeviceConfigNotifier::notifyEverySite);
+        return saved;
+    }
+
+    /** History of one Priority class (FR-CFG-040), newest first. */
+    @PreAuthorize(READ)
+    @Transactional(readOnly = true)
+    public List<ConfigVersionView> classVersions(UUID id) {
+        require(id);
+        return versions.history(CLASS_ENTITY, id);
+    }
+
+    /** How many Tickets already waiting carry this class, ahead of a change to it (FR-CFG-041). */
+    @PreAuthorize(PERMISSION)
+    @Transactional(readOnly = true)
+    public ConfigImpact classImpact(UUID id) {
+        require(id);
+        return new ConfigImpact(repository.waitingTicketsWithClass(id));
+    }
+
+    /** Reverts a Priority class to a prior version's content and active flag (FR-CFG-040). */
+    @PreAuthorize(PERMISSION)
+    @Transactional
+    public PriorityClass revertClass(UUID id, UUID versionId) {
+        ConfigVersion version = requireVersion(CLASS_ENTITY, id, versionId);
+        Map<String, Object> payload = version.payload();
+        PriorityClassRequest request = new PriorityClassRequest(
+                ConfigVersionCodec.asStringMap(payload.get("name_i18n")),
+                ConfigVersionCodec.asInt(payload.get("headstart_minutes")),
+                ConfigVersionCodec.asInt(payload.get("max_wait_minutes")),
+                ConfigVersionCodec.asString(payload.get("token_prefix_override")));
+        PriorityClass reverted = replace(id, request);
+        boolean active = ConfigVersionCodec.asBoolean(payload.get("active"));
+        if (active != reverted.active()) reverted = active ? activate(id) : deactivate(id, "reverted to an earlier version");
+        return reverted;
     }
 
     // ---- strategy ----------------------------------------------------------------------------------------------
@@ -151,8 +243,34 @@ public class PriorityService {
             audit.record(AuditEvent.of("routing_strategy.updated", "service_group", group.id())
                     .withBefore(Map.of("strategy", before))
                     .withAfter(Map.of("strategy", chosen.wire())));
+            versions.record(STRATEGY_ENTITY, group.id(), Map.of("strategy", chosen.wire()));
+            deviceNotifier.ifPresent(n -> n.notifySite(group.siteId()));
         }
         return view(groupId, Optional.of(chosen.wire()));
+    }
+
+    /** History of one Service group's routing strategy (FR-CFG-040), newest first. */
+    @PreAuthorize(PERMISSION)
+    @Transactional(readOnly = true)
+    public List<ConfigVersionView> strategyVersions(UUID groupId) {
+        requireGroup(groupId);
+        return versions.history(STRATEGY_ENTITY, groupId);
+    }
+
+    /** How many Tickets already waiting sit in this Service group's queues, ahead of a strategy change (FR-CFG-041). */
+    @PreAuthorize(PERMISSION)
+    @Transactional(readOnly = true)
+    public ConfigImpact strategyImpact(UUID groupId) {
+        requireGroup(groupId);
+        return new ConfigImpact(repository.waitingTicketsInGroup(groupId));
+    }
+
+    /** Reverts a Service group's routing strategy to a prior version (FR-CFG-040). */
+    @PreAuthorize(PERMISSION)
+    @Transactional
+    public RoutingStrategyView revertStrategy(UUID groupId, UUID versionId) {
+        ConfigVersion version = requireVersion(STRATEGY_ENTITY, groupId, versionId);
+        return setStrategy(groupId, new RoutingStrategyRequest(ConfigVersionCodec.asString(version.payload().get("strategy"))));
     }
 
     // ---- defaults ----------------------------------------------------------------------------------------------
@@ -234,6 +352,12 @@ public class PriorityService {
 
     private PriorityClass require(UUID id) {
         return repository.find(id).orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND));
+    }
+
+    private ConfigVersion requireVersion(String entity, UUID entityId, UUID versionId) {
+        ConfigVersion version = versions.find(entity, versionId).orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND));
+        if (!version.entityId().equals(entityId)) throw new ApiException(ErrorCode.NOT_FOUND);
+        return version;
     }
 
     private GroupRef requireGroup(UUID groupId) {

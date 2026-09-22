@@ -31,7 +31,7 @@ import type {
 import type { Counter, CounterInput, Items, Site, SiteInput, Zone, ZoneInput } from "./hierarchy";
 import type { Channel } from "./catalogue";
 import type { AgentAvailability, AvailabilityInput, BreakReport, BreakReportQuery, BreakType, BreakTypeInput } from "./breaks";
-import type { PriorityClass, PriorityClassInput, PriorityDefaults, QueueDryRun, QueueStrategy, RoutingStrategy } from "./priority";
+import type { ConfigImpact, PriorityClass, PriorityClassInput, PriorityDefaults, QueueDryRun, QueueStrategy, RoutingStrategy } from "./priority";
 import type { NumberingPreview, NumberingRule, NumberingRuleChange, NumberingRuleInput, NumberingScope } from "./numbering";
 import type { AgentDay, CompleteInput, CounterSession, OpenSessionInput, SessionCounterOption, TransferInput, TransferResult, TransferTargets } from "./sessions";
 import type { TopicSnapshot } from "./stream";
@@ -647,6 +647,8 @@ export class ApiClient {
     deactivateClass: (id: string, reason?: string) =>
       this.request<PriorityClass>("POST", `/priority-classes/${id}/deactivate`, reason ? { reason } : undefined),
     activateClass: (id: string) => this.request<PriorityClass>("POST", `/priority-classes/${id}/activate`),
+    /** How many Tickets already waiting carry this class, ahead of a change to it (FR-CFG-041). */
+    classImpact: (id: string) => this.request<ConfigImpact>("GET", `/priority-classes/${id}/impact`),
     strategy: (groupId: string) => this.request<RoutingStrategy>("GET", `/service-groups/${groupId}/routing-strategy`),
     setStrategy: (groupId: string, strategy: QueueStrategy) =>
       this.request<RoutingStrategy>("PUT", `/service-groups/${groupId}/routing-strategy`, { strategy }),

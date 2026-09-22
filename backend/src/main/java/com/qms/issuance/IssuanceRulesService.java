@@ -2,6 +2,11 @@ package com.qms.issuance;
 
 import com.qms.audit.AuditEvent;
 import com.qms.audit.AuditWriter;
+import com.qms.configuration.versioning.ConfigImpact;
+import com.qms.configuration.versioning.ConfigVersion;
+import com.qms.configuration.versioning.ConfigVersionCodec;
+import com.qms.configuration.versioning.ConfigVersionView;
+import com.qms.configuration.versioning.ConfigVersions;
 import com.qms.issuance.IssuanceRulesRepository.HolidayRow;
 import com.qms.issuance.IssuanceRulesRepository.HoursRow;
 import com.qms.issuance.IssuanceRulesRepository.ServiceRule;
@@ -15,6 +20,7 @@ import com.qms.issuance.IssuanceRulesViews.WeekDay;
 import com.qms.platform.ApiException;
 import com.qms.platform.ErrorCode;
 import com.qms.platform.Profiles;
+import com.qms.platform.devices.DeviceConfigNotifier;
 import com.qms.platform.i18n.LanguageProperties;
 import com.qms.platform.security.CurrentUser;
 import com.qms.platform.security.ScopeGuard;
@@ -22,6 +28,7 @@ import java.time.Clock;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import org.springframework.context.annotation.Profile;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -46,21 +53,33 @@ public class IssuanceRulesService {
     static final String CATALOGUE = "hasAuthority(T(com.qms.platform.security.Authorities).CONFIG_SERVICE_CATALOGUE)";
     /** The one settings row has no id of its own; its audit entries share this one. */
     static final UUID SETTINGS_ID = new UUID(0, 1);
+    static final String HOURS_ENTITY = "business_hours";
 
     private final IssuanceRulesRepository repository;
     private final AuditWriter audit;
     private final ScopeGuard scope;
     private final CurrentUser currentUser;
     private final LanguageProperties languages;
+    private final ConfigVersions versions;
+    private final Optional<DeviceConfigNotifier> deviceNotifier;
     private final Clock clock;
 
     IssuanceRulesService(
-            IssuanceRulesRepository repository, AuditWriter audit, ScopeGuard scope, CurrentUser currentUser, LanguageProperties languages, Clock clock) {
+            IssuanceRulesRepository repository,
+            AuditWriter audit,
+            ScopeGuard scope,
+            CurrentUser currentUser,
+            LanguageProperties languages,
+            ConfigVersions versions,
+            Optional<DeviceConfigNotifier> deviceNotifier,
+            Clock clock) {
         this.repository = repository;
         this.audit = audit;
         this.scope = scope;
         this.currentUser = currentUser;
         this.languages = languages;
+        this.versions = versions;
+        this.deviceNotifier = deviceNotifier;
         this.clock = clock;
     }
 
@@ -103,8 +122,71 @@ public class IssuanceRulesService {
             audit.record(AuditEvent.of("business_hours.updated", "business_hours", scopeId)
                     .withBefore(Map.of("scope_type", scopeType, "days", view(before).days()))
                     .withAfter(Map.of("scope_type", scopeType, "days", view(after).days())));
+            versions.record(HOURS_ENTITY, scopeId, hoursPayload(scopeType, view(after)));
+            UUID siteId = IssuanceRulesRepository.SITE.equals(scopeType) ? scopeId : repository.siteOfService(scopeId).orElse(null);
+            if (siteId != null) deviceNotifier.ifPresent(n -> n.notifySite(siteId));
         }
         return view(after);
+    }
+
+    private static Map<String, Object> hoursPayload(String scopeType, Hours hours) {
+        Map<String, Object> values = new LinkedHashMap<>();
+        values.put("scope_type", scopeType);
+        values.put("days", hours.days());
+        return values;
+    }
+
+    /** History of one scope's business-hours week (FR-CFG-040), newest first. */
+    @PreAuthorize(SITES)
+    @Transactional(readOnly = true)
+    public List<ConfigVersionView> siteHoursVersions(UUID siteId) {
+        requireSite(siteId);
+        return versions.history(HOURS_ENTITY, siteId);
+    }
+
+    /** How many Tickets already waiting sit under this Site's queues, ahead of a business-hours change (FR-CFG-041). */
+    @PreAuthorize(SITES)
+    @Transactional(readOnly = true)
+    public ConfigImpact siteHoursImpact(UUID siteId) {
+        requireSite(siteId);
+        return new ConfigImpact(repository.waitingTicketsForScope(IssuanceRulesRepository.SITE, siteId));
+    }
+
+    @PreAuthorize(SITES)
+    @Transactional
+    public Hours revertSiteHours(UUID siteId, UUID versionId) {
+        requireSite(siteId);
+        return revertHours(IssuanceRulesRepository.SITE, siteId, versionId);
+    }
+
+    @PreAuthorize(CATALOGUE)
+    @Transactional(readOnly = true)
+    public List<ConfigVersionView> serviceHoursVersions(UUID serviceId) {
+        requireService(serviceId);
+        return versions.history(HOURS_ENTITY, serviceId);
+    }
+
+    /** How many Tickets already waiting sit in this Service's own queue, ahead of a business-hours change (FR-CFG-041). */
+    @PreAuthorize(CATALOGUE)
+    @Transactional(readOnly = true)
+    public ConfigImpact serviceHoursImpact(UUID serviceId) {
+        requireService(serviceId);
+        return new ConfigImpact(repository.waitingTicketsForScope(IssuanceRulesRepository.SERVICE, serviceId));
+    }
+
+    @PreAuthorize(CATALOGUE)
+    @Transactional
+    public Hours revertServiceHours(UUID serviceId, UUID versionId) {
+        requireService(serviceId);
+        return revertHours(IssuanceRulesRepository.SERVICE, serviceId, versionId);
+    }
+
+    private Hours revertHours(String scopeType, UUID scopeId, UUID versionId) {
+        ConfigVersion version = versions.find(HOURS_ENTITY, versionId).filter(v -> v.entityId().equals(scopeId)).orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND));
+        List<WeekDay> days = ConfigVersionCodec.asListOfMaps(version.payload().get("days")).stream()
+                .map(d -> new WeekDay(ConfigVersionCodec.asInt(d.get("weekday")), ConfigVersionCodec.asString(d.get("open")), ConfigVersionCodec.asString(d.get("close"))))
+                .toList();
+        return setHours(scopeType, scopeId, new Hours(days));
     }
 
     // ---- holidays (FR-CFG-021) --------------------------------------------------------------------------------

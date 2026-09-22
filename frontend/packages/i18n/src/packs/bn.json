@@ -416,6 +416,7 @@
   "priority.classes.maxWait": "{minutes} মিনিট",
   "priority.classes.none": "নেই",
   "priority.classes.confirmDeactivate": "টিকিট ইস্যুর সময় {name} আর দেখানো হবে না। যেসব টিকিটে এটি আছে সেগুলো এটি রাখবে।",
+  "priority.classes.confirmDeactivateImpact": "এই মুহূর্তে {count}টি অপেক্ষমাণ টিকিটে এই শ্রেণি রয়েছে; তাদের অবস্থান পরিবর্তন হবে না।",
   "catalogue.fields.headstart_minutes": "হেড স্টার্ট (মিনিট)",
   "catalogue.fields.max_wait_minutes": "সর্বোচ্চ অপেক্ষা (মিনিট, ঐচ্ছিক)",
   "catalogue.fields.token_prefix_override": "টোকেন প্রিফিক্স ওভাররাইড (ঐচ্ছিক)",

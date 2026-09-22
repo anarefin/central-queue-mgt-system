@@ -106,6 +106,12 @@ qms:
     # FR-RPT-021/022, FR-SEC-032/043: how often RetentionPurgeRunner sweeps reporting.retention_policy's own three
     # data classes (ticket_detail, ticket_aggregate, audit). "-" disables it so a test can drive a tick itself.
     purge-cron: ${QMS_RETENTION_PURGE_CRON:0 30 2 * * *}
+  config:
+    bundle:
+      # CFG-004, ticket 55: the shared HMAC key a Priority/routing/numbering/business-hours bundle is signed and
+      # verified with. Blank (the default) leaves export and import unconfigured; set the same value on the source
+      # and the target installation to clone a client's configuration into staging or training.
+      secret: ${QMS_CONFIG_BUNDLE_SECRET:}
   connectivity:
     # FR-QUE-202, FR-MOB-041, ADR-0001, ticket 44: external URLs InternetConnectivityMonitor probes to detect this
     # Site's own loss of internet (its public origin, a Web Push provider, or both); empty (the default) leaves

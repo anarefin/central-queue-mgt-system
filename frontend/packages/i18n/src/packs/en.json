@@ -416,6 +416,7 @@
   "priority.classes.maxWait": "{minutes} min",
   "priority.classes.none": "none",
   "priority.classes.confirmDeactivate": "{name} will no longer be offered when a ticket is issued. Tickets that already have it keep it.",
+  "priority.classes.confirmDeactivateImpact": "{count} Ticket(s) already waiting carry this class right now; their position is not changed.",
   "catalogue.fields.headstart_minutes": "Head start (minutes)",
   "catalogue.fields.max_wait_minutes": "Maximum wait (minutes, optional)",
   "catalogue.fields.token_prefix_override": "Token prefix override (optional)",

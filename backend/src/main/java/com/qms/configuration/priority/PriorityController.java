@@ -1,6 +1,8 @@
 package com.qms.configuration.priority;
 
 import com.qms.configuration.site.Items;
+import com.qms.configuration.versioning.ConfigImpact;
+import com.qms.configuration.versioning.ConfigVersionView;
 import com.qms.platform.Profiles;
 import jakarta.validation.Valid;
 import java.util.UUID;
@@ -68,6 +70,26 @@ public class PriorityController {
         return priority.activate(id);
     }
 
+    /** History of one Priority class, newest first (FR-CFG-040). */
+    @PreAuthorize(READ)
+    @GetMapping("/priority-classes/{id}/versions")
+    public Items<ConfigVersionView> classVersions(@PathVariable UUID id) {
+        return new Items<>(priority.classVersions(id));
+    }
+
+    /** How many Tickets already waiting carry this class, ahead of a change to it (FR-CFG-041). */
+    @PreAuthorize(PERMISSION)
+    @GetMapping("/priority-classes/{id}/impact")
+    public ConfigImpact classImpact(@PathVariable UUID id) {
+        return priority.classImpact(id);
+    }
+
+    @PreAuthorize(PERMISSION)
+    @PostMapping("/priority-classes/{id}/versions/{versionId}/revert")
+    public PriorityClass revertClass(@PathVariable UUID id, @PathVariable UUID versionId) {
+        return priority.revertClass(id, versionId);
+    }
+
     /** The classes tickets get by default per channel and per Service when staff choose none (FR-QUE-011). */
     @PreAuthorize(PERMISSION)
     @GetMapping("/priority-defaults")
@@ -97,5 +119,25 @@ public class PriorityController {
     @PutMapping("/service-groups/{id}/routing-strategy")
     public RoutingStrategyView setStrategy(@PathVariable UUID id, @RequestBody(required = false) RoutingStrategyRequest request) {
         return priority.setStrategy(id, request);
+    }
+
+    /** History of one Service group's routing strategy, newest first (FR-CFG-040). */
+    @PreAuthorize(PERMISSION)
+    @GetMapping("/service-groups/{id}/routing-strategy/versions")
+    public Items<ConfigVersionView> strategyVersions(@PathVariable UUID id) {
+        return new Items<>(priority.strategyVersions(id));
+    }
+
+    /** How many Tickets already waiting sit in this Service group's queues, ahead of a strategy change (FR-CFG-041). */
+    @PreAuthorize(PERMISSION)
+    @GetMapping("/service-groups/{id}/routing-strategy/impact")
+    public ConfigImpact strategyImpact(@PathVariable UUID id) {
+        return priority.strategyImpact(id);
+    }
+
+    @PreAuthorize(PERMISSION)
+    @PostMapping("/service-groups/{id}/routing-strategy/versions/{versionId}/revert")
+    public RoutingStrategyView revertStrategy(@PathVariable UUID id, @PathVariable UUID versionId) {
+        return priority.revertStrategy(id, versionId);
     }
 }

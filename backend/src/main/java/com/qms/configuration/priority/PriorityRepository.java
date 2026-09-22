@@ -116,6 +116,20 @@ class PriorityRepository {
         jdbc.update("UPDATE service SET default_priority_class_id = ?, updated_at = ? WHERE id = ?", classId, ts(now), serviceId);
     }
 
+    /** Tickets under this class still in a queue: waiting, paused or remote (FR-CFG-041's warning). */
+    int waitingTicketsWithClass(UUID classId) {
+        Integer count = jdbc.queryForObject(
+                "SELECT count(*) FROM ticket WHERE priority_class_id = ? AND state IN ('waiting', 'paused', 'remote')", Integer.class, classId);
+        return count == null ? 0 : count;
+    }
+
+    /** Tickets still queued under any Service of this group (FR-CFG-041's warning). */
+    int waitingTicketsInGroup(UUID groupId) {
+        Integer count = jdbc.queryForObject(
+                "SELECT count(*) FROM ticket WHERE service_group_id = ? AND state IN ('waiting', 'paused', 'remote')", Integer.class, groupId);
+        return count == null ? 0 : count;
+    }
+
     // ---- routing strategy --------------------------------------------------------------------------------------
 
     Optional<GroupRef> group(UUID groupId) {

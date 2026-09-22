@@ -94,6 +94,16 @@ class DeviceRepository {
                 ts(now), appVersion, ts(now), id);
     }
 
+    /** Every active device of one Site, kiosk or display (FR-CFG-040's {@code config.changed} push). */
+    List<UUID> activeIdsOfSite(UUID siteId) {
+        return jdbc.queryForList("SELECT id FROM device WHERE site_id = ? AND active", UUID.class, siteId);
+    }
+
+    /** Every active device across every Site, for an organisation-wide change (a Priority class). */
+    List<UUID> activeIds() {
+        return jdbc.queryForList("SELECT id FROM device WHERE active", UUID.class);
+    }
+
     /** Whether {@code counterId} is an existing counter of {@code zoneId} (FR-DSP-002's "counters" assignment). */
     boolean counterInZone(UUID counterId, UUID zoneId) {
         Integer count = jdbc.queryForObject("SELECT count(*) FROM counter WHERE id = ? AND zone_id = ?", Integer.class, counterId, zoneId);

@@ -1,11 +1,14 @@
 package com.qms.issuance;
 
+import com.qms.configuration.versioning.ConfigImpact;
+import com.qms.configuration.versioning.ConfigVersionView;
 import com.qms.issuance.IssuanceRulesViews.Cutoffs;
 import com.qms.issuance.IssuanceRulesViews.Holiday;
 import com.qms.issuance.IssuanceRulesViews.HolidayRequest;
 import com.qms.issuance.IssuanceRulesViews.Holidays;
 import com.qms.issuance.IssuanceRulesViews.Hours;
 import com.qms.platform.Profiles;
+import java.util.List;
 import java.util.UUID;
 import org.springframework.context.annotation.Profile;
 import org.springframework.http.HttpStatus;
@@ -28,6 +31,9 @@ import org.springframework.web.bind.annotation.RestController;
 @Profile(Profiles.SERVING)
 public class IssuanceRulesController {
 
+    /** A bounded list response: a scope's own version history (FR-CFG-040). */
+    public record Versions(List<ConfigVersionView> items) {}
+
     private final IssuanceRulesService rules;
 
     IssuanceRulesController(IssuanceRulesService rules) {
@@ -44,6 +50,26 @@ public class IssuanceRulesController {
     @PutMapping("/sites/{siteId}/hours")
     public Hours setSiteHours(@PathVariable UUID siteId, @RequestBody(required = false) Hours request) {
         return rules.setSiteHours(siteId, request);
+    }
+
+    /** History of a Site's business-hours week, newest first (FR-CFG-040). */
+    @PreAuthorize(IssuanceRulesService.SITES)
+    @GetMapping("/sites/{siteId}/hours/versions")
+    public Versions siteHoursVersions(@PathVariable UUID siteId) {
+        return new Versions(rules.siteHoursVersions(siteId));
+    }
+
+    /** How many Tickets already waiting sit under this Site, ahead of an hours change (FR-CFG-041). */
+    @PreAuthorize(IssuanceRulesService.SITES)
+    @GetMapping("/sites/{siteId}/hours/impact")
+    public ConfigImpact siteHoursImpact(@PathVariable UUID siteId) {
+        return rules.siteHoursImpact(siteId);
+    }
+
+    @PreAuthorize(IssuanceRulesService.SITES)
+    @PostMapping("/sites/{siteId}/hours/versions/{versionId}/revert")
+    public Hours revertSiteHours(@PathVariable UUID siteId, @PathVariable UUID versionId) {
+        return rules.revertSiteHours(siteId, versionId);
     }
 
     @PreAuthorize(IssuanceRulesService.SITES)
@@ -88,6 +114,26 @@ public class IssuanceRulesController {
     @PutMapping("/services/{id}/hours")
     public Hours setServiceHours(@PathVariable UUID id, @RequestBody(required = false) Hours request) {
         return rules.setServiceHours(id, request);
+    }
+
+    /** History of a Service's own business-hours week, newest first (FR-CFG-040). */
+    @PreAuthorize(IssuanceRulesService.CATALOGUE)
+    @GetMapping("/services/{id}/hours/versions")
+    public Versions serviceHoursVersions(@PathVariable UUID id) {
+        return new Versions(rules.serviceHoursVersions(id));
+    }
+
+    /** How many Tickets already waiting sit in this Service's own queue, ahead of an hours change (FR-CFG-041). */
+    @PreAuthorize(IssuanceRulesService.CATALOGUE)
+    @GetMapping("/services/{id}/hours/impact")
+    public ConfigImpact serviceHoursImpact(@PathVariable UUID id) {
+        return rules.serviceHoursImpact(id);
+    }
+
+    @PreAuthorize(IssuanceRulesService.CATALOGUE)
+    @PostMapping("/services/{id}/hours/versions/{versionId}/revert")
+    public Hours revertServiceHours(@PathVariable UUID id, @PathVariable UUID versionId) {
+        return rules.revertServiceHours(id, versionId);
     }
 
     @PreAuthorize(IssuanceRulesService.CATALOGUE)
