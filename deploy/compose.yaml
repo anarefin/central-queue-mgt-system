@@ -44,6 +44,11 @@ services:
       QMS_I18N_PACK_DIR: /etc/qms/i18n
       # Signing keys are generated per installation on first start and never leave this volume (API-015).
       QMS_KEY_DIR: /var/lib/qms/keys
+      # The VAPID key pair (Web Push, ticket 39, NFR-SEC-013) is a second, separate key directory from the staff
+      # signing keys above; without its own override it falls back to ./keys/vapid, which resolves inside the
+      # image's read-only /app working directory rather than this volume and fails the backend at startup
+      # (AccessDeniedException). Same volume, its own subdirectory.
+      QMS_VAPID_KEY_DIR: /var/lib/qms/keys/vapid
       QMS_ISSUER: ${QMS_ISSUER:-https://qms.local}
       # The refresh cookie is Secure by default; set false only for plain-HTTP evaluation on a non-localhost host.
       QMS_REFRESH_COOKIE_SECURE: ${QMS_REFRESH_COOKIE_SECURE:-true}

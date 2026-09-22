@@ -1,0 +1,13 @@
+{
+  "name": "@qms/e2e",
+  "private": true,
+  "description": "Playwright UAT scripts for SRS §27.2 (U1-U12) and §27.3 (vertical-specific scenarios), ticket 61. Deliberately NOT part of the pnpm workspace (see ../pnpm-workspace.yaml): these run against a live deploy/compose.yaml stack, not in the unit-test suite `pnpm -r test` runs, and must never be picked up by it.",
+  "scripts": {
+    "e2e": "playwright test",
+    "e2e:ui": "playwright test --ui"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.48.0",
+    "@types/node": "^22.0.0"
+  }
+}
