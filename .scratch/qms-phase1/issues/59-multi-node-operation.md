@@ -4,7 +4,7 @@
 
 **Blocked by:** 11 — Realtime hub; 08 — Configurable token numbering and scheduled resets
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [x] Cross-node fan-out of queue events and `principal.changed` over PostgreSQL LISTEN/NOTIFY (ADR-0010, ADR-0009)
 - [x] Scheduled jobs single-run cluster-wide, verified on two nodes (ADR-0010)

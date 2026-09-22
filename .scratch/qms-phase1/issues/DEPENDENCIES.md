@@ -60,7 +60,7 @@
 56-vertical-profiles-and-setup-wizard      55,29,27        done     34m      39 files, +2132 −9   43dee84..e4f6457
 57-outbound-webhooks                       11              done*    125m     48 files, +3064 −10  214d9c5..f6b98ea
 58-service-accounts-host-api               33,04           done*    n/a*     20 files, +1029 −21  78757d0..35e4477
-59-multi-node-operation                    11,08           todo     —        —                   —
+59-multi-node-operation                    11,08           done     89m      9 files, +685 −17    d4dc1b8..a86e96e
 60-installer-upgrades-backup               59              todo     —        —                   —
 61-acceptance-suite                        56,44,51,60     todo     —        —                   —
 
