@@ -36,7 +36,10 @@ dependencies {
     implementation("org.apache.poi:poi-ooxml:5.3.0")
     implementation("org.apache.pdfbox:pdfbox:3.0.3")
     runtimeOnly("org.flywaydb:flyway-database-postgresql")
-    runtimeOnly("org.postgresql:postgresql")
+    // Compile-time, not runtimeOnly: cross-node realtime fan-out (ticket 59, ADR-0010) talks to the driver's own
+    // LISTEN/NOTIFY API (org.postgresql.PGConnection/PGNotification) directly, so the type must be on the classpath
+    // when ClusterRealtimeFanout is compiled, not only when the app runs.
+    implementation("org.postgresql:postgresql")
 
     testImplementation("org.springframework.boot:spring-boot-starter-webmvc-test")
     testImplementation("org.springframework.boot:spring-boot-starter-security-test")

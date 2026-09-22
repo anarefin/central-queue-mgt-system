@@ -5,8 +5,11 @@ import java.util.Map;
 
 /**
  * The one way an event reaches the realtime hub (SRS §21). A bounded context publishes to a topic and never learns who is
- * listening or on which node. Cross-node fan-out (ticket 59, ADR-0010) is a second implementation of this interface, not a
- * change to any publisher.
+ * listening or on which node. Cross-node fan-out (ticket 59, ADR-0010) is {@link ClusterRealtimeFanout} over PostgreSQL
+ * {@code LISTEN}/{@code NOTIFY} — no broker, no change to any publisher: it wraps {@link RealtimeHub} for local delivery
+ * and broadcasts the same event to every other node. {@link RealtimeHub} itself no longer implements this interface, so
+ * {@code ClusterRealtimeFanout} is the only production bean that does — no {@code @Primary} needed to prefer it over
+ * {@link RealtimeHub}, which leaves the annotation free for a test to install its own recording double instead.
  *
  * <p>An event published inside a transaction is delivered only once that transaction commits, so a rolled-back transition
  * is never announced and a subscriber who reads the database on hearing an event sees the change.

@@ -51,7 +51,7 @@ import tools.jackson.databind.json.JsonMapper;
  * reconnect with the token it had; a fresh token carries the new claims, and topics are authorised against them.
  */
 @Component
-public class RealtimeHub implements RealtimePublisher, AutoCloseable {
+public class RealtimeHub implements AutoCloseable {
 
     private static final Logger log = LoggerFactory.getLogger(RealtimeHub.class);
     /** The close code for a client that stopped sending heartbeats. */
@@ -94,8 +94,9 @@ public class RealtimeHub implements RealtimePublisher, AutoCloseable {
 
     // ---- publishing -------------------------------------------------------------------------------------------
 
-    @Override
-    public void publish(String topic, String type, Instant occurredAt, Map<String, Object> data) {
+    /** Delivers {@code topic}/{@code type}/{@code data} to this node's own subscribers, once the caller's transaction
+     * (if any) commits. Called by {@link ClusterRealtimeFanout}, this node's one {@code RealtimePublisher}. */
+    void publish(String topic, String type, Instant occurredAt, Map<String, Object> data) {
         Map<String, Object> payload = new LinkedHashMap<>(data);
         Runnable dispatch = () -> {
             try {
@@ -116,8 +117,24 @@ public class RealtimeHub implements RealtimePublisher, AutoCloseable {
         afterCommit(dispatch);
     }
 
-    @Override
-    public void principalChanged(String subject) {
+    /**
+     * Applies an event this node received from another node's broadcast (ticket 59, ADR-0010): local delivery to this
+     * node's own subscribers only, never a re-broadcast. The originating node already ran the full {@link #publish}
+     * above — including the {@link RealtimeEventOccurred} that feeds webhook fan-out (ticket 57) — so repeating that
+     * part here would only duplicate it.
+     */
+    void deliverRemote(String topic, String type, Instant occurredAt, Map<String, Object> data) {
+        try {
+            topic(topic).publish(type, occurredAt, new LinkedHashMap<>(data), clock.instant());
+        } catch (RuntimeException failure) {
+            log.warn("realtime remote delivery to {} failed: {}", topic, failure.toString());
+        }
+    }
+
+    /** Drops this subject's sockets on this node and remembers when, so a token issued before now no longer opens
+     * one (ADR-0009). Called by {@link ClusterRealtimeFanout} both for a local change and for one applied from
+     * another node's broadcast — either way, only ever local to this node. */
+    void principalChanged(String subject) {
         afterCommit(() -> {
             try {
                 changes.put(subject, clock.instant());

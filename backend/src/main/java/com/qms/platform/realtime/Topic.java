@@ -15,9 +15,11 @@ import tools.jackson.databind.json.JsonMapper;
  * subscriptions that are told of each event. Every method takes the topic's lock, so events reach every subscriber in
  * {@code seq} order and a subscriber is never attached halfway through one.
  *
- * <p>{@code seq} lives in memory. The {@code epoch} names this run of the topic: a client that reconnects after a
- * restart presents an epoch the hub does not know and is given a fresh snapshot rather than a replay of unrelated
- * numbers (cross-node sequencing arrives with ticket 59).
+ * <p>{@code seq} lives in memory, per node, and stays that way with cross-node fan-out (ticket 59, ADR-0010): a Topic
+ * never needs a seq shared across the cluster, because {@code epoch} already names this one run of the topic on this
+ * one node. A client that reconnects to a different node behind the load balancer (no sticky sessions, NFR-SCL-001)
+ * presents an epoch that node's Topic does not know — exactly like reconnecting after a restart — and is given a
+ * fresh snapshot rather than a replay of another node's numbers.
  */
 final class Topic {
 
