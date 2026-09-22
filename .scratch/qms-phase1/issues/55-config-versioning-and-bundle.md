@@ -6,7 +6,7 @@
 
 **Status:** done
 
-- [x] Versioned config with author/timestamp, revertible to any prior version (FR-CFG-040)
+- [~] Versioned config with author/timestamp, revertible to any prior version (FR-CFG-040) — backend versioning/revert complete for all four areas. Admin UI (fixed this pass): a shared `VersionHistory` component now wires history + revert into the priority-class, routing-strategy and numbering admin screens; business hours has no admin UI at all yet (no page exists to attach a revert action to), a pre-existing gap wider than this ticket's own revert-UI scope — left outstanding, see traceability matrix
 - [x] Warning when a change affects waiting Tickets; no retroactive renumber/reprioritise (FR-CFG-041)
 - [x] Signed JSON bundle export/import of full configuration (CFG-004) — scoped to the four FR-CFG-040 configuration areas (Priority classes/defaults, routing strategy, numbering rules, business hours), not the org hierarchy/catalogue those areas are keyed by; see the traceability matrix note for why
 - [x] Every profile-set value editable in admin (CFG-003)

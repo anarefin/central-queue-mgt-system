@@ -164,6 +164,14 @@ function TestTokenCard({ state, onChanged }: { state: SetupState; onChanged: () 
     if (ok) onChanged();
   }
 
+  async function confirmAnnounce() {
+    if (!token.ticket_id) return;
+    const ok = await run(async () => {
+      await client!.setup.confirmAnnounce(token.ticket_id!);
+    });
+    if (ok) onChanged();
+  }
+
   return (
     <Card>
       <h2 className="qms-heading">{t("setup.step.testToken")}</h2>
@@ -197,6 +205,13 @@ function TestTokenCard({ state, onChanged }: { state: SetupState; onChanged: () 
             </div>
           )}
           {token.printed && !token.called && <p className="qms-muted">{t("setup.testToken.waitingForCall")}</p>}
+          {token.called && !token.announced && (
+            <div className="qms-row">
+              <Button type="button" onClick={confirmAnnounce} disabled={busy}>
+                {t("setup.testToken.confirmAnnounceButton")}
+              </Button>
+            </div>
+          )}
           <div className="qms-row">
             <Button variant="secondary" type="button" onClick={onChanged}>
               {t("setup.testToken.refreshButton")}

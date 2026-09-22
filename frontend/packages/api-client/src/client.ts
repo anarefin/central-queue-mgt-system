@@ -32,7 +32,7 @@ import type { Counter, CounterInput, Items, Site, SiteInput, Zone, ZoneInput } f
 import type { ActiveProfile, SetupState, VerticalProfile } from "./setup";
 import type { Channel } from "./catalogue";
 import type { AgentAvailability, AvailabilityInput, BreakReport, BreakReportQuery, BreakType, BreakTypeInput } from "./breaks";
-import type { ConfigImpact, PriorityClass, PriorityClassInput, PriorityDefaults, QueueDryRun, QueueStrategy, RoutingStrategy } from "./priority";
+import type { ConfigImpact, ConfigVersionView, PriorityClass, PriorityClassInput, PriorityDefaults, QueueDryRun, QueueStrategy, RoutingStrategy } from "./priority";
 import type { NumberingPreview, NumberingRule, NumberingRuleChange, NumberingRuleInput, NumberingScope } from "./numbering";
 import type { AgentDay, CompleteInput, CounterSession, OpenSessionInput, SessionCounterOption, TransferInput, TransferResult, TransferTargets } from "./sessions";
 import type { TopicSnapshot } from "./stream";
@@ -446,7 +446,13 @@ export class ApiClient {
     state: () => this.request<SetupState>("GET", "/setup/state"),
     issueTestToken: (serviceId: string) => this.request<Ticket>("POST", "/setup/test-token", { service_id: serviceId }),
     confirmPrint: (ticketId: string) => this.request<SetupState>("POST", `/setup/test-token/${ticketId}/confirm-print`),
+    /** The admin's own confirmation that the Zone's chime/voice announcement for this test token actually played,
+     * distinct from the ticket having merely reached the `called` state (FR-OPS-010). */
+    confirmAnnounce: (ticketId: string) => this.request<SetupState>("POST", `/setup/test-token/${ticketId}/confirm-announce`),
     goLive: () => this.request<{ go_live_at: string }>("POST", "/setup/go-live"),
+    /** Feature flags a vertical profile turns on or off, then editable one key at a time afterwards (CFG-003). */
+    featureFlags: () => this.request<Record<string, boolean>>("GET", "/setup/feature-flags"),
+    setFeatureFlag: (key: string, enabled: boolean) => this.request<Record<string, boolean>>("PUT", `/setup/feature-flags/${key}`, { enabled }),
   };
 
   /**
@@ -678,9 +684,18 @@ export class ApiClient {
     activateClass: (id: string) => this.request<PriorityClass>("POST", `/priority-classes/${id}/activate`),
     /** How many Tickets already waiting carry this class, ahead of a change to it (FR-CFG-041). */
     classImpact: (id: string) => this.request<ConfigImpact>("GET", `/priority-classes/${id}/impact`),
+    /** History of one Priority class, newest first, and reverting to one of those past states (FR-CFG-040). */
+    classVersions: (id: string) => this.request<Items<ConfigVersionView>>("GET", `/priority-classes/${id}/versions`),
+    revertClass: (id: string, versionId: string) => this.request<PriorityClass>("POST", `/priority-classes/${id}/versions/${versionId}/revert`),
     strategy: (groupId: string) => this.request<RoutingStrategy>("GET", `/service-groups/${groupId}/routing-strategy`),
     setStrategy: (groupId: string, strategy: QueueStrategy) =>
       this.request<RoutingStrategy>("PUT", `/service-groups/${groupId}/routing-strategy`, { strategy }),
+    /** How many Tickets already waiting sit in this Service group's queues, ahead of a strategy change (FR-CFG-041). */
+    strategyImpact: (groupId: string) => this.request<ConfigImpact>("GET", `/service-groups/${groupId}/routing-strategy/impact`),
+    /** History of one Service group's routing strategy, newest first, and reverting to one of those past states (FR-CFG-040). */
+    strategyVersions: (groupId: string) => this.request<Items<ConfigVersionView>>("GET", `/service-groups/${groupId}/routing-strategy/versions`),
+    revertStrategy: (groupId: string, versionId: string) =>
+      this.request<RoutingStrategy>("POST", `/service-groups/${groupId}/routing-strategy/versions/${versionId}/revert`),
     /** Where a new ticket's class comes from when staff choose none: a default per channel and per Service (FR-QUE-011). */
     defaults: () => this.request<PriorityDefaults>("GET", "/priority-defaults"),
     /** Set, or with `null` clear, the class a channel gives its tickets by default. It never changes a ticket already issued (FR-CFG-041). */
@@ -700,6 +715,11 @@ export class ApiClient {
       this.request<NumberingRuleChange>("PUT", `${numberingPath(scope, id)}/numbering-rule`, input),
     removeRule: (scope: NumberingScope, id: string) => this.request<NumberingRuleChange>("DELETE", `${numberingPath(scope, id)}/numbering-rule`),
     preview: (scope: NumberingScope, id: string) => this.request<NumberingPreview>("GET", `${numberingPath(scope, id)}/numbering-preview`),
+    /** History of one scope's own numbering rule, newest first, and reverting to one of those past states (FR-CFG-040). */
+    versions: (scope: NumberingScope, id: string) =>
+      this.request<Items<ConfigVersionView>>("GET", `${numberingPath(scope, id)}/numbering-rule/versions`),
+    revert: (scope: NumberingScope, id: string, versionId: string) =>
+      this.request<NumberingRuleChange>("POST", `${numberingPath(scope, id)}/numbering-rule/versions/${versionId}/revert`),
   };
 
   readonly users = {

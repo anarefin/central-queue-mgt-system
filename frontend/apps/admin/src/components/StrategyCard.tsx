@@ -6,6 +6,7 @@ import { Button, Card, ErrorAlert, SelectField } from "@qms/ui";
 import { useEffect, useState } from "react";
 import { describeError, localisedName, useList, useSubmit } from "../lib/admin-support";
 import { useApi } from "../lib/runtime";
+import { VersionHistory } from "./VersionHistory";
 
 /** The ordering strategy of each Service group of a site (FR-QUE-021). */
 export function StrategyCard({ site }: { site: Site }) {
@@ -90,6 +91,21 @@ function GroupStrategy({ group, name }: { group: ServiceGroup; name: string }) {
             {t("priority.strategy.saved")}
           </span>
         )}
+        <VersionHistory
+          name={name}
+          load={() => client!.priority.strategyVersions(group.id)}
+          revert={(versionId) => client!.priority.revertStrategy(group.id, versionId)}
+          onReverted={() => {
+            setSaved(false);
+            client!.priority.strategy(group.id).then(
+              (strategy) => {
+                setCurrent(strategy);
+                setChosen(strategy.strategy);
+              },
+              () => undefined,
+            );
+          }}
+        />
       </div>
     </li>
   );

@@ -142,6 +142,27 @@ class SetupWizardIT {
         assertThat(status(edited)).as(body(edited)).isEqualTo(200);
         assertThat(str(edited, "$['entity.visitor']")).isEqualTo("Client");
 
+        // CFG-003: the feature flags a profile seeds are also editable afterwards, one key at a time.
+        MvcResult flags = mvc.perform(get("/api/v1/setup/feature-flags").header("Authorization", "Bearer " + admin.token())).andReturn();
+        assertThat(status(flags)).as(body(flags)).isEqualTo(200);
+        assertThat(bool(flags, "$.appointment")).isTrue();
+
+        MvcResult flagEdited = mvc.perform(put("/api/v1/setup/feature-flags/appointment")
+                        .header("Authorization", "Bearer " + admin.token())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"enabled\":false}"))
+                .andReturn();
+        assertThat(status(flagEdited)).as(body(flagEdited)).isEqualTo(200);
+        assertThat(bool(flagEdited, "$.appointment")).isFalse();
+
+        // A key outside the closed vocabulary (CFG-001) is refused rather than silently accepted.
+        MvcResult unknownFlag = mvc.perform(put("/api/v1/setup/feature-flags/not_a_real_flag")
+                        .header("Authorization", "Bearer " + admin.token())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"enabled\":true}"))
+                .andReturn();
+        assertThat(status(unknownFlag)).isEqualTo(400);
+
         // The profile's starter priority classes were seeded (organisation-wide, no Site dependency).
         Integer seededClasses = jdbc.queryForObject("SELECT count(*) FROM priority_class WHERE name_i18n->>'en' = 'Priority banking'", Integer.class);
         assertThat(seededClasses).isEqualTo(1);
@@ -204,6 +225,12 @@ class SetupWizardIT {
         MvcResult stillEarly = mvc.perform(post("/api/v1/setup/go-live").header("Authorization", "Bearer " + admin.token())).andReturn();
         assertThat(status(stillEarly)).isEqualTo(409);
 
+        // Confirming the announcement before the token has ever been called is refused: an announcement cannot
+        // have played for a token that has not been called yet.
+        MvcResult tooSoon = mvc.perform(post("/api/v1/setup/test-token/" + ticketId + "/confirm-announce").header("Authorization", "Bearer " + admin.token())).andReturn();
+        assertThat(status(tooSoon)).as(body(tooSoon)).isEqualTo(409);
+        assertThat(str(tooSoon, "$.error.details.reason")).isEqualTo("test_token_not_called_yet");
+
         // An Agent calls it through the real counter session flow (ticket 10); the same transition fires the
         // Zone's chime and voice announcement (ticket 29, FR-DSP-020..028).
         UUID sessionId = openSession(agent, counter);
@@ -213,8 +240,17 @@ class SetupWizardIT {
 
         MvcResult afterCall = state(admin);
         assertThat(bool(afterCall, "$.test_token.called")).isTrue();
-        assertThat(bool(afterCall, "$.test_token.announced")).isTrue();
-        assertThat(bool(afterCall, "$.go_live_ready")).isTrue();
+        // "Called" and "announced" are two separate, individually-confirmed steps (FR-OPS-010): the Zone's own
+        // chime/voice announcement firing on the same transition does not, by itself, confirm anything back to the
+        // server, so "announced" stays false until the admin explicitly confirms it, mirroring "printed".
+        assertThat(bool(afterCall, "$.test_token.announced")).isFalse();
+        assertThat(bool(afterCall, "$.go_live_ready")).isFalse();
+
+        // The admin's own confirmation that the Zone's announcement actually played.
+        MvcResult announced = mvc.perform(post("/api/v1/setup/test-token/" + ticketId + "/confirm-announce").header("Authorization", "Bearer " + admin.token())).andReturn();
+        assertThat(status(announced)).as(body(announced)).isEqualTo(200);
+        assertThat(bool(announced, "$.test_token.announced")).isTrue();
+        assertThat(bool(announced, "$.go_live_ready")).isTrue();
 
         // FR-OPS-010: every step done, go-live succeeds.
         MvcResult wentLive = mvc.perform(post("/api/v1/setup/go-live").header("Authorization", "Bearer " + admin.token())).andReturn();
@@ -230,7 +266,8 @@ class SetupWizardIT {
         // DoD §27.5 item 5: the wizard's own actions are audited.
         List<String> auditActions = jdbc.query(
                 "SELECT action FROM audit_log WHERE action LIKE 'profile.%' OR action LIKE 'setup.%' ORDER BY occurred_at", (rs, i) -> rs.getString("action"));
-        assertThat(auditActions).contains("profile.applied", "profile.reset", "setup.test_token.issued", "setup.test_token.printed", "setup.go_live");
+        assertThat(auditActions).contains(
+                "profile.applied", "profile.reset", "setup.test_token.issued", "setup.test_token.printed", "setup.test_token.announced", "setup.go_live");
     }
 
     // ---- fixtures ------------------------------------------------------------------------------------------------
@@ -253,10 +290,20 @@ class SetupWizardIT {
         if (teamOf != null) {
             jdbc.update("INSERT INTO team_member (team_id, user_id) SELECT id, ? FROM team WHERE service_group_id = ?", id, teamOf);
         }
-        MvcResult result = mvc.perform(post("/api/v1/auth/login")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"username\":\"" + username + "\",\"password\":\"" + PASSWORD + "\"}"))
-                .andReturn();
+        // Login's own access token is time-checked against the real wall clock (JwtTimestampValidator has no seam
+        // for the injected business Clock), so the clock must sit near real time for the login call itself, the same
+        // guard ReportExportIT#staff and its siblings already use around their own login calls.
+        Instant businessTime = clock.instant();
+        clock.set(Instant.now());
+        MvcResult result;
+        try {
+            result = mvc.perform(post("/api/v1/auth/login")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("{\"username\":\"" + username + "\",\"password\":\"" + PASSWORD + "\"}"))
+                    .andReturn();
+        } finally {
+            clock.set(businessTime);
+        }
         assertThat(status(result)).as(body(result)).isEqualTo(200);
         return new StaffUser(id, field(result, "$.access_token"));
     }

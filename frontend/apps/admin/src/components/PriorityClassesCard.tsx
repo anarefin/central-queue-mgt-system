@@ -8,6 +8,7 @@ import { describeError, useList } from "../lib/admin-support";
 import { useApi } from "../lib/runtime";
 import { EntityRow } from "./EntityRow";
 import { PriorityClassForm } from "./PriorityClassForm";
+import { VersionHistory } from "./VersionHistory";
 
 /**
  * The Priority classes (FR-QUE-010): the default normal class first, then the others by Head start. Deactivating one
@@ -83,6 +84,14 @@ export function PriorityClassesCard() {
                   onCancel={close}
                 />
               )}
+              extra={
+                <VersionHistory
+                  name={nameOf(c)}
+                  load={() => client!.priority.classVersions(c.id)}
+                  revert={(versionId) => client!.priority.revertClass(c.id, versionId)}
+                  onReverted={classes.reload}
+                />
+              }
             />
           ))}
         </ul>

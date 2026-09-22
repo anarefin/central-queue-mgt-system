@@ -92,3 +92,14 @@ export interface PriorityDefaults {
 export interface ConfigImpact {
   affected_waiting_tickets: number;
 }
+
+/**
+ * One past state of a versioned config area (FR-CFG-040: Priority classes/defaults, routing strategy, numbering
+ * rules, business hours), author and moment included, revertible by `id`.
+ */
+export interface ConfigVersionView {
+  id: string;
+  payload: Record<string, unknown>;
+  changed_by: string | null;
+  changed_at: string;
+}

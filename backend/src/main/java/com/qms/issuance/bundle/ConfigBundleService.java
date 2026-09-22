@@ -23,19 +23,14 @@ import com.qms.issuance.NumberingService;
 import com.qms.platform.ApiException;
 import com.qms.platform.ErrorCode;
 import com.qms.platform.Profiles;
+import com.qms.platform.crypto.HmacSigner;
 import com.qms.platform.security.CurrentUser;
-import java.nio.charset.StandardCharsets;
-import java.security.InvalidKeyException;
-import java.security.NoSuchAlgorithmException;
 import java.time.Clock;
 import java.util.ArrayList;
-import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import javax.crypto.Mac;
-import javax.crypto.spec.SecretKeySpec;
 import org.springframework.context.annotation.Profile;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
@@ -63,7 +58,6 @@ import tools.jackson.databind.json.JsonMapper;
 public class ConfigBundleService {
 
     private static final String PERMISSION = "hasAuthority(T(com.qms.platform.security.Authorities).CONFIG_ORG_SITES_ZONES)";
-    private static final String HMAC = "HmacSHA256";
     /** The wire values {@code com.qms.issuance.NumberingRule} uses; not visible from here (package-private). */
     private static final String SCOPE_SERVICE = "service";
     private static final String SCOPE_SERVICE_GROUP = "service_group";
@@ -322,17 +316,10 @@ public class ConfigBundleService {
     }
 
     private static String sign(String json, String secret) {
-        try {
-            Mac mac = Mac.getInstance(HMAC);
-            mac.init(new SecretKeySpec(secret.getBytes(StandardCharsets.UTF_8), HMAC));
-            return HexFormat.of().formatHex(mac.doFinal(json.getBytes(StandardCharsets.UTF_8)));
-        } catch (NoSuchAlgorithmException | InvalidKeyException e) {
-            throw new IllegalStateException(e);
-        }
+        return HmacSigner.signHex(secret, json);
     }
 
     private static boolean constantTimeEquals(String expected, String given) {
-        return java.security.MessageDigest.isEqual(
-                expected.getBytes(StandardCharsets.UTF_8), given.getBytes(StandardCharsets.UTF_8));
+        return HmacSigner.constantTimeEquals(expected, given);
     }
 }

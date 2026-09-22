@@ -76,6 +76,8 @@ public class SetupWizardService {
         SetupState.TestTokenState testToken = testTickets.latest().map(t -> new SetupState.TestTokenState(
                         true, t.printedAt() != null, isCalledOrBeyond(t.state()), t.announced(), t.ticketId().toString(), t.tokenNumber()))
                 .orElse(SetupState.TestTokenState.NONE);
+        // "Announced" is its own explicit confirmation (see SetupTestTicketRepository), not derived from "called":
+        // a real Zone announcement cannot be confirmed until the token has actually been called at least once.
 
         boolean goLiveReady = profileApplied && orgAndSites && zonesAndCounters && servicesAndNumbering && usersAndRoles && devicesRegistered
                 && testToken.issued() && testToken.printed() && testToken.called() && testToken.announced();
@@ -116,6 +118,22 @@ public class SetupWizardService {
         testTickets.byTicketId(ticketId).orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND));
         testTickets.confirmPrinted(ticketId, clock.instant(), actorId);
         audit.record(AuditEvent.of("setup.test_token.printed", "ticket", ticketId));
+    }
+
+    /**
+     * The admin's confirmation that the Zone's chime/voice announcement (ticket 29) for this test token actually
+     * played, independent of the ticket having merely reached the {@code called} state (FR-OPS-010: "called AND
+     * announced" are two separate, individually-confirmed steps, not one signal read twice).
+     */
+    @PreAuthorize(PERMISSION)
+    @Transactional
+    public void confirmAnnounced(UUID ticketId, UUID actorId) {
+        var ticket = testTickets.byTicketId(ticketId).orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND));
+        if (!isCalledOrBeyond(ticket.state())) {
+            throw new ApiException(ErrorCode.CONFLICT, "setup.refused.notCalledYet", new Object[0], Map.of("reason", "test_token_not_called_yet"));
+        }
+        testTickets.confirmAnnounced(ticketId, clock.instant(), actorId);
+        audit.record(AuditEvent.of("setup.test_token.announced", "ticket", ticketId));
     }
 
     /** FR-OPS-010: refused until every step, and the test token's whole issued/printed/called/announced chain, is true. */

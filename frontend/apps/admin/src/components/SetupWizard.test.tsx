@@ -118,6 +118,33 @@ describe("setup wizard (SRS §26.2, FR-OPS-010, ticket 56)", () => {
     expect(bodyOf(calls.find((c) => c.method === "POST" && c.path === "/setup/test-token"))).toEqual({ service_id: "svc-1" });
   });
 
+  it("confirms the announcement independently of having been called (FR-OPS-010)", async () => {
+    let announced = false;
+    const calls = stubApi({
+      ...NO_SESSION,
+      "GET /setup/state": () =>
+        json(
+          200,
+          state({
+            profile_applied: true,
+            active_profile: { id: "banking", applied_at: "2026-09-22T00:00:00Z", applied_by: "u1" },
+            test_token: { issued: true, printed: true, called: true, announced, ticket_id: "t1", token_number: "A-001" },
+          }),
+        ),
+      "GET /setup/profiles": () => json(200, [profile("banking")]),
+      "POST /setup/test-token/t1/confirm-announce": () => {
+        announced = true;
+        return json(200, state({ test_token: { issued: true, printed: true, called: true, announced: true, ticket_id: "t1", token_number: "A-001" } }));
+      },
+    });
+    renderApp(<SetupWizard />);
+
+    const confirmButton = await screen.findByRole("button", { name: "Confirm it announced" });
+    await userEvent.click(confirmButton);
+
+    await waitFor(() => expect(calls.some((c) => c.method === "POST" && c.path === "/setup/test-token/t1/confirm-announce")).toBe(true));
+  });
+
   it("blocks go-live until every step is ready, and confirms it once it is", async () => {
     let live = false;
     const readyState = state({

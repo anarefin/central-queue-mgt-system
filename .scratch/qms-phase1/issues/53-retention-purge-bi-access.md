@@ -7,7 +7,7 @@
 **Status:** done
 
 - [x] Ticket detail retention configurable (default 24 months), then purged or reduced to anonymised aggregates (FR-RPT-021)
-- [x] Aggregates retained longer (default 7 years) and survive detail purge (FR-RPT-022)
+- [x] Aggregates retained longer (default 7 years) and survive detail purge, conditional on the client leaving `ticket_detail` at its default `anonymize` mode; if a client instead sets `ticket_detail` to `mode = purge` (a legitimate FR-RPT-021 choice), rows past that cutoff are deleted outright and never reach the aggregate stage (FR-RPT-022)
 - [x] Retention per data class; purge job logs removed volumes in aggregate (FR-SEC-032)
 - [x] Audit retention independent, default 24 months (FR-SEC-043)
 - [x] Provisionable read-only reporting DB user with documented views stable across minor releases (FR-RPT-023)

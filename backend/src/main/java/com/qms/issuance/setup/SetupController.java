@@ -79,6 +79,13 @@ public class SetupController {
     }
 
     @PreAuthorize(PERMISSION)
+    @PostMapping("/setup/test-token/{ticketId}/confirm-announce")
+    public SetupState confirmAnnounce(@PathVariable UUID ticketId) {
+        wizard.confirmAnnounced(ticketId, currentUser.require().userId());
+        return wizard.state();
+    }
+
+    @PreAuthorize(PERMISSION)
     @PostMapping("/setup/go-live")
     public Map<String, Instant> goLive() {
         return Map.of("go_live_at", wizard.goLive(currentUser.require().userId()));

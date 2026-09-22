@@ -7,6 +7,7 @@ import { useState } from "react";
 import { useSubmit } from "../lib/admin-support";
 import { useApi } from "../lib/runtime";
 import { NumberingRuleForm } from "./NumberingRuleForm";
+import { VersionHistory } from "./VersionHistory";
 
 interface NumberingScopeRowProps {
   scope: NumberingScope;
@@ -77,6 +78,16 @@ export function NumberingScopeRow({ scope, id, name, rule, fallback, serviceName
           </Button>
         </div>
         {action.error && <ErrorAlert>{action.error}</ErrorAlert>}
+        <VersionHistory
+          name={name}
+          load={() => client!.numbering.versions(scope, id)}
+          revert={(versionId) => client!.numbering.revert(scope, id, versionId)}
+          onReverted={() => {
+            setWaiting(null);
+            setPreview(null);
+            onChanged();
+          }}
+        />
         {editing && (
           <NumberingRuleForm
             initial={rule}

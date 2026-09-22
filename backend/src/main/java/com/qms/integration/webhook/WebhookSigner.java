@@ -1,10 +1,6 @@
 package com.qms.integration.webhook;
 
-import java.nio.charset.StandardCharsets;
-import java.security.GeneralSecurityException;
-import java.util.HexFormat;
-import javax.crypto.Mac;
-import javax.crypto.spec.SecretKeySpec;
+import com.qms.platform.crypto.HmacSigner;
 
 /**
  * FR-INT-021: HMAC-SHA256 over the request body plus the timestamp it was signed at, so a receiver that has the
@@ -16,18 +12,9 @@ import javax.crypto.spec.SecretKeySpec;
  */
 final class WebhookSigner {
 
-    private static final String ALGORITHM = "HmacSHA256";
-
     private WebhookSigner() {}
 
     static String sign(String secret, long timestampEpochSeconds, String body) {
-        try {
-            Mac mac = Mac.getInstance(ALGORITHM);
-            mac.init(new SecretKeySpec(secret.getBytes(StandardCharsets.UTF_8), ALGORITHM));
-            byte[] signed = mac.doFinal((timestampEpochSeconds + "." + body).getBytes(StandardCharsets.UTF_8));
-            return HexFormat.of().formatHex(signed);
-        } catch (GeneralSecurityException e) {
-            throw new IllegalStateException("Cannot sign webhook delivery", e);
-        }
+        return HmacSigner.signHex(secret, timestampEpochSeconds + "." + body);
     }
 }
