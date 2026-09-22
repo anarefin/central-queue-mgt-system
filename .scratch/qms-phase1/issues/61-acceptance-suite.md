@@ -4,7 +4,7 @@
 
 **Blocked by:** 56 — Vertical profiles and first-run setup wizard; 44 — Internet-loss degradation; 51 — Appointment, journey, feedback, notification and audit reports; 60 — Installer, upgrades, backup and diagnostics
 
-**Status:** ready-for-agent
+**Status:** done (NFR-AVL-001, NFR-USA-005 require live pilot/real trainee — not producible by an agent session)
 
 - [x] Load test at 3× expected peak for 30 min, §23.1 targets met, error rate ≤ 0.1% (§27.4) — `deploy/loadtest/token-issuance.js` (k6), run three times against a real `deploy/compose.yaml` stack in this sandbox. Two full 30-minute runs confirmed the latency targets throughout; both also found a real bug in the load-test script itself (an un-refreshed access token expiring 15 minutes into the run, not a backend defect), fixed and confirmed error-free by a clean 5-minute run post-fix — see traceability matrix for the full account and figures
 - [x] Capacity: 50 sites / 500 counters / 2,000 staff, 20,000 tickets/day with 60/min peak, 5,000 realtime subscribers (NFR-CAP-001..003) — `B/reporting/CapacityAndScaleIT` (50 sites/500 counters/2,000 staff, run and passing) + the load test row above (20,000/day, 60/min peak) + `B/platform/realtime/RealtimeCapacityIT` (1,000 of the 5,000 concurrent subscribers opened for real; the rest rests on RealtimeHub's own per-connection-stateless design, documented on the class) — see traceability matrix

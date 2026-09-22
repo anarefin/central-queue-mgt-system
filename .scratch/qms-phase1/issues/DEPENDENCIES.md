@@ -62,7 +62,7 @@
 58-service-accounts-host-api               33,04           done*    n/a*     20 files, +1029 −21  78757d0..35e4477
 59-multi-node-operation                    11,08           done     89m      9 files, +685 −17    d4dc1b8..a86e96e
 60-installer-upgrades-backup               59              done*    47m      32 files, +1724 −13  2a60777..c7e69be
-61-acceptance-suite                        56,44,51,60     todo     —        —                   —
+61-acceptance-suite                        56,44,51,60     done*    n/a*     27 files, +1623 −11  5bcf3a1..940e8b2
 
 # * 26, 35, 40, 44: worker hit a session rate limit mid-ticket, was resumed after reset;
 #   elapsed wall-clock spans the pause and is not comparable to other tickets' timings.
@@ -115,6 +115,19 @@
 #   encryption/URL-parsing logic was verified but the live pg_dump/restore drill was not.
 #   The pre-go-live drill instructions are in docs/ops/backup-restore.md. Also hit the
 #   same pre-existing SetupWizardIT flake as noted at 58/59, confirmed on the base commit.
+# * 61: FINAL TICKET. Worker's session stalled twice (no progress 600s) mid full-suite +
+#   30-min k6 load-test verification; resumed twice, third resume finished cleanly.
+#   Elapsed wall-clock spans the stalls and is not comparable. Two acceptance criteria
+#   left genuinely unticked, correctly identified as not producible by any agent session:
+#   NFR-AVL-001 (99.5% availability measured over a real pilot calendar month — the HA
+#   architecture it depends on is built and tested at ticket 59) and NFR-USA-005 (console
+#   training-to-competence timed with a real human trainee). Playwright U1-U12/vertical
+#   E2E specs are source-complete and typechecked but not executed (no sandbox network
+#   access to install @playwright/test); 5 of 12 UAT scenarios are test.fixme() pending a
+#   real-wall-clock trigger, each backed by an existing integration test cited in its
+#   fixme comment. Everything else audited/run for real. Load-test script itself had a bug
+#   (unrefreshed access token expiring at 15min) found and fixed during this ticket, not a
+#   backend defect. Full detail in docs/traceability-matrix.md.
 # * Out-of-band fix (commit fde12f4, parent, not tied to a ticket): a follow-up security
 #   review found the already-landed ticket-39 PushEndpointSecurity had an IPv6 ULA
 #   (fc00::/7) and IPv4-mapped-address bypass; fixed directly since the active worker at
