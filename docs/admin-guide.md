@@ -19,6 +19,42 @@ docker compose -f deploy/compose.yaml up --build
 Open `http://localhost:8080/admin/`. All five apps and the API share one origin, which the refresh cookie needs:
 `/admin/`, `/console/`, `/kiosk/`, `/display/`, `/visitor/` and `/api/v1`.
 
+## Contents
+
+1. [Run the system](#1-run-the-system)
+2. [Configuration](#2-configuration)
+3. [Signing in](#3-signing-in)
+4. [Users, roles and approvals](#4-users-roles-and-approvals)
+5. [Audit log](#5-audit-log)
+6. [Language packs](#6-language-packs)
+7. [Sites, zones and counters](#7-sites-zones-and-counters)
+8. [Service catalogue](#8-service-catalogue)
+9. [Token numbering](#9-token-numbering)
+10. [Priority classes and queue ordering](#10-priority-classes-and-queue-ordering)
+11. [Rotating the signing key](#11-rotating-the-signing-key)
+12. [Counter sessions: calling, serving and completing](#12-counter-sessions-calling-serving-and-completing)
+13. [Breaks and agent availability](#13-breaks-and-agent-availability)
+14. [Wait estimates](#14-wait-estimates)
+15. [What the console shows of the visitor, and the agent's own day](#15-what-the-console-shows-of-the-visitor-and-the-agents-own-day)
+16. [Visitor directory and walk-in registration](#16-visitor-directory-and-walk-in-registration)
+17. [Visitor CSV import](#17-visitor-csv-import)
+18. [Device pairing and fleet management](#18-device-pairing-and-fleet-management)
+19. [Reports](#19-reports)
+20. [Operations: installation, upgrades, backups and diagnostics](#20-operations-installation-upgrades-backups-and-diagnostics)
+21. [Setup wizard and vertical profiles](#21-setup-wizard-and-vertical-profiles)
+22. [Terminology (label overrides)](#22-terminology-label-overrides)
+23. [Feature flags](#23-feature-flags)
+24. [Branding and theme](#24-branding-and-theme)
+25. [Notice board](#25-notice-board)
+26. [Notifications](#26-notifications)
+27. [Visitor feedback moderation](#27-visitor-feedback-moderation)
+28. [Privacy](#28-privacy)
+29. [Webhooks](#29-webhooks)
+30. [Config bundle and versioning](#30-config-bundle-and-versioning)
+
+See also: [`docs/api/error-codes.md`](api/error-codes.md) for the full `code` vocabulary every refusal below draws
+from, and [`docs/adr/`](adr/) for the design rationale behind them.
+
 - **First System Administrator.** With no users yet, the backend creates one from `QMS_BOOTSTRAP_ADMIN_USERNAME` and
   `QMS_BOOTSTRAP_ADMIN_PASSWORD`. The password must satisfy the password policy or the backend refuses to start. Once a
   user exists these variables are ignored; remove them from your environment after the first start.
@@ -635,7 +671,6 @@ refused (`conflict`, `device_inactive`).
 without a second round trip: site branding and enabled languages, its own zone's layout and counters when it is a
 display, and the site's active service tree — nothing here needs a staff permission, since the device authenticates
 with its own kiosk/display role instead.
-`visitor.import.mapping_updated`.
 
 ## 19. Reports
 
@@ -707,4 +742,347 @@ consultant runs at a site.
   list, and never anything that looks like a password or secret, ever leaves the server this way), and
   `recent-events.txt` (the last 200 audit-log entries). Downloading it is itself recorded in the audit log
   (`ops.diagnostics_exported`), so a support export is traceable like any other privileged read.
+
+## 21. Setup wizard and vertical profiles
+
+An Organisation Admin or System Administrator (`config:org_sites_zones`) walks a fresh installation through
+`/admin/setup/` (SRS §26.2, FR-OPS-010): pick a vertical profile, work through the rest of §26.2's steps — each one a
+link to the ordinary admin screen that satisfies it — then prove the system end to end with one real test token before
+go-live unlocks. Nothing here is a special-purpose object: the wizard's own state (`GET /setup/state`) is read live off
+the real `site`, `zone`, `counter`, `service`, `users` and `device` tables, so it never drifts from what actually exists.
+
+- **The five profiles** (`banking`, `healthcare`, `producer_services`, `government`, `generic`) are shipped data files
+  (`backend/src/main/resources/profiles/<id>.json`), never a branch in code: a sixth profile is one more file, not
+  one more `if`. Each seeds, all at once and organisation-wide:
+  - **Labels** — the seven terminology keys of section 22 below, per enabled language (for example `banking` calls a
+    visitor "Customer" and a ticket "Token"; `healthcare` calls a visitor "Patient"; `generic` leaves the shipped
+    default, "Visitor").
+  - **Feature flags** — the six flags of section 23 below, on or off (`banking` ships with `appointment` and
+    `virtual_queue` on; `healthcare` with `appointment` and `journey`; `generic` with none of the six on).
+  - **Priority classes** — a short starter list by English name (for example `banking`'s "Priority banking", "Senior
+    citizen" and "Differently abled"), each with a head start in minutes; a class already present by that name is
+    left alone, so re-applying never duplicates one and the baseline "Normal" class is never touched.
+  - **Report and KPI defaults** — which reports to show first and a starter `max_wait_minutes` threshold, held as a
+    system setting the reports screen (section 19) reads.
+  - **A starter service catalogue and numbering defaults** — carried as data for the "services and numbering" step
+    below to seed once a Site exists; a profile has no Site to seed into at the moment it is applied.
+- **Apply vs reset.** `POST /setup/profile` only ever works once, on an installation with no profile active yet; a
+  second call is refused with `conflict` and reason `already_provisioned`. `POST /setup/profile/reset` is the
+  explicit "reset to profile" action and is allowed at any time — the wizard's own "Choose another" button — and
+  re-seeds the labels, flags and any missing priority classes exactly as apply does. Neither ever removes or
+  deactivates a priority class already in use by a waiting or historical ticket, and every value a profile sets is
+  still editable one at a time afterwards through its own ordinary screen (labels, flags, priority classes, reports).
+- **Seed starter catalogue** (ticket 67, `POST /setup/seed-catalogue`, needs both `config:org_sites_zones` and
+  `config:service_catalogue`) creates the active profile's starter service group and services under one chosen,
+  active Site, plus a group-scoped numbering rule from the profile's own numbering defaults (prefix from the service,
+  the profile's sequence start, digit padding and reset boundary). It is an explicit, idempotent, per-Site action —
+  never run automatically when a profile is applied, since a Site does not exist at that point in the wizard's own
+  step order — and re-running it on a Site that already has a numbering rule for the group leaves that rule exactly
+  as it stands. Refused with `conflict` and reason `profile_not_applied` before a profile is active, or
+  `parent_inactive` on a deactivated Site.
+- **The test token** (issued, printed, called, announced) is a real Ticket issued through the same channel-agnostic
+  pipeline every ticket uses (`POST /setup/test-token`, body `service_id`), so proving it end to end proves the
+  installation, not a simulation of one. Printing and announcing are each their own explicit confirmation — a real
+  chime or voice announcement having actually played is not inferred merely from the ticket reaching `called`
+  (`POST /setup/test-token/{ticketId}/confirm-print`, `.../confirm-announce`; confirming an announcement before the
+  token has ever been called is refused with `conflict` and reason `test_token_not_called_yet`).
+- **Go-live** (`POST /setup/go-live`) is refused with `conflict`, reason `setup_incomplete` and a `missing` list
+  naming every unmet step (`profile_applied`, `org_and_sites`, `zones_and_counters`, `services_and_numbering`,
+  `users_and_roles`, `devices_registered`, `test_token_issued`, `test_token_printed`, `test_token_called`,
+  `test_token_announced`) until every one is true; users and roles needs more than the bootstrap admin alone. Once
+  recorded, go-live is idempotent: a repeat call returns the same timestamp rather than re-checking or refusing.
+- **Audit.** `profile.applied`, `profile.reset`, `profile.catalogue_seeded`, `setup.test_token.issued`,
+  `.printed`, `.announced` and `setup.go_live` are each recorded with the profile id, Site or ticket they acted on.
+
+API, all under `/api/v1` and needing `config:org_sites_zones` (seeding the catalogue also needs
+`config:service_catalogue`): `GET /setup/profiles`, `POST /setup/profile`, `POST /setup/profile/reset`,
+`GET /setup/state`, `POST /setup/test-token`, `POST /setup/test-token/{ticketId}/confirm-print`,
+`POST /setup/test-token/{ticketId}/confirm-announce`, `POST /setup/go-live` and `POST /setup/seed-catalogue`
+(body `site_id`). See [`docs/api/error-codes.md`](api/error-codes.md) for `conflict` and `validation_failed` generally.
+
+## 22. Terminology (label overrides)
+
+Every visitor-facing noun a screen shows is a **label key** — `entity.visitor`, `entity.visitor_id`,
+`entity.service_group`, `entity.counter`, `entity.agent`, `entity.category` and `entity.ticket` (SRS §3.2) — resolved
+through the active vertical profile's own wording, then editable one key and one language at a time afterwards
+(CFG-003). An Organisation Admin or System Administrator (`config:org_sites_zones`) edits them at `/admin/labels/`
+(linked from the Admin home page): a table of the seven keys by every enabled language, each cell showing the
+shipped pack's own default noun, the current override if one exists, an inline edit and a reset back to the default.
+
+- **Per-language editing.** `PUT /labels/{key}` (body `lang`, `value`, at most 60 characters, required) writes one
+  key for one language; the other languages of the same key are untouched. A blank value is refused as
+  `validation_failed` naming `value`.
+- **Reset.** `DELETE /labels/{key}?lang=` discards the override for that key and language, falling back to the
+  shipped pack's own default noun for it — never to another value.
+- **How devices and the visitor page pick them up.** Every signed-in screen reads `GET /labels?lang=` (needs only
+  `isAuthenticated()`, no configuration permission, since every staff and device principal renders screens that use
+  them); the anonymous visitor ticket and join pages, which have no session yet, read only the seven values through
+  the separate, rate-limited `GET /labels/public?lang=` (30 requests/minute/IP), never the full map. A kiosk or
+  display picks them up as part of its own `GET /config/bootstrap` (section 18). A write or reset pushes
+  `config.changed` to every device on every Site — the same push `feature_flag.updated` already triggers — so a live
+  kiosk or display refetches at once rather than waiting out its next heartbeat; a signed-in admin/console/visitor
+  browser picks up the change on its own next read.
+- **Audit.** Every write is recorded as `label.updated` or `label.reset`, with the key, language and before/after value.
+
+API, all under `/api/v1`: `GET /labels?lang=` (any authenticated principal), `GET /labels/public?lang=` (no
+credential, rate-limited), `PUT /labels/{key}` and `DELETE /labels/{key}?lang=` (both `config:org_sites_zones`).
+
+## 23. Feature flags
+
+The **six flags** an Organisation Admin or System Administrator (`config:org_sites_zones`) switches at `/admin/setup/`
+(the same page as the setup wizard, section 21 — the "Feature flags" card sits above the wizard's own steps and is
+usable at any time, not only during first-run) are each an **organisation-wide master switch** (CFG-001, CFG-003,
+SRS §27.5): `appointment`, `virtual_queue`, `journey`, `multi_site`, `visitor_code_lookup` and
+`announce_visitor_name`. A vertical profile turns some of them on at apply/reset time (section 21); each is then
+editable on its own afterwards, with a confirmation step before turning one off.
+
+- **Master-switch semantics vs finer settings.** A flag only ever answers "is this feature on for the organisation at
+  all" — the feature it names still needs its own finer setting to agree before it actually runs. For example,
+  `announce_visitor_name` gates a Zone's own "announce visitor name" setting (section 12): a Zone with that setting
+  on stays silent about the visitor's name unless the flag is also on. `multi_site` gates creating a **second**
+  active Site (`POST /sites`): the very first Site is never blocked, since an installation always needs one, but a
+  second is refused while the flag is off. `appointment` gates every appointment booking, availability and
+  check-in endpoint; `virtual_queue` gates remote/mobile queue joining; `journey` gates creating a multi-stop Journey
+  or Visit; `visitor_code_lookup` gates directory search by an arbitrary visitor code rather than a phone number.
+- **`feature_disabled`.** Every gate a flag being off blocks throws the same shape of refusal: `409 conflict` with
+  `details.reason = feature_disabled` and `details.feature = <key>` — one shared refusal, whichever endpoint hits it.
+- **Reading needs no configuration permission** (`GET /setup/feature-flags`, `isAuthenticated()` only): every staff
+  and device principal that renders a screen a flag gates needs to know its state, the same reach labels give.
+  Writing (`PUT /setup/feature-flags/{key}`, body `enabled`) stays `config:org_sites_zones`-only, and a live kiosk or
+  display is pushed `config.changed` the same way a label change is (section 22), so it refetches at once.
+- **Audit.** Every write is recorded as `feature_flag.updated`, with the key and before/after state.
+
+API, all under `/api/v1`: `GET /setup/feature-flags` (any authenticated principal) and
+`PUT /setup/feature-flags/{key}` (`config:org_sites_zones`; an unknown key is `validation_failed`).
+
+## 24. Branding and theme
+
+An Organisation Admin or System Administrator (`config:org_sites_zones`) sets the organisation's branding once at
+`/admin/branding/` (linked from the Admin home page, SRS §7.5, FR-CFG-030..032): it is a single, organisation-wide
+value applied to kiosk, display, printed token, mobile app and reports.
+
+- **Organisation name, brand colour and logo.** `PUT /branding` (body `org_name`, at most 200 characters; a hex
+  colour `#rrggbb` as `primary_color`; an optional `logo_url`, an absolute URL or a `data:` URI, up to 500,000
+  characters). An empty or missing colour and a save that changes nothing are both refused as `validation_failed` /
+  left as a no-op respectively; the screen's colour field is a native colour picker, so only valid hex ever leaves it.
+- **The contrast rule.** Nothing is refused for being unreadable — instead every app derives its own readable
+  foreground colour at runtime from whichever accent is configured: `packages/ui`'s `deriveBrandColors` picks white
+  or near-black text on the accent, whichever clears the WCAG 2.1 4.5:1 contrast ratio against it
+  (`contrastRatio`/`relativeLuminance` in `color-contrast.ts`), and derives one-shade-darker hover/active shades the
+  same way. An accent that is missing or not a valid 6-digit hex colour falls back to the design system's own
+  default (`#0b5fff`) rather than rendering unreadable or broken. This runs client-side on every app at start
+  (`applyBrand`), not on the server, so it always reflects the accent actually configured, however it got there.
+- **Printed-token template.** `PUT /print-template` (body `fields`, a non-empty, order-preserving subset of the
+  fixed set `token_number`, `building`, `floor`, `service_group`, `service`, `visitor_code`, `visitor_name`,
+  `visitor_category`, `counter`, `issue_time`, `estimated_wait`, `qr_code`, `notice_line`; an optional `notice_line`
+  of free text up to 500 characters, shown only when `notice_line` is also in `fields` and the text is not blank).
+  The admin screen previews the slip live and can test-print it (the browser's own print dialog) without issuing a
+  real Ticket.
+- **Dark mode** is a per-browser display preference, not an organisation setting: a light/dark/system toggle in the
+  Admin and Console app chrome (persisted to that browser's own `localStorage` under `qms-theme`, never sent to the
+  server or shared between devices) sets `data-theme` on `<html>` for `theme.css`'s own selectors. Kiosk and display
+  do not offer the toggle at all — they always stay on the light, high-contrast theme regardless of the device's own
+  OS preference, since a public-facing screen's contrast must not depend on who last touched a browser setting.
+- **Both settings are public, unauthenticated reads** at `GET /branding/theme` (org name, colour and logo only, no
+  `updated_at`/`updated_by`, rate-limited 30 requests/minute/IP) so the sign-in screen and the anonymous visitor page
+  can theme themselves before there is any session; a kiosk or display instead reads the full `OrgBranding` and the
+  print template as part of its own `GET /config/bootstrap` (section 18).
+- **Audit.** Every change is recorded as `branding.updated` or `print_template.updated`, with before and after
+  values; a save that changes nothing writes nothing.
+
+API, all under `/api/v1`: `GET /branding` and `PUT /branding` (`config:org_sites_zones`); `GET /branding/theme` (no
+credential, rate-limited); `GET /print-template` and `PUT /print-template` (`config:org_sites_zones`).
+
+## 25. Notice board
+
+An Organisation Admin or System Administrator with the `notice_board:manage` permission schedules image, video or
+rich-text notices at `/admin/notice-board/` (linked from the Admin home page, ticket 30, FR-DSP-006), each scoped to
+the one Zone whose display(s) show it and shown only between its own `starts_at` and `ends_at` window.
+
+- **Content.** `POST /notices` / `PUT /notices/{id}` (body `zone_id`, `type` — one of `image`, `video`, `rich_text` —
+  `content_i18n`, `starts_at`, `ends_at`, an optional `sort_order` 0–1000). `content_i18n` maps a language code to
+  content for that language: an absolute URL or `data:` URI for `image`/`video` (up to 20,000 characters, the same
+  convention as the org logo), or plain text for `rich_text`, so a text-bearing image can ship a different asset per
+  language. Every language must be one the Zone's Site has installed, the Site's default language must carry
+  content, and `ends_at` must be after `starts_at`; a blank translation is dropped rather than saved empty.
+  Deactivation is soft — never deleted, only `POST /notices/{id}/deactivate` / `.../activate` — so a notice already
+  scheduled keeps its record.
+- **Scope** follows the Zone's own Site: an admin whose role is limited to some Sites sees and changes only notices
+  of Zones inside them, checked on the server (the same `ScopeGuard` every other Site-scoped screen uses).
+- **How a display picks it up.** A display's own `GET /devices/{id}/display-state` (unauthenticated to staff,
+  device-only, section 18) embeds the Zone's active playlist for the display's own clock; there is no separate,
+  admin-only "current notices" read.
+- **Audit.** Every change is recorded (`notice.created`, `.updated`, `.deactivated`, `.activated`) with before and
+  after values.
+
+API, all under `/api/v1` and needing `notice_board:manage`: `GET /zones/{zoneId}/notices`, `POST /notices`,
+`PUT /notices/{id}`, `POST /notices/{id}/deactivate` and `POST /notices/{id}/activate`.
+
+## 26. Notifications
+
+A System Admin, Org Admin or Team Admin with `config:service_catalogue` configures the whole notification pipeline
+from `/admin/notifications/` (ticket 38, SRS §14): the trigger catalogue and its per-Site/Service settings
+(FR-NTF-010), message templates with a live preview (FR-NTF-020, FR-NTF-021), the delivery log, and each Service's
+own alert thresholds (ticket 47) all sit on this one screen, picked per Site.
+
+- **Triggers.** `GET /notification-triggers/catalogue` lists every trigger key with its default channel order and
+  whether it is "essential"; `GET /notification-triggers?site_id=&service_id=` shows the effective setting a Service
+  actually gets (a Service-level row overrides its Site's own row, which overrides the catalogue's own default).
+  `PUT /notification-triggers/{triggerKey}?site_id=&service_id=` (body `enabled`, `channel_order`) writes a Site- or
+  Service-level override.
+- **Channels.** Every trigger has a default, editable channel order — `web_push`, `in_app`, `email` and the
+  internal-only `staff_alert` (for the four operational-alert triggers below); a channel with no registered adapter
+  is skipped in favour of the next one, so listing a Phase 2 channel here costs nothing yet.
+- **Templates.** `GET /notification-templates/{triggerKey}` lists every channel/language row; `PUT
+  /notification-templates/{triggerKey}/{channel}/{language}` (body `subject`, `body`) saves one, restricted to the
+  trigger's own fixed set of template variables (for example `token_number`, `service_name`, `site_name`); `GET
+  .../preview` renders it with sample data without sending anything.
+- **Quiet hours** (FR-NTF-031) suppress every **non-essential** trigger's delivery — recorded instead with status
+  `quiet_hours` in the delivery log — between a Site's own `quiet_hours_start` and `quiet_hours_end` (in the Site's
+  own timezone). These two columns exist on the `site` table (added by the same migration that built the
+  notification pipeline) but have no admin write path yet in this release; they are null (no quiet-hours
+  suppression) unless set directly at the database.
+- **Essential triggers** (`your_turn`, `missed_back_in_queue`, `waitlist_slot_offered`, and the four staff-alert
+  triggers below) bypass quiet hours and can never be opted out of by a visitor (FR-NTF-035) — important enough to
+  interrupt quiet hours is treated as important enough that a visitor cannot silence it either. A visitor's own
+  opt-out (set from their ticket page, not an admin screen) covers only the non-essential triggers.
+- **Delivery log** (`GET /notification-messages?ticket_id=&visitor_id=&status=&limit=`, needs `audit:read`) lists
+  every message with its send attempts.
+- **Alert thresholds** (`GET`/`PUT /services/{id}/alert-thresholds`, ticket 47, SRS §15.4, needs
+  `config:service_catalogue`, the same permission the trigger catalogue above uses) set,
+  per Service, the queue-length, longest-wait, idle-counter, no-show-rate and device-offline maxima that fire the
+  four operational-alert triggers (`queue_sla_breach`, `counter_unattended`, `kiosk_display_offline` and, from the
+  session package's own break-overrun sweep, `agent_break_overrun`); each left null leaves that metric unmonitored.
+  `group_window_minutes` and `escalation_delay_minutes` override the dashboard's own defaults for grouping repeat
+  alerts and escalating an unacknowledged one, per Service.
+- **Audit.** Trigger and template changes are recorded through their own services; every alert threshold change is
+  audited with before and after values.
+
+API, all under `/api/v1`: `GET /notification-triggers/catalogue`, `GET`/`PUT /notification-triggers/{triggerKey}`,
+`GET /notification-templates/{triggerKey}`, `PUT`/`GET .../preview` (all `config:service_catalogue`);
+`GET /notification-messages` (`audit:read`); `GET`/`PUT /services/{id}/alert-thresholds`.
+
+## 27. Visitor feedback moderation
+
+A Team Admin reviews post-service feedback comments at `/admin/feedback/` (ticket 45, FR-MOB-033) before an
+individual Agent ever sees one written about them: a visitor's star rating (1–5) is never gated — it already feeds
+the aggregate Feedback report untouched — only the free-text comment needs a human decision first.
+
+- **Review queue** (`GET /feedback/pending-comments`, role `TEAM_ADMIN`) lists every comment still awaiting a
+  decision, with its token number and rating. **Approve** (`POST /feedback/{id}/approve-comment`) is the only
+  decision available — there is no reject; an unapproved comment simply never reaches the Agent it is about. A
+  comment-less rating needs no approval at all. Approving one with no comment is refused as `conflict`, reason
+  `no_comment`.
+- **An Agent's own feedback** (`GET /feedback/mine`, role `AGENT`) lists every rating on a Ticket bound to them,
+  the comment included only once approved.
+- **Neither action carries an SRS §5.2 permission row** — feedback moderation is not one of that table's fixed
+  permissions — so both are authorised directly by role (`hasRole('TEAM_ADMIN')` / `hasRole('AGENT')`) rather than
+  adding an entry that would drift the matrix.
+- **Audit.** `feedback.submitted` (the visitor's own submission) and `feedback.comment_approved` are both recorded.
+
+API, all under `/api/v1`: `GET /feedback/pending-comments` and `POST /feedback/{id}/approve-comment` (role
+`TEAM_ADMIN`); `GET /feedback/mine` (role `AGENT`).
+
+## 28. Privacy
+
+An Organisation Admin or System Administrator controls the visitor-privacy surfaces that are runtime-configurable
+(as opposed to fixed in code) at `/admin/privacy/` (SRS §25.3-25.4, FR-SEC-020, FR-SEC-023, FR-SEC-031, ticket 54).
+
+- **Field config surfaces.** Two of §25.3's surfaces have their own runtime toggle here, each a **closed, enforced-
+  server-side** set: `capture` — which of the optional walk-in registration fields (`email`, `category`, `purpose`)
+  are captured at all (section 16; `name` and `phone` are always captured and never appear here, since they are the
+  minimum record itself) — and `kiosk_confirmation` — whether the kiosk's own confirmation screen shows `name` and/or
+  `category`. `GET /privacy/field-config/{surface}` lists a surface's fields with their current visibility;
+  `PUT /privacy/field-config/{surface}/{field}` (body `visible`) flips one. A field left off is neither read from
+  the request nor stored, even if a caller sends it — not merely hidden by a screen. The other §25.3 surfaces
+  (printed token, public display, announcement, agent console, report export) each already have their own
+  admin-configurable seam from an earlier ticket (sections 15 and 24 above, and the console fields of section 15).
+- **Clinical sensitivity** is a per-Site flag, not a surface here: set from the Sites screen (section 7) alongside a
+  Site's other settings (`PATCH /sites/{id}`, body `clinical_sensitivity`). A clinically-sensitive Site's displays
+  and announcements show a neutral label in place of the visitor's own details.
+- **Export and anonymise** (`GET`/`POST /visitors/{id}/export` / `.../anonymize`, FR-SEC-031) are an Org Admin's own
+  data-subject actions on one visitor: export returns everything the local record holds — the visitor's own fields,
+  every Ticket, and their notification/retention consent — for a data request; anonymise irreversibly scrubs the
+  visitor's own PII fields and every Ticket referencing them, returning how many Tickets were touched. Both act
+  immediately and are not undoable.
+- **Audit.** `privacy.field_config_changed` (before/after value per surface and field), `visitor.exported`
+  (never the exported values themselves — only that the export happened and of whom) and `visitor.anonymized`
+  (with the count of Tickets scrubbed).
+
+API, all under `/api/v1` and needing `config:org_sites_zones`: `GET /privacy/field-config/{surface}`,
+`PUT /privacy/field-config/{surface}/{field}`, `GET /visitors/{id}/export` and `POST /visitors/{id}/anonymize`.
+
+## 29. Webhooks
+
+An Organisation Admin or System Administrator manages outbound webhooks at `/admin/webhooks/` (ticket 57, SRS §22.3,
+FR-INT-020..022): endpoints an external system registers to receive a subset of the realtime hub's own events.
+
+- **Endpoints.** `POST /webhook-endpoints` (body `description`, up to 200 characters; `url`, HTTPS only and refused
+  as `validation_failed` with an `unsafe_endpoint:...` reason for any private/loopback/link-local address — the same
+  SSRF defence webhook delivery itself relies on; `event_types`, at least one, each one of the closed §21.4 set
+  below; an optional `secret`, generated server-side when left blank). `PUT /webhook-endpoints/{id}` edits the
+  description, URL and subscriptions, never the secret. Deactivation is soft
+  (`POST /webhook-endpoints/{id}/deactivate` / `.../activate`).
+- **Events** an endpoint may subscribe to are a closed, independently-transcribed set mirroring exactly what the
+  realtime hub may emit on a topic (SRS §21.4): `ticket.issued`, `.called`, `.reannounced`, `.missed`, `.serving`,
+  `.held`, `.completed`, `.no_show`, `.cancelled`, `.transferred`, `.position_changed`, `queue.estimate_changed`,
+  `session.opened`, `.break_started`, `.break_ended`, `.closed`, `alert.raised`, `.acknowledged`, `device.command`
+  and `config.changed`. An internal-only event outside this set (for example `ticket.forfeited`) is never delivered,
+  even to an endpoint that names it.
+- **Signing.** Every delivery carries an HMAC-SHA256 signature over `"<timestamp>.<body>"` in
+  `X-QMS-Webhook-Signature` (lowercase hex) alongside `X-QMS-Webhook-Timestamp` — the same shape GitHub's and
+  Stripe's own webhook signatures use, so an integrator's existing verification code needs only the header names
+  changed. The secret used to sign is shown to the admin **only** in the response to creating the endpoint or
+  rotating its secret (`POST /webhook-endpoints/{id}/rotate-secret`) — only its encrypted form is stored, and it is
+  never readable back afterwards.
+- **Retries.** A failed delivery retries with exponential backoff (`30s × 2^(attempt−1)` by default) up to 6 attempts
+  before it is terminally `failed`; a single attempt that takes longer than 5 seconds counts as failed rather than
+  holding the queue. Each attempt is its own transaction, so one delivery's trouble never blocks the batch.
+- **Delivery log and replay** (`GET /webhook-deliveries?endpoint_id=&event_type=&status=&limit=`, needs
+  `audit:read`) lists every delivery with its attempts; `POST /webhook-deliveries/{id}/replay`
+  (`config:org_sites_zones`) re-queues a delivery for one more try regardless of its current status — a genuine
+  write with a real side effect (a fresh POST to an external system), so it needs the same permission managing the
+  endpoint itself does, not merely the read-only `audit:read` the log itself uses.
+- **Secret rotation** (`POST /webhook-endpoints/{id}/rotate-secret`) issues a fresh secret immediately; the old one
+  stops verifying at once, so an integrator must update their own verification key at the same time.
+- **Audit.** `webhook_endpoint.created`, `.updated`, `.secret_rotated`, `.deactivated`, `.activated` and
+  `webhook_delivery.replayed` are all recorded.
+
+API, all under `/api/v1`: `GET`/`POST /webhook-endpoints`, `GET`/`PUT /webhook-endpoints/{id}`,
+`POST /webhook-endpoints/{id}/rotate-secret`, `.../deactivate`, `.../activate` (all `config:org_sites_zones`);
+`GET /webhook-deliveries` (`audit:read`); `POST /webhook-deliveries/{id}/replay` (`config:org_sites_zones`).
+
+## 30. Config bundle and versioning
+
+Two related but distinct FR-CFG-040/CFG-004 mechanisms let a consultant move configuration between environments or
+step back a change, both API-only today (neither has an admin screen yet).
+
+- **Config bundle export/import** (`GET`/`POST /config/bundle/import`, organisation-wide callers only — no
+  `site_ids` claim) clones every Priority class and its channel/Service defaults, every Service group's own routing
+  strategy, every scope's own numbering rule and every scope's own business-hours week as one signed JSON bundle
+  between three environments "of the same version" (SRS §3.7, for example production to a staging or training
+  clone). The org hierarchy and service catalogue those scopes key by (Site, Service group, Service) are **not**
+  themselves in the bundle — the target must already have matching ids, exactly the staging/training use this is
+  for; a scope the target lacks fails that one reference with `not_found` and aborts the whole import in one
+  transaction, so nothing is ever applied part-way.
+- **`QMS_CONFIG_BUNDLE_SECRET`** (`qms.config.bundle.secret`) is the shared HMAC-SHA256 key both the exporting and
+  importing installation must carry identically — unlike the JWT signing key, it is never generated per-instance,
+  since a value neither side already shares cannot verify the other's signature. Left blank (the default), both
+  export and import fail clean as `503 unavailable`, reason `bundle_secret_not_configured`; a bundle whose signature
+  does not verify on import is refused as `validation_failed`, reason `invalid_signature`. Import responds with
+  `applied_counts` per kind of row, for the admin to confirm the clone landed.
+- **Revert** is not part of the bundle at all: it belongs to each versioned config area individually. Priority
+  classes and routing strategy (section 10), numbering rules (section 9) and business-hours weeks each keep their
+  own append-only history (FR-CFG-040) — one row per change, written right after the area's own service applies and
+  audits it — reachable as `GET .../versions` (newest first) and reverted with
+  `POST .../versions/{versionId}/revert`, which re-applies that earlier state through the exact same validation and
+  audit path as an ordinary edit, so a revert is itself one more version, never a special-cased rewrite.
+
+API, all under `/api/v1` and needing `config:org_sites_zones` (import additionally needs `config:priority_routing`
+and `config:service_catalogue`, re-checked underneath, for the areas it touches): `GET /config/bundle`,
+`POST /config/bundle/import`; per-area history and revert: `GET`/`POST /priority-classes/{id}/versions[/{versionId}/revert]`,
+`GET`/`POST /service-groups/{id}/routing-strategy/versions[/{versionId}/revert]`,
+`GET`/`POST /services/{id}/numbering-rule/versions[/{versionId}/revert]`,
+`GET`/`POST /service-groups/{id}/numbering-rule/versions[/{versionId}/revert]` and the equivalent
+`GET`/`POST /sites/{siteId}/hours/versions[/{versionId}/revert]` / `/services/{id}/hours/versions[/{versionId}/revert]`.
 
