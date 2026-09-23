@@ -291,14 +291,41 @@ export function KioskFlow({ bootstrap, client, printer, inactivityTimeoutMs = DE
   // app-wide provider (which has no site to resolve against at all).
   const [languageOverride, setLanguageOverride] = useState<string | null>(null);
 
+  // `bootstrap.labels` is resolved once, for the Site's own default language only (DeviceService#bootstrap ->
+  // `labels.forLanguage(site.defaultLanguage())`); it does not follow the visitor's own in-session language pick
+  // below (FR-I18N-003). Without its own re-fetch, every `{ticket}`-style entity placeholder (ticket 69) stayed in
+  // the Site's default language even on an otherwise fully-translated screen — found by actually running U12
+  // against a real deployment (ticket 70), not something the component's own test harness could catch since it
+  // stubs `labels` directly rather than exercising a language switch against a real client.
+  const [labels, setLabels] = useState(bootstrap.labels);
+  useEffect(() => {
+    if (!languageOverride || languageOverride === bootstrap.branding.default_language) {
+      setLabels(bootstrap.labels);
+      return;
+    }
+    let cancelled = false;
+    client.labels.get(languageOverride).then(
+      (result) => {
+        if (!cancelled) setLabels(result);
+      },
+      () => {
+        if (!cancelled) setLabels(bootstrap.labels);
+      },
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [languageOverride, bootstrap.labels, bootstrap.branding.default_language, client]);
+
   return (
     <I18nProvider loadExtra={false} systemDefault={bootstrap.branding.default_language} userLanguage={languageOverride ?? undefined}>
-      {/* Terminology remapping (SRS §3.2, ticket 69): the Site's own resolved labels ride with bootstrap, the same
-          "shipped with bootstrap so a device never needs a second round trip" reasoning feature flags already
-          follow; DevicePairing's own config.changed handler already refetches the whole bootstrap, so a label edit
+      {/* Terminology remapping (SRS §3.2, ticket 69): resolved for whichever language is actually active (the
+          Site's default, or the visitor's own in-session pick — see the re-fetch above), the same "shipped so a
+          device never needs a second round trip" reasoning feature flags already follow for the default-language
+          case; DevicePairing's own config.changed handler still refetches the whole bootstrap, so a label edit
           updates the kiosk without a reload. Nested here (not in DevicePairing) so it sits under this flow's own
           I18nProvider rather than the shadowed app-wide one. */}
-      <LabelsProvider labels={bootstrap.labels}>
+      <LabelsProvider labels={labels}>
         <KioskFlowInner
           bootstrap={bootstrap}
           client={client}
@@ -1010,7 +1037,10 @@ function ConfirmScreen({
         )}
         {selection.customLevelName && <p>{selection.customLevelName}</p>}
       </div>
-      <Tile className={TILE_PRIMARY} onClick={onConfirm}>
+      {/* data-testid (ticket 70, E2E U12): the label is the terminology-remapped, language-dependent {@code
+          kiosk.confirm.print} string ("Get my {ticket}"), which a Bangla-language spec cannot match by role name
+          without hardcoding one profile's own vocabulary. */}
+      <Tile data-testid="kiosk-confirm-print" className={TILE_PRIMARY} onClick={onConfirm}>
         {t("kiosk.confirm.print")}
       </Tile>
       <Tile className={TILE_SECONDARY} onClick={onBack}>
@@ -1067,7 +1097,11 @@ function ResultScreen({
   return (
     <Screen>
       <h1 className="text-3xl font-bold text-large:text-4xl">{t(printFailed ? "kiosk.result.printFailedTitle" : "kiosk.result.printedTitle")}</h1>
-      <p className="text-[3rem] font-bold tracking-wide tabular-nums text-large:text-[4.5rem]">{token}</p>
+      {/* No accessible name of its own beyond the raw digits (ticket 70, E2E U1/U8/U12): a stable hook for reading
+          the issued token back out, since the surrounding text is translated and the digits alone aren't a landmark. */}
+      <p data-testid="kiosk-result-token" className="text-[3rem] font-bold tracking-wide tabular-nums text-large:text-[4.5rem]">
+        {token}
+      </p>
       {printFailed && (
         <>
           <p>{t("kiosk.result.printFailedBody")}</p>
