@@ -2046,8 +2046,12 @@ beyond the `<html>`/`<head>`/global-CSS wiring every app needed regardless.
 `pnpm lint:css` all green; `pnpm build` (static export) succeeds for all five apps. Backend:
 `./gradlew test` (531 unit/slice tests, no Docker) green; `./gradlew integrationTest --tests
 "com.qms.configuration.branding.BrandingAdminIT"` green on its own (all 7 methods, including the new public-theme
-and rate-limit test, against real PostgreSQL). A full `./gradlew check` run surfaced one unrelated failure,
-`AppointmentRescheduleCancelIT#rescheduleAndCancelRequireThePermissionAndAreScopedToTheServicesSite`, confirmed
-pre-existing and unrelated by re-running it alone (`--rerun`), where it passes — consistent with this sandbox's own
-noted pattern (ticket 61's row above) of full-suite-only flakiness under ~70 concurrent Spring contexts, not
-something this ticket's branding/security changes touch.
+and rate-limit test, against real PostgreSQL). A full `./gradlew check` run (702 integration tests) surfaced exactly
+one failure: `VisitorAppointmentSelfServiceIT#pastTheCutoffAVisitorIsRefusedEvenWithAReasonButStaffMayStillAct` —
+this is the same calendar-date-sensitive cutoff test this file's own ticket 61 section already documents as a known
+pre-existing flake (see that section's "Full-suite verification" note, citing `DEPENDENCIES.md`'s ticket 49 entry);
+this ticket touches neither the appointment domain nor anything time-based. A separate partial run also hit
+`AppointmentRescheduleCancelIT#rescheduleAndCancelRequireThePermissionAndAreScopedToTheServicesSite` once, which
+passed cleanly re-run alone (`--rerun`) — the same "full-suite-only, ~70 concurrent Spring contexts" flakiness
+pattern ticket 61 already established, not something this ticket's branding/security changes touch. Neither
+failure recurred with this ticket's own new test (`BrandingAdminIT`), which passed in every run.

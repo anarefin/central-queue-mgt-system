@@ -70,7 +70,7 @@
 - [x] New visible strings (skip link, theme names, menu labels, dialog buttons) are added to both `packages/i18n/src/packs/en.json` and `bn.json`
 - [x] Verification:
   - `cd frontend && pnpm typecheck && pnpm test && pnpm lint:css && pnpm build` is green (662 tests, 10 workspace packages, all 5 apps build)
-  - `cd backend && ./gradlew check`: unit/slice (531 tests) and the new `BrandingAdminIT` (7/7, real PostgreSQL) are green; a full `./gradlew check` run hit one unrelated, pre-existing flaky IT (`AppointmentRescheduleCancelIT`, confirmed passing in isolation) — see `docs/traceability-matrix.md`'s ticket 62 section for the full account
+  - `cd backend && ./gradlew check`: a full run (702 integration tests) had exactly one failure, `VisitorAppointmentSelfServiceIT#pastTheCutoffAVisitorIsRefusedEvenWithAReasonButStaffMayStillAct` — a pre-existing, already-documented calendar-date-sensitive flake (see ticket 61's own traceability-matrix notes), unrelated to the appointment domain this ticket never touches. The new `BrandingAdminIT` (7/7, real PostgreSQL) passed in every run — see `docs/traceability-matrix.md`'s ticket 62 section for the full account
 - [x] Definition of done (SRS §27.5):
   - user-facing strings in both en and bn packs
   - the new endpoint is permission-checked (explicitly public, read-only)
