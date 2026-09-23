@@ -10,8 +10,18 @@ import {
   type Ticket,
 } from "@qms/api-client";
 import { I18nProvider, useI18n } from "@qms/i18n/react";
-import { ErrorAlert, QrCode, TextField } from "@qms/ui";
-import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { Button, cn, deriveBrandColors, ErrorAlert, QrCode, TextField } from "@qms/ui";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ButtonHTMLAttributes,
+  type CSSProperties,
+  type FormEvent,
+  type ReactNode,
+} from "react";
 import { DEFAULT_INACTIVITY_TIMEOUT_MS, useInactivityTimeout } from "../lib/inactivity";
 import { localisedName } from "../lib/localised-name";
 import { BrowserTokenPrinter, type PrintPayload, type TokenPrinter } from "../lib/token-printer";
@@ -223,7 +233,9 @@ function printFieldValue(payload: PrintPayload, field: PrintField): string | nul
   }
 }
 
-/** The printed token itself (ticket 27, FR-CFG-030..031): only the admin's enabled fields, in the admin's order. */
+/** The printed token itself (ticket 27, FR-CFG-030..031): only the admin's enabled fields, in the admin's order. This
+ * markup is unchanged by ticket 65 — only the `@media print` mechanism that isolates it (`.qms-print-slip`, shared
+ * with the admin branding preview, theme.css) still relies on a plain class name, by design. */
 function PrintSlip({ payload }: { payload: PrintPayload }) {
   const { t } = useI18n();
   return (
@@ -293,6 +305,84 @@ interface InnerProps extends Required<Pick<KioskFlowProps, "bootstrap" | "client
   printer: TokenPrinter;
   languageOverride: string | null;
   setLanguageOverride: (language: string | null) => void;
+}
+
+/** Which of the progress indicator's three stages a given step belongs to (ticket 65: "a progress indicator for the
+ * steps"). The selection tree's exact length varies per bootstrap (identify/individual/custom are each skippable),
+ * so the indicator tracks three fixed, always-meaningful stages rather than a step count that would jump around. */
+function progressStage(step: Step): 1 | 2 | 3 | null {
+  switch (step.kind) {
+    case "idle":
+    case "empty":
+      return null;
+    case "confirm":
+      return 2;
+    case "issuing":
+    case "error":
+    case "result":
+      return 3;
+    default:
+      return 1;
+  }
+}
+
+function ProgressIndicator({ stage }: { stage: 1 | 2 | 3 }) {
+  const { t } = useI18n();
+  const stages: { n: 1 | 2 | 3; label: string }[] = [
+    { n: 1, label: t("kiosk.progress.choose") },
+    { n: 2, label: t("kiosk.progress.confirm") },
+    { n: 3, label: t("kiosk.progress.token") },
+  ];
+  return (
+    <ol className="mx-auto flex w-full max-w-xl list-none gap-2 p-0" aria-label={t("kiosk.progress.label")}>
+      {stages.map((s) => (
+        <li
+          key={s.n}
+          aria-current={s.n === stage ? "step" : undefined}
+          className={cn(
+            "flex-1 rounded-full px-3 py-1.5 text-center text-sm font-semibold text-large:text-base",
+            s.n === stage ? "bg-primary text-primary-fg" : s.n < stage ? "bg-primary/30 text-fg" : "bg-surface-muted text-fg-muted",
+          )}
+        >
+          {s.label}
+        </li>
+      ))}
+    </ol>
+  );
+}
+
+/** Logo (if configured) plus the org or site name, brand-coloured (ticket 65). Shown once, above every screen. */
+function BrandHeader({ bootstrap }: { bootstrap: DeviceBootstrap }) {
+  const { t } = useI18n();
+  const name = bootstrap.branding.org_name ?? bootstrap.branding.site_name;
+  return (
+    <div className="flex items-center justify-center gap-3">
+      {bootstrap.branding.logo_url && (
+        <img src={bootstrap.branding.logo_url} alt={t("kiosk.printSlip.logoAlt", { org: name })} className="max-h-12 max-w-28 object-contain" />
+      )}
+      <span className="text-lg font-semibold text-primary text-large:text-xl">{name}</span>
+    </div>
+  );
+}
+
+/** Every touch target on the flow is at least 64px tall (NFR-USA-003, FR-ISS-017); high-contrast adds a visible
+ * border since colour alone stops being the only cue, and large-text grows both the box and the type further. */
+const TILE_BASE =
+  "flex min-h-[4rem] min-w-[3rem] items-center justify-center rounded-lg border border-border bg-surface px-6 py-4 text-center text-xl font-semibold text-fg shadow-sm motion-safe:transition-colors hover:bg-surface-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:cursor-not-allowed disabled:opacity-60 contrast-high:border-2 text-large:min-h-[5rem] text-large:text-2xl";
+const TILE_LANG = "min-h-[6rem] text-3xl text-large:min-h-[7rem]";
+const TILE_PRIMARY = "min-h-[5.5rem] bg-primary text-2xl text-primary-fg hover:bg-primary-hover active:bg-primary-active text-large:min-h-[6.5rem]";
+const TILE_SECONDARY = "border-primary bg-transparent text-primary hover:bg-primary/10";
+
+function Tile({ className, type = "button", ...props }: ButtonHTMLAttributes<HTMLButtonElement>) {
+  return <button type={type} className={cn(TILE_BASE, className)} {...props} />;
+}
+
+function TileGrid({ children }: { children: ReactNode }) {
+  return <div className="grid w-full max-w-3xl grid-cols-[repeat(auto-fill,minmax(200px,1fr))] gap-4">{children}</div>;
+}
+
+function Screen({ children }: { children: ReactNode }) {
+  return <div className="flex flex-1 flex-col items-center justify-center gap-6 text-center text-large:text-lg">{children}</div>;
 }
 
 function KioskFlowInner({ bootstrap, client, printer, inactivityTimeoutMs, languageOverride, setLanguageOverride }: InnerProps) {
@@ -451,17 +541,34 @@ function KioskFlowInner({ bootstrap, client, printer, inactivityTimeoutMs, langu
     void issue(current.selection, current.idempotencyKey);
   }
 
-  // The organisation's primary colour (ticket 27, FR-CFG-030) overrides the kiosk's own accent everywhere `--qms-color-primary`
-  // is used (buttons, the active language toggle), high-contrast mode's own palette excepted (it overrides this var itself).
-  const brandStyle = bootstrap.branding.primary_color ? { ["--qms-color-primary" as string]: bootstrap.branding.primary_color } : undefined;
+  // The organisation's primary colour (ticket 27, FR-CFG-030) overrides the kiosk's own accent everywhere `bg-primary`/
+  // `text-primary` is used (tiles, the progress indicator, the brand header), high-contrast mode's own palette
+  // excepted: it is set as an attribute-selector rule on this same element, so it always beats this inline style —
+  // see theme.css.
+  const brand = bootstrap.branding.primary_color ? deriveBrandColors(bootstrap.branding.primary_color) : null;
+  const brandStyle = brand
+    ? ({
+        ["--qms-raw-primary" as string]: brand.primary,
+        ["--qms-raw-primary-hover" as string]: brand.primaryHover,
+        ["--qms-raw-primary-active" as string]: brand.primaryActive,
+        ["--qms-raw-primary-fg" as string]: brand.primaryFg,
+      } as CSSProperties)
+    : undefined;
+
+  const stage = progressStage(step);
 
   return (
-    <div
-      className={`qms-kiosk${accessibility.largeText ? " qms-kiosk--large-text" : ""}`}
+    <main
+      className="flex min-h-dvh flex-col gap-4 bg-surface-muted p-6 text-fg"
       data-contrast={accessibility.highContrast ? "high" : "normal"}
+      data-text={accessibility.largeText ? "large" : "normal"}
       style={brandStyle}
     >
-      <AccessibilityBar prefs={accessibility} onChange={(next) => { setAccessibility(next); saveAccessibilityPrefs(next); }} />
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <BrandHeader bootstrap={bootstrap} />
+        <AccessibilityBar prefs={accessibility} onChange={(next) => { setAccessibility(next); saveAccessibilityPrefs(next); }} />
+      </div>
+      {stage && <ProgressIndicator stage={stage} />}
       {step.kind === "idle" && <IdleScreen languages={bootstrap.languages} onStart={leaveIdle} />}
       {step.kind === "empty" && <EmptyScreen onBack={goIdle} />}
       {step.kind === "group" && <GroupScreen groups={groups} onPick={pickGroup} onBack={goIdle} />}
@@ -506,7 +613,7 @@ function KioskFlowInner({ bootstrap, client, printer, inactivityTimeoutMs, langu
       {step.kind === "result" && (
         <ResultScreen ticket={step.ticket} selection={step.selection} bootstrap={bootstrap} printFailed={step.printFailed} onDone={goIdle} />
       )}
-    </div>
+    </main>
   );
 }
 
@@ -517,23 +624,23 @@ function localisedApiError(cause: ApiRequestError, language: string, t: (key: st
 function AccessibilityBar({ prefs, onChange }: { prefs: AccessibilityPrefs; onChange: (next: AccessibilityPrefs) => void }) {
   const { t } = useI18n();
   return (
-    <div className="qms-kiosk-a11y-bar">
-      <button
+    <div className="flex justify-end gap-2">
+      <Button
         type="button"
-        className="qms-kiosk-tile qms-kiosk-a11y-toggle"
+        variant={prefs.highContrast ? "primary" : "secondary"}
         aria-pressed={prefs.highContrast}
         onClick={() => onChange({ ...prefs, highContrast: !prefs.highContrast })}
       >
         {t("kiosk.accessibility.highContrast")}
-      </button>
-      <button
+      </Button>
+      <Button
         type="button"
-        className="qms-kiosk-tile qms-kiosk-a11y-toggle"
+        variant={prefs.largeText ? "primary" : "secondary"}
         aria-pressed={prefs.largeText}
         onClick={() => onChange({ ...prefs, largeText: !prefs.largeText })}
       >
         {t("kiosk.accessibility.largeText")}
-      </button>
+      </Button>
     </div>
   );
 }
@@ -541,75 +648,73 @@ function AccessibilityBar({ prefs, onChange }: { prefs: AccessibilityPrefs; onCh
 function IdleScreen({ languages, onStart }: { languages: string[]; onStart: (language: string | null) => void }) {
   const { t } = useI18n();
   return (
-    <div className="qms-kiosk-screen qms-kiosk-idle">
-      <h1 className="qms-heading">{t("kiosk.idle.title")}</h1>
+    <Screen>
+      <h1 className="text-3xl font-bold text-large:text-4xl">{t("kiosk.idle.title")}</h1>
       {languages.length > 1 ? (
         <>
-          <p className="qms-muted">{t("kiosk.idle.chooseLanguage")}</p>
-          <div className="qms-kiosk-grid">
+          <p className="text-fg-muted">{t("kiosk.idle.chooseLanguage")}</p>
+          <TileGrid>
             {languages.map((code) => (
-              <button key={code} type="button" className="qms-kiosk-tile qms-kiosk-tile--lang" onClick={() => onStart(code)}>
+              <Tile key={code} className={TILE_LANG} onClick={() => onStart(code)}>
                 {t(`kiosk.language.native.${code}`)}
-              </button>
+              </Tile>
             ))}
-          </div>
+          </TileGrid>
         </>
       ) : (
-        <button type="button" className="qms-kiosk-tile qms-kiosk-tile--lang" onClick={() => onStart(null)}>
+        <Tile className={TILE_LANG} onClick={() => onStart(null)}>
           {t("kiosk.idle.tapToStart")}
-        </button>
+        </Tile>
       )}
-    </div>
+    </Screen>
   );
 }
 
 function EmptyScreen({ onBack }: { onBack: () => void }) {
   const { t } = useI18n();
   return (
-    <div className="qms-kiosk-screen">
-      <p className="qms-muted">{t("kiosk.group.empty")}</p>
-      <button type="button" className="qms-button qms-kiosk-tile" onClick={onBack}>
-        {t("kiosk.back")}
-      </button>
-    </div>
+    <Screen>
+      <p className="text-fg-muted">{t("kiosk.group.empty")}</p>
+      <Tile onClick={onBack}>{t("kiosk.back")}</Tile>
+    </Screen>
   );
 }
 
 function GroupScreen({ groups, onPick, onBack }: { groups: GroupVM[]; onPick: (id: string) => void; onBack: () => void }) {
   const { t } = useI18n();
   return (
-    <div className="qms-kiosk-screen">
-      <h1 className="qms-heading">{t("kiosk.group.title")}</h1>
-      <div className="qms-kiosk-grid">
+    <Screen>
+      <h1 className="text-3xl font-bold text-large:text-4xl">{t("kiosk.group.title")}</h1>
+      <TileGrid>
         {groups.map((group) => (
-          <button key={group.id} type="button" className="qms-kiosk-tile" onClick={() => onPick(group.id)}>
+          <Tile key={group.id} onClick={() => onPick(group.id)}>
             {group.name}
-          </button>
+          </Tile>
         ))}
-      </div>
-      <button type="button" className="qms-button qms-button--secondary qms-kiosk-tile" onClick={onBack}>
+      </TileGrid>
+      <Tile className={TILE_SECONDARY} onClick={onBack}>
         {t("kiosk.back")}
-      </button>
-    </div>
+      </Tile>
+    </Screen>
   );
 }
 
 function ServiceScreen({ group, onPick, onBack }: { group: GroupVM | undefined; onPick: (id: string) => void; onBack: () => void }) {
   const { t } = useI18n();
   return (
-    <div className="qms-kiosk-screen">
-      <h1 className="qms-heading">{t("kiosk.service.title")}</h1>
-      <div className="qms-kiosk-grid">
+    <Screen>
+      <h1 className="text-3xl font-bold text-large:text-4xl">{t("kiosk.service.title")}</h1>
+      <TileGrid>
         {group?.services.map((service) => (
-          <button key={service.id} type="button" className="qms-kiosk-tile" onClick={() => onPick(service.id)}>
+          <Tile key={service.id} onClick={() => onPick(service.id)}>
             {service.name}
-          </button>
+          </Tile>
         ))}
-      </div>
-      <button type="button" className="qms-button qms-button--secondary qms-kiosk-tile" onClick={onBack}>
+      </TileGrid>
+      <Tile className={TILE_SECONDARY} onClick={onBack}>
         {t("kiosk.back")}
-      </button>
-    </div>
+      </Tile>
+    </Screen>
   );
 }
 
@@ -630,31 +735,19 @@ function IdentifyScreen({
   const { t } = useI18n();
   const canScan = useMemo(() => qrScanningSupported(), []);
   return (
-    <div className="qms-kiosk-screen">
-      <h1 className="qms-heading">{t("kiosk.identify.title")}</h1>
-      <p className="qms-muted">{t(mandatory ? "kiosk.identify.mandatoryPrompt" : "kiosk.identify.optionalPrompt")}</p>
-      <div className="qms-kiosk-grid">
-        <button type="button" className="qms-kiosk-tile" onClick={() => onEnter("code")}>
-          {t("kiosk.identify.byCode")}
-        </button>
-        <button type="button" className="qms-kiosk-tile" onClick={() => onEnter("phone")}>
-          {t("kiosk.identify.byPhone")}
-        </button>
-        {canScan && (
-          <button type="button" className="qms-kiosk-tile" onClick={onScan}>
-            {t("kiosk.identify.byQr")}
-          </button>
-        )}
-      </div>
-      {!mandatory && (
-        <button type="button" className="qms-button qms-kiosk-tile" onClick={onSkip}>
-          {t("kiosk.identify.skip")}
-        </button>
-      )}
-      <button type="button" className="qms-button qms-button--secondary qms-kiosk-tile" onClick={onBack}>
+    <Screen>
+      <h1 className="text-3xl font-bold text-large:text-4xl">{t("kiosk.identify.title")}</h1>
+      <p className="text-fg-muted">{t(mandatory ? "kiosk.identify.mandatoryPrompt" : "kiosk.identify.optionalPrompt")}</p>
+      <TileGrid>
+        <Tile onClick={() => onEnter("code")}>{t("kiosk.identify.byCode")}</Tile>
+        <Tile onClick={() => onEnter("phone")}>{t("kiosk.identify.byPhone")}</Tile>
+        {canScan && <Tile onClick={onScan}>{t("kiosk.identify.byQr")}</Tile>}
+      </TileGrid>
+      {!mandatory && <Tile onClick={onSkip}>{t("kiosk.identify.skip")}</Tile>}
+      <Tile className={TILE_SECONDARY} onClick={onBack}>
         {t("kiosk.back")}
-      </button>
-    </div>
+      </Tile>
+    </Screen>
   );
 }
 
@@ -697,27 +790,27 @@ function IdentifyEnterScreen({
   }
 
   return (
-    <div className="qms-kiosk-screen">
-      <h1 className="qms-heading">{t(method === "code" ? "kiosk.identify.byCode" : "kiosk.identify.byPhone")}</h1>
-      <form onSubmit={submit} className="qms-stack">
+    <Screen>
+      <h1 className="text-3xl font-bold text-large:text-4xl">{t(method === "code" ? "kiosk.identify.byCode" : "kiosk.identify.byPhone")}</h1>
+      <form onSubmit={submit} className="flex w-full max-w-md flex-col gap-4">
         <TextField
           id="kiosk-identify-value"
           label={t(method === "code" ? "kiosk.identify.codeLabel" : "kiosk.identify.phoneLabel")}
-          className="qms-kiosk-input"
+          className="w-full"
           value={value}
           onChange={(e) => setValue(e.target.value)}
           inputMode={method === "phone" ? "tel" : "text"}
           autoFocus
         />
         {error && <ErrorAlert>{error}</ErrorAlert>}
-        <button type="submit" className="qms-button qms-kiosk-tile qms-kiosk-tile--primary" disabled={busy || !value.trim()}>
+        <Tile className={TILE_PRIMARY} type="submit" disabled={busy || !value.trim()}>
           {t(busy ? "kiosk.identify.lookingUp" : "kiosk.identify.submit")}
-        </button>
+        </Tile>
       </form>
-      <button type="button" className="qms-button qms-button--secondary qms-kiosk-tile" onClick={onBack}>
+      <Tile className={TILE_SECONDARY} onClick={onBack}>
         {t("kiosk.back")}
-      </button>
-    </div>
+      </Tile>
+    </Screen>
   );
 }
 
@@ -794,15 +887,15 @@ function IdentifyScanScreen({
   }, [client, onFound, t]);
 
   return (
-    <div className="qms-kiosk-screen">
-      <h1 className="qms-heading">{t("kiosk.identify.scanTitle")}</h1>
+    <Screen>
+      <h1 className="text-3xl font-bold text-large:text-4xl">{t("kiosk.identify.scanTitle")}</h1>
       {/* eslint-disable-next-line jsx-a11y/media-has-caption -- a live camera preview, not recorded media */}
-      <video ref={videoRef} className="qms-kiosk-scan-video" muted playsInline aria-hidden="true" />
+      <video ref={videoRef} className="mx-auto aspect-square w-[min(90vw,24rem)] rounded-lg bg-black object-cover" muted playsInline aria-hidden="true" />
       {error && <ErrorAlert>{error}</ErrorAlert>}
-      <button type="button" className="qms-button qms-button--secondary qms-kiosk-tile" onClick={onCancel}>
+      <Tile className={TILE_SECONDARY} onClick={onCancel}>
         {t("kiosk.back")}
-      </button>
-    </div>
+      </Tile>
+    </Screen>
   );
 }
 
@@ -817,23 +910,21 @@ function IndividualScreen({
 }) {
   const { t } = useI18n();
   return (
-    <div className="qms-kiosk-screen">
-      <h1 className="qms-heading">{t("kiosk.individual.title")}</h1>
-      <div className="qms-kiosk-grid">
-        <button type="button" className="qms-kiosk-tile" onClick={() => onPick(null)}>
-          {t("kiosk.individual.anyone")}
-        </button>
+    <Screen>
+      <h1 className="text-3xl font-bold text-large:text-4xl">{t("kiosk.individual.title")}</h1>
+      <TileGrid>
+        <Tile onClick={() => onPick(null)}>{t("kiosk.individual.anyone")}</Tile>
         {agents.map((agent) => (
-          <button key={agent.agent_id} type="button" className="qms-kiosk-tile" onClick={() => onPick(agent)}>
+          <Tile key={agent.agent_id} onClick={() => onPick(agent)}>
             {agent.name}
-            {agent.queue_longer_than_group && <span className="qms-kiosk-warning"> — {t("kiosk.individual.queueWarning")}</span>}
-          </button>
+            {agent.queue_longer_than_group && <span className="text-danger text-[0.85em]"> — {t("kiosk.individual.queueWarning")}</span>}
+          </Tile>
         ))}
-      </div>
-      <button type="button" className="qms-button qms-button--secondary qms-kiosk-tile" onClick={onBack}>
+      </TileGrid>
+      <Tile className={TILE_SECONDARY} onClick={onBack}>
         {t("kiosk.back")}
-      </button>
-    </div>
+      </Tile>
+    </Screen>
   );
 }
 
@@ -848,21 +939,19 @@ function CustomLevelScreen({
 }) {
   const { t } = useI18n();
   return (
-    <div className="qms-kiosk-screen">
-      <div className="qms-kiosk-grid">
+    <Screen>
+      <TileGrid>
         {options.map((option) => (
-          <button key={option.id} type="button" className="qms-kiosk-tile" onClick={() => onPick(option)}>
+          <Tile key={option.id} onClick={() => onPick(option)}>
             {option.name}
-          </button>
+          </Tile>
         ))}
-      </div>
-      <button type="button" className="qms-button qms-kiosk-tile" onClick={() => onPick(null)}>
-        {t("kiosk.custom.skip")}
-      </button>
-      <button type="button" className="qms-button qms-button--secondary qms-kiosk-tile" onClick={onBack}>
+      </TileGrid>
+      <Tile onClick={() => onPick(null)}>{t("kiosk.custom.skip")}</Tile>
+      <Tile className={TILE_SECONDARY} onClick={onBack}>
         {t("kiosk.back")}
-      </button>
-    </div>
+      </Tile>
+    </Screen>
   );
 }
 
@@ -877,58 +966,60 @@ function ConfirmScreen({
 }) {
   const { t } = useI18n();
   return (
-    <div className="qms-kiosk-screen">
-      <h1 className="qms-heading">{t("kiosk.confirm.title")}</h1>
-      <p>
-        {t("kiosk.confirm.groupLabel")}: {selection.groupName}
-      </p>
-      <p>
-        {t("kiosk.confirm.serviceLabel")}: {selection.serviceName}
-      </p>
-      {selection.visitorName && (
+    <Screen>
+      <h1 className="text-3xl font-bold text-large:text-4xl">{t("kiosk.confirm.title")}</h1>
+      <div className="flex flex-col gap-1 text-lg text-large:text-xl">
         <p>
-          {t("kiosk.confirm.visitorLabel")}: {selection.visitorName}
-          {selection.visitorCategory ? ` (${selection.visitorCategory})` : ""}
+          {t("kiosk.confirm.groupLabel")}: {selection.groupName}
         </p>
-      )}
-      {selection.agentName && (
         <p>
-          {t("kiosk.confirm.agentLabel")}: {selection.agentName}
+          {t("kiosk.confirm.serviceLabel")}: {selection.serviceName}
         </p>
-      )}
-      {selection.customLevelName && <p>{selection.customLevelName}</p>}
-      <button type="button" className="qms-button qms-kiosk-tile qms-kiosk-tile--primary" onClick={onConfirm}>
+        {selection.visitorName && (
+          <p>
+            {t("kiosk.confirm.visitorLabel")}: {selection.visitorName}
+            {selection.visitorCategory ? ` (${selection.visitorCategory})` : ""}
+          </p>
+        )}
+        {selection.agentName && (
+          <p>
+            {t("kiosk.confirm.agentLabel")}: {selection.agentName}
+          </p>
+        )}
+        {selection.customLevelName && <p>{selection.customLevelName}</p>}
+      </div>
+      <Tile className={TILE_PRIMARY} onClick={onConfirm}>
         {t("kiosk.confirm.print")}
-      </button>
-      <button type="button" className="qms-button qms-button--secondary qms-kiosk-tile" onClick={onBack}>
+      </Tile>
+      <Tile className={TILE_SECONDARY} onClick={onBack}>
         {t("kiosk.back")}
-      </button>
-    </div>
+      </Tile>
+    </Screen>
   );
 }
 
 function IssuingScreen() {
   const { t } = useI18n();
   return (
-    <div className="qms-kiosk-screen" role="status">
-      <p>{t("kiosk.confirm.issuing")}</p>
-    </div>
+    <Screen>
+      <p role="status" className="text-xl">
+        {t("kiosk.confirm.issuing")}
+      </p>
+    </Screen>
   );
 }
 
 function ErrorScreen({ message, onRetry, onStartOver }: { message: string; onRetry: () => void; onStartOver: () => void }) {
   const { t } = useI18n();
   return (
-    <div className="qms-kiosk-screen">
-      <h1 className="qms-heading">{t("kiosk.error.title")}</h1>
+    <Screen>
+      <h1 className="text-3xl font-bold text-large:text-4xl">{t("kiosk.error.title")}</h1>
       <ErrorAlert>{message}</ErrorAlert>
-      <button type="button" className="qms-button qms-kiosk-tile" onClick={onRetry}>
-        {t("kiosk.error.tryAgain")}
-      </button>
-      <button type="button" className="qms-button qms-button--secondary qms-kiosk-tile" onClick={onStartOver}>
+      <Tile onClick={onRetry}>{t("kiosk.error.tryAgain")}</Tile>
+      <Tile className={TILE_SECONDARY} onClick={onStartOver}>
         {t("kiosk.error.startOver")}
-      </button>
-    </div>
+      </Tile>
+    </Screen>
   );
 }
 
@@ -952,9 +1043,9 @@ function ResultScreen({
   const token = formatToken(ticket.token_number);
   const payload = useMemo(() => printPayloadFor(ticket, selection, bootstrap), [ticket, selection, bootstrap]);
   return (
-    <div className="qms-kiosk-screen">
-      <h1 className="qms-heading">{t(printFailed ? "kiosk.result.printFailedTitle" : "kiosk.result.printedTitle")}</h1>
-      <p className="qms-token">{token}</p>
+    <Screen>
+      <h1 className="text-3xl font-bold text-large:text-4xl">{t(printFailed ? "kiosk.result.printFailedTitle" : "kiosk.result.printedTitle")}</h1>
+      <p className="text-[3rem] font-bold tracking-wide tabular-nums text-large:text-[4.5rem]">{token}</p>
       {printFailed && (
         <>
           <p>{t("kiosk.result.printFailedBody")}</p>
@@ -962,13 +1053,11 @@ function ResultScreen({
         </>
       )}
       {!printFailed && <p>{t("kiosk.result.printedBody", { token })}</p>}
-      <button type="button" className="qms-button qms-kiosk-tile" onClick={onDone}>
-        {t("kiosk.result.done")}
-      </button>
+      <Tile onClick={onDone}>{t("kiosk.result.done")}</Tile>
       {/* The actual printed token (ticket 27, FR-CFG-030..031): invisible on screen, the only thing `window.print()` shows. */}
       <div className="qms-print-slip" aria-hidden="true">
         <PrintSlip payload={payload} />
       </div>
-    </div>
+    </Screen>
   );
 }

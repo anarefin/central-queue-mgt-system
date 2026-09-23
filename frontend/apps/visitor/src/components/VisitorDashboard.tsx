@@ -65,17 +65,17 @@ export function VisitorDashboard() {
   return (
     <>
       <Card>
-        <h1 className="qms-heading">{t("account.title")}</h1>
-        {me && <p className="qms-muted">{t("account.signedInAs", { email: me.email })}</p>}
+        <h1 className="text-2xl font-semibold text-fg">{t("account.title")}</h1>
+        {me && <p className="text-fg-muted">{t("account.signedInAs", { email: me.email })}</p>}
         {error && <ErrorAlert>{error}</ErrorAlert>}
-        <Button variant="secondary" onClick={() => void logout()}>
+        <Button className="w-full" variant="secondary" onClick={() => void logout()}>
           {t("account.signOut")}
         </Button>
       </Card>
 
       <Card>
-        <h2 className="qms-heading">{t("account.tickets.title")}</h2>
-        {tickets && tickets.length === 0 && <p className="qms-muted">{t("account.tickets.empty")}</p>}
+        <h2 className="text-lg font-semibold text-fg">{t("account.tickets.title")}</h2>
+        {tickets && tickets.length === 0 && <p className="text-fg-muted">{t("account.tickets.empty")}</p>}
         {tickets?.map((ticket) => (
           <p key={ticket.id}>
             {ticket.token_number} · {localisedName(ticket.service_names, language)} · {ticket.site_name} · {t(`visitor.state.${ticket.state}`)}
@@ -84,20 +84,20 @@ export function VisitorDashboard() {
       </Card>
 
       <Card>
-        <h2 className="qms-heading">{t("account.appointments.title")}</h2>
-        {appointments && appointments.length === 0 && <p className="qms-muted">{t("account.appointments.empty")}</p>}
+        <h2 className="text-lg font-semibold text-fg">{t("account.appointments.title")}</h2>
+        {appointments && appointments.length === 0 && <p className="text-fg-muted">{t("account.appointments.empty")}</p>}
         {appointments?.map((appointment) => (
-          <div key={appointment.id} className="qms-stack">
+          <div key={appointment.id} className="flex flex-col gap-4">
             <p>
               {appointment.reference_code} · {localisedName(appointment.service_names, language)} · {appointment.site_name} · {appointment.date} {appointment.start}
               –{appointment.end} · {appointment.state}
             </p>
             {CANCELLABLE_APPOINTMENT_STATES.has(appointment.state) && (
-              <div className="qms-stack">
-                <Button variant="secondary" onClick={() => setRescheduling(rescheduling === appointment.id ? null : appointment.id)}>
+              <div className="flex flex-col gap-2">
+                <Button className="w-full" variant="secondary" onClick={() => setRescheduling(rescheduling === appointment.id ? null : appointment.id)}>
                   {t("account.appointments.reschedule")}
                 </Button>
-                <Button variant="secondary" onClick={() => void cancelAppointment(appointment.id)}>
+                <Button className="w-full" variant="secondary" onClick={() => void cancelAppointment(appointment.id)}>
                   {t("account.appointments.cancel")}
                 </Button>
                 {rescheduling === appointment.id && (
@@ -117,15 +117,15 @@ export function VisitorDashboard() {
       </Card>
 
       <Card>
-        <h2 className="qms-heading">{t("account.sites.title")}</h2>
-        {sites && sites.length === 0 && <p className="qms-muted">{t("account.sites.empty")}</p>}
+        <h2 className="text-lg font-semibold text-fg">{t("account.sites.title")}</h2>
+        {sites && sites.length === 0 && <p className="text-fg-muted">{t("account.sites.empty")}</p>}
         {sites?.map((site) => (
-          <p key={site.site_id}>
-            {site.site_name}{" "}
+          <div key={site.site_id} className="flex items-center justify-between gap-2">
+            <p>{site.site_name}</p>
             <Button variant="secondary" onClick={() => void removeSite(site.site_id)}>
               {t("account.sites.remove")}
             </Button>
-          </p>
+          </div>
         ))}
       </Card>
     </>
@@ -157,7 +157,7 @@ function RescheduleForm({ appointmentId, onDone, onCancel }: { appointmentId: st
 
   return (
     <Card>
-      <h3 className="qms-heading">{t("account.appointments.rescheduleTitle")}</h3>
+      <h3 className="text-lg font-semibold text-fg">{t("account.appointments.rescheduleTitle")}</h3>
       <TextField id={`reschedule-date-${appointmentId}`} label={t("account.appointments.date")} type="date" value={date} onChange={(e) => setDate(e.target.value)} required />
       <TextField
         id={`reschedule-start-${appointmentId}`}
@@ -169,10 +169,10 @@ function RescheduleForm({ appointmentId, onDone, onCancel }: { appointmentId: st
       />
       <TextField id={`reschedule-end-${appointmentId}`} label={t("account.appointments.end")} type="time" value={end} onChange={(e) => setEnd(e.target.value)} required />
       {error && <ErrorAlert>{error}</ErrorAlert>}
-      <Button onClick={() => void submit()} disabled={pending || !date || !start || !end}>
+      <Button className="w-full" onClick={() => void submit()} disabled={pending || !date || !start || !end}>
         {pending ? t("account.appointments.saving") : t("account.appointments.save")}
       </Button>
-      <Button variant="secondary" onClick={onCancel} disabled={pending}>
+      <Button className="w-full" variant="secondary" onClick={onCancel} disabled={pending}>
         {t("account.appointments.close")}
       </Button>
     </Card>

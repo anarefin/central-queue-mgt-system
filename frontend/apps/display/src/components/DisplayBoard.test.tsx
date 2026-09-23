@@ -147,8 +147,8 @@ describe("DisplayBoard (ticket 30, FR-DSP-003)", () => {
 
     expect(await screen.findByText("A-001")).toBeInTheDocument();
     expect(screen.getByText("Please wear a mask")).toBeInTheDocument();
-    const panes = document.querySelector(".qms-split-media-panes") as HTMLElement;
-    expect(panes.style.getPropertyValue("--qms-split-percent")).toBe("35");
+    const pane = screen.getByTestId("split-media-serving");
+    expect(pane.style.flexBasis).toBe("35%");
   });
 
   it("split_media's notice panel shows an empty message with no active notices", async () => {

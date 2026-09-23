@@ -31,8 +31,8 @@ export function NoticePanel({ notices, language }: { notices: DisplayNotice[]; l
 
   if (notices.length === 0) {
     return (
-      <div className="qms-notice-panel qms-notice-panel--empty">
-        <p className="qms-muted">{t("display.notices.empty")}</p>
+      <div className="flex h-full items-center justify-center overflow-hidden rounded-lg bg-surface-muted">
+        <p className="text-fg-muted">{t("display.notices.empty")}</p>
       </div>
     );
   }
@@ -41,13 +41,13 @@ export function NoticePanel({ notices, language }: { notices: DisplayNotice[]; l
   const content = localised(notice.content_i18n, language) ?? "";
 
   return (
-    <div className="qms-notice-panel" aria-label={t("display.notices.label")}>
-      {notice.type === "image" && content && <img className="qms-notice-panel-image" src={content} alt="" />}
+    <div className="flex h-full items-center justify-center overflow-hidden rounded-lg bg-surface-muted" aria-label={t("display.notices.label")}>
+      {notice.type === "image" && content && <img className="max-h-full max-w-full object-contain" src={content} alt="" />}
       {notice.type === "video" && content && (
         // eslint-disable-next-line jsx-a11y/media-has-caption -- notice-board media is decorative signage, not narrated content
-        <video className="qms-notice-panel-video" src={content} autoPlay muted loop playsInline />
+        <video className="max-h-full max-w-full object-contain" src={content} autoPlay muted loop playsInline />
       )}
-      {notice.type === "rich_text" && <p className="qms-notice-panel-text">{content}</p>}
+      {notice.type === "rich_text" && <p className="whitespace-pre-wrap p-8 text-center text-2xl">{content}</p>}
     </div>
   );
 }

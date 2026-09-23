@@ -47,13 +47,13 @@ export function PushOptIn({ ticketId, credential }: { ticketId: string; credenti
   }
 
   if (isIos() && !isStandalone()) {
-    return <p className="qms-muted">{t("visitor.push.iosInstallHint")}</p>;
+    return <p className="text-fg-muted">{t("visitor.push.iosInstallHint")}</p>;
   }
 
   if (!pushSupported()) return null;
 
   if (state === "subscribed") {
-    return <p className="qms-muted">{t("visitor.push.enabled")}</p>;
+    return <p className="text-fg-muted">{t("visitor.push.enabled")}</p>;
   }
 
   return (
@@ -69,7 +69,7 @@ export function PushOptIn({ ticketId, credential }: { ticketId: string; credenti
           )}
         </ErrorAlert>
       )}
-      <Button variant="secondary" onClick={() => void enable()} disabled={state === "subscribing"}>
+      <Button className="w-full" variant="secondary" onClick={() => void enable()} disabled={state === "subscribing"}>
         {state === "subscribing" ? t("visitor.push.subscribing") : t("visitor.push.enable")}
       </Button>
     </>

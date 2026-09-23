@@ -1,4 +1,21 @@
 @import "tailwindcss";
 @import "@qms/ui/theme.css";
-@import "@qms/ui/styles.css";
-@import "./display.css";
+
+/* The newly-called/re-announced token's highlight pulse (FR-DSP-007, ticket 65): `motion-safe:animate-highlight-pulse`
+   applies this only under `prefers-reduced-motion: no-preference` (Tailwind's `motion-safe:` variant) — under
+   `reduce`, the static `bg-primary/15` on the same element is the only effect, satisfying FR-DSP-007's own reduced-
+   motion requirement with no extra JS branch. */
+@theme {
+  --animate-highlight-pulse: highlight-pulse 1s ease-in-out 2;
+}
+
+@keyframes highlight-pulse {
+  0%,
+  100% {
+    background-color: color-mix(in srgb, var(--color-primary) 32%, transparent);
+  }
+
+  50% {
+    background-color: color-mix(in srgb, var(--color-primary) 8%, transparent);
+  }
+}

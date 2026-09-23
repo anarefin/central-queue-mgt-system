@@ -20,7 +20,7 @@ export function DisplayBoard({ deviceId }: { deviceId: string }) {
   const feed = useZoneFeed(deviceId);
 
   if (feed.error && !feed.state) return <ErrorAlert>{t("nowServing.loadError")}</ErrorAlert>;
-  if (!feed.state) return <p className="qms-muted">{t("common.loading")}</p>;
+  if (!feed.state) return <p className="text-fg-muted">{t("common.loading")}</p>;
 
   switch (feed.state.layout) {
     case "split_media":

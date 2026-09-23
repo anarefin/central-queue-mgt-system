@@ -73,7 +73,7 @@ export function DevicePairing() {
   }, [realtime, client, session, status]);
 
   if (configError) return <ErrorAlert>{t("errors.network_error")}</ErrorAlert>;
-  if (!session || status === "unknown") return <p className="qms-muted">{t("common.loading")}</p>;
+  if (!session || status === "unknown") return <p className="text-fg-muted">{t("common.loading")}</p>;
   if (status === "unpaired") return <PairingForm />;
   return <PairedView bootstrap={bootstrap} bootstrapError={bootstrapError} client={client} />;
 }
@@ -102,9 +102,9 @@ function PairingForm() {
   return (
     <Page>
       <Card>
-        <h1 className="qms-heading">{t("devicePairing.title")}</h1>
-        <p className="qms-muted">{t("devicePairing.instructions")}</p>
-        <form className="qms-stack" onSubmit={submit}>
+        <h1 className="text-2xl font-semibold text-fg">{t("devicePairing.title")}</h1>
+        <p className="text-fg-muted">{t("devicePairing.instructions")}</p>
+        <form className="flex flex-col gap-4" onSubmit={submit}>
           <TextField
             id={`${id}-code`}
             label={t("devicePairing.codeLabel")}
@@ -144,17 +144,13 @@ function PairedView({
     return (
       <Page>
         <Card>
-          <p className="qms-muted">{t("devicePairing.loadingConfig")}</p>
+          <p className="text-fg-muted">{t("devicePairing.loadingConfig")}</p>
         </Card>
       </Page>
     );
   }
-  // h1 here (the site name) doubles as the loaded-bootstrap marker the pairing test looks for; the kiosk's own
-  // common-path flow (ticket 25) takes the rest of the screen, full-bleed rather than boxed in the pairing card.
-  return (
-    <>
-      <h1 className="qms-heading qms-kiosk-site-name">{bootstrap.branding.site_name}</h1>
-      <KioskFlow bootstrap={bootstrap} client={client} />
-    </>
-  );
+  // KioskFlow renders the site's own brand header (logo/org name, ticket 65) and the single `<main>` landmark for
+  // the whole flow; nothing needs to be shown around it once paired, so the site name — the loaded-bootstrap marker
+  // the pairing test looks for — appears there instead of a separate heading here.
+  return <KioskFlow bootstrap={bootstrap} client={client} />;
 }

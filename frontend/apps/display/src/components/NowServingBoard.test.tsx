@@ -183,7 +183,7 @@ describe("now-serving board (ticket 28)", () => {
       FakeWebSocket.last().open();
     });
     const row = () => screen.getByText("Desk 1").closest("tr") as HTMLElement;
-    expect(row()).not.toHaveClass("qms-now-serving-row--highlight");
+    expect(row()).not.toHaveClass("motion-safe:animate-highlight-pulse");
 
     // The hub replies to the client's `subscribe` frame with a snapshot before any delta is meaningful (§21.1);
     // the fake socket stands in for that reply so the event below is not a duplicate ahead of an unknown seq.
@@ -210,7 +210,7 @@ describe("now-serving board (ticket 28)", () => {
     });
 
     expect(await screen.findByText("A-003")).toBeInTheDocument();
-    expect(row()).toHaveClass("qms-now-serving-row--highlight");
+    expect(row()).toHaveClass("motion-safe:animate-highlight-pulse");
   });
 
   it("shows a discreet stale indicator once nothing has updated for a while, rather than showing wrong data silently (FR-DSP-011)", async () => {

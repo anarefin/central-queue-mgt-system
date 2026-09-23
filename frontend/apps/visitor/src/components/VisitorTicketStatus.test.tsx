@@ -1,4 +1,4 @@
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { json, renderVisitor, stubApi } from "../test-utils";
@@ -71,8 +71,7 @@ describe("VisitorTicketStatus", () => {
     expect(screen.queryByRole("button", { name: "Cancel my ticket" })).not.toBeInTheDocument();
   });
 
-  it("cancels the ticket after confirming, and shows it is done (FR-MOB-030)", async () => {
-    vi.stubGlobal("confirm", vi.fn().mockReturnValue(true));
+  it("cancels the ticket after confirming in the dialog, and shows it is done (FR-MOB-030)", async () => {
     stubApi({
       "GET /tickets/t1/visitor": () => json(200, VIEW),
       "POST /tickets/t1/visitor-cancel": () => json(200, { ...VIEW, state: "cancelled" }),
@@ -83,13 +82,14 @@ describe("VisitorTicketStatus", () => {
 
     const button = await screen.findByRole("button", { name: "Cancel my ticket" });
     await user.click(button);
+    const dialog = screen.getByRole("dialog", { hidden: true });
+    await user.click(within(dialog).getByRole("button", { name: "Confirm" }));
 
     await waitFor(() => expect(screen.getByText("Your ticket has been cancelled.")).toBeInTheDocument());
     expect(screen.queryByRole("button", { name: "Cancel my ticket" })).not.toBeInTheDocument();
   });
 
-  it("does not cancel when the visitor does not confirm", async () => {
-    vi.stubGlobal("confirm", vi.fn().mockReturnValue(false));
+  it("does not cancel when the visitor dismisses the confirmation dialog", async () => {
     const calls = stubApi({ "GET /tickets/t1/visitor": () => json(200, VIEW) });
     const user = userEvent.setup();
 
@@ -97,12 +97,14 @@ describe("VisitorTicketStatus", () => {
 
     const button = await screen.findByRole("button", { name: "Cancel my ticket" });
     await user.click(button);
+    const dialog = screen.getByRole("dialog", { hidden: true });
+    await user.click(within(dialog).getByRole("button", { name: "Cancel" }));
 
     expect(calls.some((c) => c.path === "/tickets/t1/visitor-cancel")).toBe(false);
+    expect(screen.getByRole("button", { name: "Cancel my ticket" })).toBeInTheDocument();
   });
 
   it("shows the specific refusal once a ticket has already been called by the time cancel is sent", async () => {
-    vi.stubGlobal("confirm", vi.fn().mockReturnValue(true));
     stubApi({
       "GET /tickets/t1/visitor": () => json(200, VIEW),
       "POST /tickets/t1/visitor-cancel": () =>
@@ -114,6 +116,8 @@ describe("VisitorTicketStatus", () => {
 
     const button = await screen.findByRole("button", { name: "Cancel my ticket" });
     await user.click(button);
+    const dialog = screen.getByRole("dialog", { hidden: true });
+    await user.click(within(dialog).getByRole("button", { name: "Confirm" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "This ticket can no longer be cancelled: it has already been called or closed.",

@@ -29,7 +29,7 @@ export default function AccountPage() {
     return (
       <Page>
         <Card>
-          <p className="qms-muted">{t("common.loading")}</p>
+          <p className="text-fg-muted">{t("common.loading")}</p>
         </Card>
       </Page>
     );

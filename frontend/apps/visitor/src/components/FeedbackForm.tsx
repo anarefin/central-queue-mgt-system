@@ -59,8 +59,8 @@ export function FeedbackForm({ ticketId, credential }: { ticketId: string; crede
 
   return (
     <Card>
-      <h2 className="qms-label">{t("visitor.feedback.title")}</h2>
-      <p className="qms-muted">{t("visitor.feedback.intro")}</p>
+      <h2 className="font-semibold text-fg">{t("visitor.feedback.title")}</h2>
+      <p className="text-fg-muted">{t("visitor.feedback.intro")}</p>
       {error && <ErrorAlert>{error}</ErrorAlert>}
       <SelectField
         id="feedback-rating"
@@ -69,17 +69,23 @@ export function FeedbackForm({ ticketId, credential }: { ticketId: string; crede
         onChange={(event) => setRating(event.target.value)}
         options={[{ value: "", label: t("visitor.feedback.ratingPlaceholder") }, ...RATINGS.map((value) => ({ value, label: value }))]}
       />
-      <div>
-        <label className="qms-label" htmlFor="feedback-comment">
+      <div className="flex flex-col gap-1.5">
+        <label className="text-sm font-medium text-fg" htmlFor="feedback-comment">
           {t("visitor.feedback.commentLabel")}
         </label>
-        <textarea className="qms-input" id="feedback-comment" value={comment} onChange={(event) => setComment(event.target.value)} maxLength={2000} />
+        <textarea
+          className="min-h-24 rounded-md border border-border bg-surface px-3 py-2 text-fg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+          id="feedback-comment"
+          value={comment}
+          onChange={(event) => setComment(event.target.value)}
+          maxLength={2000}
+        />
       </div>
-      <div className="qms-row">
-        <Button type="button" onClick={() => void submit()} disabled={busy || rating === ""}>
+      <div className="flex flex-col gap-2">
+        <Button className="w-full" type="button" onClick={() => void submit()} disabled={busy || rating === ""}>
           {busy ? t("visitor.feedback.submitting") : t("visitor.feedback.submit")}
         </Button>
-        <Button type="button" variant="secondary" onClick={() => setSkipped(true)} disabled={busy}>
+        <Button className="w-full" type="button" variant="secondary" onClick={() => setSkipped(true)} disabled={busy}>
           {t("visitor.feedback.skip")}
         </Button>
       </div>

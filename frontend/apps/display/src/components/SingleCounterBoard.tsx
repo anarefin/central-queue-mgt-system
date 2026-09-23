@@ -12,7 +12,7 @@ import type { ZoneFeed } from "../lib/useZoneFeed";
  * shared zone feed {@link DisplayBoard} already loaded.
  */
 export function SingleCounterBoard({ feed: { state, stale, now, highlightUntil } }: { feed: ZoneFeed }) {
-  const { t } = useI18n();
+  const { t, formatToken } = useI18n();
   const cycle = useLanguageCycle(state?.language_cycle ?? ["en"], state?.language_cycle_seconds ?? 10);
 
   if (!state) return null;
@@ -20,21 +20,23 @@ export function SingleCounterBoard({ feed: { state, stale, now, highlightUntil }
   const counterId = state.layout_config.counter_id;
   const row = (counterId ? state.serving.find((r) => r.counter_id === counterId) : undefined) ?? state.serving[0];
 
-  if (!row) return <p className="qms-muted">{t("display.singleCounter.none")}</p>;
+  if (!row) return <p className="text-fg-muted">{t("display.singleCounter.none")}</p>;
 
   const highlighted = (highlightUntil[row.counter_id] ?? 0) > now;
   const service = cycle.sideBySide ? localisedAll(row.service_names, cycle.languages) : localised(row.service_names, cycle.language);
 
   return (
-    <div className={`qms-single-counter${highlighted ? " qms-single-counter--highlight" : ""}`}>
+    <div className="flex h-full flex-col items-center justify-center gap-4 p-6 text-center">
       {stale && (
-        <span className="qms-now-serving-stale" role="status" aria-live="polite">
+        <span className="self-start rounded-full border border-warn bg-warn-subtle px-3 py-1 text-sm text-warn" role="status" aria-live="polite">
           {t("nowServing.stale")}
         </span>
       )}
-      <div className="qms-single-counter-token">{row.token_number ?? "—"}</div>
-      <div className="qms-single-counter-label">{row.counter_label}</div>
-      {service && <div className="qms-single-counter-service">{service}</div>}
+      <div className={`text-[12rem] font-bold leading-none tabular-nums ${highlighted ? "motion-safe:animate-highlight-pulse" : ""}`}>
+        {formatToken(row.token_number ?? "—")}
+      </div>
+      <div className="text-4xl">{row.counter_label}</div>
+      {service && <div className="text-2xl text-fg-muted">{service}</div>}
     </div>
   );
 }

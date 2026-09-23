@@ -73,7 +73,7 @@ export function DevicePairing() {
   }, [realtime, client, session, status]);
 
   if (configError) return <ErrorAlert>{t("errors.network_error")}</ErrorAlert>;
-  if (!session || status === "unknown") return <p className="qms-muted">{t("common.loading")}</p>;
+  if (!session || status === "unknown") return <p className="text-fg-muted">{t("common.loading")}</p>;
   if (status === "unpaired") return <PairingForm />;
   return <PairedView bootstrap={bootstrap} bootstrapError={bootstrapError} deviceId={session.device?.id ?? null} />;
 }
@@ -102,9 +102,9 @@ function PairingForm() {
   return (
     <Page>
       <Card>
-        <h1 className="qms-heading">{t("devicePairing.title")}</h1>
-        <p className="qms-muted">{t("devicePairing.instructions")}</p>
-        <form className="qms-stack" onSubmit={submit}>
+        <h1 className="text-2xl font-semibold text-fg">{t("devicePairing.title")}</h1>
+        <p className="text-fg-muted">{t("devicePairing.instructions")}</p>
+        <form className="flex flex-col gap-4" onSubmit={submit}>
           <TextField
             id={`${id}-code`}
             label={t("devicePairing.codeLabel")}
@@ -133,7 +133,7 @@ function PairedView({
   const { t } = useI18n();
   return (
     <Page>
-      <div className="qms-stack">
+      <div className="flex flex-col gap-4">
         {bootstrapError && (
           <Card>
             <ErrorAlert>{t("devicePairing.configError")}</ErrorAlert>
@@ -141,19 +141,19 @@ function PairedView({
         )}
         {!bootstrap && !bootstrapError && (
           <Card>
-            <p className="qms-muted">{t("devicePairing.loadingConfig")}</p>
+            <p className="text-fg-muted">{t("devicePairing.loadingConfig")}</p>
           </Card>
         )}
         {bootstrap && (
-          <header className="qms-now-serving-header">
+          <header className="flex items-center gap-4">
             {bootstrap.branding.logo_url && (
               <img
-                className="qms-brand-logo"
+                className="max-h-16 max-w-32 object-contain"
                 src={bootstrap.branding.logo_url}
                 alt={t("devicePairing.logoAlt", { org: bootstrap.branding.org_name ?? bootstrap.branding.site_name })}
               />
             )}
-            <h1 className="qms-heading">{bootstrap.branding.site_name}</h1>
+            <h1 className="text-2xl font-semibold text-primary">{bootstrap.branding.site_name}</h1>
           </header>
         )}
         {/* FR-DSP-001: only a display is paired to a zone; a kiosk's bootstrap.layout is null and has no board to show. */}

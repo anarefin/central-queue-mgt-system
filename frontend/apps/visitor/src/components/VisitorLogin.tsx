@@ -60,9 +60,9 @@ export function VisitorLogin() {
   if (step === "email") {
     return (
       <Card>
-        <h1 className="qms-heading">{t("account.login.title")}</h1>
-        <p className="qms-muted">{t("account.login.intro")}</p>
-        <form className="qms-stack" onSubmit={submitEmail}>
+        <h1 className="text-2xl font-semibold text-fg">{t("account.login.title")}</h1>
+        <p className="text-fg-muted">{t("account.login.intro")}</p>
+        <form className="flex flex-col gap-4" onSubmit={submitEmail}>
           <TextField
             id="visitor-email"
             label={t("account.login.email")}
@@ -75,7 +75,7 @@ export function VisitorLogin() {
             required
           />
           {error && <ErrorAlert>{error}</ErrorAlert>}
-          <Button type="submit" disabled={pending || !email.trim()}>
+          <Button className="w-full" type="submit" disabled={pending || !email.trim()}>
             {pending ? t("account.login.sending") : t("account.login.requestCode")}
           </Button>
         </form>
@@ -85,9 +85,9 @@ export function VisitorLogin() {
 
   return (
     <Card>
-      <h1 className="qms-heading">{t("account.login.title")}</h1>
-      <p className="qms-muted">{t("account.login.codeSentIntro", { email })}</p>
-      <form className="qms-stack" onSubmit={submitCode}>
+      <h1 className="text-2xl font-semibold text-fg">{t("account.login.title")}</h1>
+      <p className="text-fg-muted">{t("account.login.codeSentIntro", { email })}</p>
+      <form className="flex flex-col gap-4" onSubmit={submitCode}>
         <TextField
           id="visitor-otp"
           label={t("account.login.code")}
@@ -98,13 +98,13 @@ export function VisitorLogin() {
           required
         />
         {error && <ErrorAlert>{error}</ErrorAlert>}
-        <Button type="submit" disabled={pending || !code.trim()}>
+        <Button className="w-full" type="submit" disabled={pending || !code.trim()}>
           {pending ? t("account.login.verifying") : t("account.login.verify")}
         </Button>
-        <Button type="button" variant="secondary" onClick={() => void resend()} disabled={pending}>
+        <Button className="w-full" type="button" variant="secondary" onClick={() => void resend()} disabled={pending}>
           {t("account.login.resend")}
         </Button>
-        <Button type="button" variant="secondary" onClick={() => setStep("email")} disabled={pending}>
+        <Button className="w-full" type="button" variant="secondary" onClick={() => setStep("email")} disabled={pending}>
           {t("account.login.changeEmail")}
         </Button>
       </form>

@@ -44,9 +44,11 @@ export default function Home() {
     return (
       <Page>
         <Card>
-          <h1 className="qms-heading">{t("app.visitor")}</h1>
+          <h1 className="text-2xl font-semibold text-fg">{t("app.visitor")}</h1>
           <ErrorAlert>{t("visitor.missingReference")}</ErrorAlert>
-          <a href={`${BASE_PATH}/account/`}>{t("visitor.accountLink")}</a>
+          <a className="text-primary underline" href={`${BASE_PATH}/account/`}>
+            {t("visitor.accountLink")}
+          </a>
         </Card>
       </Page>
     );

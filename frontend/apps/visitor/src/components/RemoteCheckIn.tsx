@@ -62,32 +62,32 @@ export function RemoteCheckIn({ ticketId, credential, qr }: { ticketId: string; 
   }
 
   return (
-    <>
+    <div className="flex flex-col gap-3">
       <p>{t("visitor.checkIn.intro")}</p>
       {checkInError && <ErrorAlert>{checkInError}</ErrorAlert>}
       {qr ? (
-        <Button onClick={() => void checkIn("qr")} disabled={checkingIn}>
+        <Button className="w-full" onClick={() => void checkIn("qr")} disabled={checkingIn}>
           {checkingIn ? t("visitor.checkIn.checking") : t("visitor.checkIn.confirmQr")}
         </Button>
       ) : (
         <>
-          <Button onClick={() => void checkIn("geofence")} disabled={checkingIn}>
+          <Button className="w-full" onClick={() => void checkIn("geofence")} disabled={checkingIn}>
             {checkingIn ? t("visitor.checkIn.checking") : t("visitor.checkIn.button")}
           </Button>
-          <p className="qms-muted">{t("visitor.checkIn.qrHint")}</p>
+          <p className="text-fg-muted">{t("visitor.checkIn.qrHint")}</p>
         </>
       )}
       {!delayed ? (
         <>
           {delayError && <ErrorAlert>{delayError}</ErrorAlert>}
-          <Button variant="secondary" onClick={() => void delay()} disabled={delaying}>
+          <Button className="w-full" variant="secondary" onClick={() => void delay()} disabled={delaying}>
             {delaying ? t("visitor.delay.delaying") : t("visitor.delay.button")}
           </Button>
         </>
       ) : (
-        <p className="qms-muted">{t("visitor.delay.done")}</p>
+        <p className="text-fg-muted">{t("visitor.delay.done")}</p>
       )}
-    </>
+    </div>
   );
 }
 

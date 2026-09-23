@@ -4,8 +4,10 @@
  * utilities read (`bg-surface`, `text-fg-muted`, `bg-primary`, ...), so a token pair only has to be written once to
  * switch both theme and brand at runtime — no `dark:` duplication per component.
  *
- * `--qms-color-*` (the pre-Tailwind names from `styles.css`) are kept as aliases onto these tokens until tickets
- * 63-65 finish migrating every app's markup, then removed in 65.
+ * The `--qms-color-*` alias block and `styles.css` itself (the pre-Tailwind names every hand-written `qms-*` class
+ * used to read) were removed in ticket 65, once admin/console/kiosk/display/visitor's markup no longer referenced
+ * them — see `--qms-raw-*` below for what is still current (the raw palette `@theme inline` maps onto Tailwind's
+ * semantic tokens) and the print-slip rules further down (a deliberately kept plain-class exception, not an alias).
  *
  * The font import comes first, before any other rule: once Tailwind concatenates every app's CSS into one file, an
  * `@import` must precede every plain rule in the whole merged file (not just its own source file) to stay valid CSS.
@@ -15,6 +17,13 @@
 @source "./";
 
 @custom-variant dark (&:where([data-theme=dark], [data-theme=dark] *));
+
+/* Kiosk accessibility modes (FR-ISS-017, ticket 65): `data-contrast="high"` and `data-text="large"` on the kiosk's
+   own flow root (not `<html>`, so the display/visitor apps are unaffected). Most utilities just read the raw tokens
+   below through the normal `bg-surface`/`text-fg`/etc. chain; these variants exist for the few utilities that need a
+   different rule entirely under either mode (touch-target sizing, token numeral size) rather than a token swap. */
+@custom-variant contrast-high (&:where([data-contrast="high"], [data-contrast="high"] *));
+@custom-variant text-large (&:where([data-text="large"], [data-text="large"] *));
 
 @theme {
   /* Neutral scale: raw steps, theme-invariant. Semantic tokens below pick which step means what per theme. */
@@ -121,6 +130,21 @@
   --qms-raw-info-subtle: #172554;
 }
 
+/* High-contrast mode (FR-ISS-017, NFR-USA-003): WCAG 2.1 AA is 4.5:1 for body text; black/white/yellow clears that
+   by a wide margin. Wins over the dark-palette block above regardless of source order, since it is scoped by an
+   attribute selector on the kiosk's own root rather than `:root`, so it always matches more specifically there. */
+[data-contrast="high"] {
+  --qms-raw-surface: #000000;
+  --qms-raw-surface-muted: #000000;
+  --qms-raw-fg: #ffffff;
+  --qms-raw-fg-muted: #ffffff;
+  --qms-raw-border: #ffffff;
+  --qms-raw-primary: #ffd60a;
+  --qms-raw-primary-hover: #e6c009;
+  --qms-raw-primary-active: #ccaa08;
+  --qms-raw-primary-fg: #000000;
+}
+
 @theme inline {
   --color-surface: var(--qms-raw-surface);
   --color-surface-muted: var(--qms-raw-surface-muted);
@@ -143,23 +167,6 @@
   --color-info-subtle: var(--qms-raw-info-subtle);
 }
 
-/* --qms-* aliases (FR-CFG-030 backward compatibility): every hand-written `qms-*` class in styles.css, kiosk.css and
-   display.css keeps working, themed and branded, through these names until 63-65 migrate their markup. */
-:root {
-  --qms-font: var(--font-sans);
-  --qms-color-bg: var(--color-surface-muted);
-  --qms-color-surface: var(--color-surface);
-  --qms-color-text: var(--color-fg);
-  --qms-color-muted: var(--color-fg-muted);
-  --qms-color-border: var(--color-border);
-  --qms-color-primary: var(--color-primary);
-  --qms-color-primary-text: var(--color-primary-fg);
-  --qms-color-ok: var(--color-ok);
-  --qms-color-warn: var(--color-warn);
-  --qms-color-danger: var(--color-danger);
-  --qms-radius: var(--radius-md);
-}
-
 /* Accessibility baseline: one focus ring for every interactive element, and motion only when the visitor allows it. */
 :where(a, button, input, select, textarea, [tabindex]):focus-visible {
   outline: 2px solid var(--color-primary);
@@ -180,7 +187,10 @@
 /*
  * The print-only-slip seam (ticket 25's kiosk token, ticket 27's admin preview/test-print, FR-CFG-032, FR-ISS-016):
  * on screen everything but `.qms-print-slip` is hidden from paper; on paper only it is visible, at the page's own
- * origin. The class definitions themselves stay in styles.css; only the `@media print` mechanism lives here.
+ * origin. This is the one plain-CSS-class exception ticket 65's Tailwind migration deliberately keeps (see each
+ * app's own `no-qms-classes` scan): it is a functional selector contract shared across apps (kiosk, admin), not a
+ * styling class, and moving it into `styles.css` would give up the one place a merged multi-app CSS build can define
+ * it once.
  */
 @media print {
   body * {
@@ -198,4 +208,18 @@
     inset-block-start: 0;
     inset-inline-start: 0;
   }
+}
+
+/* The printed token's accent bar and logo sizing (ticket 27, kept alongside the print mechanism above once
+   styles.css is retired in ticket 65): `--qms-print-accent` is set inline per print, by whichever brand colour the
+   caller has on hand (kiosk's own bootstrap, or admin's branding preview). */
+.qms-print-slip-accent {
+  block-size: 0.25rem;
+  inline-size: 100%;
+  background: var(--qms-print-accent, var(--color-primary));
+}
+
+.qms-print-slip-logo {
+  max-inline-size: 8rem;
+  max-block-size: 4rem;
 }

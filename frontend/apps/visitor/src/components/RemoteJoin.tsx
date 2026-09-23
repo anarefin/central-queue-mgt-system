@@ -111,8 +111,8 @@ export function RemoteJoin({ serviceId }: { serviceId: string }) {
     return (
       <Page>
         <Card>
-          <h1 className="qms-heading">{t("remoteJoin.title")}</h1>
-          <p className="qms-muted">{t("remoteJoin.signInFirst")}</p>
+          <h1 className="text-2xl font-semibold text-fg">{t("remoteJoin.title")}</h1>
+          <p className="text-fg-muted">{t("remoteJoin.signInFirst")}</p>
         </Card>
         <VisitorLogin />
       </Page>
@@ -133,7 +133,7 @@ export function RemoteJoin({ serviceId }: { serviceId: string }) {
     return (
       <Page>
         <Card>
-          <p className="qms-muted">{t("common.loading")}</p>
+          <p className="text-fg-muted">{t("common.loading")}</p>
         </Card>
       </Page>
     );
@@ -143,7 +143,7 @@ export function RemoteJoin({ serviceId }: { serviceId: string }) {
     return (
       <Page>
         <Card>
-          <h1 className="qms-heading">{t("remoteJoin.title")}</h1>
+          <h1 className="text-2xl font-semibold text-fg">{t("remoteJoin.title")}</h1>
           <ErrorAlert>{t("remoteJoin.refused.internet_unreachable")}</ErrorAlert>
         </Card>
       </Page>
@@ -154,7 +154,7 @@ export function RemoteJoin({ serviceId }: { serviceId: string }) {
     return (
       <Page>
         <Card>
-          <h1 className="qms-heading">{t("remoteJoin.title")}</h1>
+          <h1 className="text-2xl font-semibold text-fg">{t("remoteJoin.title")}</h1>
           <ErrorAlert>{t("remoteJoin.refused.virtual_queue_disabled")}</ErrorAlert>
         </Card>
       </Page>
@@ -164,22 +164,22 @@ export function RemoteJoin({ serviceId }: { serviceId: string }) {
   return (
     <Page>
       <Card>
-        <h1 className="qms-heading">{t("remoteJoin.title")}</h1>
+        <h1 className="text-2xl font-semibold text-fg">{t("remoteJoin.title")}</h1>
         <p>{t("remoteJoin.intro")}</p>
         {policy.max_distance_m !== null && (
-          <p className="qms-muted">{t("remoteJoin.policy.distance", { km: Math.round(policy.max_distance_m / 100) / 10 })}</p>
+          <p className="text-fg-muted">{t("remoteJoin.policy.distance", { km: Math.round(policy.max_distance_m / 100) / 10 })}</p>
         )}
-        <p className="qms-muted">{t("remoteJoin.policy.window", { minutes: policy.join_window_minutes })}</p>
+        <p className="text-fg-muted">{t("remoteJoin.policy.window", { minutes: policy.join_window_minutes })}</p>
       </Card>
 
       <Card>
-        <h2 className="qms-heading">{t("remoteJoin.forfeit.title")}</h2>
+        <h2 className="text-lg font-semibold text-fg">{t("remoteJoin.forfeit.title")}</h2>
         <p>{t("remoteJoin.forfeit.body", { minutes: policy.arrival_deadline_minutes })}</p>
       </Card>
 
       <Card>
         {joinError && <ErrorAlert>{joinError}</ErrorAlert>}
-        <Button onClick={() => void join()} disabled={joining}>
+        <Button className="w-full" onClick={() => void join()} disabled={joining}>
           {joining ? t("remoteJoin.joining") : t("remoteJoin.join")}
         </Button>
       </Card>

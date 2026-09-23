@@ -3,7 +3,7 @@ import { cn } from "./cn";
 import { encodeQrMatrix } from "./qrcode";
 
 export function Page({ children }: { children: ReactNode }) {
-  return <main className="qms-page qms-stack">{children}</main>;
+  return <main className="mx-auto flex w-full max-w-[60rem] flex-col gap-4 px-4 py-8">{children}</main>;
 }
 
 export type ButtonVariant = "primary" | "secondary" | "ghost" | "danger";
@@ -185,13 +185,29 @@ export function TextField({
 
 export type StatusKind = "up" | "down" | "not_configured";
 
+const STATUS_BADGE_CLASSES: Record<StatusKind, string> = {
+  up: "text-ok",
+  down: "text-danger",
+  not_configured: "text-warn",
+};
+
 export function StatusBadge({ status, children }: { status: StatusKind; children: ReactNode }) {
-  return <span className={`qms-badge qms-badge--${status}`}>{children}</span>;
+  return (
+    <span className={cn("inline-flex items-center rounded-full border border-current px-2.5 py-0.5 text-sm font-semibold", STATUS_BADGE_CLASSES[status])}>
+      {children}
+    </span>
+  );
 }
 
+/**
+ * The one alert component every refusal, validation and network-error message renders through across every app
+ * (ticket 65's "consistent inline alert component": remote join's ~15 refusal reasons, OTP errors, the cancel
+ * ticket_already_called refusal, and every admin/console error besides). `role="alert"` so assistive tech announces
+ * it the moment it appears, with no action required from the reader.
+ */
 export function ErrorAlert({ children }: { children: ReactNode }) {
   return (
-    <div className="qms-alert" role="alert">
+    <div className="rounded-md border-s-4 border-danger bg-danger-subtle px-4 py-3 text-sm font-medium text-danger" role="alert">
       {children}
     </div>
   );
@@ -200,7 +216,9 @@ export function ErrorAlert({ children }: { children: ReactNode }) {
 /**
  * A QR code rendered as inline SVG from {@link encodeQrMatrix} (no image, no network, no third-party package):
  * the kiosk's printer-failure fallback (FR-ISS-016) must render on-device every time. `label` is the accessible
- * name for screen readers, since the code itself conveys nothing to someone who cannot see or scan it.
+ * name for screen readers, since the code itself conveys nothing to someone who cannot see or scan it. `value` is
+ * also exposed as `data-qr-value` (ticket 65): the encoded URL itself, read directly by E2E U8 (ticket 70) rather
+ * than re-decoding the rendered matrix.
  */
 export function QrCode({ value, size = 200, label }: { value: string; size?: number; label: string }) {
   const matrix = useMemo(() => encodeQrMatrix(value), [value]);
@@ -214,7 +232,8 @@ export function QrCode({ value, size = 200, label }: { value: string; size?: num
       height={size}
       role="img"
       aria-label={label}
-      className="qms-qr"
+      data-qr-value={value}
+      className="mx-auto block rounded-md border border-border bg-white p-2"
       shapeRendering="crispEdges"
     >
       <rect x={0} y={0} width={viewSize} height={viewSize} fill="#fff" />

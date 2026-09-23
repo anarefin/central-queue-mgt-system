@@ -26,7 +26,7 @@ export default function JoinPage() {
     return (
       <Page>
         <Card>
-          <h1 className="qms-heading">{t("remoteJoin.title")}</h1>
+          <h1 className="text-2xl font-semibold text-fg">{t("remoteJoin.title")}</h1>
           <ErrorAlert>{t("remoteJoin.missingService")}</ErrorAlert>
         </Card>
       </Page>

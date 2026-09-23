@@ -2,7 +2,7 @@
 
 import { ApiRequestError } from "@qms/api-client";
 import { useI18n } from "@qms/i18n/react";
-import { Button, Card, ErrorAlert, Page, StatusBadge } from "@qms/ui";
+import { Button, Card, ConfirmDialog, ErrorAlert, Page, StatusBadge } from "@qms/ui";
 import { useEffect, useState } from "react";
 import { useApi } from "../lib/runtime";
 import { useTicketStream, type TicketStreamDeps } from "../lib/ticketStream";
@@ -43,12 +43,14 @@ export function VisitorTicketStatus({
   const [cancelling, setCancelling] = useState(false);
   const [cancelError, setCancelError] = useState<string | null>(null);
   const [cancelled, setCancelled] = useState(false);
+  const [confirmingCancel, setConfirmingCancel] = useState(false);
   const [optedOut, setOptedOut] = useState(false);
   const [optOutBusy, setOptOutBusy] = useState(false);
   const [optOutError, setOptOutError] = useState<string | null>(null);
 
   async function cancel() {
-    if (!client || !window.confirm(t("visitor.cancel.confirm"))) return;
+    setConfirmingCancel(false);
+    if (!client) return;
     setCancelling(true);
     setCancelError(null);
     try {
@@ -95,7 +97,7 @@ export function VisitorTicketStatus({
     return (
       <Page>
         <Card>
-          <h1 className="qms-heading">{t("app.visitor")}</h1>
+          <h1 className="text-2xl font-semibold text-fg">{t("app.visitor")}</h1>
           <ErrorAlert>{t("visitor.invalidOrExpired")}</ErrorAlert>
         </Card>
       </Page>
@@ -106,7 +108,7 @@ export function VisitorTicketStatus({
     return (
       <Page>
         <Card>
-          {stream.errorCode ? <ErrorAlert>{t("visitor.error.generic")}</ErrorAlert> : <p className="qms-muted">{t("visitor.loading")}</p>}
+          {stream.errorCode ? <ErrorAlert>{t("visitor.error.generic")}</ErrorAlert> : <p className="text-fg-muted">{t("visitor.loading")}</p>}
         </Card>
       </Page>
     );
@@ -117,16 +119,17 @@ export function VisitorTicketStatus({
 
   return (
     <Page>
-      <Card>
-        <h1 className="qms-heading">{formatToken(view.token_number)}</h1>
+      {/* The hero card (ticket 65): the token and queue position are the first, largest thing a visitor sees. */}
+      <Card className="items-center text-center">
         <StatusBadge status={stream.live ? "up" : "not_configured"}>
           {stream.live
             ? t("visitor.live")
             : t("visitor.lastKnownAsOf", { time: stream.lastUpdatedAt ? formatTime(stream.lastUpdatedAt) : "" })}
         </StatusBadge>
-        <p>{t(`visitor.state.${view.state}`)}</p>
-        <p>{view.position !== null ? t("visitor.position", { position: formatNumber(view.position) }) : t("visitor.positionUnknown")}</p>
-        <p>
+        <p className="text-[3.5rem] font-bold leading-none tabular-nums text-primary">{formatToken(view.token_number)}</p>
+        <p className="text-lg font-medium text-fg">{t(`visitor.state.${view.state}`)}</p>
+        <p className="text-fg-muted">{view.position !== null ? t("visitor.position", { position: formatNumber(view.position) }) : t("visitor.positionUnknown")}</p>
+        <p className="text-fg-muted">
           {view.estimated_wait_minutes
             ? t("visitor.estimatedWait", {
                 low: formatNumber(view.estimated_wait_minutes.low),
@@ -134,7 +137,7 @@ export function VisitorTicketStatus({
               })
             : t("visitor.estimatedWaitUnknown")}
         </p>
-        <p>
+        <p className="text-fg-muted">
           {view.now_serving_token_number
             ? t("visitor.nowServing", { token: formatToken(view.now_serving_token_number) })
             : t("visitor.nowServingNone")}
@@ -143,15 +146,22 @@ export function VisitorTicketStatus({
 
       {view.state === "completed" && <FeedbackForm ticketId={ticketId} credential={credential} />}
 
+      {/* The wayfinding card (ticket 65): where to go, once a zone is assigned. */}
       <Card>
         {view.zone ? (
           <>
             <p>{t("visitor.zone.floor", { floor: view.zone.floor_label })}</p>
             {view.zone.building_label && <p>{t("visitor.zone.building", { building: view.zone.building_label })}</p>}
-            {view.zone.wayfinding_image_url && <img src={view.zone.wayfinding_image_url} alt={t("visitor.wayfindingAlt")} className="qms-wayfinding" />}
+            {view.zone.wayfinding_image_url && (
+              <img
+                src={view.zone.wayfinding_image_url}
+                alt={t("visitor.wayfindingAlt")}
+                className="max-h-80 max-w-full rounded-md object-contain"
+              />
+            )}
           </>
         ) : (
-          <p className="qms-muted">{t("visitor.zone.none")}</p>
+          <p className="text-fg-muted">{t("visitor.zone.none")}</p>
         )}
       </Card>
 
@@ -168,9 +178,19 @@ export function VisitorTicketStatus({
       ) : canCancel ? (
         <Card>
           {cancelError && <ErrorAlert>{cancelError}</ErrorAlert>}
-          <Button variant="secondary" onClick={() => void cancel()} disabled={cancelling}>
+          <Button className="w-full" variant="secondary" onClick={() => setConfirmingCancel(true)} disabled={cancelling}>
             {cancelling ? t("visitor.cancel.cancelling") : t("visitor.cancel.button")}
           </Button>
+          <ConfirmDialog
+            open={confirmingCancel}
+            title={t("visitor.cancel.button")}
+            description={t("visitor.cancel.confirm")}
+            confirmLabel={t("common.confirm")}
+            cancelLabel={t("common.cancel")}
+            onConfirm={() => void cancel()}
+            onCancel={() => setConfirmingCancel(false)}
+            danger
+          />
         </Card>
       ) : null}
 
@@ -178,8 +198,8 @@ export function VisitorTicketStatus({
 
       <Card>
         {optOutError && <ErrorAlert>{optOutError}</ErrorAlert>}
-        <p className="qms-muted">{t(optedOut ? "visitor.notifications.optedOut" : "visitor.notifications.intro")}</p>
-        <Button variant="secondary" onClick={() => void toggleOptOut()} disabled={optOutBusy}>
+        <p className="text-fg-muted">{t(optedOut ? "visitor.notifications.optedOut" : "visitor.notifications.intro")}</p>
+        <Button className="w-full" variant="secondary" onClick={() => void toggleOptOut()} disabled={optOutBusy}>
           {t(optedOut ? "visitor.notifications.optIn" : "visitor.notifications.optOut")}
         </Button>
       </Card>

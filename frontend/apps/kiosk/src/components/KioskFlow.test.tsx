@@ -224,6 +224,8 @@ describe("KioskFlow printer failure fallback (FR-ISS-016)", () => {
     expect(fetchImpl).toHaveBeenCalledTimes(1);
     const qr = screen.getByRole("img", { name: /B-007/ });
     expect(qr.tagName.toLowerCase()).toBe("svg");
+    // ticket 65, needed by E2E U8 (ticket 70): the QR element exposes the encoded URL directly.
+    expect(qr).toHaveAttribute("data-qr-value", expect.stringContaining("/visitor/?t=tk-1#s=the-secret"));
   });
 });
 
@@ -287,34 +289,48 @@ describe("KioskFlow inactivity (FR-ISS-015)", () => {
   });
 });
 
+/** Reads a Tile's `min-h-[Nrem]` utility (every kiosk touch target sets one) and returns N, so tests assert the
+ * actual size ticket 65 requires (>= 4rem = 64px, NFR-USA-003) rather than one specific tile's own literal class. */
+function minHeightRem(el: HTMLElement): number {
+  const token = el.className.split(/\s+/).find((c) => /^min-h-\[[\d.]+rem\]$/.test(c));
+  if (!token) throw new Error(`no unprefixed min-h-[...rem] utility on element with class "${el.className}"`);
+  return Number(token.match(/[\d.]+/)![0]);
+}
+
 describe("KioskFlow accessibility (FR-ISS-017, NFR-USA-003)", () => {
-  it("every idle and confirm tile is at least a 48x48 px touch target", async () => {
+  it("every idle and confirm tile is at least a 64px touch target", async () => {
     render(<KioskFlow bootstrap={SINGLE} client={clientWith(vi.fn())} printer={new ResolvingPrinter()} />);
     const start = screen.getByRole("button", { name: "Tap to begin" });
-    expect(start).toHaveClass("qms-kiosk-tile");
+    expect(minHeightRem(start)).toBeGreaterThanOrEqual(4);
 
     await userEvent.click(start);
     for (const button of await screen.findAllByRole("button")) {
-      if (button.className.includes("qms-kiosk-a11y-toggle")) continue;
-      expect(button).toHaveClass("qms-kiosk-tile");
+      if (button.getAttribute("aria-pressed") !== null) continue; // the high-contrast/large-text toggles, not a flow tile
+      expect(minHeightRem(button)).toBeGreaterThanOrEqual(4);
     }
   });
 
-  it("toggles high-contrast and larger-text mode, and remembers the choice across a remount (device setting, not a visitor one)", async () => {
+  it("exposes exactly one <main> landmark around the whole flow", async () => {
+    render(<KioskFlow bootstrap={SINGLE} client={clientWith(vi.fn())} printer={new ResolvingPrinter()} />);
+    expect(screen.getAllByRole("main")).toHaveLength(1);
+  });
+
+  it("toggles high-contrast and larger-text mode as data-contrast/data-text attributes, and remembers the choice across a remount (device setting, not a visitor one)", async () => {
     const { unmount } = render(<KioskFlow bootstrap={SINGLE} client={clientWith(vi.fn())} printer={new ResolvingPrinter()} />);
-    const root = document.querySelector(".qms-kiosk") as HTMLElement;
+    const root = screen.getByRole("main");
     expect(root).toHaveAttribute("data-contrast", "normal");
+    expect(root).toHaveAttribute("data-text", "normal");
 
     await userEvent.click(screen.getByRole("button", { name: "High contrast" }));
     await userEvent.click(screen.getByRole("button", { name: "Large text" }));
     expect(root).toHaveAttribute("data-contrast", "high");
-    expect(root).toHaveClass("qms-kiosk--large-text");
+    expect(root).toHaveAttribute("data-text", "large");
     unmount();
 
     render(<KioskFlow bootstrap={SINGLE} client={clientWith(vi.fn())} printer={new ResolvingPrinter()} />);
-    const rootAfterReload = document.querySelector(".qms-kiosk") as HTMLElement;
+    const rootAfterReload = screen.getByRole("main");
     expect(rootAfterReload).toHaveAttribute("data-contrast", "high");
-    expect(rootAfterReload).toHaveClass("qms-kiosk--large-text");
+    expect(rootAfterReload).toHaveAttribute("data-text", "large");
   });
 });
 
@@ -573,9 +589,9 @@ describe("branding and the printed token template (ticket 27, FR-CFG-030..032)",
   };
 
   it("applies the organisation's primary colour to the kiosk's own accent colour", async () => {
-    const { container } = render(<KioskFlow bootstrap={BRANDED} client={clientWith(vi.fn())} printer={new ResolvingPrinter()} />);
-    const root = container.querySelector(".qms-kiosk") as HTMLElement;
-    expect(root.style.getPropertyValue("--qms-color-primary")).toBe("#123abc");
+    render(<KioskFlow bootstrap={BRANDED} client={clientWith(vi.fn())} printer={new ResolvingPrinter()} />);
+    const root = screen.getByRole("main");
+    expect(root.style.getPropertyValue("--qms-raw-primary")).toBe("#123abc");
   });
 
   it("prints only the admin's enabled fields, with the organisation's name, logo and notice line", async () => {

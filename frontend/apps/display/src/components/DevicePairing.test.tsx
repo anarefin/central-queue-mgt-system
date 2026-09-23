@@ -141,8 +141,10 @@ describe("display device pairing", () => {
 
     const logo = await screen.findByAltText("Northside Clinic logo");
     expect(logo).toHaveAttribute("src", "https://example.org/logo.png");
-    // applyBrand (ticket 62) sets the root token every `bg-primary`/`text-primary` utility and the `--qms-color-primary`
-    // alias both read, rather than a one-off inline style scoped to this component's own wrapper.
+    // applyBrand (ticket 62) sets the root token every `bg-primary`/`text-primary` utility reads, rather than a
+    // one-off inline style scoped to this component's own wrapper.
     await waitFor(() => expect(document.documentElement.style.getPropertyValue("--color-primary")).toBe("#123abc"));
+    // ticket 65: exactly one <main> landmark around the whole board, whatever layout is configured.
+    expect(screen.getAllByRole("main")).toHaveLength(1);
   });
 });
