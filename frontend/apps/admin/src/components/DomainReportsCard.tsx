@@ -14,9 +14,9 @@ import {
   type UserSummary,
 } from "@qms/api-client";
 import { useI18n } from "@qms/i18n/react";
-import { Button, Card, ErrorAlert, SelectField, TextField } from "@qms/ui";
+import { Button, Card, ErrorAlert, reportRange, SelectField, TextField } from "@qms/ui";
 import { useState } from "react";
-import { localisedName, useList, useSubmit } from "../lib/admin-support";
+import { localisedName, useFormValidation, useList, useSubmit } from "../lib/admin-support";
 import { useApi } from "../lib/runtime";
 
 type CatalogueKey = DomainReportKey | "audit";
@@ -70,11 +70,18 @@ export function DomainReportsCard({ site }: { site: Site }) {
   const [auditResult, setAuditResult] = useState<AuditReportPage | null>(null);
   const { busy, error, run } = useSubmit();
 
+  const rangeValidation = useFormValidation<{ from: string; to: string }>(
+    { range: (v) => reportRange(v.from, v.to) },
+    { range: "domain-report-to" },
+  );
+  const validateRange = () => rangeValidation.validateField("range", { from, to });
+
   const nameOf = (names: Record<string, string>) => localisedName(names, language, site.default_language);
   const showsGroupAndService = key === "appointment" || key === "feedback";
   const showsAgent = key !== "notification" && key !== "audit";
 
   async function runReport() {
+    if (!rangeValidation.validateAll({ from, to })) return;
     await run(async () => {
       if (key === "audit") {
         const page = await client!.reports.runAudit({
@@ -175,8 +182,16 @@ export function DomainReportsCard({ site }: { site: Site }) {
       </div>
       <p className="text-fg-muted">{t(`reports.${camel(key)}.intro`)}</p>
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <TextField id="domain-report-from" label={t("reports.filters.from")} type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
-        <TextField id="domain-report-to" label={t("reports.filters.to")} type="date" value={to} onChange={(e) => setTo(e.target.value)} />
+        <TextField id="domain-report-from" label={t("reports.filters.from")} type="date" value={from} onChange={(e) => setFrom(e.target.value)} onBlur={validateRange} />
+        <TextField
+          id="domain-report-to"
+          label={t("reports.filters.to")}
+          type="date"
+          value={to}
+          onChange={(e) => setTo(e.target.value)}
+          onBlur={validateRange}
+          error={rangeValidation.message("range")}
+        />
       </div>
       {key !== "audit" && (
         <div className="flex flex-wrap items-center justify-between gap-3">

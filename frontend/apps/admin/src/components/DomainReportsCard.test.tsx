@@ -163,6 +163,21 @@ describe("domain reports (SRS §16.1, ticket 51)", () => {
     expect(JSON.parse(String(run?.init.body))).toMatchObject({ site_id: "s1" });
   });
 
+  it("blocks the run when From is after To, showing an inline error (ticket 66)", async () => {
+    const calls = fakeApi({ "POST /reports/appointment/run": () => json(200, appointmentPage()) });
+    renderApp(<ReportsAdmin />);
+
+    const card = await cardFor("Domain reports");
+    await userEvent.type(card.getByLabelText("From"), "2026-09-20");
+    const to = card.getByLabelText("To");
+    await userEvent.type(to, "2026-09-01");
+    await userEvent.click(card.getByRole("button", { name: "Run domain report" }));
+
+    expect(await card.findByText("The From date must be on or before the To date.")).toBeInTheDocument();
+    expect(to).toHaveFocus();
+    expect(calls.some((c) => c.method === "POST" && c.path === "/reports/appointment/run")).toBe(false);
+  });
+
   it("switches report key to notification and re-labels the columns", async () => {
     fakeApi({ "POST /reports/notification/run": () => json(200, notificationPage()) });
     renderApp(<ReportsAdmin />);

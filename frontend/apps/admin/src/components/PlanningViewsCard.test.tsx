@@ -79,6 +79,21 @@ afterEach(() => {
 });
 
 describe("staffing planning views (SRS §16.2, ticket 51)", () => {
+  it("blocks the run when From is after To, showing an inline error (ticket 66)", async () => {
+    const calls = fakeApi({ "POST /reports/peak-hours/run": () => json(200, peakHoursResponse()) });
+    renderApp(<ReportsAdmin />);
+
+    const card = await cardFor("Staffing planning views");
+    await userEvent.type(card.getByLabelText("From"), "2026-09-26");
+    const to = card.getByLabelText("To");
+    await userEvent.type(to, "2026-09-19");
+    await userEvent.click(card.getByRole("button", { name: "Run planning view" }));
+
+    expect(await card.findByText("The From date must be on or before the To date.")).toBeInTheDocument();
+    expect(to).toHaveFocus();
+    expect(calls.some((c) => c.method === "POST" && c.path === "/reports/peak-hours/run")).toBe(false);
+  });
+
   it("is disabled until a from and to date are chosen, then runs and shows the peak-hours grid", async () => {
     const calls = fakeApi({ "POST /reports/peak-hours/run": () => json(200, peakHoursResponse()) });
     renderApp(<ReportsAdmin />);

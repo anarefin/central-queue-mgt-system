@@ -132,16 +132,36 @@ describe("site administration screen", () => {
     expect(screen.queryByText("There are no sites yet. Add the first one below.")).not.toBeInTheDocument();
   });
 
-  it("names the fields to check, in words, when the server refuses the input", async () => {
+  it("flags an invalid time zone inline on blur and blocks the submit before any request (ticket 66)", async () => {
+    const calls = fakeApi({ sites: [], zones: [], counters: [] });
+    renderApp(<SiteAdmin />);
+    await screen.findByText("There are no sites yet. Add the first one below.");
+
+    const timezone = screen.getByLabelText("Time zone");
+    await userEvent.type(timezone, "Mars/Olympus");
+    await userEvent.tab();
+    expect(await screen.findByRole("alert")).toHaveTextContent("Enter a valid time zone, such as Asia/Dhaka.");
+    expect(timezone).toHaveAttribute("aria-invalid", "true");
+
+    await userEvent.click(screen.getByRole("button", { name: "Add a site" }));
+    expect(calls.some((c) => c.method === "POST" && c.path === "/sites")).toBe(false);
+    // Name is empty too, and comes before Time zone in the form, so it is the first invalid field focused.
+    expect(screen.getByLabelText("Name")).toHaveFocus();
+  });
+
+  it("names the fields to check, in words, when the server refuses input the client cannot check itself", async () => {
     fakeApi(
       { sites: [], zones: [], counters: [] },
       {
+        // `enabled_languages` passes client-side validation (unique, non-empty) — only the server knows which
+        // languages this deployment actually has installed (SiteRules.languages), so this is a genuine
+        // server-only refusal, still mapped onto the same field (ticket 66).
         "POST /sites": () =>
           json(400, {
             error: {
               code: "validation_failed",
               message: "x",
-              details: { fields: [{ field: "timezone", code: "unknown_timezone" }] },
+              details: { fields: [{ field: "enabled_languages", code: "unknown_language" }] },
               trace_id: "t",
             },
           }),
@@ -150,12 +170,17 @@ describe("site administration screen", () => {
     renderApp(<SiteAdmin />);
     await screen.findByText("There are no sites yet. Add the first one below.");
 
-    await userEvent.type(screen.getByLabelText("Time zone"), "Mars/Olympus");
+    await userEvent.type(screen.getByLabelText("Name"), "North campus");
+    await userEvent.type(screen.getByLabelText("Code"), "NORTH");
+    await userEvent.type(screen.getByLabelText("Time zone"), "Asia/Dhaka");
+    await userEvent.type(screen.getByLabelText("Address"), "2 North Road");
+    await userEvent.selectOptions(screen.getByLabelText("Default language"), "bn");
+    await userEvent.type(screen.getByLabelText("Enabled languages, in display order"), "bn, zz");
     await userEvent.click(screen.getByRole("button", { name: "Add a site" }));
 
     const alert = await screen.findByRole("alert");
     expect(alert).toHaveTextContent("The request contains invalid data.");
-    expect(alert).toHaveTextContent("Check these fields: Time zone");
+    expect(alert).toHaveTextContent("Check these fields: Enabled languages, in display order");
     expect(alert.textContent).not.toMatch(/errors\.|validation_failed/);
   });
 
@@ -242,6 +267,40 @@ describe("site administration screen", () => {
       label: "Counter 3",
       location_note: "Behind the pillar",
     });
+  });
+
+  it("blocks a zone submit with a missing floor label and focuses it, without calling the API (ticket 66)", async () => {
+    const calls = fakeApi({ sites: [SITE], zones: [] as Zone[], counters: [] });
+    renderApp(<SiteAdmin />);
+    await userEvent.click(await screen.findByRole("button", { name: "Zones Main campus" }));
+    await screen.findByText("This site has no zones yet.");
+
+    const zoneCard = screen.getByText("Zones of Main campus").closest("section")!;
+    await userEvent.type(within(zoneCard).getByLabelText("Name"), "Ground waiting");
+    // Floor label left blank on purpose.
+    await userEvent.click(within(zoneCard).getByRole("button", { name: "Add a zone" }));
+
+    const floorLabel = within(zoneCard).getByLabelText("Floor label");
+    expect(await within(zoneCard).findByText("This field is required.")).toBeInTheDocument();
+    expect(floorLabel).toHaveFocus();
+    expect(calls.some((c) => c.path === "/sites/s1/zones" && c.method === "POST")).toBe(false);
+  });
+
+  it("blocks a counter submit with a label over 30 characters and focuses it, without calling the API (ticket 66)", async () => {
+    const calls = fakeApi({ sites: [SITE], zones: [ZONE], counters: [] as Counter[] });
+    renderApp(<SiteAdmin />);
+    await userEvent.click(await screen.findByRole("button", { name: "Zones Main campus" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Counters Ground waiting" }));
+    await screen.findByText("This zone has no counters yet.");
+
+    const counterCard = screen.getByText("Counters of Ground waiting").closest("section")!;
+    const label = within(counterCard).getByLabelText("Display label");
+    await userEvent.type(label, "x".repeat(31));
+    await userEvent.click(within(counterCard).getByRole("button", { name: "Add a counter" }));
+
+    expect(await within(counterCard).findByText("This value is too long.")).toBeInTheDocument();
+    expect(label).toHaveFocus();
+    expect(calls.some((c) => c.path === "/zones/z1/counters" && c.method === "POST")).toBe(false);
   });
 
   it("shows the API's refusal when a zone cannot be reactivated under an inactive site", async () => {

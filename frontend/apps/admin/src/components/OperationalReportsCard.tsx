@@ -17,9 +17,9 @@ import {
   type Zone,
 } from "@qms/api-client";
 import { useI18n } from "@qms/i18n/react";
-import { Button, Card, ErrorAlert, SelectField, TextField } from "@qms/ui";
+import { Button, Card, ErrorAlert, reportRange, SelectField, TextField } from "@qms/ui";
 import { useState } from "react";
-import { localisedName, useList, useSubmit } from "../lib/admin-support";
+import { localisedName, useFormValidation, useList, useSubmit } from "../lib/admin-support";
 import { useApi } from "../lib/runtime";
 
 const GRAINS: ReportGrain[] = ["hour", "day", "month", "year"];
@@ -94,8 +94,14 @@ export function OperationalReportsCard({ site }: { site: Site }) {
   const { busy, error, run } = useSubmit();
 
   const rangeChosen = from !== "" && to !== "";
+  const rangeValidation = useFormValidation<{ from: string; to: string }>(
+    { range: (v) => reportRange(v.from, v.to) },
+    { range: "operational-report-to" },
+  );
+  const validateRange = () => rangeValidation.validateField("range", { from, to });
 
   async function runReport() {
+    if (!rangeValidation.validateAll({ from, to })) return;
     await run(async () => {
       const response = await client!.reports.runOperational(key, {
         site_id: site.id,
@@ -175,8 +181,16 @@ export function OperationalReportsCard({ site }: { site: Site }) {
       </div>
       <p className="text-fg-muted">{t(`reports.${camelKey(key)}.intro`)}</p>
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <TextField id="operational-report-from" label={t("reports.filters.from")} type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
-        <TextField id="operational-report-to" label={t("reports.filters.to")} type="date" value={to} onChange={(e) => setTo(e.target.value)} />
+        <TextField id="operational-report-from" label={t("reports.filters.from")} type="date" value={from} onChange={(e) => setFrom(e.target.value)} onBlur={validateRange} />
+        <TextField
+          id="operational-report-to"
+          label={t("reports.filters.to")}
+          type="date"
+          value={to}
+          onChange={(e) => setTo(e.target.value)}
+          onBlur={validateRange}
+          error={rangeValidation.message("range")}
+        />
       </div>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <SelectField

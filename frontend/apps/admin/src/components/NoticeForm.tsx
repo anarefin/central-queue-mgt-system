@@ -2,9 +2,9 @@
 
 import type { Notice, NoticeInput, NoticeType } from "@qms/api-client";
 import { useI18n } from "@qms/i18n/react";
-import { Button, ErrorAlert, SelectField, TextField } from "@qms/ui";
+import { Button, ErrorAlert, noticeDates, noticeSortOrder, SelectField, TextField } from "@qms/ui";
 import { useId, useState, type FormEvent } from "react";
-import { useSubmit } from "../lib/admin-support";
+import { useFormValidation, useSubmit } from "../lib/admin-support";
 import { nameValues, TranslatedNameFields } from "./TranslatedNameFields";
 
 const NOTICE_TYPES: NoticeType[] = ["image", "video", "rich_text"];
@@ -41,8 +41,19 @@ export function NoticeForm({ zoneId, languages, defaultLanguage, initial, submit
   const [sortOrder, setSortOrder] = useState(String(initial?.sort_order ?? 0));
   const { busy, error, run } = useSubmit();
 
+  const fieldIds = { ends: `${id}-ends`, sortOrder: `${id}-sort` };
+  const validation = useFormValidation<{ startsAt: string; endsAt: string; sortOrder: string }>(
+    {
+      ends: (v) => noticeDates(v.startsAt, v.endsAt),
+      sortOrder: (v) => noticeSortOrder(Number(v.sortOrder)),
+    },
+    fieldIds,
+  );
+  const validationValues = { startsAt, endsAt, sortOrder };
+
   async function submit(event: FormEvent) {
     event.preventDefault();
+    if (!validation.validateAll(validationValues)) return;
     const input: NoticeInput = {
       zone_id: zoneId,
       type,
@@ -71,9 +82,33 @@ export function NoticeForm({ zoneId, languages, defaultLanguage, initial, submit
         value={content}
         onChange={setContent}
       />
-      <TextField id={`${id}-starts`} type="datetime-local" label={t("noticeBoard.fields.startsAt")} value={startsAt} onChange={(e) => setStartsAt(e.target.value)} />
-      <TextField id={`${id}-ends`} type="datetime-local" label={t("noticeBoard.fields.endsAt")} value={endsAt} onChange={(e) => setEndsAt(e.target.value)} />
-      <TextField id={`${id}-sort`} type="number" min={0} label={t("noticeBoard.fields.sortOrder")} value={sortOrder} onChange={(e) => setSortOrder(e.target.value)} />
+      <TextField
+        id={`${id}-starts`}
+        type="datetime-local"
+        label={t("noticeBoard.fields.startsAt")}
+        value={startsAt}
+        onChange={(e) => setStartsAt(e.target.value)}
+        onBlur={() => validation.validateField("ends", { ...validationValues, startsAt })}
+      />
+      <TextField
+        id={fieldIds.ends}
+        type="datetime-local"
+        label={t("noticeBoard.fields.endsAt")}
+        value={endsAt}
+        onChange={(e) => setEndsAt(e.target.value)}
+        onBlur={() => validation.validateField("ends", { ...validationValues, endsAt })}
+        error={validation.message("ends")}
+      />
+      <TextField
+        id={fieldIds.sortOrder}
+        type="number"
+        min={0}
+        label={t("noticeBoard.fields.sortOrder")}
+        value={sortOrder}
+        onChange={(e) => setSortOrder(e.target.value)}
+        onBlur={() => validation.validateField("sortOrder", { ...validationValues, sortOrder })}
+        error={validation.message("sortOrder")}
+      />
       {error && <ErrorAlert>{error}</ErrorAlert>}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <Button type="submit" disabled={busy}>

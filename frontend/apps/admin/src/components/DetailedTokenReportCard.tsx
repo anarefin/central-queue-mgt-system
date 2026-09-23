@@ -19,9 +19,9 @@ import {
   type Zone,
 } from "@qms/api-client";
 import { useI18n } from "@qms/i18n/react";
-import { Badge, Button, Card, DataTable, EmptyState, ErrorAlert, SelectField, TextField, type DataTableColumn } from "@qms/ui";
+import { Badge, Button, Card, DataTable, EmptyState, ErrorAlert, reportRange, SelectField, TextField, type DataTableColumn } from "@qms/ui";
 import { useEffect, useRef, useState } from "react";
-import { describeError, localisedName, useList, useSubmit } from "../lib/admin-support";
+import { describeError, localisedName, useFormValidation, useList, useSubmit } from "../lib/admin-support";
 import { useApi } from "../lib/runtime";
 
 const EXPORT_FORMATS: ReportExportFormat[] = ["csv", "xlsx", "pdf"];
@@ -102,6 +102,9 @@ export function DetailedTokenReportCard({ site }: { site: Site }) {
   const exporting = useSubmit();
   const pollTimer = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  const rangeValidation = useFormValidation<{ from: string; to: string }>({ range: (v) => reportRange(v.from, v.to) }, { range: "report-to" });
+  const validateRange = () => rangeValidation.validateField("range", { from, to });
+
   // FR-RPT-004: a background export is polled at GET /reports/jobs/{id} until it leaves queued/running, then its
   // finished file is pulled and handed to the browser the same way an inline export already is.
   useEffect(() => {
@@ -139,6 +142,7 @@ export function DetailedTokenReportCard({ site }: { site: Site }) {
   }
 
   async function exportReport() {
+    if (!rangeValidation.validateAll({ from, to })) return;
     setJob(null);
     await exporting.run(async () => {
       const outcome = await client!.reports.export(DETAILED_TOKEN_REPORT_KEY, { ...exportFilter(), format });
@@ -174,6 +178,7 @@ export function DetailedTokenReportCard({ site }: { site: Site }) {
   }
 
   async function runReport(overrides: Partial<{ page: number; sort: ReportSort; direction: SortDirection }> = {}) {
+    if (!rangeValidation.validateAll({ from, to })) return;
     await run(async () => {
       const next = request(overrides);
       setPage(next.page ?? 0);
@@ -241,8 +246,16 @@ export function DetailedTokenReportCard({ site }: { site: Site }) {
       <h2 className="font-semibold text-fg">{t("reports.detailedToken.title")}</h2>
       <p className="text-fg-muted">{t("reports.detailedToken.intro")}</p>
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <TextField id="report-from" label={t("reports.filters.from")} type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
-        <TextField id="report-to" label={t("reports.filters.to")} type="date" value={to} onChange={(e) => setTo(e.target.value)} />
+        <TextField id="report-from" label={t("reports.filters.from")} type="date" value={from} onChange={(e) => setFrom(e.target.value)} onBlur={validateRange} />
+        <TextField
+          id="report-to"
+          label={t("reports.filters.to")}
+          type="date"
+          value={to}
+          onChange={(e) => setTo(e.target.value)}
+          onBlur={validateRange}
+          error={rangeValidation.message("range")}
+        />
       </div>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <SelectField

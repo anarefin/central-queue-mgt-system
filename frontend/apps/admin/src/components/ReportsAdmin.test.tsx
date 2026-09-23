@@ -138,6 +138,22 @@ describe("detailed token report (SRS §16.1, ticket 48)", () => {
     expect(bodyOf(run)).toMatchObject({ site_id: "s1", zone_id: "z1", visitor_category: "senior", page: 0, size: 50, sort: "issued_at", direction: "desc" });
   });
 
+  it("blocks the run when From is after To, showing an inline error (ticket 66)", async () => {
+    const calls = fakeApi({ "POST /reports/detailed-token/run": () => json(200, page()) });
+    renderApp(<ReportsAdmin />);
+
+    const heading = await screen.findByRole("heading", { name: "Detailed token report" });
+    const card = within(heading.closest("section") as HTMLElement);
+    await userEvent.type(card.getByLabelText("From"), "2026-09-20");
+    const to = card.getByLabelText("To");
+    await userEvent.type(to, "2026-09-01");
+    await userEvent.click(card.getByRole("button", { name: "Run report" }));
+
+    expect(await card.findByText("The From date must be on or before the To date.")).toBeInTheDocument();
+    expect(to).toHaveFocus();
+    expect(calls.some((c) => c.method === "POST" && c.path === "/reports/detailed-token/run")).toBe(false);
+  });
+
   it("sorts by clicking a column header, toggling direction on a second click", async () => {
     const calls = fakeApi({ "POST /reports/detailed-token/run": () => json(200, page()) });
     renderApp(<ReportsAdmin />);

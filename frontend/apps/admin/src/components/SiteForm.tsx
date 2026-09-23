@@ -3,9 +3,9 @@
 import type { SiteInput } from "@qms/api-client";
 import { SHIPPED_LANGUAGES } from "@qms/i18n";
 import { useI18n } from "@qms/i18n/react";
-import { Button, ErrorAlert, SelectField, TextField } from "@qms/ui";
+import { Button, ErrorAlert, parseLanguageList, requiredText, SelectField, siteCode, siteDefaultLanguage, siteEnabledLanguages, siteTimezone, TextField } from "@qms/ui";
 import { useId, useState, type FormEvent } from "react";
-import { languageName, useSubmit } from "../lib/admin-support";
+import { languageName, useFormValidation, useSubmit } from "../lib/admin-support";
 
 interface SiteFormProps {
   initial?: SiteInput;
@@ -37,38 +37,66 @@ export function SiteForm({ initial = EMPTY, submitLabel, onSubmit, onDone, onCan
   const { busy, error, run } = useSubmit();
   const set = (field: keyof typeof values) => (event: { target: { value: string } }) => setValues({ ...values, [field]: event.target.value });
 
+  const fieldIds = { name: `${id}-name`, code: `${id}-code`, timezone: `${id}-timezone`, address: `${id}-address`, enabled_languages: `${id}-languages` };
+  const validation = useFormValidation<typeof values>(
+    {
+      name: (v) => requiredText(v.name, 200),
+      code: (v) => siteCode(v.code),
+      timezone: (v) => siteTimezone(v.timezone),
+      address: (v) => requiredText(v.address, 500),
+      enabled_languages: (v) => siteEnabledLanguages(v.enabled_languages) ?? siteDefaultLanguage(v.default_language, v.enabled_languages),
+    },
+    fieldIds,
+  );
+  const onBlur = (field: keyof typeof fieldIds) => () => validation.validateField(field, values);
+
   async function submit(event: FormEvent) {
     event.preventDefault();
-    const input: SiteInput = { ...values, enabled_languages: values.enabled_languages.split(/[\s,]+/).filter(Boolean) };
+    if (!validation.validateAll(values)) return;
+    const input: SiteInput = { ...values, enabled_languages: parseLanguageList(values.enabled_languages) };
     if (await run(() => onSubmit(input))) onDone();
   }
 
   return (
     <form className="flex flex-col gap-4" onSubmit={submit}>
-      <TextField id={`${id}-name`} label={t("sites.fields.name")} value={values.name} onChange={set("name")} />
-      <TextField id={`${id}-code`} label={t("sites.fields.code")} value={values.code} onChange={set("code")} />
+      <TextField id={fieldIds.name} label={t("sites.fields.name")} value={values.name} onChange={set("name")} onBlur={onBlur("name")} error={validation.message("name")} />
+      <TextField id={fieldIds.code} label={t("sites.fields.code")} value={values.code} onChange={set("code")} onBlur={onBlur("code")} error={validation.message("code")} />
       <TextField
-        id={`${id}-timezone`}
+        id={fieldIds.timezone}
         label={t("sites.fields.timezone")}
         value={values.timezone}
         onChange={set("timezone")}
+        onBlur={onBlur("timezone")}
+        error={validation.message("timezone")}
         placeholder="Asia/Dhaka"
-       
+
       />
       <p className="text-fg-muted">{t("sites.hint.timezone")}</p>
-      <TextField id={`${id}-address`} label={t("sites.fields.address")} value={values.address} onChange={set("address")} />
+      <TextField
+        id={fieldIds.address}
+        label={t("sites.fields.address")}
+        value={values.address}
+        onChange={set("address")}
+        onBlur={onBlur("address")}
+        error={validation.message("address")}
+      />
       <SelectField
         id={`${id}-language`}
         label={t("sites.fields.default_language")}
         value={values.default_language}
-        onChange={set("default_language")}
+        onChange={(event) => {
+          setValues({ ...values, default_language: event.target.value });
+          validation.validateField("enabled_languages", { ...values, default_language: event.target.value });
+        }}
         options={SHIPPED_LANGUAGES.map((code) => ({ value: code, label: languageName(t, code) }))}
       />
       <TextField
-        id={`${id}-languages`}
+        id={fieldIds.enabled_languages}
         label={t("sites.fields.enabled_languages")}
         value={values.enabled_languages}
         onChange={set("enabled_languages")}
+        onBlur={onBlur("enabled_languages")}
+        error={validation.message("enabled_languages")}
         placeholder="bn, en"
       />
       <p className="text-fg-muted">{t("sites.hint.languages")}</p>

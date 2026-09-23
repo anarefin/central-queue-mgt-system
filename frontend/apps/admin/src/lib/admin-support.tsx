@@ -150,6 +150,77 @@ export function ActiveBadge({ active }: { active: boolean }) {
   return <StatusBadge status={active ? "up" : "not_configured"}>{t(active ? "admin.status.active" : "admin.status.inactive")}</StatusBadge>;
 }
 
+export interface FormValidation<V> {
+  /** The message to show through a field's `error` prop, or `undefined` while it is valid. */
+  message: (field: string) => string | undefined;
+  /** Re-checks one field against the current values (ticket 66: "validate on blur"). */
+  validateField: (field: string, values: V) => void;
+  /** Re-checks every field (ticket 66: "validate on submit"). Blocks and focuses the first invalid field's DOM
+   * `id` (from the `ids` map passed to {@link useFormValidation}) when anything is invalid; returns whether the
+   * form was valid, so the caller can decide whether to go on and submit. */
+  validateAll: (values: V) => boolean;
+  /** Drops every error, e.g. after a successful submit resets the form. */
+  clear: () => void;
+}
+
+/**
+ * Client-side field validation that mirrors the server's own rules (ticket 66, SRS §27.5). `rules` maps a field
+ * name to a pure function of the form's current values returning an i18n error key (see `@qms/ui`'s
+ * `validators.ts`) or `undefined`; `ids` maps that same field name to the DOM `id` of the input that renders it, so
+ * the first invalid field can be focused. The server stays authoritative — this only ever blocks a submit the
+ * server would have refused anyway.
+ */
+export function useFormValidation<V>(rules: Record<string, (values: V) => string | undefined>, ids: Record<string, string>): FormValidation<V> {
+  const { t } = useI18n();
+  const [errors, setErrors] = useState<Record<string, string>>({});
+
+  const validateField = useCallback(
+    (field: string, values: V) => {
+      const rule = rules[field];
+      if (!rule) return;
+      const key = rule(values);
+      setErrors((prev) => {
+        if (!key) {
+          if (!(field in prev)) return prev;
+          const next = { ...prev };
+          delete next[field];
+          return next;
+        }
+        return prev[field] === key ? prev : { ...prev, [field]: key };
+      });
+    },
+    [rules],
+  );
+
+  const validateAll = useCallback(
+    (values: V): boolean => {
+      const next: Record<string, string> = {};
+      let firstInvalidField: string | null = null;
+      for (const field of Object.keys(rules)) {
+        const key = rules[field]!(values);
+        if (key) {
+          next[field] = key;
+          if (firstInvalidField === null) firstInvalidField = field;
+        }
+      }
+      setErrors(next);
+      if (firstInvalidField) {
+        document.getElementById(ids[firstInvalidField] ?? "")?.focus();
+        return false;
+      }
+      return true;
+    },
+    [rules, ids],
+  );
+
+  return {
+    message: (field) => (errors[field] ? t(errors[field]!) : undefined),
+    validateField,
+    validateAll,
+    clear: () => setErrors({}),
+  };
+}
+
 export function languageName(t: I18n["t"], code: string): string {
   return SHIPPED_LANGUAGES.includes(code) ? t(`languages.${code}`) : code;
 }

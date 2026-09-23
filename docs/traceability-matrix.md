@@ -2184,3 +2184,45 @@ just admin/console. Backend: this ticket is frontend-only (`apps/kiosk`, `apps/d
 pre-existing `VisitorAppointmentSelfServiceIT` calendar-date flake (documented for tickets 49/58/60 and reconfirmed
 at this Phase A run's BASE commit) is not this ticket's to fix, and no other backend file changed, so
 `./gradlew check` was not re-run.
+
+| FR-CFG-001..004 client-side validation of Site/Zone/Counter fields mirrors `SiteRules.java`: site `code` pattern, `timezone` a real IANA zone, `enabled_languages` unique/non-empty with `default_language` one of them, zone `name`/`floor_label` required and `building_label` optional (all length-capped as the backend caps them), counter `label` required ≤ 30 chars, `location_note` optional ≤ 300 | §7.1, §27.5 | unit, unit (component) | `F/packages/ui/src/validators.ts` (`siteCode`, `siteTimezone`, `siteEnabledLanguages`, `siteDefaultLanguage`, `requiredText`, `optionalText`, `counterLabel`), `F/packages/ui/src/validators.test.ts` (table-driven, boundary values); wired into `SiteForm`/`ZoneForm`/`CounterForm` via `useFormValidation` (`F/apps/admin/src/lib/admin-support.tsx`); `SiteAdmin.test.tsx`'s new "flags an invalid time zone inline on blur and blocks the submit…", "blocks a zone submit with a missing floor label…", "blocks a counter submit with a label over 30 characters…", and "names the fields to check… when the server refuses input the client cannot check itself" (server-only `enabled_languages` refusal, `details.fields[]` still maps onto the same field) | passing |
+| FR-DSP-006 client-side validation of a notice's playlist window and sort order mirrors `NoticeRules.java`: `ends_at` strictly after `starts_at` once both are set, `sort_order` 0–1000 | §12, §27.5 | unit, unit (component) | `F/packages/ui/src/validators.ts` (`noticeDates`, `noticeSortOrder`), same `validators.test.ts`; wired into `NoticeForm`; `NoticeBoardAdmin.test.tsx`'s new "blocks a notice submit whose end is not after its start…" | passing |
+| SRS §16 client-side validation that a report's `from` date is on or before its `to` date, for every report card with a range (detailed-token, operational, domain, peak-hours/staffing-gap) | §16, §27.5 | unit, unit (component) | `F/packages/ui/src/validators.ts` (`reportRange`), same `validators.test.ts`; wired into `DetailedTokenReportCard`, `OperationalReportsCard`, `DomainReportsCard`, `PlanningViewsCard`; new tests in `ReportsAdmin.test.tsx`, `OperationalReportsCard.test.tsx`, `DomainReportsCard.test.tsx`, `PlanningViewsCard.test.tsx`, each "blocks the run when From is after To, showing an inline error…" | passing |
+| Inline validation errors render through `TextField`/`SelectField`'s own `error` prop (`role="alert"`, `aria-describedby`, `aria-invalid`); a blocked submit focuses the first invalid field | NFR-USA-003 | unit (component) | `useFormValidation` (`F/apps/admin/src/lib/admin-support.tsx`) calls `document.getElementById(<field's id>)?.focus()` on the first invalid field found, in field-declaration order; every new "blocks…" test above asserts both the rendered `role="alert"` message and `toHaveFocus()` on that field | passing |
+| Definition of done (§27.5): strings in en and bn; server validation unchanged; traceability rows for FR-CFG-*, FR-DSP-* and NFR-USA-* updated | §27.5 | — | This table. `validation.*` keys (14 keys) added to `packages/i18n/src/packs/en.json` and `bn.json`; `F/packages/i18n/src/i18n.test.ts`'s key-parity test still green. No backend file was touched; every existing server-side rule and error shape (`ApiRequestError`, `validation_failed`'s `details.fields[]`) is unchanged — the client only pre-empts requests the server would already have refused | passing |
+
+**Notes on this ticket's interpretation.** The ticket's "Zone: `chime_volume` is 0–100, `max_announce_queue_depth` is
+1–20, a quiet period needs both start and end" and Site's "`display_order` is 0–100000" are rules `SiteRules.java`
+enforces (confirmed by reading `HierarchyService`/`SiteRules`), but no admin UI form edits any of these fields today
+— `ZoneForm` exposes only `name`/`floor_label`/`building_label`, and no `display_order` input exists anywhere in
+`apps/admin`. Adding such fields would be a UI feature this ticket does not ask for and the "no drive-by" scope
+rule forbids. `zoneChimeVolume`, `zoneMaxAnnounceQueueDepth`, `zoneQuietPeriod` and `siteDisplayOrder` are still
+implemented as pure functions in `validators.ts` with full table-driven boundary tests (so the parity table above
+and `validators.test.ts` cover them for review, per the ticket's own parity-check bullet), ready to wire the moment
+a form exposes those fields. `packages/api-client` was not used for the validators module: `@qms/ui` already owns
+`TextField`/`SelectField` and every form that needed wiring imports from it already, so keeping the pure functions
+in the same package avoids a new cross-package dependency for what is fundamentally presentation-layer validation.
+
+**Parity table (rule → Java constant/method), the ticket's own parity-check bullet.**
+
+| Client validator (`packages/ui/src/validators.ts`) | Backend rule |
+| --- | --- |
+| `siteCode` | `SiteRules.code` (pattern `[A-Za-z0-9_-]+`, `SiteRules.required` max 32) |
+| `siteTimezone` | `SiteRules.timezone` (`ZoneId.getAvailableZoneIds()`) |
+| `siteEnabledLanguages`, `siteDefaultLanguage` | `SiteRules.languages` (non-empty, no duplicates, default among enabled) |
+| `siteDisplayOrder` | `SiteRules.displayOrder` (0–100000) |
+| `zoneChimeVolume` | `SiteRules.chimeVolume` (0–100) |
+| `zoneMaxAnnounceQueueDepth` | `SiteRules.maxAnnounceQueueDepth` (1–20) |
+| `zoneQuietPeriod` | `SiteRules.quietPeriodComplete` (both ends or neither) |
+| `requiredText`/`optionalText` (name 200, floor_label 100, building_label 100, address 500) | `SiteRules.required`/`SiteRules.optional`, called with the same limits in `HierarchyService#createZone`/`updateZone`/`createSite`/`updateSite` |
+| `counterLabel` (30), `optionalText` (location_note 300) | `SiteRules.required("label", …, 30)`/`SiteRules.optional("location_note", …, 300)` in `HierarchyService#createCounter`/`updateCounter` |
+| `noticeDates` | `NoticeRules.dates` (`ends_at` strictly after `starts_at`) |
+| `noticeSortOrder` | `NoticeRules.sortOrder` (0–1000) |
+| `reportRange` | no single Java constant — each report endpoint's own `from`/`to` handling (SRS §16); `from <= to` is the client-side mirror of "a backwards range returns nothing meaningful," enforced the same way across every report card |
+
+**Full-suite verification.** `cd frontend && pnpm --filter admin --filter @qms/ui typecheck` and `pnpm --filter admin
+--filter @qms/ui test` both green (ui: 171/171 across 16 files including the new `validators.test.ts`; admin:
+203/203 across 31 files). Full workspace `pnpm -r typecheck` and `pnpm -r test` (all 9 active workspace packages;
+`frontend/e2e` is intentionally outside the workspace) green, and `pnpm lint:css` clean. Backend: this ticket is
+frontend-only (`packages/ui`, `packages/i18n`, `apps/admin`) and touches no `com.qms.*` source, so `./gradlew check`
+was not re-run; no backend rule, endpoint or error shape changed.

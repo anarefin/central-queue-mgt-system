@@ -101,6 +101,32 @@ describe("notice-board administration (ticket 30, FR-DSP-006, notice_board:manag
     }));
   });
 
+  it("blocks a notice submit whose end is not after its start, showing an inline error (ticket 66)", async () => {
+    const calls = stubApi({
+      ...NO_SESSION,
+      "GET /sites": () => json(200, { items: [SITE] }),
+      "GET /sites/s1/zones": () => json(200, { items: [ZONE] }),
+      "GET /zones/z1/notices": () => json(200, { items: [] }),
+    });
+    renderApp(<NoticeBoardAdmin />);
+
+    await screen.findByRole("option", { name: "Main campus" });
+    await userEvent.selectOptions(screen.getByLabelText("Site"), "s1");
+    await userEvent.selectOptions(await screen.findByLabelText("Zone"), "z1");
+    await userEvent.click(screen.getByRole("button", { name: "Add a notice" }));
+
+    await userEvent.type(screen.getByLabelText("Content (Bangla)"), "ছুটির নোটিশ");
+    await userEvent.type(screen.getByLabelText("Content (English)"), "Holiday notice");
+    await userEvent.type(screen.getByLabelText("Starts"), "2026-06-02T09:00");
+    const ends = screen.getByLabelText("Ends");
+    await userEvent.type(ends, "2026-06-01T09:00");
+    await userEvent.click(screen.getByRole("button", { name: "Create notice" }));
+
+    expect(await screen.findByText("The end must be after the start.")).toBeInTheDocument();
+    expect(ends).toHaveFocus();
+    expect(calls.some((c) => c.method === "POST" && c.path === "/notices")).toBe(false);
+  });
+
   it("shows an active zone notice and can deactivate it", async () => {
     const calls = stubApi({
       ...NO_SESSION,
