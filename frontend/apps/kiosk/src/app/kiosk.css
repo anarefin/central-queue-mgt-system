@@ -87,7 +87,7 @@
   aspect-ratio: 1 / 1;
   object-fit: cover;
   border-radius: 0.5rem;
-  background: #000;
+  background: #000000;
 }
 
 /* Larger-text mode (FR-ISS-017): scales body and token text well past the default for low-vision visitors. */
@@ -106,17 +106,17 @@
 
 /* High-contrast mode (FR-ISS-017): WCAG 2.1 AA is 4.5:1 for body text; black/white/yellow clears that by a wide margin. */
 [data-contrast="high"] {
-  --qms-color-bg: #000;
-  --qms-color-surface: #000;
-  --qms-color-text: #fff;
-  --qms-color-muted: #fff;
-  --qms-color-border: #fff;
+  --qms-color-bg: #000000;
+  --qms-color-surface: #000000;
+  --qms-color-text: #ffffff;
+  --qms-color-muted: #ffffff;
+  --qms-color-border: #ffffff;
   --qms-color-primary: #ffd60a;
-  --qms-color-primary-text: #000;
+  --qms-color-primary-text: #000000;
 }
 
 [data-contrast="high"] .qms-kiosk-tile {
-  border: 2px solid #fff;
+  border: 2px solid #ffffff;
 }
 
 /* The print-only slip itself (`.qms-print-slip`) is shared with every app through `@qms/ui/styles.css` (ticket 27's

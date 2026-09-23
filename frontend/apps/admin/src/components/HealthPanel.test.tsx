@@ -18,12 +18,15 @@ const HEALTHY = {
   },
 };
 
-/** Runs the real RuntimeProvider: config.json is served by the stub, everything else goes to `api`. */
+/** Runs the real RuntimeProvider: config.json and the branding theme it fetches on start (ticket 62) are both served
+    by the stub, so `api` only ever sees the health calls this suite actually cares about. */
 function renderWith(api: typeof fetch, languages: string[] = ["en-US"]) {
   vi.spyOn(navigator, "languages", "get").mockReturnValue(languages);
-  vi.stubGlobal("fetch", (url: string, init?: RequestInit) =>
-    url.endsWith("/config.json") ? Promise.resolve(json(200, { apiOrigin: "" })) : api(url, init),
-  );
+  vi.stubGlobal("fetch", (url: string, init?: RequestInit) => {
+    if (url.endsWith("/config.json")) return Promise.resolve(json(200, { apiOrigin: "" }));
+    if (url.endsWith("/branding/theme")) return Promise.resolve(json(200, { org_name: "QMS", primary_color: "#0b5fff", logo_url: null }));
+    return api(url, init);
+  });
   return render(
     <I18nProvider loadExtra={false}>
       <RuntimeProvider>

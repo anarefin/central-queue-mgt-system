@@ -139,5 +139,11 @@ the SRS §5.2 permission matrix, so both are checked by role directly rather tha
 feedback with no comment (nothing to approve) is `conflict` with `details.reason` `no_comment`; an unknown feedback id
 is `not_found`.
 
+`GET /branding/theme` (SRS §7.5, FR-CFG-030, ticket 62) is the one branding read with no token at all (`@PublicEndpoint`,
+unlike `GET /branding` itself, which still needs `config:org_sites_zones`): a login screen or the anonymous visitor page
+themes itself with it before there is any session. It returns only `org_name`, `primary_color` and `logo_url` — never
+`updated_at`/`updated_by`, which would name a staff user. It is rate-limited per caller address, 30 requests/minute; over that it refuses with `rate_limited` (429), the same
+code and status every other rate-limited endpoint in this table uses.
+
 The client library also synthesises two codes that never come from the server: `network_error` (no response) and
 `unexpected_response` (a reply that is not a §20.3 envelope, such as a proxy error page).

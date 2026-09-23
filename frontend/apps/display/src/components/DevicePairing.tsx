@@ -2,7 +2,7 @@
 
 import { ApiRequestError, type DeviceBootstrap } from "@qms/api-client";
 import { useI18n } from "@qms/i18n/react";
-import { Button, Card, ErrorAlert, Page, TextField } from "@qms/ui";
+import { applyBrand, Button, Card, ErrorAlert, Page, TextField } from "@qms/ui";
 import { useEffect, useId, useState, type FormEvent } from "react";
 import { useApi } from "../lib/runtime";
 import { DisplayBoard } from "./DisplayBoard";
@@ -53,6 +53,12 @@ export function DevicePairing() {
       clearInterval(interval);
     };
   }, [client, session, status]);
+
+  // The display has no theme toggle and no separate branding fetch (ticket 62): whatever its own device bootstrap
+  // already carries is what applyBrand runs on, every time a fresh bootstrap arrives.
+  useEffect(() => {
+    if (bootstrap) applyBrand(bootstrap.branding);
+  }, [bootstrap]);
 
   useEffect(() => {
     if (!realtime || !client || !session || status !== "paired" || !session.device) return;
@@ -125,12 +131,9 @@ function PairedView({
   deviceId: string | null;
 }) {
   const { t } = useI18n();
-  // The organisation's branding (ticket 27, FR-CFG-030): applied here the same way the kiosk applies it, so the
-  // display board carries the same logo, colour and name as the now-serving table it wraps (ticket 28).
-  const style = bootstrap?.branding.primary_color ? { ["--qms-color-primary" as string]: bootstrap.branding.primary_color } : undefined;
   return (
     <Page>
-      <div className="qms-stack" style={style}>
+      <div className="qms-stack">
         {bootstrapError && (
           <Card>
             <ErrorAlert>{t("devicePairing.configError")}</ErrorAlert>

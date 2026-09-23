@@ -89,6 +89,19 @@ public class BrandingService {
         return saved;
     }
 
+    // ---- public read (GET /branding/theme, ticket 62) -------------------------------------------------------------
+
+    /**
+     * The non-sensitive subset any caller may read (no token at all): a login screen or the anonymous visitor page
+     * themes itself before there is a session to carry {@code config:org_sites_zones}. No {@link PreAuthorize} here,
+     * the same convention as other unauthenticated reads (e.g. {@code VapidKeyStore}) — the controller's
+     * {@code @PublicEndpoint} marker is what the security filter chain and {@code ControllerSecurityTest} act on.
+     */
+    @Transactional(readOnly = true)
+    public BrandingTheme theme() {
+        return BrandingTheme.from(brandingRepository.get());
+    }
+
     // ---- device-facing (bootstrap, ticket 24) ---------------------------------------------------------------------
 
     @PreAuthorize("hasAnyRole('KIOSK','DISPLAY')")

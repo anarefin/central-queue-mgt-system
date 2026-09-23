@@ -2,7 +2,7 @@
 
 import { ApiRequestError, type ApiClient, type DeviceBootstrap } from "@qms/api-client";
 import { useI18n } from "@qms/i18n/react";
-import { Button, Card, ErrorAlert, Page, TextField } from "@qms/ui";
+import { applyBrand, Button, Card, ErrorAlert, Page, TextField } from "@qms/ui";
 import { useEffect, useId, useState, type FormEvent } from "react";
 import { KioskFlow } from "./KioskFlow";
 import { useApi } from "../lib/runtime";
@@ -53,6 +53,12 @@ export function DevicePairing() {
       clearInterval(interval);
     };
   }, [client, session, status]);
+
+  // The kiosk has no theme toggle and no separate branding fetch (ticket 62): whatever its own device bootstrap
+  // already carries is what applyBrand runs on, every time a fresh bootstrap arrives.
+  useEffect(() => {
+    if (bootstrap) applyBrand(bootstrap.branding);
+  }, [bootstrap]);
 
   useEffect(() => {
     if (!realtime || !client || !session || status !== "paired" || !session.device) return;

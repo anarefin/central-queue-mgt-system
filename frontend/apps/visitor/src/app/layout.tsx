@@ -1,6 +1,7 @@
+import { ThemeScript } from "@qms/ui";
 import type { Metadata, Viewport } from "next";
 import type { ReactNode } from "react";
-import "@qms/ui/styles.css";
+import "./global.css";
 import { Providers } from "./providers";
 import { ServiceWorkerRegistration } from "./ServiceWorkerRegistration";
 
@@ -16,6 +17,9 @@ export const viewport: Viewport = { themeColor: "#0b5fff" };
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en">
+      <head>
+        <ThemeScript />
+      </head>
       <body>
         <ServiceWorkerRegistration />
         <Providers>{children}</Providers>

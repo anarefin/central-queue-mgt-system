@@ -2,6 +2,7 @@
 
 import { createVisitorAuth, loadRuntimeConfig, type ApiClient, type VisitorAuthSession } from "@qms/api-client";
 import { useI18n } from "@qms/i18n/react";
+import { applyBrand } from "@qms/ui";
 import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 export const BASE_PATH = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
@@ -47,6 +48,13 @@ export function RuntimeProvider({ children, configUrl = `${BASE_PATH}/config.jso
     const { client, session } = createVisitorAuth({ apiOrigin, getLanguage: () => languageRef.current });
     return { client, apiOrigin, visitorSession: session, error };
   }, [apiOrigin, error]);
+
+  // The anonymous visitor page needs the org's brand before there is any session (ticket 62, FR-CFG-030): the public
+  // theme read. A failure just leaves the design system's own default accent.
+  useEffect(() => {
+    if (!value.client) return;
+    value.client.branding.theme().then(applyBrand, () => undefined);
+  }, [value.client]);
 
   return <RuntimeContext.Provider value={value}>{children}</RuntimeContext.Provider>;
 }

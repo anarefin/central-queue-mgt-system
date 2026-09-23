@@ -1,23 +1,13 @@
 /*
  * Logical properties only (FR-I18N-031): inline/block, start/end. No left/right, so a right-to-left pack can be added
  * later without layout rework. No fixed pixel widths and no text truncation, so strings can grow 40% (FR-I18N-030).
+ *
+ * Design tokens (--qms-color-*, --qms-font, --qms-radius) come from `./theme.css`, imported before this file in
+ * every app's global CSS; they alias the Tailwind theme tokens there so this hand-written CSS stays themed and
+ * branded without change (ticket 62). The Noto Sans Bengali import lives in theme.css, not here: once Tailwind
+ * concatenates every app's CSS into one file, an `@import` must precede every plain rule in the whole file, not
+ * just its own source file, so it has to be the first thing brought in.
  */
-@import url("./fonts.css");
-
-:root {
-  --qms-font: "Noto Sans Bengali", system-ui, sans-serif;
-  --qms-color-bg: #f6f7f9;
-  --qms-color-surface: #fff;
-  --qms-color-text: #1b1f24;
-  --qms-color-muted: #5b6470;
-  --qms-color-border: #d5dae1;
-  --qms-color-primary: #0b5cad;
-  --qms-color-primary-text: #fff;
-  --qms-color-ok: #1a7f37;
-  --qms-color-warn: #9a6700;
-  --qms-color-danger: #b42318;
-  --qms-radius: 0.5rem;
-}
 
 *,
 *::before,
@@ -75,7 +65,7 @@ body {
 .qms-qr {
   display: block;
   margin-inline: auto;
-  background: #fff;
+  background: #ffffff;
   border: 1px solid var(--qms-color-border);
   border-radius: var(--qms-radius);
   padding: 0.5rem;
@@ -197,28 +187,11 @@ body {
 /*
  * The single print-only-slip seam every app's `window.print()` renders through (ticket 25's kiosk token, ticket
  * 27's admin preview/test-print, FR-CFG-032, FR-ISS-016): invisible on screen, the only thing visible on paper,
- * positioned at the page's own origin so nothing else leaves a mark regardless of where in the flow it sits.
+ * positioned at the page's own origin so nothing else leaves a mark regardless of where in the flow it sits. The
+ * `@media print` mechanism itself lives in theme.css.
  */
 .qms-print-slip {
   display: none;
-}
-
-@media print {
-  body * {
-    visibility: hidden;
-  }
-
-  .qms-print-slip,
-  .qms-print-slip * {
-    visibility: visible;
-  }
-
-  .qms-print-slip {
-    display: block;
-    position: absolute;
-    inset-block-start: 0;
-    inset-inline-start: 0;
-  }
 }
 
 /* The on-screen mirror of `.qms-print-slip` (ticket 27's admin preview, FR-CFG-032): visible on screen, itself hidden

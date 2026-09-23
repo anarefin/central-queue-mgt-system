@@ -1,0 +1,201 @@
+/*
+ * Design system foundation (ticket 62): the single source of design tokens for every app. Raw colour values live on
+ * `:root` (light) and are redefined for dark; `@theme inline` maps them to the semantic Tailwind tokens every app's
+ * utilities read (`bg-surface`, `text-fg-muted`, `bg-primary`, ...), so a token pair only has to be written once to
+ * switch both theme and brand at runtime — no `dark:` duplication per component.
+ *
+ * `--qms-color-*` (the pre-Tailwind names from `styles.css`) are kept as aliases onto these tokens until tickets
+ * 63-65 finish migrating every app's markup, then removed in 65.
+ *
+ * The font import comes first, before any other rule: once Tailwind concatenates every app's CSS into one file, an
+ * `@import` must precede every plain rule in the whole merged file (not just its own source file) to stay valid CSS.
+ */
+@import "./fonts.css";
+
+@source "./";
+
+@custom-variant dark (&:where([data-theme=dark], [data-theme=dark] *));
+
+@theme {
+  /* Neutral scale: raw steps, theme-invariant. Semantic tokens below pick which step means what per theme. */
+  --color-neutral-50: #f8fafc;
+  --color-neutral-100: #f1f5f9;
+  --color-neutral-200: #e2e8f0;
+  --color-neutral-300: #cbd5e1;
+  --color-neutral-400: #94a3b8;
+  --color-neutral-500: #64748b;
+  --color-neutral-600: #475569;
+  --color-neutral-700: #334155;
+  --color-neutral-800: #1e293b;
+  --color-neutral-900: #0f172a;
+  --color-neutral-950: #020617;
+
+  /* Radius scale (qms-radius was 0.5rem = --radius-md here). */
+  --radius-sm: 0.25rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.75rem;
+  --radius-xl: 1rem;
+
+  /* Shadow scale. */
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 5%);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 10%), 0 2px 4px -2px rgb(0 0 0 / 10%);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 10%), 0 4px 6px -4px rgb(0 0 0 / 10%);
+
+  /* Type scale. Spacing itself stays Tailwind's default 4px base (used here on an 8px rhythm); no override needed. */
+  --text-xs: 0.75rem;
+  --text-xs--line-height: 1rem;
+  --text-sm: 0.875rem;
+  --text-sm--line-height: 1.25rem;
+  --text-base: 1rem;
+  --text-base--line-height: 1.5rem;
+  --text-lg: 1.125rem;
+  --text-lg--line-height: 1.75rem;
+  --text-xl: 1.25rem;
+  --text-xl--line-height: 1.75rem;
+  --text-2xl: 1.5rem;
+  --text-2xl--line-height: 2rem;
+  --text-3xl: 1.875rem;
+  --text-3xl--line-height: 2.25rem;
+
+  --font-sans: "Noto Sans Bengali", system-ui, sans-serif;
+}
+
+/* Light palette (default). Every text/background pair below (fg on surface*, primary-fg on primary, each status
+   colour on its own -subtle) meets WCAG AA (4.5:1), checked by theme-contrast.test.ts. */
+:root {
+  --qms-raw-surface: #ffffff;
+  --qms-raw-surface-muted: var(--color-neutral-50);
+  --qms-raw-fg: var(--color-neutral-900);
+  --qms-raw-fg-muted: var(--color-neutral-600);
+  --qms-raw-border: var(--color-neutral-200);
+
+  --qms-raw-primary: #0b5fff;
+  --qms-raw-primary-hover: color-mix(in oklab, #0b5fff 85%, black);
+  --qms-raw-primary-active: color-mix(in oklab, #0b5fff 70%, black);
+  --qms-raw-primary-fg: #ffffff;
+
+  --qms-raw-ok: #166534;
+  --qms-raw-ok-subtle: #dcfce7;
+  --qms-raw-warn: #92400e;
+  --qms-raw-warn-subtle: #fef3c7;
+  --qms-raw-danger: #b91c1c;
+  --qms-raw-danger-subtle: #fee2e2;
+  --qms-raw-info: #1e40af;
+  --qms-raw-info-subtle: #dbeafe;
+}
+
+/* Dark palette: under the OS preference (unless the user picked "light"), and under an explicit "dark" pick. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --qms-raw-surface: var(--color-neutral-800);
+    --qms-raw-surface-muted: var(--color-neutral-950);
+    --qms-raw-fg: var(--color-neutral-50);
+    --qms-raw-fg-muted: var(--color-neutral-400);
+    --qms-raw-border: var(--color-neutral-700);
+
+    --qms-raw-ok: #4ade80;
+    --qms-raw-ok-subtle: #052e16;
+    --qms-raw-warn: #fcd34d;
+    --qms-raw-warn-subtle: #451a03;
+    --qms-raw-danger: #fca5a5;
+    --qms-raw-danger-subtle: #450a0a;
+    --qms-raw-info: #93c5fd;
+    --qms-raw-info-subtle: #172554;
+  }
+}
+
+:root[data-theme="dark"] {
+  --qms-raw-surface: var(--color-neutral-800);
+  --qms-raw-surface-muted: var(--color-neutral-950);
+  --qms-raw-fg: var(--color-neutral-50);
+  --qms-raw-fg-muted: var(--color-neutral-400);
+  --qms-raw-border: var(--color-neutral-700);
+
+  --qms-raw-ok: #4ade80;
+  --qms-raw-ok-subtle: #052e16;
+  --qms-raw-warn: #fcd34d;
+  --qms-raw-warn-subtle: #451a03;
+  --qms-raw-danger: #fca5a5;
+  --qms-raw-danger-subtle: #450a0a;
+  --qms-raw-info: #93c5fd;
+  --qms-raw-info-subtle: #172554;
+}
+
+@theme inline {
+  --color-surface: var(--qms-raw-surface);
+  --color-surface-muted: var(--qms-raw-surface-muted);
+  --color-fg: var(--qms-raw-fg);
+  --color-fg-muted: var(--qms-raw-fg-muted);
+  --color-border: var(--qms-raw-border);
+
+  --color-primary: var(--qms-raw-primary);
+  --color-primary-hover: var(--qms-raw-primary-hover);
+  --color-primary-active: var(--qms-raw-primary-active);
+  --color-primary-fg: var(--qms-raw-primary-fg);
+
+  --color-ok: var(--qms-raw-ok);
+  --color-ok-subtle: var(--qms-raw-ok-subtle);
+  --color-warn: var(--qms-raw-warn);
+  --color-warn-subtle: var(--qms-raw-warn-subtle);
+  --color-danger: var(--qms-raw-danger);
+  --color-danger-subtle: var(--qms-raw-danger-subtle);
+  --color-info: var(--qms-raw-info);
+  --color-info-subtle: var(--qms-raw-info-subtle);
+}
+
+/* --qms-* aliases (FR-CFG-030 backward compatibility): every hand-written `qms-*` class in styles.css, kiosk.css and
+   display.css keeps working, themed and branded, through these names until 63-65 migrate their markup. */
+:root {
+  --qms-font: var(--font-sans);
+  --qms-color-bg: var(--color-surface-muted);
+  --qms-color-surface: var(--color-surface);
+  --qms-color-text: var(--color-fg);
+  --qms-color-muted: var(--color-fg-muted);
+  --qms-color-border: var(--color-border);
+  --qms-color-primary: var(--color-primary);
+  --qms-color-primary-text: var(--color-primary-fg);
+  --qms-color-ok: var(--color-ok);
+  --qms-color-warn: var(--color-warn);
+  --qms-color-danger: var(--color-danger);
+  --qms-radius: var(--radius-md);
+}
+
+/* Accessibility baseline: one focus ring for every interactive element, and motion only when the visitor allows it. */
+:where(a, button, input, select, textarea, [tabindex]):focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/*
+ * The print-only-slip seam (ticket 25's kiosk token, ticket 27's admin preview/test-print, FR-CFG-032, FR-ISS-016):
+ * on screen everything but `.qms-print-slip` is hidden from paper; on paper only it is visible, at the page's own
+ * origin. The class definitions themselves stay in styles.css; only the `@media print` mechanism lives here.
+ */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+
+  .qms-print-slip,
+  .qms-print-slip * {
+    visibility: visible;
+  }
+
+  .qms-print-slip {
+    display: block;
+    position: absolute;
+    inset-block-start: 0;
+    inset-inline-start: 0;
+  }
+}

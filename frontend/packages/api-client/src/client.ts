@@ -60,7 +60,7 @@ import type {
   VisitorMatch,
   VisitorRegistration,
 } from "./visitors";
-import type { BrandingInput, OrgBranding, PrintTemplate, PrintTemplateInput } from "./branding";
+import type { BrandingInput, BrandingTheme, OrgBranding, PrintTemplate, PrintTemplateInput } from "./branding";
 import type { DashboardFilter, DashboardSnapshot } from "./dashboard";
 import type {
   AuditReportPage,
@@ -428,6 +428,8 @@ export class ApiClient {
     update: (input: BrandingInput) => this.request<OrgBranding>("PUT", "/branding", input),
     template: () => this.request<PrintTemplate>("GET", "/print-template"),
     updateTemplate: (input: PrintTemplateInput) => this.request<PrintTemplate>("PUT", "/print-template", input),
+    /** No token needed: a login screen or the anonymous visitor page themes itself before there is any session (ticket 62). */
+    theme: () => this.request<BrandingTheme>("GET", "/branding/theme", undefined, { anonymous: true }),
   };
 
   /** Terminology remapping (§3.2): every visitor-facing noun a screen shows, resolved through the active profile,

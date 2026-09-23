@@ -1,0 +1,4 @@
+@import "tailwindcss";
+@import "@qms/ui/theme.css";
+@import "@qms/ui/styles.css";
+@import "./display.css";

@@ -23,8 +23,8 @@
   border-radius: 999px;
   font-size: 0.85rem;
   background: var(--qms-color-surface, #f3f3f3);
-  border: 1px solid var(--qms-color-border, #ccc);
-  color: var(--qms-color-muted, #555);
+  border: 1px solid var(--qms-color-border, #cccccc);
+  color: var(--qms-color-muted, #555555);
 }
 
 .qms-now-serving-table {
@@ -38,7 +38,7 @@
   text-align: start;
   padding-block: 0.75rem;
   padding-inline: 1rem;
-  border-block-end: 1px solid var(--qms-color-border, #ddd);
+  border-block-end: 1px solid var(--qms-color-border, #dddddd);
 }
 
 /* NFR-USA-004: legible at 8 metres on a 43-inch 1080p screen, minimum 60px. Override
@@ -176,7 +176,7 @@
 
 .qms-single-counter-service {
   font-size: 1.5rem;
-  color: var(--qms-color-muted, #555);
+  color: var(--qms-color-muted, #555555);
 }
 
 .qms-single-counter--highlight .qms-single-counter-token {
@@ -201,7 +201,7 @@
   text-align: start;
   padding-block: 0.75rem;
   padding-inline: 1rem;
-  border-block-end: 1px solid var(--qms-color-border, #ddd);
+  border-block-end: 1px solid var(--qms-color-border, #dddddd);
 }
 
 .qms-summary-board-count {

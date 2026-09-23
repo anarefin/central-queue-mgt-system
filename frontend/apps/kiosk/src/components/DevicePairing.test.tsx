@@ -56,6 +56,7 @@ function renderPairing() {
 afterEach(() => {
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
+  document.documentElement.style.removeProperty("--color-primary");
 });
 
 const BOOTSTRAP = {

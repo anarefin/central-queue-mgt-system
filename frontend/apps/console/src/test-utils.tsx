@@ -74,7 +74,9 @@ export class FakeWebSocket {
   }
 }
 
-/** Stubs global fetch: `/config.json` is served, everything else is looked up as "METHOD /path" (no /api/v1). Also stubs WebSocket. */
+/** Stubs global fetch: `/config.json` is served, `GET /branding/theme` defaults to an unbranded reply (every app
+    calls it on start, ticket 62), and everything else is looked up as "METHOD /path" (no /api/v1) — override either
+    default by registering the same route explicitly. Also stubs WebSocket. */
 export function stubApi(routes: Routes): Recorded[] {
   FakeWebSocket.all = [];
   vi.stubGlobal("WebSocket", FakeWebSocket);
@@ -83,6 +85,9 @@ export function stubApi(routes: Routes): Recorded[] {
     if (url.endsWith("/config.json")) return json(200, { apiOrigin: "" });
     const path = url.replace(/^.*\/api\/v1/, "");
     const method = init.method ?? "GET";
+    if (method === "GET" && path === "/branding/theme" && !routes["GET /branding/theme"]) {
+      return json(200, { org_name: "QMS", primary_color: "#0b5fff", logo_url: null });
+    }
     calls.push({ method, path, init });
     const route = routes[`${method} ${path}`];
     if (!route) throw new TypeError(`unrouted ${method} ${path}`);

@@ -56,6 +56,7 @@ function renderPairing() {
 afterEach(() => {
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
+  document.documentElement.style.removeProperty("--color-primary");
 });
 
 const BOOTSTRAP = {
@@ -140,6 +141,8 @@ describe("display device pairing", () => {
 
     const logo = await screen.findByAltText("Northside Clinic logo");
     expect(logo).toHaveAttribute("src", "https://example.org/logo.png");
-    expect((logo.closest(".qms-stack") as HTMLElement).style.getPropertyValue("--qms-color-primary")).toBe("#123abc");
+    // applyBrand (ticket 62) sets the root token every `bg-primary`/`text-primary` utility and the `--qms-color-primary`
+    // alias both read, rather than a one-off inline style scoped to this component's own wrapper.
+    await waitFor(() => expect(document.documentElement.style.getPropertyValue("--color-primary")).toBe("#123abc"));
   });
 });

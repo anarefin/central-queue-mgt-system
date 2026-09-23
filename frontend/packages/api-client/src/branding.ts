@@ -58,3 +58,10 @@ export interface PrintTemplateInput {
   fields: PrintField[];
   notice_line?: string | null;
 }
+
+/** The non-sensitive subset of {@link OrgBranding} `GET /branding/theme` returns to any caller, no token needed (ticket 62). */
+export interface BrandingTheme {
+  org_name: string;
+  primary_color: string;
+  logo_url: string | null;
+}

@@ -31,7 +31,8 @@ import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilde
  * Branding and the printed-token template over HTTP against real PostgreSQL (ticket 27, SRS §7.5): defaults before
  * any admin has ever saved, persistence and audit of a real change, that a no-op writes nothing, validation, the
  * permission check, and that a paired kiosk's own bootstrap picks up whatever an admin last saved without another
- * endpoint (FR-CFG-030..032, FR-SEC-020, FR-SEC-040).
+ * endpoint (FR-CFG-030..032, FR-SEC-020, FR-SEC-040). Also the public, unauthenticated theme read a login screen or
+ * the anonymous visitor page themes itself with, and its per-IP rate limit (ticket 62).
  */
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -241,5 +242,39 @@ class BrandingAdminIT {
         // the device-only bootstrap credential cannot reach the staff-only branding endpoints, and vice versa
         assertThat(status(call(get("/api/v1/branding"), kiosk, null))).isEqualTo(403);
         assertThat(status(call(get("/api/v1/config/bootstrap"), admin, null))).isEqualTo(403);
+    }
+
+    // ---- public theme read (FR-CFG-030, ticket 62) -----------------------------------------------------------------
+
+    /**
+     * One test method so it is the only caller of this endpoint in the class: the rate limiter's counter is shared
+     * across the whole Spring context, and a second test calling {@code GET /branding/theme} would make the final
+     * assertion here order-dependent.
+     */
+    @Test
+    void theThemeIsPublicReflectsSavedBrandingAndIsRateLimited() throws Exception {
+        MvcResult before = mvc.perform(get("/api/v1/branding/theme")).andReturn();
+        assertThat(status(before)).as(body(before)).isEqualTo(200);
+        assertThat((String) field(before, "$.org_name")).isNotBlank();
+        assertThat(body(before)).doesNotContain("updated_at").doesNotContain("updated_by");
+
+        String admin = tokenFor(Role.ORG_ADMIN);
+        String orgName = unique("Riverside Clinic");
+        call(put("/api/v1/branding"), admin, "{\"org_name\":\"" + orgName + "\",\"primary_color\":\"#123ABC\",\"logo_url\":\"https://example.org/logo.png\"}");
+
+        MvcResult after = mvc.perform(get("/api/v1/branding/theme")).andReturn();
+        assertThat(status(after)).as(body(after)).isEqualTo(200);
+        assertThat((String) field(after, "$.org_name")).isEqualTo(orgName);
+        assertThat((String) field(after, "$.primary_color")).isEqualTo("#123ABC");
+        assertThat((String) field(after, "$.logo_url")).isEqualTo("https://example.org/logo.png");
+
+        // 2 calls already made above; BrandingController allows 30/minute/IP before refusing the 31st.
+        for (int i = 0; i < 28; i++) {
+            MvcResult ok = mvc.perform(get("/api/v1/branding/theme")).andReturn();
+            assertThat(status(ok)).as(body(ok)).isEqualTo(200);
+        }
+        MvcResult limited = mvc.perform(get("/api/v1/branding/theme")).andReturn();
+        assertThat(status(limited)).as(body(limited)).isEqualTo(429);
+        assertThat((String) field(limited, "$.error.code")).isEqualTo("rate_limited");
     }
 }

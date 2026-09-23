@@ -1,29 +1,184 @@
 import { useMemo, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes } from "react";
+import { cn } from "./cn";
 import { encodeQrMatrix } from "./qrcode";
 
 export function Page({ children }: { children: ReactNode }) {
   return <main className="qms-page qms-stack">{children}</main>;
 }
 
-export function Card({ children }: { children: ReactNode }) {
-  return <section className="qms-card qms-stack">{children}</section>;
+export type ButtonVariant = "primary" | "secondary" | "ghost" | "danger";
+export type ButtonSize = "sm" | "md" | "lg";
+
+const BUTTON_VARIANT_CLASSES: Record<ButtonVariant, string> = {
+  primary: "bg-primary text-primary-fg hover:bg-primary-hover active:bg-primary-active",
+  secondary: "border border-border bg-surface text-fg hover:bg-surface-muted",
+  ghost: "text-fg hover:bg-surface-muted",
+  // A fixed red, not the --color-danger token: that token pairs with its own -subtle background for Badge and
+  // turns pale in dark mode, unreadable as a solid fill with white text.
+  danger: "bg-[#b91c1c] text-white hover:bg-[#a01818] active:bg-[#7f1414]",
+};
+
+const BUTTON_SIZE_CLASSES: Record<ButtonSize, string> = {
+  sm: "px-2.5 py-1.5 text-sm",
+  md: "px-4 py-2 text-sm",
+  lg: "px-5 py-2.5 text-base",
+};
+
+function ButtonSpinner() {
+  return (
+    <svg className="size-4 motion-safe:animate-spin" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" opacity="0.25" />
+      <path d="M22 12a10 10 0 0 1-10 10" stroke="currentColor" strokeWidth="4" strokeLinecap="round" />
+    </svg>
+  );
 }
 
 export function Button({
   variant = "primary",
+  size = "md",
+  loading = false,
+  disabled,
+  className,
+  children,
   ...props
-}: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: "primary" | "secondary" }) {
-  const className = variant === "secondary" ? "qms-button qms-button--secondary" : "qms-button";
-  return <button className={className} {...props} />;
+}: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: ButtonVariant; size?: ButtonSize; loading?: boolean }) {
+  return (
+    <button
+      aria-busy={loading || undefined}
+      disabled={disabled || loading}
+      className={cn(
+        "inline-flex items-center justify-center gap-2 rounded-md font-medium motion-safe:transition-colors",
+        "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
+        "disabled:cursor-not-allowed disabled:opacity-60",
+        BUTTON_VARIANT_CLASSES[variant],
+        BUTTON_SIZE_CLASSES[size],
+        className,
+      )}
+      {...props}
+    >
+      {loading && <ButtonSpinner />}
+      {children}
+    </button>
+  );
 }
 
-export function TextField({ label, id, ...props }: InputHTMLAttributes<HTMLInputElement> & { label: string; id: string }) {
+export function Card({
+  header,
+  actions,
+  className,
+  children,
+}: {
+  header?: ReactNode;
+  actions?: ReactNode;
+  className?: string;
+  children?: ReactNode;
+}) {
   return (
-    <div>
-      <label className="qms-label" htmlFor={id}>
+    <section className={cn("flex flex-col gap-4 rounded-lg border border-border bg-surface p-5 shadow-sm", className)}>
+      {(header || actions) && (
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          {header && <div className="font-semibold text-fg">{header}</div>}
+          {actions && <div className="flex items-center gap-2">{actions}</div>}
+        </div>
+      )}
+      {children}
+    </section>
+  );
+}
+
+export function PageHeader({ title, description, actions }: { title: ReactNode; description?: ReactNode; actions?: ReactNode }) {
+  return (
+    <div className="flex flex-wrap items-start justify-between gap-4">
+      <div className="flex flex-col gap-1">
+        <h1 className="text-2xl font-semibold text-fg">{title}</h1>
+        {description && <p className="text-fg-muted">{description}</p>}
+      </div>
+      {actions && <div className="flex items-center gap-2">{actions}</div>}
+    </div>
+  );
+}
+
+export type BadgeVariant = "neutral" | "ok" | "warn" | "danger" | "info";
+
+const BADGE_VARIANT_CLASSES: Record<BadgeVariant, string> = {
+  neutral: "bg-surface-muted text-fg-muted",
+  ok: "bg-ok-subtle text-ok",
+  warn: "bg-warn-subtle text-warn",
+  danger: "bg-danger-subtle text-danger",
+  info: "bg-info-subtle text-info",
+};
+
+export function Badge({ variant = "neutral", children }: { variant?: BadgeVariant; children: ReactNode }) {
+  return (
+    <span className={cn("inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium", BADGE_VARIANT_CLASSES[variant])}>
+      {children}
+    </span>
+  );
+}
+
+export function EmptyState({
+  icon,
+  title,
+  body,
+  action,
+}: {
+  icon?: ReactNode;
+  title: ReactNode;
+  body?: ReactNode;
+  action?: ReactNode;
+}) {
+  return (
+    <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed border-border p-8 text-center">
+      {icon && (
+        <div className="text-fg-muted" aria-hidden="true">
+          {icon}
+        </div>
+      )}
+      <p className="font-semibold text-fg">{title}</p>
+      {body && <p className="text-fg-muted">{body}</p>}
+      {action}
+    </div>
+  );
+}
+
+export function Skeleton({ className }: { className?: string }) {
+  return <div className={cn("rounded-md bg-surface-muted motion-safe:animate-pulse", className)} aria-hidden="true" />;
+}
+
+function fieldDescribedBy(id: string, hasHelp: boolean, hasError: boolean): string | undefined {
+  if (hasError) return `${id}-error`;
+  if (hasHelp) return `${id}-help`;
+  return undefined;
+}
+
+const FIELD_INPUT_CLASSES =
+  "rounded-md border border-border bg-surface px-3 py-2 text-fg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary";
+
+export function TextField({
+  label,
+  id,
+  helpText,
+  error,
+  className,
+  ...props
+}: InputHTMLAttributes<HTMLInputElement> & { label: string; id: string; helpText?: string; error?: string }) {
+  return (
+    <div className={cn("flex flex-col gap-1.5", className)}>
+      <label className="text-sm font-medium text-fg" htmlFor={id}>
         {label}
       </label>
-      <input className="qms-input" id={id} {...props} />
+      <input id={id} className={FIELD_INPUT_CLASSES} aria-invalid={error ? true : undefined} aria-describedby={fieldDescribedBy(id, Boolean(helpText), Boolean(error))} {...props} />
+      {error ? (
+        <p id={`${id}-error`} role="alert" className="text-sm text-danger">
+          {error}
+        </p>
+      ) : (
+        helpText && (
+          <p id={`${id}-help`} className="text-sm text-fg-muted">
+            {helpText}
+          </p>
+        )
+      )}
     </div>
   );
 }
@@ -74,20 +229,40 @@ export function SelectField({
   label,
   id,
   options,
+  helpText,
+  error,
+  className,
   ...props
-}: SelectHTMLAttributes<HTMLSelectElement> & { label: string; id: string; options: { value: string; label: string }[] }) {
+}: SelectHTMLAttributes<HTMLSelectElement> & {
+  label: string;
+  id: string;
+  options: { value: string; label: string }[];
+  helpText?: string;
+  error?: string;
+}) {
   return (
-    <div>
-      <label className="qms-label" htmlFor={id}>
+    <div className={cn("flex flex-col gap-1.5", className)}>
+      <label className="text-sm font-medium text-fg" htmlFor={id}>
         {label}
       </label>
-      <select className="qms-input" id={id} {...props}>
+      <select id={id} className={FIELD_INPUT_CLASSES} aria-invalid={error ? true : undefined} aria-describedby={fieldDescribedBy(id, Boolean(helpText), Boolean(error))} {...props}>
         {options.map((option) => (
           <option key={option.value} value={option.value}>
             {option.label}
           </option>
         ))}
       </select>
+      {error ? (
+        <p id={`${id}-error`} role="alert" className="text-sm text-danger">
+          {error}
+        </p>
+      ) : (
+        helpText && (
+          <p id={`${id}-help`} className="text-sm text-fg-muted">
+            {helpText}
+          </p>
+        )
+      )}
     </div>
   );
 }

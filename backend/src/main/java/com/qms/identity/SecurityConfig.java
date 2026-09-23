@@ -56,7 +56,8 @@ class SecurityConfig {
         "/api/v1/tickets/*/check-in",
         "/api/v1/tickets/*/delay",
         "/api/v1/tickets/*/feedback",
-        "/api/v1/notification-config/web-push-key"
+        "/api/v1/notification-config/web-push-key",
+        "/api/v1/branding/theme"
     };
 
     @Bean
