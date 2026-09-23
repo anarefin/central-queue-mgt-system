@@ -1,7 +1,7 @@
 "use client";
 
 import { ApiRequestError, type DeviceBootstrap } from "@qms/api-client";
-import { useI18n } from "@qms/i18n/react";
+import { LabelsProvider, useI18n } from "@qms/i18n/react";
 import { applyBrand, Button, Card, ErrorAlert, Page, TextField } from "@qms/ui";
 import { useEffect, useId, useState, type FormEvent } from "react";
 import { useApi } from "../lib/runtime";
@@ -131,34 +131,40 @@ function PairedView({
   deviceId: string | null;
 }) {
   const { t } = useI18n();
+  // Terminology remapping (SRS §3.2, ticket 69): the Site's own resolved labels ride with bootstrap, the same
+  // "shipped with bootstrap so a device never needs a second round trip" reasoning feature flags already follow;
+  // `config.changed` already refetches the whole bootstrap above, so a label edit updates the display without a
+  // reload. Safe before bootstrap has loaded too — `labels={undefined}` just falls back to the pack's own default.
   return (
-    <Page>
-      <div className="flex flex-col gap-4">
-        {bootstrapError && (
-          <Card>
-            <ErrorAlert>{t("devicePairing.configError")}</ErrorAlert>
-          </Card>
-        )}
-        {!bootstrap && !bootstrapError && (
-          <Card>
-            <p className="text-fg-muted">{t("devicePairing.loadingConfig")}</p>
-          </Card>
-        )}
-        {bootstrap && (
-          <header className="flex items-center gap-4">
-            {bootstrap.branding.logo_url && (
-              <img
-                className="max-h-16 max-w-32 object-contain"
-                src={bootstrap.branding.logo_url}
-                alt={t("devicePairing.logoAlt", { org: bootstrap.branding.org_name ?? bootstrap.branding.site_name })}
-              />
-            )}
-            <h1 className="text-2xl font-semibold text-primary">{bootstrap.branding.site_name}</h1>
-          </header>
-        )}
-        {/* FR-DSP-001: only a display is paired to a zone; a kiosk's bootstrap.layout is null and has no board to show. */}
-        {bootstrap?.layout && deviceId && <DisplayBoard deviceId={deviceId} />}
-      </div>
-    </Page>
+    <LabelsProvider labels={bootstrap?.labels}>
+      <Page>
+        <div className="flex flex-col gap-4">
+          {bootstrapError && (
+            <Card>
+              <ErrorAlert>{t("devicePairing.configError")}</ErrorAlert>
+            </Card>
+          )}
+          {!bootstrap && !bootstrapError && (
+            <Card>
+              <p className="text-fg-muted">{t("devicePairing.loadingConfig")}</p>
+            </Card>
+          )}
+          {bootstrap && (
+            <header className="flex items-center gap-4">
+              {bootstrap.branding.logo_url && (
+                <img
+                  className="max-h-16 max-w-32 object-contain"
+                  src={bootstrap.branding.logo_url}
+                  alt={t("devicePairing.logoAlt", { org: bootstrap.branding.org_name ?? bootstrap.branding.site_name })}
+                />
+              )}
+              <h1 className="text-2xl font-semibold text-primary">{bootstrap.branding.site_name}</h1>
+            </header>
+          )}
+          {/* FR-DSP-001: only a display is paired to a zone; a kiosk's bootstrap.layout is null and has no board to show. */}
+          {bootstrap?.layout && deviceId && <DisplayBoard deviceId={deviceId} />}
+        </div>
+      </Page>
+    </LabelsProvider>
   );
 }

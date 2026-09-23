@@ -167,7 +167,7 @@ describe("serving from the keyboard (FR-AGT-010, FR-AGT-032, NFR-USA-002)", () =
     });
     const user = userEvent.setup();
     renderApp(<Home />);
-    await screen.findByText("No ticket in progress. Press F2 to call the next ticket.");
+    await screen.findByText("No token in progress. Press F2 to call the next token.");
     expect(screen.getByRole("button", { name: /Start service/ })).toBeDisabled();
     expect(screen.getByRole("button", { name: /^Complete/ })).toBeDisabled();
 
@@ -244,7 +244,7 @@ describe("serving from the keyboard (FR-AGT-010, FR-AGT-032, NFR-USA-002)", () =
     });
     const user = userEvent.setup();
     renderApp(<Home />);
-    await screen.findByText(/No ticket in progress/);
+    await screen.findByText(/No token in progress/);
 
     await user.keyboard("{F2}");
 
@@ -261,7 +261,7 @@ describe("serving from the keyboard (FR-AGT-010, FR-AGT-032, NFR-USA-002)", () =
     });
     const user = userEvent.setup();
     renderApp(<Home />);
-    await screen.findByText(/No ticket in progress/);
+    await screen.findByText(/No token in progress/);
 
     await user.keyboard("{F2}{F2}{F2}");
     expect(count(calls, "POST /sessions/s1/next")).toBe(1);
@@ -323,12 +323,12 @@ describe("re-announce and miss (FR-DSP-028, FR-QUE-050, ADR-0005)", () => {
     const user = userEvent.setup();
     renderApp(<Home />);
     await screen.findByTestId("current-token");
-    expect(screen.queryByText(/Another miss closes this ticket/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Another miss closes this token/)).not.toBeInTheDocument();
 
     await user.keyboard("{F6}");
 
     await waitFor(() => expect(screen.queryByTestId("current-token")).not.toBeInTheDocument());
-    expect(screen.getByText(/No ticket in progress/)).toBeInTheDocument();
+    expect(screen.getByText(/No token in progress/)).toBeInTheDocument();
     expect(ifMatch(calls.find((c) => c.path === "/sessions/s1/miss"))).toBe('"1"');
     expect(screen.getByRole("button", { name: /Call next/ })).toBeEnabled();
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
@@ -338,7 +338,7 @@ describe("re-announce and miss (FR-DSP-028, FR-QUE-050, ADR-0005)", () => {
     stubApi({ ...AUTH, "GET /sessions/current": () => json(200, session({ ticket: ticket({ miss_count: 2 }) })) });
     renderApp(<Home />);
 
-    expect(await screen.findByText("Missed 2 of 2 times already. Another miss closes this ticket as a no-show.")).toBeInTheDocument();
+    expect(await screen.findByText("Missed 2 of 2 times already. Another miss closes this token as a no-show.")).toBeInTheDocument();
   });
 
   it("returns to the counter list once missing the last ticket closes the session", async () => {
@@ -369,7 +369,7 @@ describe("re-announce and miss (FR-DSP-028, FR-QUE-050, ADR-0005)", () => {
 
     await user.keyboard("{F3}");
 
-    expect(await screen.findByRole("alert")).toHaveTextContent("এই টিকিটটি অনুমোদিত সর্বোচ্চ বার আবার ঘোষণা করা হয়েছে।");
+    expect(await screen.findByRole("alert")).toHaveTextContent("এই টোকেনটি অনুমোদিত সর্বোচ্চ বার আবার ঘোষণা করা হয়েছে।");
     expect(count(calls, "GET /sessions/current")).toBe(2);
     expect(screen.getByRole("button", { name: /আবার ঘোষণা/ })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /অনুপস্থিত/ })).toBeInTheDocument();
@@ -467,8 +467,8 @@ describe("hold and held by me (FR-AGT-013, ADR-0008, §19.3)", () => {
 
     await user.keyboard("{F10}");
 
-    expect(await screen.findByRole("alert")).toHaveTextContent("Resume and complete your held tickets before closing.");
-    expect(await screen.findByText("Resume and complete each held ticket to finish closing.")).toBeInTheDocument();
+    expect(await screen.findByRole("alert")).toHaveTextContent("Resume and complete your held tokens before closing.");
+    expect(await screen.findByText("Resume and complete each held token to finish closing.")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Resume S-042" })).toBeEnabled();
     expect(count(calls, "GET /sessions/current")).toBe(2);
   });
@@ -485,7 +485,7 @@ describe("hold and held by me (FR-AGT-013, ADR-0008, §19.3)", () => {
 
     await user.keyboard("{F8}");
 
-    expect(await screen.findByRole("alert")).toHaveTextContent("এই সেশনে অনুমোদিত সর্বোচ্চ সংখ্যক টিকিট ইতিমধ্যে ধরে রাখা আছে।");
+    expect(await screen.findByRole("alert")).toHaveTextContent("এই সেশনে অনুমোদিত সর্বোচ্চ সংখ্যক টোকেন ইতিমধ্যে ধরে রাখা আছে।");
     expect(count(calls, "GET /sessions/current")).toBe(2);
   });
 });
@@ -710,7 +710,7 @@ describe("breaks (F9, FR-AGT-020, FR-AGT-021, FR-AGT-022, SRS §19.3)", () => {
     });
     const user = userEvent.setup();
     renderApp(<Home />);
-    await screen.findByText("No ticket in progress. Press F2 to call the next ticket.");
+    await screen.findByText("No token in progress. Press F2 to call the next token.");
 
     await user.keyboard("{F9}");
 
@@ -723,7 +723,7 @@ describe("breaks (F9, FR-AGT-020, FR-AGT-021, FR-AGT-022, SRS §19.3)", () => {
     expect(await screen.findByText("On break: Lunch")).toBeInTheDocument();
     expect(body(calls.find((c) => c.method === "POST" && c.path === "/sessions/s1/break"))).toEqual({ break_type_id: "b1" });
     expect(screen.getByRole("timer")).toHaveTextContent(/On break for 0 min \d+ s · Maximum 30 min/);
-    expect(screen.getByText(/no new tickets are assigned/)).toBeInTheDocument();
+    expect(screen.getByText(/no new tokens are assigned/)).toBeInTheDocument();
     expect(screen.getAllByText("On break").length).toBeGreaterThan(0);
     expect(screen.getByRole("button", { name: /Call next/ })).toBeDisabled();
     expect(screen.queryByLabelText("Break type")).not.toBeInTheDocument();
@@ -744,7 +744,7 @@ describe("breaks (F9, FR-AGT-020, FR-AGT-021, FR-AGT-022, SRS §19.3)", () => {
 
     await user.keyboard("{F9}");
 
-    await screen.findByText("No ticket in progress. Press F2 to call the next ticket.");
+    await screen.findByText("No token in progress. Press F2 to call the next token.");
     const end = calls.find((c) => c.method === "POST" && c.path === "/sessions/s1/break");
     expect(end?.init.body, "no type: ends the break").toBeUndefined();
     expect(screen.queryByText("On break: Lunch")).not.toBeInTheDocument();
@@ -806,7 +806,7 @@ describe("breaks (F9, FR-AGT-020, FR-AGT-021, FR-AGT-022, SRS §19.3)", () => {
     const calls = stubApi({ ...AUTH, "GET /sessions/current": () => json(200, session()), "GET /break-types": () => json(200, { items: [TYPES[2]!] }) });
     const user = userEvent.setup();
     renderApp(<Home />);
-    await screen.findByText("No ticket in progress. Press F2 to call the next ticket.");
+    await screen.findByText("No token in progress. Press F2 to call the next token.");
     await user.keyboard("{F9}");
     expect(await screen.findByText("No break types are set up yet. Ask an admin to add one.")).toBeInTheDocument();
 
@@ -838,7 +838,7 @@ describe("breaks (F9, FR-AGT-020, FR-AGT-021, FR-AGT-022, SRS §19.3)", () => {
     await user.selectOptions(await screen.findByLabelText("বিরতির ধরন"), "b2");
     await user.click(screen.getByRole("button", { name: "বিরতি শুরু" }));
 
-    expect(await screen.findByRole("alert")).toHaveTextContent("আগে চলমান টিকিটটি শেষ করুন।");
+    expect(await screen.findByRole("alert")).toHaveTextContent("আগে চলমান টোকেনটি শেষ করুন।");
     expect(await screen.findByTestId("current-token")).toHaveTextContent("S-042");
     expect(count(calls, "GET /sessions/current")).toBe(2);
   });
@@ -848,7 +848,7 @@ describe("breaks (F9, FR-AGT-020, FR-AGT-021, FR-AGT-022, SRS §19.3)", () => {
     const calls = stubApi({ ...AUTH, "GET /sessions/current": () => json(200, state) });
     renderApp(<Home />);
     const socket = await connected();
-    await screen.findByText("No ticket in progress. Press F2 to call the next ticket.");
+    await screen.findByText("No token in progress. Press F2 to call the next token.");
     socket.say(counterSnapshot({ id: "s1", state: "open" }, null));
 
     socket.say(hubEvent("counter:c1", 1, "session.break_ended", { session_id: "s1", state: "open" }));
@@ -900,7 +900,7 @@ describe("closing (FR-AGT-005, SRS §19.3)", () => {
 
     await user.keyboard("{F10}");
 
-    expect(await screen.findByRole("alert")).toHaveTextContent("Finish the ticket in progress first.");
+    expect(await screen.findByRole("alert")).toHaveTextContent("Finish the token in progress first.");
     expect(await screen.findByText(/This session is closing/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Call next/ })).toBeDisabled();
     expect(screen.getByTestId("current-token")).toHaveTextContent("S-042");
@@ -951,7 +951,7 @@ describe("surviving a refresh, a stale screen and a lost connection (FR-AGT-004,
 
     await user.keyboard("{F4}");
 
-    expect(await screen.findByRole("alert")).toHaveTextContent("The ticket has changed since you last saw it");
+    expect(await screen.findByRole("alert")).toHaveTextContent("The token has changed since you last saw it");
     expect(await screen.findByText("In service")).toBeInTheDocument();
     expect(count(calls, "GET /sessions/current")).toBe(2);
   });
@@ -1006,7 +1006,7 @@ describe("every F-key still works after the redesign (ticket 64, NFR-USA-002)", 
     });
     const user = userEvent.setup();
     renderApp(<Home />);
-    await screen.findByText(/No ticket in progress/);
+    await screen.findByText(/No token in progress/);
 
     await user.keyboard("{F2}");
     expect(await screen.findByTestId("current-token")).toHaveTextContent("S-042");
@@ -1017,7 +1017,7 @@ describe("every F-key still works after the redesign (ticket 64, NFR-USA-002)", 
 
     await user.keyboard("{F6}");
     await waitFor(() => expect(count(calls, "POST /sessions/s1/miss")).toBe(1));
-    expect(await screen.findByText(/No ticket in progress/)).toBeInTheDocument();
+    expect(await screen.findByText(/No token in progress/)).toBeInTheDocument();
   });
 
   it("F4 serves, F8 holds and F9 opens the break panel", async () => {
@@ -1087,7 +1087,7 @@ describe("every F-key still works after the redesign (ticket 64, NFR-USA-002)", 
 
     await user.keyboard("{F9}");
     await waitFor(() => expect(count(calls, "POST /sessions/s1/break")).toBe(1));
-    expect(await screen.findByText(/No ticket in progress/)).toBeInTheDocument();
+    expect(await screen.findByText(/No token in progress/)).toBeInTheDocument();
 
     const closeCalls = stubApi({
       ...AUTH,
@@ -1110,6 +1110,20 @@ describe("language (FR-I18N-001, FR-I18N-020)", () => {
     expect(screen.getByTestId("current-token")).toHaveTextContent("S-042");
     expect(screen.getByRole("button", { name: /পরবর্তী ডাকুন/ })).toBeInTheDocument();
     expect(screen.getByText("সেবা: পরামর্শ")).toBeInTheDocument();
+  });
+});
+
+describe("terminology remapping (SRS §3.2, ticket 69)", () => {
+  it("renders a banking profile's overridden entity terms, e.g. Desk for Counter", async () => {
+    stubApi({
+      ...AUTH,
+      "GET /sessions/current": () => json(200, session({ ticket: null })),
+      "GET /labels?lang=en": () => json(200, { "entity.counter": "Desk" }),
+    });
+    renderApp(<Home />);
+
+    expect(await screen.findByText("Desk console")).toBeInTheDocument();
+    expect(screen.queryByText("Counter console")).not.toBeInTheDocument();
   });
 });
 
@@ -1170,14 +1184,14 @@ describe("live updates (SRS §21, FR-QUE-080, FR-QUE-082, FR-QUE-084)", () => {
     const socket = await connected();
 
     socket.say(queueSnapshot("v1", 3, 0, { low: 20, high: 25 }));
-    expect(screen.getByTestId("waiting-v1")).toHaveTextContent("Consultation: 3 waiting, about 20–25 min for a new ticket");
+    expect(screen.getByTestId("waiting-v1")).toHaveTextContent("Consultation: 3 waiting, about 20–25 min for a new token");
     // No estimate reported for this service: just the count.
     socket.say(queueSnapshot("v2", 1));
     expect(screen.getByTestId("waiting-v2")).toHaveTextContent("Laboratory: 1 waiting");
     expect(screen.getByTestId("waiting-v2")).not.toHaveTextContent("about");
 
     socket.say(hubEvent("queue:v1", 1, "queue.estimate_changed", { waiting_count: 2, open_counters: 1, estimated_wait_minutes: { low: 10, high: 15 } }));
-    expect(screen.getByTestId("waiting-v1")).toHaveTextContent("Consultation: 2 waiting, about 10–15 min for a new ticket");
+    expect(screen.getByTestId("waiting-v1")).toHaveTextContent("Consultation: 2 waiting, about 10–15 min for a new token");
   });
 
   it("shows the counts in Bangla digits and words in the Bangla console", async () => {
@@ -1216,7 +1230,7 @@ describe("live updates (SRS §21, FR-QUE-080, FR-QUE-082, FR-QUE-084)", () => {
     renderApp(<Home />);
     const socket = await connected();
     socket.say(counterSnapshot({ id: "s1", state: "open" }, null));
-    await screen.findByText("No ticket in progress. Press F2 to call the next ticket.");
+    await screen.findByText("No token in progress. Press F2 to call the next token.");
 
     await user.keyboard("{F2}");
     await screen.findByTestId("current-token");
@@ -1232,7 +1246,7 @@ describe("live updates (SRS §21, FR-QUE-080, FR-QUE-082, FR-QUE-084)", () => {
     const calls = stubApi({ ...AUTH, "GET /sessions/current": () => json(200, state) });
     renderApp(<Home />);
     const socket = await connected();
-    await screen.findByText("No ticket in progress. Press F2 to call the next ticket.");
+    await screen.findByText("No token in progress. Press F2 to call the next token.");
 
     state = session({ ticket: ticket() });
     socket.say({ ...counterSnapshot({ id: "s1", state: "open" }, { id: "t1", token_number: "S-042", state: "called", version: 1 }, 40), resync: true });
@@ -1252,7 +1266,7 @@ describe("live updates (SRS §21, FR-QUE-080, FR-QUE-082, FR-QUE-084)", () => {
     const user = userEvent.setup();
     renderApp(<Home />);
     const first = await connected();
-    await screen.findByText("No ticket in progress. Press F2 to call the next ticket.");
+    await screen.findByText("No token in progress. Press F2 to call the next token.");
 
     await user.keyboard("{F10}");
     expect(await screen.findByText("Open a counter session")).toBeInTheDocument();
@@ -1416,28 +1430,28 @@ describe("calling a specific ticket out of order (FR-AGT-012, FR-SEC-040)", () =
     });
     const user = userEvent.setup();
     renderApp(<Home />);
-    await screen.findByText(/No ticket in progress/);
+    await screen.findByText(/No token in progress/);
 
-    await user.click(screen.getByRole("button", { name: "Call a specific ticket" }));
+    await user.click(screen.getByRole("button", { name: "Call a specific token" }));
 
-    const choose = await screen.findByLabelText("Ticket");
-    expect(within(choose).getAllByRole("option").map((o) => o.textContent)).toEqual(["Choose a ticket", "1. S-050", "2. S-051 Senior citizen"]);
-    expect(screen.getByRole("button", { name: "Call ticket" })).toBeDisabled();
+    const choose = await screen.findByLabelText("Token");
+    expect(within(choose).getAllByRole("option").map((o) => o.textContent)).toEqual(["Choose a token", "1. S-050", "2. S-051 Senior citizen"]);
+    expect(screen.getByRole("button", { name: "Call token" })).toBeDisabled();
     await user.selectOptions(choose, "w2");
-    expect(screen.getByRole("button", { name: "Call ticket" }), "no reason yet").toBeDisabled();
+    expect(screen.getByRole("button", { name: "Call token" }), "no reason yet").toBeDisabled();
     await user.type(screen.getByLabelText("Reason for calling out of order (required)"), "Frail, asked to be seen");
-    await user.click(screen.getByRole("button", { name: "Call ticket" }));
+    await user.click(screen.getByRole("button", { name: "Call token" }));
 
     expect(await screen.findByTestId("current-token")).toHaveTextContent("S-051");
     expect(body(calls.find((c) => c.path === "/sessions/s1/call"))).toEqual({ ticket_id: "w2", reason: "Frail, asked to be seen" });
-    expect(screen.queryByLabelText("Ticket")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Token")).not.toBeInTheDocument();
   });
 
   it("is off while the desk is full, and closes with Esc without calling anything", async () => {
     const calls = stubApi({ ...AUTH, "GET /sessions/current": () => json(200, session({ ticket: ticket() })) });
     renderApp(<Home />);
     await screen.findByTestId("current-token");
-    expect(screen.getByRole("button", { name: "Call a specific ticket" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Call a specific token" })).toBeDisabled();
     expect(calls.filter((c) => c.path.startsWith("/queues"))).toHaveLength(0);
   });
 
@@ -1450,16 +1464,16 @@ describe("calling a specific ticket out of order (FR-AGT-012, FR-SEC-040)", () =
     });
     const user = userEvent.setup();
     renderApp(<Home />);
-    await user.click(await screen.findByRole("button", { name: "Call a specific ticket" }));
+    await user.click(await screen.findByRole("button", { name: "Call a specific token" }));
     await user.keyboard("{Escape}");
-    expect(screen.queryByLabelText("Ticket")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Token")).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "Call a specific ticket" }));
-    await user.selectOptions(await screen.findByLabelText("Ticket"), "w1");
+    await user.click(screen.getByRole("button", { name: "Call a specific token" }));
+    await user.selectOptions(await screen.findByLabelText("Token"), "w1");
     await user.type(screen.getByLabelText("Reason for calling out of order (required)"), "Because");
-    await user.click(screen.getByRole("button", { name: "Call ticket" }));
+    await user.click(screen.getByRole("button", { name: "Call token" }));
 
-    expect(await screen.findByRole("alert")).toHaveTextContent("That ticket cannot be called from this counter. It may have been called already.");
+    expect(await screen.findByRole("alert")).toHaveTextContent("That token cannot be called from this counter. It may have been called already.");
     expect(count(calls, "GET /sessions/current")).toBe(2);
   });
 
@@ -1471,7 +1485,7 @@ describe("calling a specific ticket out of order (FR-AGT-012, FR-SEC-040)", () =
     });
     const user = userEvent.setup();
     renderApp(<Home />);
-    await user.click(await screen.findByRole("button", { name: "Call a specific ticket" }));
+    await user.click(await screen.findByRole("button", { name: "Call a specific token" }));
 
     expect(await screen.findByText("Nobody is waiting for this service.")).toBeInTheDocument();
   });

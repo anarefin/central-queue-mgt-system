@@ -60,6 +60,99 @@ describe("shipped packs (FR-I18N-001)", () => {
   });
 });
 
+describe("terminology remapping (SRS §3.2, ticket 69): no bare entity word outside the allow-list", () => {
+  // The pack's own default-noun keys ARE the literal words (they are what a placeholder falls back to), and this
+  // one exact string is ticket 69's own worked example of a technical term that must stay literal.
+  const EN_ALLOW = new Set([
+    "entity.visitor",
+    "entity.visitor_id",
+    "entity.service_group",
+    "entity.counter",
+    "entity.agent",
+    "entity.category",
+    "entity.ticket",
+    "reception.result.secret", // "Ticket secret: {secret}" — a technical term, not the renamable entity
+    "errors.token_invalid", // "Your session token is invalid..." — the auth credential, not the entity
+  ]);
+  const BN_ALLOW = EN_ALLOW;
+
+  // Case-sensitive, whole-word/whole-phrase, no "g" flag: these are only ever used with `.test()` in a loop, and a
+  // global regex's `lastIndex` would otherwise carry state across calls and silently skip matches. "Token" is
+  // included because every shipped vertical profile renames entity.ticket to "Token" (SRS §3.2's table) — it is the
+  // same entity, not a second concept — but a lowercase "token" used for an authentication credential is excluded
+  // by EN_PHRASE_EXCEPTIONS below, checked first.
+  const EN_ENTITY_WORDS = [
+    /\bVisitor ID\b/,
+    /\bvisitor ID\b/,
+    /\bVisitor identifier\b/,
+    /\bvisitor identifier\b/,
+    /\bService groups?\b/,
+    /\bservice groups?\b/,
+    /\bVisitors?\b/,
+    /\bvisitors?\b/,
+    /\bTickets?\b/,
+    /\btickets?\b/,
+    /\bTokens?\b/,
+    /\btokens?\b/,
+    /\bCounters?\b/,
+    /\bcounters?\b/,
+    /\bAgents?\b/,
+    /\bagents?\b/,
+    /\bCategor(?:y|ies)\b/,
+    /\bcategor(?:y|ies)\b/,
+  ];
+
+  // A technical or otherwise unrelated meaning that happens to contain one of the words above — never the
+  // configurable entity. Masked out (via `.replace`, which is safe to reuse: the spec resets `lastIndex` to 0 at
+  // the start of a global replace regardless of prior state) before EN_ENTITY_WORDS runs.
+  const EN_PHRASE_EXCEPTIONS = [
+    /\bsession token\b/gi,
+    /\baccess token\b/gi,
+    /\brefresh token\b/gi,
+    /\bpush token\b/gi,
+    /\bpairing token\b/gi,
+    /\bdevice token\b/gi,
+    /\btoken is invalid\b/gi,
+    /\btoken has expired\b/gi,
+    /\bIdempotency[- ]Key\b/gi,
+    /\bticket secret\b/gi,
+  ];
+
+  const BN_ENTITY_WORDS = [/ভিজিটর(?:গণ|ের)?(?:\s*আইডি)?/, /টিকিট(?:সমূহ)?/, /টোকেন(?:সমূহ)?/, /কাউন্টার(?:সমূহ)?/, /এজেন্ট(?:গণ)?/];
+
+  function withoutParamsOrExceptions(value: string): string {
+    // {token}, {counter}, {name}, ... are data interpolation, never a bare word to flag; mask them, and the known
+    // technical phrases, before checking.
+    let masked = value.replace(/\{[^{}]+\}/g, "");
+    for (const re of EN_PHRASE_EXCEPTIONS) masked = masked.replace(re, "");
+    return masked;
+  }
+
+  it("English: every entity noun is a {placeholder}, not a bare word", () => {
+    const violations: string[] = [];
+    for (const [key, value] of Object.entries(en)) {
+      if (EN_ALLOW.has(key)) continue;
+      const stripped = withoutParamsOrExceptions(value);
+      for (const re of EN_ENTITY_WORDS) {
+        if (re.test(stripped)) violations.push(`${key}: "${value}"`);
+      }
+    }
+    expect(violations).toEqual([]);
+  });
+
+  it("Bangla: every entity noun is a {placeholder}, not a bare word", () => {
+    const violations: string[] = [];
+    for (const [key, value] of Object.entries(bn)) {
+      if (BN_ALLOW.has(key)) continue;
+      const stripped = value.replace(/\{[^{}]+\}/g, "");
+      for (const re of BN_ENTITY_WORDS) {
+        if (re.test(stripped)) violations.push(`${key}: "${value}"`);
+      }
+    }
+    expect(violations).toEqual([]);
+  });
+});
+
 describe("translator fallback (FR-I18N-011)", () => {
   // Spreading a Record<string, Pack> drops the shipped keys from the inferred type, so name them explicitly.
   const shippedBn = SHIPPED_PACKS.bn as Pack;

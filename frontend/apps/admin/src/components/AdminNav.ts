@@ -20,6 +20,7 @@ const SCHEDULE_ADMINS: readonly string[] = ["system_admin", "org_admin", "team_a
  */
 export const ADMIN_NAV_ITEMS: AdminNavItem[] = [
   { href: "/setup/", group: "nav.group.setup", labelKey: "admin.home.setup", roles: SETUP_ADMINS },
+  { href: "/labels/", group: "nav.group.setup", labelKey: "admin.home.labels", roles: SETUP_ADMINS },
   { href: "/sites/", group: "nav.group.organisation", labelKey: "admin.home.sites", roles: SETUP_ADMINS },
   { href: "/branding/", group: "nav.group.organisation", labelKey: "admin.home.branding", roles: SETUP_ADMINS },
   { href: "/catalogue/", group: "nav.group.queue", labelKey: "admin.home.catalogue", roles: SETUP_ADMINS },

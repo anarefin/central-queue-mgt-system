@@ -110,7 +110,7 @@ describe("agent availability (FR-AGT-024)", () => {
     await userEvent.selectOptions(await screen.findByLabelText("বিরতির ধরন — Rina Akter"), "b1");
     await userEvent.click(screen.getByRole("button", { name: "Rina Akter-কে বিরতিতে পাঠান" }));
 
-    expect(await screen.findByText("ওই এজেন্টের একটি টিকিট চলমান। আগে সেটি শেষ করতে হবে।")).toBeInTheDocument();
+    expect(await screen.findByText("ওই এজেন্টের একটি টোকেন চলমান। আগে সেটি শেষ করতে হবে।")).toBeInTheDocument();
     expect(calls.filter((c) => c.path === "/agents/availability").length).toBe(2);
   });
 });

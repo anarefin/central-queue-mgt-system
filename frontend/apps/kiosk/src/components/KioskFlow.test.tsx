@@ -134,7 +134,7 @@ describe("KioskFlow common path (ticket 25, SRS §8.2)", () => {
     // Tap 2: confirm and print.
     await userEvent.click(screen.getByRole("button", { name: "Get my token" }));
 
-    expect(await screen.findByText("Take your ticket from the printer")).toBeInTheDocument();
+    expect(await screen.findByText("Take your token from the printer")).toBeInTheDocument();
     expect(visibleToken("A-001")).toBeInTheDocument();
     expect(printer.calls).toHaveLength(1);
     expect(printer.calls[0]).toMatchObject({
@@ -245,7 +245,7 @@ describe("KioskFlow issuance failure and retry", () => {
     expect(await screen.findByText("Sorry, closed.")).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Try again" }));
 
-    expect(await screen.findByText("Take your ticket from the printer")).toBeInTheDocument();
+    expect(await screen.findByText("Take your token from the printer")).toBeInTheDocument();
     const key = (call: unknown) => ((call as [string, RequestInit])[1].headers as Record<string, string>)["Idempotency-Key"];
     expect(key(fetchImpl.mock.calls[0])).toBe(key(fetchImpl.mock.calls[1]));
   });
@@ -613,7 +613,7 @@ describe("branding and the printed token template (ticket 27, FR-CFG-030..032)",
 
     await userEvent.click(screen.getByRole("button", { name: "Tap to begin" }));
     await userEvent.click(screen.getByRole("button", { name: "Get my token" }));
-    await screen.findByText("Take your ticket from the printer");
+    await screen.findByText("Take your token from the printer");
 
     const slip = document.querySelector(".qms-print-slip") as HTMLElement;
     expect(within(slip).getByText("Northside Clinic")).toBeInTheDocument();
@@ -632,7 +632,7 @@ describe("branding and the printed token template (ticket 27, FR-CFG-030..032)",
 
     await userEvent.click(screen.getByRole("button", { name: "Tap to begin" }));
     await userEvent.click(screen.getByRole("button", { name: "Get my token" }));
-    await screen.findByText("Take your ticket from the printer");
+    await screen.findByText("Take your token from the printer");
 
     const slip = document.querySelector(".qms-print-slip") as HTMLElement;
     expect(within(slip).getByText("Token: A-001")).toBeInTheDocument();

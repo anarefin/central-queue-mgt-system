@@ -92,8 +92,8 @@ describe("webhook endpoints (FR-INT-020)", () => {
 
     await userEvent.type(screen.getByLabelText("Description"), "Fraud monitor");
     await userEvent.type(screen.getByLabelText("URL"), "https://fraud.example.com/hooks");
-    await userEvent.click(screen.getByLabelText("Ticket called"));
-    await userEvent.click(screen.getByLabelText("Ticket completed"));
+    await userEvent.click(screen.getByLabelText("Token called"));
+    await userEvent.click(screen.getByLabelText("Token completed"));
     await userEvent.click(screen.getByRole("button", { name: "Create endpoint" }));
 
     expect(await screen.findByText("Fraud monitor")).toBeInTheDocument();
@@ -121,7 +121,7 @@ describe("webhook endpoints (FR-INT-020)", () => {
     await userEvent.click(await screen.findByRole("button", { name: "Add endpoint" }));
     await userEvent.type(screen.getByLabelText("Description"), "x");
     await userEvent.type(screen.getByLabelText("URL"), "http://127.0.0.1/hooks");
-    await userEvent.click(screen.getByLabelText("Ticket called"));
+    await userEvent.click(screen.getByLabelText("Token called"));
     await userEvent.click(screen.getByRole("button", { name: "Create endpoint" }));
 
     expect(await screen.findByRole("alert")).toBeInTheDocument();

@@ -19,7 +19,11 @@ record BootstrapResponse(
         /** Every feature flag's org-wide master switch, by wire key (ticket 68): a device reads its own copy here
          * rather than calling {@code GET /setup/feature-flags} itself, the same "shipped with bootstrap so a device
          * never needs a second round trip" reasoning {@code printTemplate} already follows. */
-        @JsonProperty("feature_flags") Map<String, Boolean> featureFlags) {
+        @JsonProperty("feature_flags") Map<String, Boolean> featureFlags,
+        /** Every terminology override for the Site's default language (SRS §3.2, ticket 69), key to value: a kiosk
+         * or display refreshes this the same way it already refreshes {@code featureFlags}, by refetching bootstrap
+         * whole on {@code config.changed} rather than a second endpoint. */
+        Map<String, String> labels) {
 
     /**
      * {@code siteName}/{@code defaultLanguage} are per-site; {@code orgName}, {@code primaryColor} and {@code logoUrl}

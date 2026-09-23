@@ -433,10 +433,15 @@ export class ApiClient {
   };
 
   /** Terminology remapping (§3.2): every visitor-facing noun a screen shows, resolved through the active profile,
-   * then editable one key at a time (CFG-003). */
+   * then editable one key at a time (CFG-003, ticket 69). */
   readonly labels = {
     get: (lang: string) => this.request<Record<string, string>>("GET", `/labels?lang=${lang}`),
     update: (key: string, input: { lang: string; value: string }) => this.request<Record<string, string>>("PUT", `/labels/${key}`, input),
+    /** Resets one key back to the pack's own default noun (CFG-003 cuts both ways: editable back down to nothing). */
+    reset: (key: string, lang: string) => this.request<Record<string, string>>("DELETE", `/labels/${key}?lang=${lang}`),
+    /** The seven non-sensitive `entity.*` values only, no token needed: the anonymous visitor ticket/join pages
+     * render terminology before there is any session, the same reach `branding.theme()` already has (ticket 69). */
+    public: (lang: string) => this.request<Record<string, string>>("GET", `/labels/public?lang=${lang}`, undefined, { anonymous: true }),
   };
 
   /** The first-run setup wizard (SRS §26.2, FR-OPS-010, ticket 56): vertical profiles, wizard progress, and the

@@ -3,6 +3,7 @@ import { ThemeProvider } from "@qms/ui";
 import { render } from "@testing-library/react";
 import type { ReactElement } from "react";
 import { vi } from "vitest";
+import { AppLabelsProvider } from "./lib/labels";
 import { AuthProvider } from "./lib/auth";
 import { RuntimeProvider } from "./lib/runtime";
 import { UserLanguageContext } from "./lib/user-language";
@@ -24,8 +25,10 @@ export interface Recorded {
 }
 
 /** Stubs global fetch: `/config.json` is served, `GET /branding/theme` defaults to an unbranded reply (every app calls
-    it on start, ticket 62), and everything else is looked up as "METHOD /path" (no /api/v1) — override either default
-    by registering the same route explicitly. */
+    it on start, ticket 62), `GET /labels?lang=...` defaults to no overrides (every screen just shows the pack's own
+    default noun, ticket 69), and everything else is looked up as "METHOD /path" (no /api/v1) — override either
+    default by registering the same route explicitly. Neither default is recorded in the returned call log, so an
+    existing test's exact-call assertions are unaffected by either being wired in. */
 export function stubApi(routes: Routes): Recorded[] {
   const calls: Recorded[] = [];
   vi.stubGlobal("fetch", async (url: string, init: RequestInit = {}) => {
@@ -34,6 +37,9 @@ export function stubApi(routes: Routes): Recorded[] {
     const method = init.method ?? "GET";
     if (method === "GET" && path === "/branding/theme" && !routes["GET /branding/theme"]) {
       return json(200, { org_name: "QMS", primary_color: "#0b5fff", logo_url: null });
+    }
+    if (method === "GET" && path.startsWith("/labels") && !routes[`GET ${path}`]) {
+      return json(200, {});
     }
     calls.push({ method, path, init });
     const route = routes[`${method} ${path}`];
@@ -50,7 +56,9 @@ function Shell({ children }: { children: ReactNode }) {
       <UserLanguageContext.Provider value={setUserLanguage}>
         <I18nProvider loadExtra={false} userLanguage={userLanguage}>
           <RuntimeProvider>
-            <AuthProvider>{children}</AuthProvider>
+            <AuthProvider>
+              <AppLabelsProvider>{children}</AppLabelsProvider>
+            </AuthProvider>
           </RuntimeProvider>
         </I18nProvider>
       </UserLanguageContext.Provider>

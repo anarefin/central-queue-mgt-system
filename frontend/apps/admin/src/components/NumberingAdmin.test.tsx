@@ -157,7 +157,7 @@ describe("token numbering screen", () => {
     await userEvent.type(screen.getByLabelText("Reset time (site time)"), "04:30");
     await userEvent.click(screen.getByRole("button", { name: "Save" }));
 
-    expect(await screen.findByText(/3 tickets are waiting here\. They keep the numbers they already have/)).toBeInTheDocument();
+    expect(await screen.findByText(/3 tokens are waiting here\. They keep the numbers they already have/)).toBeInTheDocument();
     expect(bodyOf(calls.find((c) => c.method === "PUT" && c.path === "/service-groups/g1/numbering-rule"))).toEqual({
       prefix_source: "fixed",
       fixed_prefix: "VIP",
@@ -204,7 +204,7 @@ describe("token numbering screen", () => {
     await userEvent.click(screen.getByRole("button", { name: "Remove rule Outpatient" }));
 
     expect(await screen.findAllByText(/^No rule: the default applies/)).toHaveLength(3);
-    expect(screen.getByText("Saved. No tickets are waiting here; tickets issued from now on follow the rule.")).toBeInTheDocument();
+    expect(screen.getByText("Saved. No tokens are waiting here; tokens issued from now on follow the rule.")).toBeInTheDocument();
     expect(calls.some((c) => c.method === "DELETE" && c.path === "/service-groups/g1/numbering-rule")).toBe(true);
   });
 

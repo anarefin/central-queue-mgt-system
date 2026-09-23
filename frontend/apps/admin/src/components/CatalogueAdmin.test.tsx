@@ -243,12 +243,12 @@ describe("service catalogue screen", () => {
     await userEvent.type(within(card).getByLabelText("Kiosk icon (optional)"), "stethoscope");
     await userEvent.clear(within(card).getByLabelText("Display order"));
     await userEvent.type(within(card).getByLabelText("Display order"), "3");
-    await userEvent.selectOptions(within(card).getByLabelText("Visitor identifier"), "mandatory");
+    await userEvent.selectOptions(within(card).getByLabelText("Visitor ID"), "mandatory");
     await userEvent.selectOptions(within(card).getByLabelText("Who can queue"), "walk_in_only");
     await userEvent.click(within(card).getByRole("button", { name: "Add a service" }));
 
     expect(await screen.findByText("Token prefix CON · Expected 12 min · SLA wait 30 min")).toBeInTheDocument();
-    expect(screen.getByText("Channels: Kiosk, Reception · Visitor identifier: Mandatory · Walk-ins only")).toBeInTheDocument();
+    expect(screen.getByText("Channels: Kiosk, Reception · Visitor ID: Mandatory · Walk-ins only")).toBeInTheDocument();
     expect(screen.getByText("Kiosk icon: stethoscope")).toBeInTheDocument();
     expect(bodyOf(calls.find((c) => c.method === "POST" && c.path === "/service-groups/g1/services"))).toEqual({
       name_i18n: { bn: "পরামর্শ", en: "Consultation" },
@@ -378,10 +378,10 @@ describe("service catalogue screen", () => {
     const card = await openServices();
 
     await userEvent.click(await within(card).findByRole("button", { name: "Delete Consultation" }));
-    expect(within(card).getByText(/A service that has tickets cannot be deleted; deactivate it instead\./)).toBeInTheDocument();
+    expect(within(card).getByText(/A service that has tokens cannot be deleted; deactivate it instead\./)).toBeInTheDocument();
     await userEvent.click(within(card).getByRole("button", { name: "Confirm delete" }));
 
-    expect(await within(card).findByRole("alert")).toHaveTextContent("This service has tickets, so it cannot be deleted. Deactivate it instead.");
+    expect(await within(card).findByRole("alert")).toHaveTextContent("This service has tokens, so it cannot be deleted. Deactivate it instead.");
     expect(within(card).getByText("Consultation")).toBeInTheDocument();
 
     await userEvent.click(within(card).getByRole("button", { name: "Deactivate Consultation" }));

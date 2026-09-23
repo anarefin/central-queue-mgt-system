@@ -18,14 +18,14 @@ describe("the visitor page's own ticket-reference contract (ADR-0012, kiosk QR: 
     setSearch("");
     renderVisitor(<Home />);
 
-    expect(await screen.findByRole("alert")).toHaveTextContent("This link is missing your ticket reference. Scan the QR code on your token again.");
+    expect(await screen.findByRole("alert")).toHaveTextContent("This link is missing your token reference. Scan the QR code on your token again.");
   });
 
   it("asks again when the id is present but the secret (fragment) is missing", async () => {
     setSearch("?t=t1");
     renderVisitor(<Home />);
 
-    expect(await screen.findByRole("alert")).toHaveTextContent("This link is missing your ticket reference. Scan the QR code on your token again.");
+    expect(await screen.findByRole("alert")).toHaveTextContent("This link is missing your token reference. Scan the QR code on your token again.");
   });
 
   it("reads the ticket id from the query string and the secret from the URL fragment, then strips the fragment", async () => {

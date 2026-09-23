@@ -3,6 +3,7 @@ import { act, render } from "@testing-library/react";
 import type { ReactElement } from "react";
 import { vi } from "vitest";
 import { AuthProvider } from "./lib/auth";
+import { AppLabelsProvider } from "./lib/labels";
 import { RuntimeProvider } from "./lib/runtime";
 import { UserLanguageContext } from "./lib/user-language";
 import { useState, type ReactNode } from "react";
@@ -88,6 +89,9 @@ export function stubApi(routes: Routes): Recorded[] {
     if (method === "GET" && path === "/branding/theme" && !routes["GET /branding/theme"]) {
       return json(200, { org_name: "QMS", primary_color: "#0b5fff", logo_url: null });
     }
+    if (method === "GET" && path.startsWith("/labels") && !routes[`GET ${path}`]) {
+      return json(200, {});
+    }
     calls.push({ method, path, init });
     const route = routes[`${method} ${path}`];
     if (!route) throw new TypeError(`unrouted ${method} ${path}`);
@@ -102,7 +106,9 @@ function Shell({ children }: { children: ReactNode }) {
     <UserLanguageContext.Provider value={setUserLanguage}>
       <I18nProvider loadExtra={false} userLanguage={userLanguage}>
         <RuntimeProvider>
-          <AuthProvider>{children}</AuthProvider>
+          <AuthProvider>
+            <AppLabelsProvider>{children}</AppLabelsProvider>
+          </AuthProvider>
         </RuntimeProvider>
       </I18nProvider>
     </UserLanguageContext.Provider>

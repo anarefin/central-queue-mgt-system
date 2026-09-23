@@ -2,6 +2,7 @@ import { I18nProvider } from "@qms/i18n/react";
 import { render } from "@testing-library/react";
 import type { ReactElement, ReactNode } from "react";
 import { vi } from "vitest";
+import { AppLabelsProvider } from "./lib/labels";
 import { RuntimeProvider } from "./lib/runtime";
 import { AccountProvider } from "./lib/visitorAuth";
 
@@ -29,6 +30,9 @@ export function stubApi(routes: Routes): Recorded[] {
     if (method === "GET" && path === "/branding/theme" && !routes["GET /branding/theme"]) {
       return json(200, { org_name: "QMS", primary_color: "#0b5fff", logo_url: null });
     }
+    if (method === "GET" && path.startsWith("/labels") && !routes[`GET ${path}`]) {
+      return json(200, {});
+    }
     calls.push({ method, path, init });
     const route = routes[`${method} ${path}`];
     if (!route) throw new TypeError(`unrouted ${method} ${path}`);
@@ -41,7 +45,9 @@ function Shell({ children }: { children: ReactNode }) {
   return (
     <I18nProvider loadExtra={false}>
       <RuntimeProvider>
-        <AccountProvider>{children}</AccountProvider>
+        <AppLabelsProvider>
+          <AccountProvider>{children}</AccountProvider>
+        </AppLabelsProvider>
       </RuntimeProvider>
     </I18nProvider>
   );

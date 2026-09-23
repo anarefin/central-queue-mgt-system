@@ -308,7 +308,7 @@ describe("priority classes (FR-QUE-010)", () => {
     renderApp(<PriorityAdmin />);
 
     await userEvent.click(await screen.findByRole("button", { name: "Deactivate Senior citizen" }));
-    expect(screen.getByText(/Senior citizen will no longer be offered when a ticket is issued\. Tickets that already have it keep it\./)).toBeInTheDocument();
+    expect(screen.getByText(/Senior citizen will no longer be offered when a token is issued\. Tokens that already have it keep it\./)).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Confirm deactivation" }));
 
     const activate = await screen.findByRole("button", { name: "Activate Senior citizen" });
@@ -462,7 +462,7 @@ describe("default classes (FR-QUE-011, FR-CFG-041)", () => {
     renderApp(<PriorityAdmin />);
 
     const card = (await screen.findByRole("heading", { name: "Default classes" })).closest("section")!;
-    expect(within(card).getByText(/tickets already waiting keep the class they have/)).toBeInTheDocument();
+    expect(within(card).getByText(/tokens already waiting keep the class they have/)).toBeInTheDocument();
     expect(await within(card).findByLabelText("Default class for Reception")).toHaveValue("c1");
     expect(within(card).getByLabelText("Default class for Kiosk")).toHaveValue("");
     expect(within(card).getByLabelText("Default class for Consultation")).toHaveValue("");
@@ -479,7 +479,7 @@ describe("default classes (FR-QUE-011, FR-CFG-041)", () => {
     expect(within(card).getByRole("button", { name: "Save default Kiosk" })).toBeDisabled();
     await userEvent.selectOptions(kiosk, "Senior citizen");
     await userEvent.click(within(card).getByRole("button", { name: "Save default Kiosk" }));
-    expect((await within(card).findAllByText(/Tickets already issued keep the class they have/))[0]).toBeInTheDocument();
+    expect((await within(card).findAllByText(/Tokens already issued keep the class they have/))[0]).toBeInTheDocument();
     const put = calls.filter((c) => c.method === "PUT" && c.path.startsWith("/priority-defaults"));
     expect(put[0]!.path).toBe("/priority-defaults/channels/kiosk");
     expect(bodyOf(put[0])).toEqual({ priority_class_id: "c1" });

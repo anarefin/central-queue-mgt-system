@@ -9,7 +9,7 @@ import {
   type PrintField,
   type Ticket,
 } from "@qms/api-client";
-import { I18nProvider, useI18n } from "@qms/i18n/react";
+import { I18nProvider, LabelsProvider, useI18n } from "@qms/i18n/react";
 import { Button, cn, deriveBrandColors, ErrorAlert, QrCode, TextField } from "@qms/ui";
 import {
   useCallback,
@@ -293,14 +293,21 @@ export function KioskFlow({ bootstrap, client, printer, inactivityTimeoutMs = DE
 
   return (
     <I18nProvider loadExtra={false} systemDefault={bootstrap.branding.default_language} userLanguage={languageOverride ?? undefined}>
-      <KioskFlowInner
-        bootstrap={bootstrap}
-        client={client}
-        printer={printer ?? DEFAULT_PRINTER}
-        inactivityTimeoutMs={inactivityTimeoutMs}
-        languageOverride={languageOverride}
-        setLanguageOverride={setLanguageOverride}
-      />
+      {/* Terminology remapping (SRS §3.2, ticket 69): the Site's own resolved labels ride with bootstrap, the same
+          "shipped with bootstrap so a device never needs a second round trip" reasoning feature flags already
+          follow; DevicePairing's own config.changed handler already refetches the whole bootstrap, so a label edit
+          updates the kiosk without a reload. Nested here (not in DevicePairing) so it sits under this flow's own
+          I18nProvider rather than the shadowed app-wide one. */}
+      <LabelsProvider labels={bootstrap.labels}>
+        <KioskFlowInner
+          bootstrap={bootstrap}
+          client={client}
+          printer={printer ?? DEFAULT_PRINTER}
+          inactivityTimeoutMs={inactivityTimeoutMs}
+          languageOverride={languageOverride}
+          setLanguageOverride={setLanguageOverride}
+        />
+      </LabelsProvider>
     </I18nProvider>
   );
 }

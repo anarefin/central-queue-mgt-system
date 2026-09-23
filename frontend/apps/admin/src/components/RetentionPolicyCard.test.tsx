@@ -49,8 +49,8 @@ describe("retention, purge and BI access (SRS §16.3, FR-RPT-021/022, FR-SEC-032
 
     const rows = await screen.findAllByRole("listitem");
     expect(rows).toHaveLength(3);
-    expect(within(rows[0]!).getByText("Ticket detail")).toBeInTheDocument();
-    expect(within(rows[1]!).getByText("Ticket aggregate")).toBeInTheDocument();
+    expect(within(rows[0]!).getByText("Token detail")).toBeInTheDocument();
+    expect(within(rows[1]!).getByText("Token aggregate")).toBeInTheDocument();
     expect(within(rows[2]!).getByText("Audit log")).toBeInTheDocument();
     // Only ticket_detail's own mode is editable (FR-RPT-021's "per the client's choice").
     expect(within(rows[0]!).getByLabelText("When retention passes")).toBeInTheDocument();

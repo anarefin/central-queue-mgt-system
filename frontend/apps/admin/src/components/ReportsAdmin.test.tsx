@@ -127,7 +127,7 @@ describe("detailed token report (SRS §16.1, ticket 48)", () => {
     await userEvent.type(card.getByLabelText("Visitor category"), "senior");
     await userEvent.click(card.getByRole("button", { name: "Run report" }));
 
-    expect(await screen.findByRole("status")).toHaveTextContent("1 rows, 1 tickets issued");
+    expect(await screen.findByRole("status")).toHaveTextContent("1 rows, 1 tokens issued");
     const table = screen.getByRole("table");
     expect(within(table).getAllByRole("row")).toHaveLength(2); // header + one data row
     expect(within(table).getByText("OPD-001")).toBeInTheDocument();
@@ -203,7 +203,7 @@ describe("detailed token report (SRS §16.1, ticket 48)", () => {
 
     expect(await screen.findByText("বিস্তারিত টোকেন প্রতিবেদন")).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "প্রতিবেদন চালান" }));
-    expect(await screen.findByRole("status")).toHaveTextContent("1টি সারি, 1টি টিকিট ইস্যু হয়েছে");
+    expect(await screen.findByRole("status")).toHaveTextContent("1টি সারি, 1টি টোকেন ইস্যু হয়েছে");
   });
 
   it("links to the screen for an administrator only; the API enforces access either way", async () => {

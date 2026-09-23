@@ -151,6 +151,7 @@ function PairedView({
   }
   // KioskFlow renders the site's own brand header (logo/org name, ticket 65) and the single `<main>` landmark for
   // the whole flow; nothing needs to be shown around it once paired, so the site name — the loaded-bootstrap marker
-  // the pairing test looks for — appears there instead of a separate heading here.
+  // the pairing test looks for — appears there instead of a separate heading here. Terminology remapping (ticket 69)
+  // is wired inside KioskFlow itself, alongside its own nested I18nProvider.
   return <KioskFlow bootstrap={bootstrap} client={client} />;
 }

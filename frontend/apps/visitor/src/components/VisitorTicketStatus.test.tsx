@@ -59,7 +59,7 @@ describe("VisitorTicketStatus", () => {
 
     renderVisitor(<VisitorTicketStatus ticketId="t1" credential="wrong" streamDeps={NO_WEBSOCKET} />);
 
-    expect(await screen.findByRole("alert")).toHaveTextContent("This ticket link is invalid, or no longer belongs to an active ticket.");
+    expect(await screen.findByRole("alert")).toHaveTextContent("This token link is invalid, or no longer belongs to an active token.");
   });
 
   it("offers to cancel while waiting, and hides the button once called", async () => {
@@ -68,7 +68,7 @@ describe("VisitorTicketStatus", () => {
     renderVisitor(<VisitorTicketStatus ticketId="t1" credential="s3cr3t" streamDeps={NO_WEBSOCKET} />);
 
     await screen.findByText("You are being called");
-    expect(screen.queryByRole("button", { name: "Cancel my ticket" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Cancel my token" })).not.toBeInTheDocument();
   });
 
   it("cancels the ticket after confirming in the dialog, and shows it is done (FR-MOB-030)", async () => {
@@ -80,13 +80,13 @@ describe("VisitorTicketStatus", () => {
 
     renderVisitor(<VisitorTicketStatus ticketId="t1" credential="s3cr3t" streamDeps={NO_WEBSOCKET} />);
 
-    const button = await screen.findByRole("button", { name: "Cancel my ticket" });
+    const button = await screen.findByRole("button", { name: "Cancel my token" });
     await user.click(button);
     const dialog = screen.getByRole("dialog", { hidden: true });
     await user.click(within(dialog).getByRole("button", { name: "Confirm" }));
 
-    await waitFor(() => expect(screen.getByText("Your ticket has been cancelled.")).toBeInTheDocument());
-    expect(screen.queryByRole("button", { name: "Cancel my ticket" })).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText("Your token has been cancelled.")).toBeInTheDocument());
+    expect(screen.queryByRole("button", { name: "Cancel my token" })).not.toBeInTheDocument();
   });
 
   it("does not cancel when the visitor dismisses the confirmation dialog", async () => {
@@ -95,13 +95,13 @@ describe("VisitorTicketStatus", () => {
 
     renderVisitor(<VisitorTicketStatus ticketId="t1" credential="s3cr3t" streamDeps={NO_WEBSOCKET} />);
 
-    const button = await screen.findByRole("button", { name: "Cancel my ticket" });
+    const button = await screen.findByRole("button", { name: "Cancel my token" });
     await user.click(button);
     const dialog = screen.getByRole("dialog", { hidden: true });
     await user.click(within(dialog).getByRole("button", { name: "Cancel" }));
 
     expect(calls.some((c) => c.path === "/tickets/t1/visitor-cancel")).toBe(false);
-    expect(screen.getByRole("button", { name: "Cancel my ticket" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Cancel my token" })).toBeInTheDocument();
   });
 
   it("shows the specific refusal once a ticket has already been called by the time cancel is sent", async () => {
@@ -114,13 +114,13 @@ describe("VisitorTicketStatus", () => {
 
     renderVisitor(<VisitorTicketStatus ticketId="t1" credential="s3cr3t" streamDeps={NO_WEBSOCKET} />);
 
-    const button = await screen.findByRole("button", { name: "Cancel my ticket" });
+    const button = await screen.findByRole("button", { name: "Cancel my token" });
     await user.click(button);
     const dialog = screen.getByRole("dialog", { hidden: true });
     await user.click(within(dialog).getByRole("button", { name: "Confirm" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
-      "This ticket can no longer be cancelled: it has already been called or closed.",
+      "This token can no longer be cancelled: it has already been called or closed.",
     );
   });
 

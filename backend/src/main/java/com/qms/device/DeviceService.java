@@ -24,6 +24,7 @@ import com.qms.platform.ApiException;
 import com.qms.platform.ErrorCode;
 import com.qms.platform.Profiles;
 import com.qms.platform.featureflags.FeatureFlags;
+import com.qms.platform.labels.Labels;
 import com.qms.platform.realtime.RealtimePublisher;
 import com.qms.platform.realtime.Topics;
 import com.qms.platform.security.CurrentUser;
@@ -81,6 +82,7 @@ public class DeviceService {
     private final RealtimePublisher realtime;
     private final Clock clock;
     private final FeatureFlags featureFlags;
+    private final Labels labels;
 
     DeviceService(
             DeviceRepository devices,
@@ -98,7 +100,8 @@ public class DeviceService {
             ScopeGuard scope,
             RealtimePublisher realtime,
             Clock clock,
-            FeatureFlags featureFlags) {
+            FeatureFlags featureFlags,
+            Labels labels) {
         this.devices = devices;
         this.pairingCodes = pairingCodes;
         this.refreshTokens = refreshTokens;
@@ -115,6 +118,7 @@ public class DeviceService {
         this.realtime = realtime;
         this.clock = clock;
         this.featureFlags = featureFlags;
+        this.labels = labels;
     }
 
     // ---- pairing (device-facing, public) ------------------------------------------------------------------------
@@ -246,7 +250,8 @@ public class DeviceService {
         Branding responseBranding =
                 new Branding(site.name(), site.defaultLanguage(), orgBranding.orgName(), orgBranding.primaryColor(), orgBranding.logoUrl());
         var printTemplate = new BootstrapResponse.PrintTemplate(template.fields(), template.noticeLine());
-        return new BootstrapResponse(responseBranding, site.enabledLanguages(), layout, tree, printTemplate, featureFlags.all());
+        return new BootstrapResponse(
+                responseBranding, site.enabledLanguages(), layout, tree, printTemplate, featureFlags.all(), labels.forLanguage(site.defaultLanguage()));
     }
 
     // ---- fleet administration (staff-facing) --------------------------------------------------------------------

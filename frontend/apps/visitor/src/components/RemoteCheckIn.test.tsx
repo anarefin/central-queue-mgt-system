@@ -91,7 +91,7 @@ describe("RemoteCheckIn", () => {
     renderVisitor(<RemoteCheckIn ticketId="t1" credential="s3cr3t" qr={false} />);
     await user.click(await screen.findByRole("button", { name: "I'm not ready yet" }));
 
-    await waitFor(() => expect(screen.getByText("Your ticket has been moved back. You'll be called later.")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("Your token has been moved back. You'll be called later.")).toBeInTheDocument());
     expect(screen.queryByRole("button", { name: "I'm not ready yet" })).not.toBeInTheDocument();
   });
 
@@ -119,6 +119,6 @@ describe("RemoteCheckIn", () => {
     renderVisitor(<RemoteCheckIn ticketId="t1" credential="s3cr3t" qr={false} />);
     await user.click(await screen.findByRole("button", { name: "I'm not ready yet" }));
 
-    expect(await screen.findByRole("alert")).toHaveTextContent("You've already used your one delay for this ticket.");
+    expect(await screen.findByRole("alert")).toHaveTextContent("You've already used your one delay for this token.");
   });
 });

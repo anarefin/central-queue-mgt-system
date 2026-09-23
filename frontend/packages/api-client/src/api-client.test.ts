@@ -697,4 +697,25 @@ describe("labels", () => {
     expect(`${init.method} ${url}`).toBe("PUT /api/v1/labels/entity.visitor");
     expect(JSON.parse(String(init.body))).toEqual({ lang: "en", value: "Client" });
   });
+
+  it("resets one label key back to the pack default (ticket 69)", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(json(200, {}));
+    const client = new ApiClient({ apiOrigin: "", fetch: fetchImpl as unknown as typeof fetch, getAccessToken: () => "tok" });
+
+    await client.labels.reset("entity.visitor", "en");
+
+    const [url, init] = fetchImpl.mock.calls[0] as [string, RequestInit];
+    expect(`${init.method} ${url}`).toBe("DELETE /api/v1/labels/entity.visitor?lang=en");
+  });
+
+  it("reads the public, anonymous entity labels without a token (ticket 69)", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(json(200, { "entity.visitor": "Customer" }));
+    const client = new ApiClient({ apiOrigin: "", fetch: fetchImpl as unknown as typeof fetch, getAccessToken: () => null });
+
+    await expect(client.labels.public("en")).resolves.toEqual({ "entity.visitor": "Customer" });
+
+    const [url, init] = fetchImpl.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("/api/v1/labels/public?lang=en");
+    expect((init.headers as Record<string, string> | undefined)?.["Authorization"]).toBeUndefined();
+  });
 });

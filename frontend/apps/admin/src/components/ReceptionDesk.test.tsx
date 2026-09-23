@@ -164,7 +164,7 @@ describe("reception desk (SRS §8.3)", () => {
     expect(consultation.closest("label")).toHaveTextContent("0 waiting · about 0–5 min");
     // No English name for the second service: the site's default language stands in (FR-I18N-011).
     expect(screen.getByRole("radio", { name: /ল্যাব/ }).closest("label")).toHaveTextContent("3 waiting · about 30–35 min");
-    expect(screen.getByRole("button", { name: "Issue ticket" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Issue token" })).toBeDisabled();
     expect(screen.getByText("Choose a service to see its queue.")).toBeInTheDocument();
   });
 
@@ -174,9 +174,9 @@ describe("reception desk (SRS §8.3)", () => {
     await chooseConsultation();
     expect(await screen.findByText("Nobody is waiting for this service.")).toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole("button", { name: "Issue ticket" }));
+    await userEvent.click(screen.getByRole("button", { name: "Issue token" }));
 
-    const result = (await screen.findByText("Ticket issued")).closest("section")!;
+    const result = (await screen.findByText("Token issued")).closest("section")!;
     expect(within(result).getByTestId("issued-token")).toHaveTextContent("S-042");
     expect(within(result).getByText("Service: Consultation")).toBeInTheDocument();
     expect(within(result).getByText("Waiting area: Ground waiting, Block A, floor 1st")).toBeInTheDocument();
@@ -215,9 +215,9 @@ describe("reception desk (SRS §8.3)", () => {
     expect(within(select).getAllByRole("option").map((o) => o.textContent)).toEqual(["Normal", "Senior citizen (head start 20 min)"]);
     expect(select).toHaveValue("");
     await userEvent.selectOptions(select, "Senior citizen (head start 20 min)");
-    await userEvent.click(screen.getByRole("button", { name: "Issue ticket" }));
+    await userEvent.click(screen.getByRole("button", { name: "Issue token" }));
 
-    const result = (await screen.findByText("Ticket issued")).closest("section")!;
+    const result = (await screen.findByText("Token issued")).closest("section")!;
     expect(within(result).getByText("Priority class: Senior citizen")).toBeInTheDocument();
     expect(JSON.parse(String(issuesOf(calls)[0]!.init.body))).toMatchObject({ service_id: "v1", priority_class_id: "c1" });
   });
@@ -234,10 +234,10 @@ describe("reception desk (SRS §8.3)", () => {
     renderApp(<ReceptionDesk />);
     await chooseConsultation();
     await userEvent.selectOptions(await screen.findByLabelText("Priority class"), "Senior citizen (head start 20 min)");
-    await userEvent.click(screen.getByRole("button", { name: "Issue ticket" }));
+    await userEvent.click(screen.getByRole("button", { name: "Issue token" }));
     await screen.findByRole("alert");
     await userEvent.selectOptions(screen.getByLabelText("Priority class"), "Normal");
-    await userEvent.click(screen.getByRole("button", { name: "Issue ticket" }));
+    await userEvent.click(screen.getByRole("button", { name: "Issue token" }));
 
     await waitFor(() => expect(issuesOf(calls)).toHaveLength(2));
     const [first, second] = issuesOf(calls);
@@ -290,7 +290,7 @@ describe("reception desk (SRS §8.3)", () => {
     });
     renderApp(<ReceptionDesk />);
     await chooseConsultation();
-    await userEvent.click(screen.getByRole("button", { name: "Issue ticket" }));
+    await userEvent.click(screen.getByRole("button", { name: "Issue token" }));
 
     expect(await screen.findByText("Waiting area: Hall, floor 2nd")).toBeInTheDocument();
   });
@@ -299,20 +299,20 @@ describe("reception desk (SRS §8.3)", () => {
     fakeApi(fresh());
     renderApp(<ReceptionDesk />);
     await chooseConsultation();
-    expect(await screen.findByText("A ticket issued now: about 0–5 minutes")).toBeInTheDocument();
+    expect(await screen.findByText("A token issued now: about 0–5 minutes")).toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole("button", { name: "Issue ticket" }));
+    await userEvent.click(screen.getByRole("button", { name: "Issue token" }));
 
-    expect(await screen.findByText("A ticket issued now: about 10–15 minutes")).toBeInTheDocument();
+    expect(await screen.findByText("A token issued now: about 10–15 minutes")).toBeInTheDocument();
   });
 
   it("never turns the range into one figure, and says so when a ticket has no estimate because it left the queue", async () => {
     fakeApi(fresh(), { "POST /tickets": () => json(201, ticket({ position: null, estimated_wait_minutes: null })) });
     renderApp(<ReceptionDesk />);
     await chooseConsultation();
-    await userEvent.click(screen.getByRole("button", { name: "Issue ticket" }));
+    await userEvent.click(screen.getByRole("button", { name: "Issue token" }));
 
-    const result = (await screen.findByText("Ticket issued")).closest("section")!;
+    const result = (await screen.findByText("Token issued")).closest("section")!;
     expect(within(result).getByText("Estimated wait: not available")).toBeInTheDocument();
     expect(within(result).queryByText(/about/)).not.toBeInTheDocument();
   });
@@ -321,7 +321,7 @@ describe("reception desk (SRS §8.3)", () => {
     fakeApi(fresh(), { "POST /tickets": () => json(201, ticket({ zone: null, position: null })) });
     renderApp(<ReceptionDesk />);
     await chooseConsultation();
-    await userEvent.click(screen.getByRole("button", { name: "Issue ticket" }));
+    await userEvent.click(screen.getByRole("button", { name: "Issue token" }));
 
     expect(await screen.findByText("Waiting area: not set yet")).toBeInTheDocument();
     expect(screen.queryByText(/Position in queue/)).not.toBeInTheDocument();
@@ -342,11 +342,11 @@ describe("reception desk (SRS §8.3)", () => {
     renderApp(<ReceptionDesk />);
     await chooseConsultation();
 
-    await userEvent.click(screen.getByRole("button", { name: "Issue ticket" }));
+    await userEvent.click(screen.getByRole("button", { name: "Issue token" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("Could not reach the server");
-    await userEvent.click(screen.getByRole("button", { name: "Issue ticket" }));
-    await screen.findByText("Ticket issued");
-    await userEvent.click(screen.getByRole("button", { name: "Issue ticket" }));
+    await userEvent.click(screen.getByRole("button", { name: "Issue token" }));
+    await screen.findByText("Token issued");
+    await userEvent.click(screen.getByRole("button", { name: "Issue token" }));
 
     await waitFor(() => expect(issuesOf(calls)).toHaveLength(3));
     const [first, retry, next] = issuesOf(calls).map(keyOf);
@@ -362,10 +362,10 @@ describe("reception desk (SRS §8.3)", () => {
     renderApp(<ReceptionDesk />);
     await chooseConsultation();
 
-    await userEvent.click(screen.getByRole("button", { name: "Issue ticket" }));
-    expect(await screen.findByRole("alert")).toHaveTextContent("This service is not open for tickets right now.");
-    expect(screen.queryByText("Ticket issued")).not.toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: "Issue ticket" }));
+    await userEvent.click(screen.getByRole("button", { name: "Issue token" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("This service is not open for tokens right now.");
+    expect(screen.queryByText("Token issued")).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Issue token" }));
 
     await waitFor(() => expect(issuesOf(calls)).toHaveLength(2));
     expect(keyOf(issuesOf(calls)[1])).not.toBe(keyOf(issuesOf(calls)[0]));
@@ -376,9 +376,9 @@ describe("reception desk (SRS §8.3)", () => {
     renderApp(<ReceptionDesk />, ["bn-BD"]);
 
     await userEvent.click(await screen.findByRole("radio", { name: /পরামর্শ/ }));
-    await userEvent.click(screen.getByRole("button", { name: "টিকিট দিন" }));
+    await userEvent.click(screen.getByRole("button", { name: "টোকেন দিন" }));
 
-    const result = (await screen.findByText("টিকিট দেওয়া হয়েছে")).closest("section")!;
+    const result = (await screen.findByText("টোকেন দেওয়া হয়েছে")).closest("section")!;
     expect(within(result).getByTestId("issued-token")).toHaveTextContent("S-042");
     expect(within(result).getByText("সেবা: পরামর্শ")).toBeInTheDocument();
     expect(within(result).getByText("অপেক্ষার জায়গা: Ground waiting, Block A, 1st তলা")).toBeInTheDocument();
@@ -406,6 +406,22 @@ describe("reception desk (SRS §8.3)", () => {
     await screen.findByText("Signed in with: Agent");
     expect(screen.queryByRole("link", { name: "Reception desk" })).not.toBeInTheDocument();
   });
+
+  it("renders a banking profile's overridden entity terms, e.g. Customer for Visitor (SRS §3.2, ticket 69)", async () => {
+    fakeApi(fresh(), { "GET /labels?lang=en": () => json(200, { "entity.visitor": "Customer" }) });
+    renderApp(<ReceptionDesk />);
+
+    expect(await screen.findByRole("group", { name: "Customer" })).toBeInTheDocument();
+    expect(screen.queryByRole("group", { name: "Visitor" })).not.toBeInTheDocument();
+  });
+
+  it("renders a healthcare profile's overridden entity terms, e.g. Patient for Visitor (SRS §3.2, ticket 69)", async () => {
+    fakeApi(fresh(), { "GET /labels?lang=en": () => json(200, { "entity.visitor": "Patient" }) });
+    renderApp(<ReceptionDesk />);
+
+    expect(await screen.findByRole("group", { name: "Patient" })).toBeInTheDocument();
+    expect(screen.queryByRole("group", { name: "Visitor" })).not.toBeInTheDocument();
+  });
 });
 
 describe("visitor directory and walk-in registration (FR-ISS-020, FR-ISS-021)", () => {
@@ -428,8 +444,8 @@ describe("visitor directory and walk-in registration (FR-ISS-020, FR-ISS-021)", 
     expect(await screen.findByText("Visitor: Amina Rahman")).toBeInTheDocument();
     expect(screen.queryByLabelText("Visitor code, phone or QR")).not.toBeInTheDocument();
     await userEvent.type(screen.getByLabelText("Note for the agent"), "Needs wheelchair access");
-    await userEvent.click(screen.getByRole("button", { name: "Issue ticket" }));
-    await screen.findByText("Ticket issued");
+    await userEvent.click(screen.getByRole("button", { name: "Issue token" }));
+    await screen.findByText("Token issued");
 
     const issue = issuesOf(calls)[0]!;
     expect(JSON.parse(String(issue.init.body))).toMatchObject({ visitor_id: "vis1", purpose_note: "Needs wheelchair access" });
@@ -475,7 +491,7 @@ describe("visitor directory and walk-in registration (FR-ISS-020, FR-ISS-021)", 
     expect(registrations).toHaveLength(1);
     expect(JSON.parse(String(registrations[0]!.init.body))).toEqual({ name: "Karim Uddin", phone: "01700000009" });
 
-    await userEvent.click(screen.getByRole("button", { name: "Issue ticket" }));
+    await userEvent.click(screen.getByRole("button", { name: "Issue token" }));
     const issue = issuesOf(calls)[0]!;
     expect(JSON.parse(String(issue.init.body))).toMatchObject({ visitor_id: "vis2" });
   });
@@ -577,7 +593,7 @@ describe("change of priority and cancel from the queue (FR-QUE-012, §5.2)", () 
     await userEvent.type(within(form).getByLabelText("Reason (kept in the audit log)"), "Urgent");
     await userEvent.click(within(form).getByRole("button", { name: "Change priority" }));
 
-    expect(await within(form).findByRole("alert")).toHaveTextContent("This ticket is no longer waiting, so its class cannot be changed.");
+    expect(await within(form).findByRole("alert")).toHaveTextContent("This token is no longer waiting, so its class cannot be changed.");
     expect(priorityCalls(calls)).toHaveLength(1);
     await userEvent.click(within(form).getByRole("button", { name: "Close" }));
     expect(screen.queryByRole("form", { name: "Change priority of S-042" })).not.toBeInTheDocument();
@@ -597,7 +613,7 @@ describe("change of priority and cancel from the queue (FR-QUE-012, §5.2)", () 
 
     const form = screen.getByRole("form", { name: "Cancel S-042?" });
     await userEvent.type(within(form).getByLabelText("Reason (optional)"), "Visitor left");
-    await userEvent.click(within(form).getByRole("button", { name: "Cancel this ticket" }));
+    await userEvent.click(within(form).getByRole("button", { name: "Cancel this token" }));
 
     expect(await screen.findByText("S-042 was cancelled.")).toBeInTheDocument();
     expect(cancelCalls(calls)).toHaveLength(1);
@@ -614,9 +630,9 @@ describe("change of priority and cancel from the queue (FR-QUE-012, §5.2)", () 
     await chooseConsultation();
     await userEvent.click(await screen.findByRole("button", { name: "Cancel S-043" }));
     const form = screen.getByRole("form", { name: "Cancel S-043?" });
-    await userEvent.click(within(form).getByRole("button", { name: "Cancel this ticket" }));
+    await userEvent.click(within(form).getByRole("button", { name: "Cancel this token" }));
 
-    expect(await within(form).findByRole("alert")).toHaveTextContent("This ticket has already closed.");
+    expect(await within(form).findByRole("alert")).toHaveTextContent("This token has already closed.");
     expect(cancelCalls(calls)[0]!.init.body).toBeUndefined();
   });
 

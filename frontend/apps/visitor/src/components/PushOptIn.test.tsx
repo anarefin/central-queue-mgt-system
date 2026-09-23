@@ -66,7 +66,7 @@ describe("PushOptIn", () => {
     const button = await screen.findByRole("button", { name: "Notify me when it's my turn" });
     await user.click(button);
 
-    await waitFor(() => expect(screen.getByText(/Notifications are on for this ticket/)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(/Notifications are on for this token/)).toBeInTheDocument());
     const call = calls.find((c) => c.path === "/tickets/t1/push-subscription");
     expect(JSON.parse(String(call?.init.body))).toEqual({
       endpoint: "https://push.example/new",
@@ -87,7 +87,7 @@ describe("PushOptIn", () => {
 
     await user.click(await screen.findByRole("button", { name: "Notify me when it's my turn" }));
 
-    await waitFor(() => expect(screen.getByText(/Notifications are on for this ticket/)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(/Notifications are on for this token/)).toBeInTheDocument());
     expect(subscribe).not.toHaveBeenCalled();
   });
 

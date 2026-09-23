@@ -91,6 +91,10 @@ export interface DeviceBootstrap {
    * fixture-compatibility reason as `print_template` — a device that reads none simply treats every flag as on,
    * the same "no row yet" default the backend itself uses. */
   feature_flags?: Record<string, boolean>;
+  /** Every terminology override for the Site's own default language (SRS §3.2, ticket 69), key to value: optional
+   * for the same fixture-compatibility reason as `print_template` — a device that reads none just falls back to
+   * the pack's own default noun for every entity key, exactly as `LabelsProvider` already does with no override. */
+  labels?: Record<string, string>;
 }
 
 /** A service the kiosk selection tree can lead to (ticket 26). `visitor_identifier` decides the identify step: `not_required`, `optional` or `mandatory` (FR-CFG-013). */
