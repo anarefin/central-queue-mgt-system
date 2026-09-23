@@ -64,6 +64,18 @@
 60-installer-upgrades-backup               59              done*    47m      32 files, +1724 −13  2a60777..c7e69be
 61-acceptance-suite                        56,44,51,60     done*    n/a*     27 files, +1623 −11  5bcf3a1..940e8b2
 
+# Phase A — gap closure before the testing guide (added 2026-09-23)
+62-design-system-foundation                —               todo     —        —                   —
+63-admin-app-redesign                      62              todo     —        —                   —
+64-console-and-dashboard-redesign          62              todo     —        —                   —
+65-kiosk-display-visitor-redesign          62              todo     —        —                   —
+66-client-side-validation                  63              todo     —        —                   —
+67-profile-seeds-starter-catalogue         —               todo     —        —                   —
+68-feature-flags-enforced                  67              todo     —        —                   —
+69-label-overrides-rendered                63,64,65        todo     —        —                   —
+70-e2e-suite-repaired-and-run              62-69           todo     —        —                   —
+71-admin-guide-gaps                        67,68,69        todo     —        —                   —
+
 # * 26, 35, 40, 44: worker hit a session rate limit mid-ticket, was resumed after reset;
 #   elapsed wall-clock spans the pause and is not comparable to other tickets' timings.
 # * 27, 29, 32, 34: worker's turn ended waiting on a background gradlew run before committing;
