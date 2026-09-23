@@ -144,3 +144,12 @@
 #   review found the already-landed ticket-39 PushEndpointSecurity had an IPv6 ULA
 #   (fc00::/7) and IPv4-mapped-address bypass; fixed directly since the active worker at
 #   the time (ticket 40) doesn't touch that file.
+#
+# Phase A pre-flight (2026-09-23, BASE d4acb51): frontend `pnpm -r test` green. Backend
+# `./gradlew check` red on ONE test, VisitorAppointmentSelfServiceIT.pastTheCutoffAVisitorIsRefusedEvenWithAReasonButStaffMayStillAct
+# — same documented pre-existing flake as 49/58/60 (hardcoded MONDAY = "2026-09-21" in
+# com.qms.appointment ITs, now in the past relative to real wall-clock 2026-09-23). Not
+# caused by any Phase A ticket and confirmed pre-existing at BASE before any Phase A work
+# started; Phase A tickets are frontend-only (admin/console/kiosk/display/visitor apps,
+# packages/ui) and don't touch com.qms.appointment. Treated as pre-existing per the same
+# precedent as 49/58/60 — proceeding rather than blocking the run on it.
