@@ -4,7 +4,7 @@
 
 **Blocked by:** 63 — Admin app redesign; 64 — Console and dashboard redesign; 65 — Kiosk, display and visitor redesign
 
-**Status:** todo
+**Status:** done
 
 Background:
 - Profiles write `label_override(key, lang, value)` rows for `entity.visitor`, `entity.visitor_id`, `entity.service_group`, `entity.counter`, `entity.agent`, `entity.category` and `entity.ticket`.

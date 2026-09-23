@@ -4,7 +4,7 @@
 
 **Blocked by:** 67 — Vertical profile seeds starter catalogue and numbering
 
-**Status:** todo
+**Status:** done
 
 Background: the six flags in `backend/.../issuance/setup/FeatureFlagKey.java` are stored (`feature_flag` table, `GET`/`PUT /setup/feature-flags/{key}`), but nothing outside `issuance/setup/` reads them. Some features already have their own finer switches, such as `JourneyService` → `journeys_disabled` and the per-service remote rule `virtual_queue_enabled`. A flag is an **org-wide master switch**: the feature works only if the flag is on **and** the finer setting allows it.
 

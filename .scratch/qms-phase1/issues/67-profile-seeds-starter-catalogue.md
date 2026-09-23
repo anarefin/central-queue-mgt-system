@@ -4,7 +4,7 @@
 
 **Blocked by:** —
 
-**Status:** todo
+**Status:** done
 
 Background (ticket 56): `starter_services` and `numbering_defaults` are carried in `backend/src/main/resources/profiles/*.json` and returned by the API but never created, because they are site-scoped and no site exists when a profile is applied. See the `[~]` item in `56-vertical-profiles-and-setup-wizard.md`.
 

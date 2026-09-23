@@ -4,7 +4,7 @@
 
 **Blocked by:** 62 — Design system foundation
 
-**Status:** todo
+**Status:** done
 
 - [x] Console is migrated to Tailwind: every `qms-*` class and inline style in `apps/console` is replaced by Tailwind utilities, semantic theme tokens and `packages/ui` components, with no hard-coded colours. A vitest scan asserts no `qms-` class names remain.
 - [x] `apps/console` uses `AppShell` with a slim top bar showing counter, session state, break timer, user menu and theme toggle. There is no sidebar on the serving desk; the dashboard gets a sidebar with filters.

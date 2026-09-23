@@ -4,7 +4,7 @@
 
 **Blocked by:** 62 — Design system foundation
 
-**Status:** todo
+**Status:** done
 
 - [x] Admin is migrated to Tailwind: every `qms-*` class and inline style in `apps/admin` is replaced by Tailwind utilities and `packages/ui` components. No app-local CSS remains apart from the global entry (`@import "tailwindcss"` plus the shared theme). A vitest scan asserts no `qms-` class names remain in `apps/admin/src`.
 - [x] `frontend/apps/admin/src/app/layout.tsx` wraps signed-in routes in `AppShell`. Login and signed-out stay full-page, centred cards with brand logo and colour.

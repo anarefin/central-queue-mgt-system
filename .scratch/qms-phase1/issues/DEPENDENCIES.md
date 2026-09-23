@@ -66,15 +66,15 @@
 
 # Phase A — gap closure before the testing guide (added 2026-09-23)
 62-design-system-foundation                —               done     —        84 files, +2814 −145 7d3056c..c8c6795
-63-admin-app-redesign                      62              todo     —        —                   —
-64-console-and-dashboard-redesign          62              todo     —        —                   —
-65-kiosk-display-visitor-redesign          62              todo     —        —                   —
-66-client-side-validation                  63              todo     —        —                   —
-67-profile-seeds-starter-catalogue         —               todo     —        —                   —
-68-feature-flags-enforced                  67              todo     —        —                   —
-69-label-overrides-rendered                63,64,65        todo     —        —                   —
-70-e2e-suite-repaired-and-run              62-69           todo     —        —                   —
-71-admin-guide-gaps                        67,68,69        todo     —        —                   —
+63-admin-app-redesign                      62              done     29m      100 files, +1440 −953 518afd9..b9872e1
+64-console-and-dashboard-redesign          62              done     71m      38 files, +1722 −445 b9872e1..6ff2109
+65-kiosk-display-visitor-redesign          62              done     40m      46 files, +872 −960  6ff2109..0f3bf03
+66-client-side-validation                  63              done     15m      22 files, +891 −52   0f3bf03..73736df
+67-profile-seeds-starter-catalogue         —               done*    58m      19 files, +1003 −28  73736df..14cf740
+68-feature-flags-enforced                  67              done     74m      38 files, +1294 −48  14cf740..c0799c6
+69-label-overrides-rendered                63,64,65        done*    n/a*     53 files, +2142 −776  c0799c6..bb9f67c
+70-e2e-suite-repaired-and-run              62-69           done*    n/a*     19 files, +660 −152  bb9f67c..85eb207
+71-admin-guide-gaps                        67,68,69        done     13m      2 files, +418 −6     85eb207..60e0094
 
 # * 26, 35, 40, 44: worker hit a session rate limit mid-ticket, was resumed after reset;
 #   elapsed wall-clock spans the pause and is not comparable to other tickets' timings.
@@ -144,6 +144,41 @@
 #   review found the already-landed ticket-39 PushEndpointSecurity had an IPv6 ULA
 #   (fc00::/7) and IPv4-mapped-address bypass; fixed directly since the active worker at
 #   the time (ticket 40) doesn't touch that file.
+#
+# * 70: MULTI-AGENT COLLISION. The dispatched worker (a general-purpose agent, with tool
+#   access equal to any other) spawned its own sub-agents via the Agent tool to parallelize
+#   e2e diagnosis instead of doing the work itself — at least 3 concurrent instances edited
+#   the same working tree at once (frontend/e2e/support, spec files). They detected the
+#   collision themselves and stood down mid-afternoon (~16:30) to avoid a double-commit, but
+#   one stalled sub-agent (600s no-progress) was still mid-edit on kiosk.ts when the parent
+#   run checked back in ~5h later. No commit had landed; the tree held real, salvageable
+#   uncommitted progress plus one already-run-and-diagnosed e2e attempt (~16:48, U11
+#   strict-mode selector bug identified, U1/U5/U6/U9/vertical-Banking timing out
+#   undiagnosed). The parent explicitly re-designated the original worker as SOLE finisher,
+#   barred it from spawning any further sub-agents, and had it diagnose+fix both issues,
+#   rerun all 3 e2e profiles clean, run SetupWizardIT x5, and make exactly one commit —
+#   which it did (85eb207). One further unrelated pre-existing IT flake
+#   (AppointmentCheckInIT) seen and confirmed transient by isolated rerun. Elapsed
+#   wall-clock spans the collision, stand-down and re-diagnosis and is not comparable to any
+#   other ticket in this run. LESSON: the implement-ticket dispatch prompt should explicitly
+#   forbid a worker from spawning its own sub-agents (the run's dispatch prefix did not say
+#   this for tickets 63-69; worth adding for future runs).
+#
+# * 69: worker hit a session rate limit mid-ticket (reset 3:40pm Asia/Dhaka), resumed after
+#   reset from its own uncommitted working-tree state — no work repeated. Also saw one
+#   confirmed-transient unrelated IT flake on its final full run (distinct occurrence from
+#   the documented VisitorAppointmentSelfServiceIT date-flake). Elapsed wall-clock spans the
+#   rate-limit pause and is not comparable to other tickets.
+#
+# * 67: worker's turn ended twice waiting on a backgrounded `./gradlew check`/re-run
+#   without seeing the result (same pattern as 49/50); resumed twice. Hit a `SessionIT`
+#   failure, re-ran the full IT suite to distinguish flake from regression — confirmed
+#   flake (resource contention), not caused by this ticket. Elapsed wall-clock spans the
+#   waits and reruns, not directly comparable to other tickets.
+#
+# * 63: `pnpm build` fails in this sandbox with a pre-existing Turbopack port-binding
+#   error, reproduced identically on unmodified HEAD before this ticket's changes — not
+#   caused by this ticket, environmental (sandbox networking), not a code defect.
 #
 # Phase A pre-flight (2026-09-23, BASE d4acb51): frontend `pnpm -r test` green. Backend
 # `./gradlew check` red on ONE test, VisitorAppointmentSelfServiceIT.pastTheCutoffAVisitorIsRefusedEvenWithAReasonButStaffMayStillAct

@@ -4,7 +4,7 @@
 
 **Blocked by:** 67 — Profile seeds starter catalogue; 68 — Feature flags enforced; 69 — Label overrides rendered
 
-**Status:** todo
+**Status:** done
 
 - [x] New sections, in the style of the existing 20 (purpose, where in the UI, API endpoints, rules and bounds, refusal reasons, audit events):
   - **Setup wizard and vertical profiles:**

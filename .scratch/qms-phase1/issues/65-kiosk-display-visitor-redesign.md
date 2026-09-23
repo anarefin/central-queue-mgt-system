@@ -7,7 +7,7 @@
 
 **Blocked by:** 62 — Design system foundation
 
-**Status:** todo
+**Status:** done
 
 - [x] Kiosk, display and visitor are migrated to Tailwind:
   - `apps/kiosk/src/app/kiosk.css` and `apps/display/src/app/display.css` are deleted, their rules rebuilt as Tailwind utilities and theme tokens

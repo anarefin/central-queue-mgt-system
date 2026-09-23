@@ -4,7 +4,7 @@
 
 **Blocked by:** 62, 63, 64, 65, 66, 67, 68, 69
 
-**Status:** todo
+**Status:** done
 
 Background: `frontend/e2e/` (ticket 61) was typechecked but never executed. Review found these defects:
 

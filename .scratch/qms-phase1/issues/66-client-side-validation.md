@@ -4,7 +4,7 @@
 
 **Blocked by:** 63 — Admin app redesign on the app shell
 
-**Status:** todo
+**Status:** done
 
 - [x] A shared validators module, `frontend/packages/ui/src/validators.ts` (choice recorded: `packages/ui`, not `packages/api-client` — every form that needs wiring already imports `TextField`/`SelectField` from `@qms/ui`, so the pure validators live next to them rather than adding a new cross-package dependency for presentation-layer validation). It holds pure functions that return i18n error keys and mirror the backend:
   - Site (`backend/.../configuration/site/SiteRules.java`):
