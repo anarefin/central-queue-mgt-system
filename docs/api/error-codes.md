@@ -145,5 +145,15 @@ themes itself with it before there is any session. It returns only `org_name`, `
 `updated_at`/`updated_by`, which would name a staff user. It is rate-limited per caller address, 30 requests/minute; over that it refuses with `rate_limited` (429), the same
 code and status every other rate-limited endpoint in this table uses.
 
+`POST /setup/seed-catalogue` (ticket 67) seeds one Site's starter service catalogue, service group and numbering rule
+from the installation's active vertical profile. It needs both `config:org_sites_zones` and `config:service_catalogue`
+together (a caller with only one, or whose sites do not include the target, is `forbidden`); an unknown Site is
+`not_found`. It refuses with `conflict` and `details.reason` `profile_not_applied` (no vertical profile has been
+applied yet, ticket 56) or `parent_inactive` (the Site is inactive). It is idempotent: a service group or service
+already present, matched by its English name, is left untouched and listed under `skipped` with `reason`
+`already_exists`; a starter service whose token prefix is already used by another active service at the Site is
+skipped and listed with `reason` `prefix_in_use` rather than silently renamed; an existing numbering rule on the
+seeded group is left exactly as it is. A missing `site_id` is `validation_failed` naming it.
+
 The client library also synthesises two codes that never come from the server: `network_error` (no response) and
 `unexpected_response` (a reply that is not a §20.3 envelope, such as a proxy error page).

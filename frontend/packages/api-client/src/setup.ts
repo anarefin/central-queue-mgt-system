@@ -57,3 +57,23 @@ export interface SetupState {
   go_live_ready: boolean;
   go_live_at: string | null;
 }
+
+/** One service group or service {@link SeedCatalogueResult} created or left alone (ticket 67). */
+export interface SeedCatalogueItem {
+  kind: "service_group" | "service";
+  name: string;
+}
+
+/** As {@link SeedCatalogueItem}, plus why it was skipped: `already_exists` (matched by English name) or
+ * `prefix_in_use` (another active service at the Site already holds that token prefix). */
+export interface SeedCatalogueSkippedItem extends SeedCatalogueItem {
+  reason: string;
+}
+
+/** The result of seeding one Site's starter catalogue and numbering from the active vertical profile (ticket 67):
+ * what was created, and what was left alone and why. Running it twice creates nothing new. */
+export interface SeedCatalogueResult {
+  service_group_id: string;
+  created: SeedCatalogueItem[];
+  skipped: SeedCatalogueSkippedItem[];
+}

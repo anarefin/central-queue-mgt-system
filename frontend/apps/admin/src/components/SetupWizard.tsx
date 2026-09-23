@@ -1,12 +1,18 @@
 "use client";
 
-import type { SetupState, VerticalProfile } from "@qms/api-client";
+import type { SeedCatalogueResult, SetupState, Site, VerticalProfile } from "@qms/api-client";
 import { useI18n } from "@qms/i18n/react";
-import { Button, Card, ErrorAlert, SelectField, StatusBadge, TextField } from "@qms/ui";
+import { Button, Card, ErrorAlert, SelectField, StatusBadge, TextField, Toast } from "@qms/ui";
 import Link from "next/link";
 import { useEffect, useId, useState, type FormEvent, type ReactNode } from "react";
-import { describeError, useSubmit } from "../lib/admin-support";
+import { describeError, useList, useSubmit } from "../lib/admin-support";
+import { useAuth } from "../lib/auth";
 import { useApi } from "../lib/runtime";
+
+/** Roles that carry both permissions `POST /setup/seed-catalogue` needs (`config:org_sites_zones` and
+ * `config:service_catalogue`); mirrors `AdminNav`'s own `SETUP_ADMINS` -- a UX convenience only, the API is what
+ * actually enforces access (FR-CFG-103). */
+const CATALOGUE_SEED_ROLES: readonly string[] = ["system_admin", "org_admin"];
 
 /**
  * The first-run setup wizard (SRS §26.2, FR-OPS-010, ticket 56): pick a vertical profile, then walk through the
@@ -58,6 +64,7 @@ export function SetupWizard() {
         <Link href="/catalogue/">{t("setup.link.openCatalogue")}</Link>
         <Link href="/numbering/">{t("setup.link.openNumbering")}</Link>
       </StepCard>
+      <SeedCatalogueCard state={state} profiles={profiles} onChanged={refresh} />
       <StepCard done={state.users_and_roles} label={t("setup.step.usersAndRoles")}>
         <span className="text-fg-muted">{t("setup.usersHint")}</span>
       </StepCard>
@@ -136,6 +143,92 @@ function ProfileCard({ state, profiles, onChanged }: { state: SetupState; profil
           </div>
         </form>
       )}
+    </Card>
+  );
+}
+
+/**
+ * A per-site "Seed starter catalogue" action (ticket 56's deferred item, ticket 67): creates the active profile's
+ * service group, starter services and numbering rule for one site in a single click, ready to issue tokens.
+ * Idempotent -- running it again creates nothing new, and any item already present or skipped for a token-prefix
+ * clash is listed rather than silently dropped. Disabled until a profile is applied and the caller holds both
+ * permissions the endpoint needs.
+ */
+function SeedCatalogueCard({ state, profiles, onChanged }: { state: SetupState; profiles: VerticalProfile[]; onChanged: () => void }) {
+  const { t } = useI18n();
+  const { client } = useApi();
+  const { user } = useAuth();
+  const id = useId();
+  const { busy, error, run } = useSubmit();
+  const [siteId, setSiteId] = useState("");
+  const [result, setResult] = useState<SeedCatalogueResult | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
+
+  const canSeed = CATALOGUE_SEED_ROLES.some((role) => (user?.roles ?? []).includes(role));
+  const activeProfile = profiles.find((p) => p.id === state.active_profile?.id) ?? null;
+
+  const sites = useList<Site>(client && state.profile_applied && canSeed ? () => client.sites.list() : null, [client, state.profile_applied, canSeed]);
+  const siteList = sites.items ?? [];
+
+  useEffect(() => {
+    if (siteId === "" && siteList.length > 0) setSiteId(siteList[0]!.id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [siteList]);
+
+  async function seed() {
+    const ok = await run(async () => {
+      const response = await client!.setup.seedCatalogue(siteId);
+      setResult(response);
+      setToast(t("setup.seedCatalogue.toast", { created: response.created.length, skipped: response.skipped.length }));
+    });
+    if (ok) onChanged();
+  }
+
+  const disabled = busy || !state.profile_applied || !canSeed || siteId === "";
+
+  return (
+    <Card>
+      <h2 className="font-semibold text-fg">{t("setup.seedCatalogue.title")}</h2>
+      <p className="text-fg-muted">{t("setup.seedCatalogue.intro")}</p>
+      {!state.profile_applied && <p className="text-fg-muted">{t("setup.seedCatalogue.needsProfile")}</p>}
+      {activeProfile && activeProfile.starter_services.length > 0 && (
+        <ul className="list-disc ps-5 text-sm text-fg-muted">
+          {activeProfile.starter_services.map((s) => (
+            <li key={s.token_prefix}>{`${s.name_i18n.en ?? ""} (${s.token_prefix})`}</li>
+          ))}
+        </ul>
+      )}
+      {sites.error !== null && <ErrorAlert>{describeError(t, sites.error)}</ErrorAlert>}
+      {state.profile_applied && canSeed && siteList.length === 0 && <p className="text-fg-muted">{t("catalogue.site.none")}</p>}
+      {siteList.length > 1 && (
+        <SelectField
+          id={`${id}-site`}
+          label={t("catalogue.site.pick")}
+          value={siteId}
+          onChange={(event) => setSiteId(event.target.value)}
+          options={siteList.map((s) => ({ value: s.id, label: `${s.name} (${s.code})` }))}
+        />
+      )}
+      {error && <ErrorAlert>{error}</ErrorAlert>}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <Button type="button" onClick={seed} disabled={disabled}>
+          {t("setup.seedCatalogue.button")}
+        </Button>
+      </div>
+      {result && (result.created.length > 0 || result.skipped.length > 0) && (
+        <div className="flex flex-col gap-2 text-sm">
+          <p className="font-semibold text-fg">{t("setup.seedCatalogue.resultTitle")}</p>
+          <ul className="list-disc ps-5 text-fg-muted">
+            {result.created.map((item, index) => (
+              <li key={`created-${index}`}>{t("setup.seedCatalogue.created", { name: item.name })}</li>
+            ))}
+            {result.skipped.map((item, index) => (
+              <li key={`skipped-${index}`}>{t("setup.seedCatalogue.skipped", { name: item.name, reason: t(`setup.seedCatalogue.reason.${item.reason}`) })}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {toast && <Toast message={toast} dismissLabel={t("common.dismiss")} onDismiss={() => setToast(null)} variant="ok" />}
     </Card>
   );
 }

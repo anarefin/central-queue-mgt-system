@@ -1757,7 +1757,7 @@ tickets' frontend code already consumes as-is.
 
 | Requirement | SRS ref | Test type | Test / evidence | Status |
 | --- | --- | --- | --- | --- |
-| Five shipped profiles carrying label overrides, starter catalogue, priority classes, numbering, report/KPI defaults, feature flags | §3.3, §3.4 | unit, integration | `issuance.setup.VerticalProfileCatalog` loads `profiles/{banking,healthcare,producer_services,government,generic}.json`, one generic loader over a fixed id list, no branch per profile. `B/issuance/setup/VerticalProfileCatalogTest#loadsExactlyTheFiveShippedProfiles`, `#everyProfileCarriesLabelsCatalogueClassesNumberingReportsAndFlagsPerSrs33`, `#bankingAndHealthcareCarryDistinctTerminologyPerSrs32`, `#genericProfileTurnsEveryOptionalFlagOffPerSrs34`. `issuance.setup.VerticalProfileService.apply/reset` seeds label overrides, feature flags and (organisation-wide, no Site dependency) priority classes immediately; the Site-scoped starter catalogue and numbering defaults are carried in the `GET /setup/profiles` response for the wizard's own "services and numbering" step to offer, since a Site does not exist until an earlier step creates one (see note below). `B/issuance/setup/SetupWizardIT#walksProfileToGoLiveWithARealTestTokenIssuedPrintedCalledAndAnnounced`. **Correction (this pass):** the "for the wizard's step to seed" framing overclaimed — `SetupWizard.tsx`'s "services and numbering" step never actually reads `starter_services`/`numbering_defaults` to create anything; it only links to the existing catalogue/numbering admin screens as a manual starting point. Mapping the profile's flat starter-service list onto `CatalogueService.createGroup`/`createService` and `NumberingService.setRule` needs a real design decision (what group to create them under; the profile JSON carries no group name) this pass does not make, so it is left undone — see the note below. Feature flags, by contrast, are now genuinely `PUT`-editable afterwards (fixed this pass, see the CFG-003 row) | partial — profiles/labels/priority-classes/feature-flags all pass; catalogue/numbering seeding from a profile does not exist |
+| Five shipped profiles carrying label overrides, starter catalogue, priority classes, numbering, report/KPI defaults, feature flags | §3.3, §3.4 | unit, integration | `issuance.setup.VerticalProfileCatalog` loads `profiles/{banking,healthcare,producer_services,government,generic}.json`, one generic loader over a fixed id list, no branch per profile. `B/issuance/setup/VerticalProfileCatalogTest#loadsExactlyTheFiveShippedProfiles`, `#everyProfileCarriesLabelsCatalogueClassesNumberingReportsAndFlagsPerSrs33`, `#bankingAndHealthcareCarryDistinctTerminologyPerSrs32`, `#genericProfileTurnsEveryOptionalFlagOffPerSrs34`. `issuance.setup.VerticalProfileService.apply/reset` seeds label overrides, feature flags and (organisation-wide, no Site dependency) priority classes immediately; the Site-scoped starter catalogue and numbering defaults are carried in the `GET /setup/profiles` response, and are now (ticket 67) actually seeded onto a chosen Site by an explicit admin action, `POST /setup/seed-catalogue`, rather than only offered as data for a consultant to key in by hand — see the note below. `B/issuance/setup/SetupWizardIT#walksProfileToGoLiveWithARealTestTokenIssuedPrintedCalledAndAnnounced`. Feature flags are `PUT`-editable afterwards (see the CFG-003 row) | passing |
 | Terminology remapping via label keys resolved through pack and profile | §3.2 | integration | `label_override` table (key, lang, value), seeded in bulk by a profile apply/reset, resolved by `issuance.setup.LabelController` (`GET /labels?lang=`) ahead of no override existing yet; a profile's own `entity.*` keys (`entity.visitor`, `entity.visitor_id`, `entity.service_group`, `entity.counter`, `entity.agent`, `entity.category`, `entity.ticket`) per profile per §3.2's table. `SetupWizardIT` asserts `GET /labels` resolves banking's `entity.visitor` to "Customer" after applying the profile | passing |
 | No industry branches in code — variation only via config, labels, flags | CFG-001, NFR-MNT-005 | unit | `VerticalProfileCatalog`/`VerticalProfileService` contain no `if (profile == ...)`; every profile-specific value is read from its own `profiles/<id>.json` through one shared code path. `VerticalProfileCatalogTest` (above) | passing |
 | Profile applied only at first run or explicit reset; never on upgrade | CFG-002 | integration | `VerticalProfileService.apply` refuses (`conflict`, `setup.refused.already_provisioned`) once `system_setting['active_profile']` is set; `VerticalProfileService.reset` has no such guard and is allowed at any time. `SetupWizardIT` applies banking, asserts a second `POST /setup/profile` is refused 409, then asserts `POST /setup/profile/reset` succeeds | passing |
@@ -1772,15 +1772,35 @@ tickets' frontend code already consumes as-is.
 Site-scoped (`service_group`/`service`/`numbering_rule` all key off a Site), but §26.2's own step order picks the
 profile *before* "create org and sites" exists — so there is no Site yet for `apply` to seed a catalogue onto.
 Rather than inventing an implicit "first Site" to attach it to, the profile's starter catalogue and numbering
-defaults are returned in full by `GET /setup/profiles` (and stay part of the applied profile's own record) for the
-wizard's "services and numbering" step to offer. **Correction (this pass):** that step does not currently *seed*
-anything from this data — it never worked the way the paragraph above previously implied. `SetupWizard.tsx`'s
-"services and numbering" step is two plain links to the existing catalogue/numbering admin screens (tickets 05/06),
-with no code path reading `starter_services`/`numbering_defaults` to create a group, service or numbering rule.
-Building that seeding needs a real design decision the profile JSON itself does not settle — the profile's starter
-services are a flat list with no group name/labels, so which `ServiceGroup` to create them under is not implied by
-the data — and is left undone rather than guessed at in a documentation-only correction pass; a consultant instead
-starts from the linked, already-built catalogue/numbering screens by hand. Priority classes have no Site column
+defaults are returned in full by `GET /setup/profiles` (and stay part of the applied profile's own record); `apply`/
+`reset` never seed them (CFG-002: a profile is applied only at first run or an explicit reset, both organisation-wide
+actions, and neither owns a Site yet). **Resolved by ticket 67:** a consultant who has since created a Site now
+seeds that Site's starter catalogue and numbering explicitly, `POST /setup/seed-catalogue` (`{site_id}`, needing both
+`config:org_sites_zones` and `config:service_catalogue`), rather than only starting from the linked catalogue/
+numbering admin screens by hand. `com.qms.configuration.catalogue.CatalogueSeeding.seedStarter` (a new public seam
+in the catalogue package, since `CreateServiceGroupRequest`/`CreateServiceRequest` are package-private) resolves the
+"which `ServiceGroup`" question a flat starter-service list left open: one group per Site per profile, named from
+the profile's own `entity.service_group` label (already bilingual, so no new profile JSON field was needed), reusing
+`CatalogueService.createGroup`/`createService` so every `CatalogueRules` validation and audit entry still applies.
+It is idempotent — an existing group or service, matched by English name, is left alone (`skipped_reason
+already_exists`) rather than duplicated, so seeding twice creates nothing new — and refuses to silently rename a
+starter service whose token prefix collides with another active service already at the Site (`prefix_in_use`,
+skipped and reported instead). `issuance.setup.CatalogueSeedingService` sets one `service_group`-scoped numbering
+rule (prefix source `service`, so each seeded service keeps its own letter, and the profile's own padding/start/reset
+boundary) via `NumberingService.setRule`, added `NumberingService.hasRule` to leave an admin's own existing rule on
+that group exactly as it is rather than overwrite it, and records `profile.catalogue_seeded` (profile id, Site id,
+created/skipped counts). Refuses `409 conflict/profile_not_applied` before any profile is active and
+`409 conflict/parent_inactive` for an inactive Site; an out-of-scope Site is `forbidden` (`FR-CFG-106`).
+`B/issuance/setup/CatalogueSeedingIT` (one parameterised test per shipped profile — seeds, asserts the group,
+services and numbering rule, then issues a real test token through the existing wizard pipeline and checks its
+token format; a second seed creates nothing; the token-prefix clash; an inactive Site; an out-of-scope Site; a
+caller with only one of the two required permissions, at the service layer, since no shipped role carries just one)
+and `B/issuance/setup/CatalogueSeedingProfileNotAppliedIT` (kept in its own Testcontainers database, since "no
+profile has ever been applied" is a one-way, organisation-wide fact the other tests deliberately set). Admin UI:
+`SetupWizard.tsx`'s "services and numbering" step card gained a "Seed starter catalogue" button (previewing the
+active profile's starter list, showing the created/skipped result inline and as a toast, disabled without a profile
+or without both permissions), `F/apps/admin/src/components/SetupWizard.test.tsx`; `packages/api-client`'s
+`setup.seedCatalogue`. Priority classes have no Site column
 (organisation-wide, ADR-0003), so those *are* created immediately on `apply`/`reset`, matched by English name so a
 `reset` never creates a duplicate of a class already present (including the baseline "Normal" default class every
 installation already seeds). Feature flags are now `PUT`-editable one key at a time afterwards (fixed this pass,

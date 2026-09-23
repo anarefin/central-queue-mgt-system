@@ -1,5 +1,6 @@
 package com.qms.issuance.setup;
 
+import com.qms.configuration.catalogue.CatalogueSeeding;
 import com.qms.issuance.TicketResponse;
 import com.qms.platform.ApiException;
 import com.qms.platform.ErrorCode;
@@ -29,14 +30,18 @@ import org.springframework.web.bind.annotation.RestController;
 public class SetupController {
 
     private static final String PERMISSION = "hasAuthority(T(com.qms.platform.security.Authorities).CONFIG_ORG_SITES_ZONES)";
+    private static final String CATALOGUE_SEED_PERMISSION = "hasAuthority(T(com.qms.platform.security.Authorities).CONFIG_ORG_SITES_ZONES)"
+            + " and hasAuthority(T(com.qms.platform.security.Authorities).CONFIG_SERVICE_CATALOGUE)";
 
     private final VerticalProfileService profileService;
     private final SetupWizardService wizard;
+    private final CatalogueSeedingService catalogueSeeding;
     private final CurrentUser currentUser;
 
-    SetupController(VerticalProfileService profileService, SetupWizardService wizard, CurrentUser currentUser) {
+    SetupController(VerticalProfileService profileService, SetupWizardService wizard, CatalogueSeedingService catalogueSeeding, CurrentUser currentUser) {
         this.profileService = profileService;
         this.wizard = wizard;
+        this.catalogueSeeding = catalogueSeeding;
         this.currentUser = currentUser;
     }
 
@@ -89,6 +94,17 @@ public class SetupController {
     @PostMapping("/setup/go-live")
     public Map<String, Instant> goLive() {
         return Map.of("go_live_at", wizard.goLive(currentUser.require().userId()));
+    }
+
+    /** Seeds one Site's starter catalogue and numbering from the active vertical profile (ticket 67): needs both
+     * {@code config:org_sites_zones} and {@code config:service_catalogue}, re-checked at the service layer (API-016). */
+    @PreAuthorize(CATALOGUE_SEED_PERMISSION)
+    @PostMapping("/setup/seed-catalogue")
+    public CatalogueSeeding.SeedResult seedCatalogue(@RequestBody SeedCatalogueRequest request) {
+        if (request == null || request.siteId() == null) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, Map.of("fields", List.of(Map.of("field", "site_id", "code", "required"))));
+        }
+        return catalogueSeeding.seedStarter(request.siteId());
     }
 
     private static VerticalProfileId profileId(ProfileApplyRequest request) {

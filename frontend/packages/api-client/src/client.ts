@@ -29,7 +29,7 @@ import type {
   PairingCodeResponse,
 } from "./devices";
 import type { Counter, CounterInput, Items, Site, SiteInput, Zone, ZoneInput } from "./hierarchy";
-import type { ActiveProfile, SetupState, VerticalProfile } from "./setup";
+import type { ActiveProfile, SeedCatalogueResult, SetupState, VerticalProfile } from "./setup";
 import type { Channel } from "./catalogue";
 import type { AgentAvailability, AvailabilityInput, BreakReport, BreakReportQuery, BreakType, BreakTypeInput } from "./breaks";
 import type { ConfigImpact, ConfigVersionView, PriorityClass, PriorityClassInput, PriorityDefaults, QueueDryRun, QueueStrategy, RoutingStrategy } from "./priority";
@@ -455,6 +455,9 @@ export class ApiClient {
     /** Feature flags a vertical profile turns on or off, then editable one key at a time afterwards (CFG-003). */
     featureFlags: () => this.request<Record<string, boolean>>("GET", "/setup/feature-flags"),
     setFeatureFlag: (key: string, enabled: boolean) => this.request<Record<string, boolean>>("PUT", `/setup/feature-flags/${key}`, { enabled }),
+    /** Seeds one Site's starter service catalogue, group and numbering rule from the active vertical profile
+     * (ticket 67); idempotent, so running it again creates nothing new. */
+    seedCatalogue: (siteId: string) => this.request<SeedCatalogueResult>("POST", "/setup/seed-catalogue", { site_id: siteId }),
   };
 
   /**

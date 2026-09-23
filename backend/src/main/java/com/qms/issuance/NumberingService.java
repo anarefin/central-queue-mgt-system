@@ -86,6 +86,15 @@ public class NumberingService {
         return NumberingRuleView.of(repository.rule(scopeType, scopeId).orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND)));
     }
 
+    /** Whether a scope already carries its own rule (never a group's inherited one), so a caller seeding a default
+     * (ticket 67) can leave an admin's own existing rule exactly as it is rather than overwrite it. */
+    @PreAuthorize(PERMISSION)
+    @Transactional(readOnly = true)
+    public boolean hasRule(String scopeType, UUID scopeId) {
+        requireScope(scopeType, scopeId);
+        return repository.rule(scopeType, scopeId).isPresent();
+    }
+
     /** Sets the rule of a Service or Service group, replacing the one it had. */
     @PreAuthorize(PERMISSION)
     @Transactional

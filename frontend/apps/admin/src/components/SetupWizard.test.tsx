@@ -1,4 +1,4 @@
-import type { SetupState, VerticalProfile } from "@qms/api-client";
+import type { Site, SetupState, VerticalProfile } from "@qms/api-client";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -8,6 +8,30 @@ import { SetupWizard } from "./SetupWizard";
 vi.mock("next/navigation", () => ({ useRouter: () => ({ replace: vi.fn() }) }));
 
 const NO_SESSION: Routes = { "POST /auth/refresh": () => json(401, { error: { code: "token_invalid", message: "x", trace_id: "t" } }) };
+
+function orgAdminSession(): Routes {
+  return {
+    "POST /auth/refresh": () => json(200, { access_token: "tok", token_type: "Bearer", expires_in: 900 }),
+    "GET /auth/me": () =>
+      json(200, { id: "u1", username: "asha", display_name: "Asha Rahman", preferred_language: null, roles: ["org_admin"], sites: [], groups: [] }),
+  };
+}
+
+function site(id: string, name: string): Site {
+  return {
+    id,
+    name,
+    code: id.toUpperCase(),
+    timezone: "Asia/Dhaka",
+    address: "1 Main Road",
+    default_language: "en",
+    enabled_languages: ["en", "bn"],
+    active: true,
+    clinical_sensitivity: false,
+    created_at: "2026-09-22T00:00:00Z",
+    updated_at: "2026-09-22T00:00:00Z",
+  };
+}
 
 function profile(id: string): VerticalProfile {
   return {
@@ -186,5 +210,59 @@ describe("setup wizard (SRS §26.2, FR-OPS-010, ticket 56)", () => {
 
     expect(await screen.findByRole("button", { name: "Go live" })).toBeDisabled();
     expect(screen.getByText("Complete every step above before going live.")).toBeInTheDocument();
+  });
+
+  it("seeds a site's starter catalogue and shows what was created and skipped (ticket 67)", async () => {
+    const calls = stubApi({
+      ...orgAdminSession(),
+      "GET /setup/state": () => json(200, state({ profile_applied: true, active_profile: { id: "banking", applied_at: "2026-09-22T00:00:00Z", applied_by: "u1" } })),
+      "GET /setup/profiles": () => json(200, [profile("banking")]),
+      "GET /sites": () => json(200, { items: [site("s1", "Main branch")] }),
+      "POST /setup/seed-catalogue": () =>
+        json(200, {
+          service_group_id: "g1",
+          created: [
+            { kind: "service_group", name: "Branch function" },
+            { kind: "service", name: "Cash deposit" },
+          ],
+          skipped: [{ kind: "service", name: "Remittance", reason: "prefix_in_use" }],
+        }),
+    });
+    renderApp(<SetupWizard />);
+
+    await screen.findByRole("button", { name: "Seed starter catalogue" });
+    await waitFor(() => expect(screen.getByRole("button", { name: "Seed starter catalogue" })).toBeEnabled());
+    await userEvent.click(screen.getByRole("button", { name: "Seed starter catalogue" }));
+
+    await waitFor(() => expect(calls.some((c) => c.method === "POST" && c.path === "/setup/seed-catalogue")).toBe(true));
+    expect(JSON.parse(String(calls.find((c) => c.method === "POST" && c.path === "/setup/seed-catalogue")?.init.body))).toEqual({ site_id: "s1" });
+
+    expect(await screen.findByText("Created: Branch function")).toBeInTheDocument();
+    expect(screen.getByText("Created: Cash deposit")).toBeInTheDocument();
+    expect(screen.getByText("Skipped: Remittance (token prefix already in use)")).toBeInTheDocument();
+    expect(screen.getByText("2 created, 1 skipped.")).toBeInTheDocument();
+  });
+
+  it("disables seeding until a profile is applied, even for an admin with the right roles", async () => {
+    stubApi({
+      ...orgAdminSession(),
+      "GET /setup/state": () => json(200, state()),
+      "GET /setup/profiles": () => json(200, [profile("banking")]),
+    });
+    renderApp(<SetupWizard />);
+
+    expect(await screen.findByRole("button", { name: "Seed starter catalogue" })).toBeDisabled();
+    expect(screen.getByText("Apply a vertical profile first.")).toBeInTheDocument();
+  });
+
+  it("disables seeding for a signed-out caller even once a profile is applied", async () => {
+    stubApi({
+      ...NO_SESSION,
+      "GET /setup/state": () => json(200, state({ profile_applied: true, active_profile: { id: "banking", applied_at: "2026-09-22T00:00:00Z", applied_by: "u1" } })),
+      "GET /setup/profiles": () => json(200, [profile("banking")]),
+    });
+    renderApp(<SetupWizard />);
+
+    expect(await screen.findByRole("button", { name: "Seed starter catalogue" })).toBeDisabled();
   });
 });

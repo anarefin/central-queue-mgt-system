@@ -663,6 +663,18 @@ describe("setup", () => {
     const [url, init] = fetchImpl.mock.calls[0] as [string, RequestInit];
     expect(`${init.method} ${url}`).toBe("POST /api/v1/setup/go-live");
   });
+
+  it("seeds a Site's starter catalogue from the active profile (ticket 67)", async () => {
+    const result = { service_group_id: "g1", created: [{ kind: "service_group", name: "Branch function" }], skipped: [] };
+    const fetchImpl = vi.fn().mockResolvedValue(json(200, result));
+    const client = new ApiClient({ apiOrigin: "", fetch: fetchImpl as unknown as typeof fetch, getAccessToken: () => "tok" });
+
+    await expect(client.setup.seedCatalogue("site-1")).resolves.toEqual(result);
+
+    const [url, init] = fetchImpl.mock.calls[0] as [string, RequestInit];
+    expect(`${init.method} ${url}`).toBe("POST /api/v1/setup/seed-catalogue");
+    expect(JSON.parse(String(init.body))).toEqual({ site_id: "site-1" });
+  });
 });
 
 describe("labels", () => {
