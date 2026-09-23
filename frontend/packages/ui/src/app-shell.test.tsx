@@ -87,4 +87,27 @@ describe("AppShell", () => {
     await userEvent.click(menuButton);
     expect(menuButton).toHaveAttribute("aria-expanded", "true");
   });
+
+  // ---- ticket 64: no sidebar on a screen with nothing to navigate to, and a `sidebar` slot for arbitrary content ----
+
+  it("renders no sidebar and no menu button with neither nav nor sidebar given", () => {
+    render(
+      <AppShell skipToContentLabel="Skip to content" menuButtonLabel="Menu">
+        <p>Page content</p>
+      </AppShell>,
+    );
+    expect(screen.queryByRole("navigation")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Menu" })).not.toBeInTheDocument();
+  });
+
+  it("renders arbitrary sidebar content in place of nav links", () => {
+    render(
+      <AppShell skipToContentLabel="Skip to content" menuButtonLabel="Menu" sidebar={<button type="button">Site filter</button>}>
+        <p>Page content</p>
+      </AppShell>,
+    );
+    expect(screen.getByRole("navigation")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Site filter" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Menu" })).toBeInTheDocument();
+  });
 });

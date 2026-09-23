@@ -5,6 +5,7 @@ import { ThemeProvider } from "@qms/ui";
 import { useState, type ReactNode } from "react";
 import { AuthProvider } from "../lib/auth";
 import { RuntimeProvider } from "../lib/runtime";
+import { SessionStatusProvider } from "../lib/session-status";
 import { UserLanguageContext } from "../lib/user-language";
 
 export function Providers({ children }: { children: ReactNode }) {
@@ -14,7 +15,9 @@ export function Providers({ children }: { children: ReactNode }) {
       <UserLanguageContext.Provider value={setUserLanguage}>
         <I18nProvider userLanguage={userLanguage}>
           <RuntimeProvider>
-            <AuthProvider>{children}</AuthProvider>
+            <AuthProvider>
+              <SessionStatusProvider>{children}</SessionStatusProvider>
+            </AuthProvider>
           </RuntimeProvider>
         </I18nProvider>
       </UserLanguageContext.Provider>

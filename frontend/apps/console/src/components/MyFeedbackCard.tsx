@@ -35,19 +35,19 @@ export function MyFeedbackCard() {
 
   return (
     <Card>
-      <h3 className="qms-label">{t("console.feedback.title")}</h3>
-      {items && items.length === 0 && <p className="qms-muted">{t("console.feedback.none")}</p>}
+      <h3 className="text-sm font-semibold text-fg">{t("console.feedback.title")}</h3>
+      {items && items.length === 0 && <p className="text-fg-muted">{t("console.feedback.none")}</p>}
       {items && items.length > 0 && (
-        <ul className="qms-list" data-testid="feedback">
+        <ul className="m-0 flex list-none flex-col gap-2 divide-y divide-border p-0 text-sm text-fg" data-testid="feedback">
           {items.map((entry) => (
-            <li key={entry.ticket_id}>
+            <li key={entry.ticket_id} className="pt-2 first:pt-0">
               <p>{t("console.feedback.entry", { token: entry.token_number, rating: formatNumber(entry.rating) })}</p>
-              {entry.comment && <p className="qms-muted">{entry.comment}</p>}
+              {entry.comment && <p className="text-fg-muted">{entry.comment}</p>}
             </li>
           ))}
         </ul>
       )}
-      {!items && failed && <p className="qms-muted">{t("console.feedback.unavailable")}</p>}
+      {!items && failed && <p className="text-fg-muted">{t("console.feedback.unavailable")}</p>}
     </Card>
   );
 }

@@ -9,3 +9,5 @@ export * from "./data-table";
 export * from "./tabs";
 export * from "./confirm-dialog";
 export * from "./toast";
+export * from "./picker";
+export * from "./side-panel";

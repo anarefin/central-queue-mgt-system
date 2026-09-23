@@ -1,7 +1,8 @@
 import type { CounterSession, SessionTicket } from "@qms/api-client";
 import type { RealtimeUpdate } from "@qms/realtime-client";
-import { describe, expect, it } from "vitest";
-import { counterMovedOn, counterTopic, queueTopic, waitingFrom } from "./console-support";
+import { act, renderHook, waitFor } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
+import { counterMovedOn, counterTopic, queueTopic, useElapsedSeconds, useList, useOnDemandList, waitingFrom } from "./console-support";
 
 const NAME = { en: "Consultation" };
 const STAMP = "2026-09-19T10:00:00+06:00";
@@ -169,5 +170,65 @@ describe("counterMovedOn: is the console behind the server?", () => {
 
   it("is not moved by a refusal", () => {
     expect(counterMovedOn({ kind: "denied", topic: "counter:c1", code: "forbidden" }, session())).toBe(false);
+  });
+});
+
+describe("useElapsedSeconds", () => {
+  it("is zero without a start, and counts up from a past start, never negative", () => {
+    const none = renderHook(() => useElapsedSeconds(null));
+    expect(none.result.current).toBe(0);
+
+    const started = new Date(Date.now() - 5000).toISOString();
+    const { result } = renderHook(() => useElapsedSeconds(started));
+    expect(result.current).toBeGreaterThanOrEqual(5);
+  });
+});
+
+describe("useList", () => {
+  it("loads once `load` is ready and reloads on demand", async () => {
+    let call = 0;
+    const load = () => {
+      call += 1;
+      return Promise.resolve({ items: [call] });
+    };
+    const { result } = renderHook(() => useList(load, []));
+    await waitFor(() => expect(result.current.items).toEqual([1]));
+
+    act(() => result.current.reload());
+    await waitFor(() => expect(result.current.items).toEqual([2]));
+  });
+
+  it("carries the failure when the load rejects", async () => {
+    const cause = new Error("boom");
+    const { result } = renderHook(() => useList(() => Promise.reject(cause), []));
+    await waitFor(() => expect(result.current.error).toBe(cause));
+  });
+});
+
+describe("useOnDemandList", () => {
+  it("does not load until requested, then loads once", async () => {
+    const load = vi.fn().mockResolvedValue({ items: ["a", "b"] });
+    const { result } = renderHook(() => useOnDemandList(load, ["site1"]));
+    expect(load).not.toHaveBeenCalled();
+    expect(result.current.items).toBeNull();
+
+    act(() => result.current.request());
+    await waitFor(() => expect(result.current.items).toEqual(["a", "b"]));
+    expect(load).toHaveBeenCalledTimes(1);
+
+    act(() => result.current.request());
+    expect(load).toHaveBeenCalledTimes(1); // already loaded: asking again does not reload
+  });
+
+  it("forgets what it loaded once its deps change, so the next request reloads", async () => {
+    const load = vi.fn().mockResolvedValue({ items: ["a"] });
+    const { result, rerender } = renderHook(({ site }: { site: string }) => useOnDemandList(load, [site]), { initialProps: { site: "site1" } });
+    act(() => result.current.request());
+    await waitFor(() => expect(result.current.items).toEqual(["a"]));
+
+    rerender({ site: "site2" });
+    expect(result.current.items).toBeNull();
+    act(() => result.current.request());
+    await waitFor(() => expect(load).toHaveBeenCalledTimes(2));
   });
 });

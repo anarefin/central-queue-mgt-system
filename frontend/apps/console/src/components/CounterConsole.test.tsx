@@ -994,6 +994,113 @@ describe("surviving a refresh, a stale screen and a lost connection (FR-AGT-004,
   });
 });
 
+describe("every F-key still works after the redesign (ticket 64, NFR-USA-002)", () => {
+  it("F2 calls, F3 re-announces and F6 misses", async () => {
+    let state = session();
+    const calls = stubApi({
+      ...AUTH,
+      "GET /sessions/current": () => json(200, state),
+      "POST /sessions/s1/next": () => json(200, (state = session({ ticket: ticket() }))),
+      "POST /sessions/s1/reannounce": () => json(200, (state = session({ ticket: ticket({ version: 2, announce_count: 1 }) }))),
+      "POST /sessions/s1/miss": () => json(200, (state = session())),
+    });
+    const user = userEvent.setup();
+    renderApp(<Home />);
+    await screen.findByText(/No ticket in progress/);
+
+    await user.keyboard("{F2}");
+    expect(await screen.findByTestId("current-token")).toHaveTextContent("S-042");
+    expect(count(calls, "POST /sessions/s1/next")).toBe(1);
+
+    await user.keyboard("{F3}");
+    await waitFor(() => expect(count(calls, "POST /sessions/s1/reannounce")).toBe(1));
+
+    await user.keyboard("{F6}");
+    await waitFor(() => expect(count(calls, "POST /sessions/s1/miss")).toBe(1));
+    expect(await screen.findByText(/No ticket in progress/)).toBeInTheDocument();
+  });
+
+  it("F4 serves, F8 holds and F9 opens the break panel", async () => {
+    let state = session({ ticket: ticket() });
+    const calls = stubApi({
+      ...AUTH,
+      "GET /sessions/current": () => json(200, state),
+      "GET /break-types": () => json(200, { items: [{ id: "b1", name_i18n: { en: "Lunch" }, max_minutes: 30, active: true, created_at: STAMP, updated_at: STAMP }] }),
+      "POST /sessions/s1/serve": () => json(200, (state = session({ ticket: ticket({ state: "serving", version: 2 }) }))),
+      "POST /sessions/s1/hold": () => json(200, (state = session({ held: [ticket({ id: "t1", state: "held", version: 3 })] }))),
+    });
+    const user = userEvent.setup();
+    renderApp(<Home />);
+    await screen.findByTestId("current-token");
+
+    await user.keyboard("{F4}");
+    await screen.findByText("In service");
+    expect(count(calls, "POST /sessions/s1/serve")).toBe(1);
+
+    await user.keyboard("{F8}");
+    await waitFor(() => expect(count(calls, "POST /sessions/s1/hold")).toBe(1));
+    expect(await screen.findByTestId("held-t1")).toBeInTheDocument();
+
+    await user.keyboard("{F9}");
+    expect(await screen.findByLabelText("Break type")).toBeInTheDocument();
+  });
+
+  it("F7 opens the transfer panel", async () => {
+    stubApi({
+      ...AUTH,
+      "GET /sessions/current": () => json(200, session({ ticket: ticket({ state: "serving", version: 2 }) })),
+      "GET /sessions/s1/transfer-targets": () => json(200, { services: [], counters: [], agents: [] }),
+    });
+    const user = userEvent.setup();
+    renderApp(<Home />);
+    await screen.findByText("In service");
+
+    await user.keyboard("{F7}");
+    expect(await screen.findByLabelText("Send to service")).toBeInTheDocument();
+    await user.keyboard("{Escape}");
+    expect(screen.queryByLabelText("Send to service")).not.toBeInTheDocument();
+  });
+
+  it("F5 completes a ticket with no outcomes", async () => {
+    const calls = stubApi({
+      ...AUTH,
+      "GET /sessions/current": () => json(200, session({ ticket: ticket({ state: "serving", version: 2, outcomes: [] }) })),
+      "POST /sessions/s1/complete": () => json(200, session()),
+    });
+    const user = userEvent.setup();
+    renderApp(<Home />);
+    await screen.findByText("In service");
+
+    await user.keyboard("{F5}");
+    await waitFor(() => expect(count(calls, "POST /sessions/s1/complete")).toBe(1));
+  });
+
+  it("F10 closes the session, and F9 ends an open break", async () => {
+    const calls = stubApi({
+      ...AUTH,
+      "GET /sessions/current": () => json(200, session({ state: "on_break", break: { id: "r1", type: { id: "b1", name_i18n: { en: "Lunch" }, max_minutes: null }, started_at: STAMP } })),
+      "POST /sessions/s1/break": () => json(200, session()),
+    });
+    const user = userEvent.setup();
+    renderApp(<Home />);
+    await screen.findByText("On break: Lunch");
+
+    await user.keyboard("{F9}");
+    await waitFor(() => expect(count(calls, "POST /sessions/s1/break")).toBe(1));
+    expect(await screen.findByText(/No ticket in progress/)).toBeInTheDocument();
+
+    const closeCalls = stubApi({
+      ...AUTH,
+      "GET /sessions/current": () => json(200, session()),
+      "DELETE /sessions/s1": () => json(200, session({ state: "closed", closed_at: STAMP })),
+      "GET /sessions/options": () => json(200, { items: OPTIONS }),
+    });
+    await user.keyboard("{F10}");
+    expect(await screen.findByText("Open a counter session")).toBeInTheDocument();
+    expect(count(closeCalls, "DELETE /sessions/s1")).toBe(1);
+  });
+});
+
 describe("language (FR-I18N-001, FR-I18N-020)", () => {
   it("shows the console in Bangla and keeps the token number in Western digits", async () => {
     stubApi({ ...AUTH, "GET /sessions/current": () => json(200, session({ ticket: ticket({ token_number: "S-042" }) })) });

@@ -1,39 +1,23 @@
 "use client";
 
 import { useI18n } from "@qms/i18n/react";
-import { Button, Page } from "@qms/ui";
-import { useRouter } from "next/navigation";
 import { CounterConsole } from "../components/CounterConsole";
 import { RequireAuth } from "../components/RequireAuth";
-import { useAuth } from "../lib/auth";
 
+/**
+ * The serving desk (SRS §11): a slim heading — the counter, session state, break timer, user menu and theme
+ * toggle now live in the app shell's own top bar (ticket 64) — then straight into {@link CounterConsole}. No
+ * sidebar here: the desk is a single, focused, keyboard-first screen.
+ */
 export default function Home() {
   const { t } = useI18n();
-  const { user, logout } = useAuth();
-  const router = useRouter();
-
-  async function signOut() {
-    await logout();
-    router.replace("/signed-out/");
-  }
 
   return (
-    <Page>
-      <RequireAuth>
-        <div className="qms-row">
-          <h1 className="qms-heading">{t("console.title")}</h1>
-          <div className="qms-row">
-            {user && <span className="qms-muted">{t("auth.signedInAs", { name: user.display_name ?? user.username })}</span>}
-            <Button variant="secondary" type="button" onClick={() => router.push("/dashboard/")}>
-              {t("dashboard.title")}
-            </Button>
-            <Button variant="secondary" type="button" onClick={signOut}>
-              {t("common.signOut")}
-            </Button>
-          </div>
-        </div>
+    <RequireAuth>
+      <div className="mx-auto flex w-full max-w-6xl flex-col gap-4">
+        <h1 className="text-2xl font-semibold text-fg">{t("console.title")}</h1>
         <CounterConsole />
-      </RequireAuth>
-    </Page>
+      </div>
+    </RequireAuth>
   );
 }

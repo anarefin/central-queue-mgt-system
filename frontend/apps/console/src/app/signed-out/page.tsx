@@ -10,7 +10,7 @@ export default function SignedOutPage() {
   return (
     <Page>
       <Card>
-        <h1 className="qms-heading">{t("auth.signedOutTitle")}</h1>
+        <h1 className="text-lg font-semibold text-fg">{t("auth.signedOutTitle")}</h1>
         <Button type="button" onClick={() => router.replace("/login/")}>
           {t("auth.signInAgain")}
         </Button>

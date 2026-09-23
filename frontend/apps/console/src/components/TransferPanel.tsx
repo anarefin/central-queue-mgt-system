@@ -3,7 +3,7 @@
 import type { SessionTicket, TransferInput, TransferTargets } from "@qms/api-client";
 import { formatTokenNumber } from "@qms/i18n";
 import { useI18n } from "@qms/i18n/react";
-import { Button, Card, ErrorAlert, SelectField } from "@qms/ui";
+import { Button, ErrorAlert, SelectField, SidePanel, TextField } from "@qms/ui";
 import { useEffect, useState, type FormEvent } from "react";
 import { describeError, localisedName } from "../lib/console-support";
 import { useApi } from "../lib/runtime";
@@ -81,17 +81,11 @@ export function TransferPanel({ sessionId, ticket, busy, onSubmit, onCancel }: P
   }
 
   return (
-    <Card>
-      <form
-        className="qms-stack"
-        onSubmit={submit}
-        onKeyDown={(event) => {
-          if (event.key === "Escape") onCancel();
-        }}
-      >
-        <h3 className="qms-heading">{t("console.transfer.title", { token: formatTokenNumber(ticket.token_number) })}</h3>
+    <SidePanel label={t("console.transfer.title", { token: formatTokenNumber(ticket.token_number) })} onClose={onCancel}>
+      <form className="flex flex-col gap-4" onSubmit={submit}>
+        <h3 className="text-lg font-semibold text-fg">{t("console.transfer.title", { token: formatTokenNumber(ticket.token_number) })}</h3>
         {error !== null && <ErrorAlert>{error}</ErrorAlert>}
-        {targets === null && error === null && <p className="qms-muted">{t("console.transfer.loading")}</p>}
+        {targets === null && error === null && <p className="text-fg-muted">{t("console.transfer.loading")}</p>}
         {targets && (
           <>
             <SelectField
@@ -104,10 +98,10 @@ export function TransferPanel({ sessionId, ticket, busy, onSubmit, onCancel }: P
                 ...targets.services.map((s) => ({ value: s.id, label: localisedName(s.name_i18n, language) })),
               ]}
             />
-            <fieldset className="qms-stack">
-              <legend className="qms-label">{t("console.transfer.who")}</legend>
+            <fieldset className="flex flex-col gap-2">
+              <legend className="text-sm font-medium text-fg">{t("console.transfer.who")}</legend>
               {(["anyone", "counter", "agent"] as const).map((option) => (
-                <label key={option}>
+                <label key={option} className="flex items-center gap-2 text-sm text-fg">
                   <input type="radio" name="transfer-who" value={option} checked={who === option} onChange={() => chooseWho(option)} /> {t(`console.transfer.${option}`)}
                 </label>
               ))}
@@ -134,18 +128,13 @@ export function TransferPanel({ sessionId, ticket, busy, onSubmit, onCancel }: P
               />
             )}
             {serviceId !== "" && ((who === "counter" && counters.length === 0) || (who === "agent" && agents.length === 0)) && (
-              <p className="qms-muted">{t("console.transfer.none")}</p>
+              <p className="text-fg-muted">{t("console.transfer.none")}</p>
             )}
-            {sameService && serviceId !== "" && <p className="qms-muted">{t("console.transfer.sameService")}</p>}
-            <div>
-              <label className="qms-label" htmlFor="transfer-note">
-                {t("console.transfer.note")}
-              </label>
-              <input className="qms-input" id="transfer-note" value={note} maxLength={1000} required onChange={(event) => setNote(event.target.value)} />
-            </div>
+            {sameService && serviceId !== "" && <p className="text-fg-muted">{t("console.transfer.sameService")}</p>}
+            <TextField id="transfer-note" label={t("console.transfer.note")} value={note} maxLength={1000} required onChange={(event) => setNote(event.target.value)} />
           </>
         )}
-        <div className="qms-row">
+        <div className="flex flex-wrap items-center gap-3">
           <Button type="submit" disabled={!ready || busy}>
             {t("console.transfer.submit")}
           </Button>
@@ -154,6 +143,6 @@ export function TransferPanel({ sessionId, ticket, busy, onSubmit, onCancel }: P
           </Button>
         </div>
       </form>
-    </Card>
+    </SidePanel>
   );
 }

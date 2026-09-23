@@ -3,7 +3,7 @@
 import type { CounterSession, QueueSnapshot } from "@qms/api-client";
 import { formatTokenNumber } from "@qms/i18n";
 import { useI18n } from "@qms/i18n/react";
-import { Button, Card, ErrorAlert, SelectField } from "@qms/ui";
+import { Button, ErrorAlert, SelectField, SidePanel, TextField } from "@qms/ui";
 import { useEffect, useState, type FormEvent } from "react";
 import { describeError, localisedName } from "../lib/console-support";
 import { useApi } from "../lib/runtime";
@@ -59,15 +59,9 @@ export function CallTicketPanel({ session, busy, onSubmit, onCancel }: Props) {
   }
 
   return (
-    <Card>
-      <form
-        className="qms-stack"
-        onSubmit={submit}
-        onKeyDown={(event) => {
-          if (event.key === "Escape") onCancel();
-        }}
-      >
-        <h3 className="qms-heading">{t("console.callTicket.title")}</h3>
+    <SidePanel label={t("console.callTicket.title")} onClose={onCancel}>
+      <form className="flex flex-col gap-4" onSubmit={submit}>
+        <h3 className="text-lg font-semibold text-fg">{t("console.callTicket.title")}</h3>
         {error !== null && <ErrorAlert>{error}</ErrorAlert>}
         <SelectField
           id="call-service"
@@ -76,8 +70,8 @@ export function CallTicketPanel({ session, busy, onSubmit, onCancel }: Props) {
           onChange={(event) => setServiceId(event.target.value)}
           options={session.services.map((s) => ({ value: s.id, label: localisedName(s.name_i18n, language) }))}
         />
-        {queue === null && error === null && <p className="qms-muted">{t("console.callTicket.loading")}</p>}
-        {queue && waiting.length === 0 && <p className="qms-muted">{t("console.callTicket.empty")}</p>}
+        {queue === null && error === null && <p className="text-fg-muted">{t("console.callTicket.loading")}</p>}
+        {queue && waiting.length === 0 && <p className="text-fg-muted">{t("console.callTicket.empty")}</p>}
         {queue && waiting.length > 0 && (
           <SelectField
             id="call-ticket"
@@ -97,13 +91,8 @@ export function CallTicketPanel({ session, busy, onSubmit, onCancel }: Props) {
             ]}
           />
         )}
-        <div>
-          <label className="qms-label" htmlFor="call-reason">
-            {t("console.callTicket.reason")}
-          </label>
-          <input className="qms-input" id="call-reason" value={reason} maxLength={1000} required onChange={(event) => setReason(event.target.value)} />
-        </div>
-        <div className="qms-row">
+        <TextField id="call-reason" label={t("console.callTicket.reason")} value={reason} maxLength={1000} required onChange={(event) => setReason(event.target.value)} />
+        <div className="flex flex-wrap items-center gap-3">
           <Button type="submit" disabled={!ready || busy}>
             {t("console.callTicket.submit")}
           </Button>
@@ -112,6 +101,6 @@ export function CallTicketPanel({ session, busy, onSubmit, onCancel }: Props) {
           </Button>
         </div>
       </form>
-    </Card>
+    </SidePanel>
   );
 }

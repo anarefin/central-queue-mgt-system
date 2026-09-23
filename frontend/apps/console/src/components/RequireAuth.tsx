@@ -16,5 +16,5 @@ export function RequireAuth({ children }: { children: ReactNode }) {
   }, [status, router]);
 
   if (status === "authenticated") return <>{children}</>;
-  return <p className="qms-muted">{t("common.loading")}</p>;
+  return <p className="text-fg-muted">{t("common.loading")}</p>;
 }

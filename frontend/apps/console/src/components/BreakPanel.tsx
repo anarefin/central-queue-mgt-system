@@ -2,7 +2,7 @@
 
 import type { BreakType } from "@qms/api-client";
 import { useI18n } from "@qms/i18n/react";
-import { Button, Card, ErrorAlert, SelectField } from "@qms/ui";
+import { Button, ErrorAlert, SelectField, SidePanel } from "@qms/ui";
 import { useEffect, useState, type FormEvent } from "react";
 import { describeError, localisedName } from "../lib/console-support";
 import { useApi } from "../lib/runtime";
@@ -47,18 +47,12 @@ export function BreakPanel({ busy, onSubmit, onCancel }: Props) {
   }
 
   return (
-    <Card>
-      <form
-        className="qms-stack"
-        onSubmit={submit}
-        onKeyDown={(event) => {
-          if (event.key === "Escape") onCancel();
-        }}
-      >
-        <h3 className="qms-heading">{t("console.break.title")}</h3>
+    <SidePanel label={t("console.break.title")} onClose={onCancel}>
+      <form className="flex flex-col gap-4" onSubmit={submit}>
+        <h3 className="text-lg font-semibold text-fg">{t("console.break.title")}</h3>
         {error !== null && <ErrorAlert>{error}</ErrorAlert>}
-        {types === null && error === null && <p className="qms-muted">{t("common.loading")}</p>}
-        {types?.length === 0 && <p className="qms-muted">{t("console.break.none")}</p>}
+        {types === null && error === null && <p className="text-fg-muted">{t("common.loading")}</p>}
+        {types?.length === 0 && <p className="text-fg-muted">{t("console.break.none")}</p>}
         {types && types.length > 0 && (
           <SelectField
             id="break-type"
@@ -74,7 +68,7 @@ export function BreakPanel({ busy, onSubmit, onCancel }: Props) {
             ]}
           />
         )}
-        <div className="qms-row">
+        <div className="flex flex-wrap items-center gap-3">
           <Button type="submit" disabled={typeId === "" || busy}>
             {t("console.break.start")}
           </Button>
@@ -83,6 +77,6 @@ export function BreakPanel({ busy, onSubmit, onCancel }: Props) {
           </Button>
         </div>
       </form>
-    </Card>
+    </SidePanel>
   );
 }

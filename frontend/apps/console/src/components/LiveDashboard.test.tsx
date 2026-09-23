@@ -1,5 +1,5 @@
 import type { Alert, DashboardSnapshot } from "@qms/api-client";
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import DashboardPage from "../app/dashboard/page";
@@ -12,6 +12,7 @@ vi.mock("next/navigation", () => ({
   useSearchParams: () => searchParams,
 }));
 
+const STAMP = "2026-09-19T09:55:00Z";
 const TOKENS = { access_token: "tok", token_type: "Bearer", expires_in: 900 };
 const ME = { id: "u1", username: "sam", display_name: "Sam", preferred_language: null as string | null, roles: ["org_admin"], sites: ["s1"], groups: [] };
 const AUTH = {
@@ -172,5 +173,212 @@ describe("the live dashboard (SRS §15.1, ticket 46)", () => {
     renderApp(<DashboardPage />);
 
     expect(await screen.findByText("Escalated")).toBeInTheDocument();
+  });
+});
+
+// ---- ticket 64: pickers instead of raw ids, the URL round trip, and the client-side permission gate -----------
+
+describe("permission gate (ticket 64, SRS §5.2 dashboard:view_all / dashboard:view_own_groups)", () => {
+  it("shows the dashboard to an agent, scoped to their own groups", async () => {
+    stubApi({ ...AUTH, "GET /auth/me": () => json(200, { ...ME, roles: ["agent"] }), "GET /dashboard/live?site_id=s1": () => json(200, snapshot()) });
+
+    renderApp(<DashboardPage />);
+
+    expect(await screen.findByText("Open: 2")).toBeInTheDocument();
+  });
+
+  it("shows the dashboard to a team_admin", async () => {
+    stubApi({ ...AUTH, "GET /auth/me": () => json(200, { ...ME, roles: ["team_admin"] }), "GET /dashboard/live?site_id=s1": () => json(200, snapshot()) });
+
+    renderApp(<DashboardPage />);
+
+    expect(await screen.findByText("Open: 2")).toBeInTheDocument();
+  });
+
+  it("tells a principal with neither dashboard permission instead of a broken page, with a link back to the counter", async () => {
+    stubApi({ ...AUTH, "GET /auth/me": () => json(200, { ...ME, roles: ["visitor"] }) });
+
+    renderApp(<DashboardPage />);
+
+    expect(await screen.findByText("You do not have permission to view the dashboard")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Back to the counter" })).toHaveAttribute("href", "/");
+    expect(screen.queryByTestId("live-dashboard")).not.toBeInTheDocument();
+  });
+
+  it("shows the same state when the server itself refuses the live snapshot with a 403", async () => {
+    stubApi({ ...AUTH, "GET /dashboard/live?site_id=s1": () => json(403, { error: { code: "forbidden", message: "x", trace_id: "t" } }) });
+
+    renderApp(<DashboardPage />);
+
+    expect(await screen.findByText("You do not have permission to view the dashboard")).toBeInTheDocument();
+  });
+});
+
+describe("filter pickers load on demand and round-trip through the URL (ticket 64, FR-MON-002)", () => {
+  it("lists only the sites the caller belongs to, loaded once the site picker is opened, not before", async () => {
+    const calls = stubApi({
+      ...AUTH,
+      "GET /dashboard/live?site_id=s1": () => json(200, snapshot()),
+      "GET /sites": () =>
+        json(200, {
+          items: [
+            { id: "s1", name: "Central", code: "C1", timezone: "Asia/Dhaka", address: "", default_language: "en", enabled_languages: ["en"], active: true },
+            { id: "s2", name: "Other", code: "O1", timezone: "Asia/Dhaka", address: "", default_language: "en", enabled_languages: ["en"], active: true },
+          ],
+        }),
+    });
+    const user = userEvent.setup();
+    renderApp(<DashboardPage />);
+    await screen.findByText("Open: 2");
+    expect(calls.some((c) => c.path === "/sites"), "not loaded before the picker is opened").toBe(false);
+
+    const site = screen.getByRole("combobox", { name: "Site" });
+    await user.click(site);
+
+    await waitFor(() => expect(within(site).getAllByRole("option").map((o) => o.textContent)).toEqual(["Central"]));
+  });
+
+  it("loads a chosen site's zones once the zone picker is opened, and round-trips the choice through the URL", async () => {
+    stubApi({
+      ...AUTH,
+      "GET /dashboard/live?site_id=s1": () => json(200, snapshot()),
+      "GET /sites/s1/zones": () =>
+        json(200, { items: [{ id: "z1", site_id: "s1", name: "Hall", building_label: null, floor_label: "1", display_order: 1, active: true, created_at: STAMP, updated_at: STAMP }] }),
+    });
+    const user = userEvent.setup();
+    renderApp(<DashboardPage />);
+    await screen.findByText("Open: 2");
+
+    const zone = screen.getByRole("combobox", { name: "Zone" });
+    await user.click(zone);
+    await waitFor(() => expect(within(zone).getByRole("option", { name: "Hall" })).toBeInTheDocument());
+    await user.selectOptions(zone, "Hall");
+
+    expect(router.replace).toHaveBeenCalledWith("?site_id=s1&zone_id=z1");
+  });
+
+  it("loads the chosen site's service groups, and updates the URL when one is chosen", async () => {
+    stubApi({
+      ...AUTH,
+      "GET /dashboard/live?site_id=s1": () => json(200, snapshot()),
+      "GET /sites/s1/service-groups": () =>
+        json(200, { items: [{ id: "g1", site_id: "s1", name_i18n: { en: "Outpatient" }, missing_translations: [], token_prefix: "A", display_order: 1, active: true, created_at: STAMP, updated_at: STAMP }] }),
+    });
+    const user = userEvent.setup();
+    renderApp(<DashboardPage />);
+    await screen.findByText("Open: 2");
+
+    const service = screen.getByRole("combobox", { name: "Service" });
+    expect(service).toBeDisabled();
+    expect(screen.getByText("Choose a service group first.")).toBeInTheDocument();
+
+    const group = screen.getByRole("combobox", { name: "Service group" });
+    await user.click(group);
+    await waitFor(() => expect(within(group).getByRole("option", { name: "Outpatient" })).toBeInTheDocument());
+    await user.selectOptions(group, "Outpatient");
+
+    expect(router.replace).toHaveBeenCalledWith("?site_id=s1&service_group_id=g1");
+  });
+
+  it("enables the service picker once the URL already names a service group, and loads its services", async () => {
+    searchParams.set("service_group_id", "g1");
+    try {
+      stubApi({
+        ...AUTH,
+        "GET /dashboard/live?site_id=s1&service_group_id=g1": () => json(200, snapshot()),
+        "GET /service-groups/g1/services": () =>
+          json(200, {
+            items: [
+              {
+                id: "v1",
+                service_group_id: "g1",
+                site_id: "s1",
+                name_i18n: { en: "Consultation" },
+                missing_translations: [],
+                token_prefix: "A",
+                expected_minutes: 5,
+                sla_wait_minutes: 15,
+                channels: ["reception"],
+                icon: null,
+                display_order: 1,
+                visitor_identifier: "none",
+              },
+            ],
+          }),
+      });
+      const user = userEvent.setup();
+      renderApp(<DashboardPage />);
+      await screen.findByText("Open: 2");
+
+      const service = screen.getByRole("combobox", { name: "Service" });
+      expect(service).toBeEnabled();
+      await user.click(service);
+      await waitFor(() => expect(within(service).getByRole("option", { name: "Consultation" })).toBeInTheDocument());
+    } finally {
+      searchParams.delete("service_group_id");
+    }
+  });
+
+  it("re-prioritises a waiting ticket with a class chosen from a picker, staying disabled until both are chosen", async () => {
+    const calls = stubApi({
+      ...AUTH,
+      "GET /dashboard/live?site_id=s1": () => json(200, snapshot()),
+      "GET /priority-classes": () =>
+        json(200, { items: [{ id: "p1", name_i18n: { en: "Senior citizen" }, headstart_minutes: 10, max_wait_minutes: null, token_prefix_override: null, is_default: false, active: true, created_at: STAMP, updated_at: STAMP }] }),
+      "POST /tickets/t1/priority": () => json(200, { id: "t1" }),
+    });
+    const user = userEvent.setup();
+    renderApp(<DashboardPage />);
+    await screen.findByText("Open: 2");
+    const card = within(screen.getByText("Longest waits").closest("section")!);
+
+    const submit = card.getByRole("button", { name: "Change priority" });
+    expect(submit).toBeDisabled();
+
+    await user.selectOptions(card.getByRole("combobox", { name: "Re-prioritise" }), "A-001");
+    expect(submit, "no class chosen yet").toBeDisabled();
+
+    const classPicker = card.getByRole("combobox", { name: "Priority class" });
+    await user.click(classPicker);
+    await waitFor(() => expect(within(classPicker).getByRole("option", { name: "Senior citizen" })).toBeInTheDocument());
+    await user.selectOptions(classPicker, "Senior citizen");
+    expect(submit).toBeEnabled();
+
+    await user.click(submit);
+
+    await waitFor(() => expect(calls.some((c) => c.method === "POST" && c.path === "/tickets/t1/priority")).toBe(true));
+  });
+
+  it("sets an agent's availability chosen from a picker, staying scoped to the current site", async () => {
+    const calls = stubApi({
+      ...AUTH,
+      "GET /dashboard/live?site_id=s1": () => json(200, snapshot()),
+      "GET /agents/availability": () => json(200, { items: [{ agent_id: "u2", agent_name: "Karim", status: "available", session_id: "sess2", counter: { id: "c2", label: "Desk 2", zone_id: "z1", zone_name: "Hall", site_id: "s1" }, break: null }] }),
+      "PUT /agents/u2/availability": () => json(200, {}),
+    });
+    const user = userEvent.setup();
+    renderApp(<DashboardPage />);
+    await screen.findByText("Open: 2");
+
+    const agent = screen.getByRole("combobox", { name: "Agent" });
+    await user.click(agent);
+    await waitFor(() => expect(within(agent).getByRole("option", { name: "Karim" })).toBeInTheDocument());
+    await user.selectOptions(agent, "Karim");
+    await user.click(screen.getByRole("button", { name: "Change agent status" }));
+
+    const put = calls.find((c) => c.method === "PUT" && c.path === "/agents/u2/availability");
+    expect(put).toBeDefined();
+    expect(JSON.parse(String(put?.init.body))).toEqual({ status: "available" });
+  });
+
+  it("has no text input for a raw id: every id-shaped field is a picker or select, not a free-text box", async () => {
+    stubApi({ ...AUTH, "GET /dashboard/live?site_id=s1": () => json(200, snapshot()) });
+    renderApp(<DashboardPage />);
+    await screen.findByText("Open: 2");
+
+    for (const input of screen.queryAllByRole("textbox")) {
+      expect(input.getAttribute("name") ?? "").not.toMatch(/_id$/);
+      expect(input.getAttribute("id") ?? "").not.toMatch(/_id$/);
+    }
   });
 });

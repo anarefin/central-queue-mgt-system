@@ -8,6 +8,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { counterMovedOn, counterTopic, describeError, estimateFrom, localisedName, queueTopic, reasonOf, waitingFrom } from "../lib/console-support";
 import { useTopics } from "../lib/realtime";
 import { useApi } from "../lib/runtime";
+import { useSetSessionStatus } from "../lib/session-status";
 import { DayCard } from "./DayCard";
 import { MyFeedbackCard } from "./MyFeedbackCard";
 import { OpenSessionCard } from "./OpenSessionCard";
@@ -92,6 +93,23 @@ export function CounterConsole() {
     window.addEventListener("online", restore);
     return () => window.removeEventListener("online", restore);
   }, [restore]);
+
+  // Publishes the counter, session state and break up to the app shell's own top bar (ticket 64); a screen that
+  // never mounts the shell (every test in this file) just has nothing listening, per `useSetSessionStatus`.
+  const setSessionStatus = useSetSessionStatus();
+  useEffect(() => {
+    if (!session) {
+      setSessionStatus(null);
+      return;
+    }
+    setSessionStatus({
+      counterLabel: session.counter.label,
+      state: session.state,
+      breakStartedAt: session.break?.started_at ?? null,
+      breakMaxMinutes: session.break?.type.max_minutes ?? null,
+    });
+    return () => setSessionStatus(null);
+  }, [session, setSessionStatus]);
 
   const sessionState = session?.state;
   useEffect(() => {
@@ -325,7 +343,7 @@ export function CounterConsole() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [active]);
 
-  if (session === undefined && error === null) return <p className="qms-muted">{t("common.loading")}</p>;
+  if (session === undefined && error === null) return <p className="text-fg-muted">{t("common.loading")}</p>;
 
   // The day is read again whenever something the agent did may have moved it: a ticket completed or a break started or ended (FR-AGT-040).
   const dayKey = session
@@ -333,7 +351,7 @@ export function CounterConsole() {
     : "none";
 
   return (
-    <div className="qms-stack">
+    <div className="flex flex-col gap-4">
       {error !== null && (
         <>
           <ErrorAlert>{error}</ErrorAlert>

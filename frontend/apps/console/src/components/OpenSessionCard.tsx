@@ -66,17 +66,17 @@ export function OpenSessionCard({ onOpened }: { onOpened: (session: CounterSessi
 
   return (
     <Card>
-      <h2 className="qms-heading">{t("console.open.title")}</h2>
+      <h2 className="text-lg font-semibold text-fg">{t("console.open.title")}</h2>
       {error !== null && <ErrorAlert>{error}</ErrorAlert>}
-      {options === null && error === null && <p className="qms-muted">{t("common.loading")}</p>}
-      {options?.length === 0 && <p className="qms-muted">{t("console.open.none")}</p>}
+      {options === null && error === null && <p className="text-fg-muted">{t("common.loading")}</p>}
+      {options?.length === 0 && <p className="text-fg-muted">{t("console.open.none")}</p>}
       {options && options.length > 0 && (
-        <form className="qms-stack" onSubmit={open}>
-          <fieldset className="qms-stack">
-            <legend className="qms-heading">{t("console.open.counter")}</legend>
+        <form className="flex flex-col gap-4" onSubmit={open}>
+          <fieldset className="flex flex-col gap-2">
+            <legend className="mb-1 font-semibold text-fg">{t("console.open.counter")}</legend>
             {options.map((option) => (
-              <label key={option.counter.id} className="qms-row">
-                <span>
+              <label key={option.counter.id} className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border px-3 py-2">
+                <span className="flex items-center gap-2 text-sm text-fg">
                   <input
                     type="radio"
                     name="console-counter"
@@ -87,25 +87,27 @@ export function OpenSessionCard({ onOpened }: { onOpened: (session: CounterSessi
                   />{" "}
                   {t("console.open.counterOption", { label: option.counter.label, zone: option.counter.zone_name })}
                 </span>
-                {option.occupied && <span className="qms-warning">{t("console.open.occupied")}</span>}
+                {option.occupied && <span className="text-warn">{t("console.open.occupied")}</span>}
               </label>
             ))}
           </fieldset>
           {chosen && (
-            <fieldset className="qms-stack">
-              <legend className="qms-heading">{t("console.open.services")}</legend>
+            <fieldset className="flex flex-col gap-2">
+              <legend className="mb-1 font-semibold text-fg">{t("console.open.services")}</legend>
               {chosen.services.map((service) => (
-                <label key={service.id}>
+                <label key={service.id} className="flex items-center gap-2 text-sm text-fg">
                   <input type="checkbox" checked={serviceIds.has(service.id)} onChange={() => toggle(service.id)} />{" "}
                   {localisedName(service.name_i18n, language)}
-                  {service.preference_weight > 1 && <span className="qms-muted"> · {t("console.open.fallback")}</span>}
+                  {service.preference_weight > 1 && <span className="text-fg-muted"> · {t("console.open.fallback")}</span>}
                 </label>
               ))}
             </fieldset>
           )}
-          <Button type="submit" disabled={!chosen || serviceIds.size === 0 || busy}>
-            {t(busy ? "console.open.opening" : "console.open.submit")}
-          </Button>
+          <div>
+            <Button type="submit" disabled={!chosen || serviceIds.size === 0 || busy}>
+              {t(busy ? "console.open.opening" : "console.open.submit")}
+            </Button>
+          </div>
         </form>
       )}
     </Card>

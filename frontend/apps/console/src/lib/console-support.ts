@@ -1,6 +1,7 @@
-import { ApiRequestError, type CounterSession } from "@qms/api-client";
+import { ApiRequestError, type CounterSession, type Items } from "@qms/api-client";
 import type { RealtimeUpdate } from "@qms/realtime-client";
 import type { I18n } from "@qms/i18n";
+import { useCallback, useEffect, useState } from "react";
 
 /** Reasons the API gives a refused session action that the console has a sentence for. */
 const REFUSALS = new Set([
@@ -103,4 +104,85 @@ export function counterMovedOn(update: RealtimeUpdate, session: CounterSession):
   if (state === "called" || state === "serving") return inProgress?.state !== state;
   // The ticket left service (completed, missed, transferred…) but the screen still holds it, in service or held (FR-AGT-013).
   return inProgress !== undefined || session.held.some((held) => held.id === ticketId);
+}
+
+/**
+ * Whole seconds since {@code startedAt}, moving each second, never negative (a device clock a little behind the
+ * server's) — the break clock `BreakCard` shows the agent, and the same figure the app shell's top bar shows
+ * (ticket 64, FR-AGT-021, FR-AGT-022).
+ */
+export function useElapsedSeconds(startedAt: string | null | undefined): number {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!startedAt) return;
+    setNow(Date.now());
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [startedAt]);
+  return startedAt ? Math.max(0, Math.floor((now - Date.parse(startedAt)) / 1000)) : 0;
+}
+
+/**
+ * Loads a list through the api-client once `load` is ready, the same shape `apps/admin`'s own `useList` already
+ * uses (ticket 63): the live dashboard's pickers load their options on demand (ticket 64, FR-MON-002) and this is
+ * the one place that does it, so every picker's loading state, error and reload behave alike.
+ */
+export function useList<T>(load: (() => Promise<Items<T>>) | null, deps: readonly unknown[]) {
+  const [items, setItems] = useState<T[] | null>(null);
+  const [error, setError] = useState<unknown>(null);
+  const [version, setVersion] = useState(0);
+
+  useEffect(() => {
+    if (!load) return;
+    let cancelled = false;
+    setError(null);
+    load().then(
+      (result) => !cancelled && setItems(result.items),
+      (cause: unknown) => !cancelled && setError(cause),
+    );
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [...deps, version]);
+
+  const reload = useCallback(() => setVersion((v) => v + 1), []);
+  return { items, error, reload };
+}
+
+/**
+ * A list loaded only once {@link request} is first called (ticket 64: the live dashboard's pickers load their
+ * options on demand, not before the agent opens one), and reloaded the next time it is requested after `deps`
+ * changes — a chosen site's zones stop being right once another site is chosen, for instance.
+ */
+export function useOnDemandList<T>(load: () => Promise<Items<T>>, deps: readonly unknown[]) {
+  const [items, setItems] = useState<T[] | null>(null);
+  const [error, setError] = useState<unknown>(null);
+  const [requested, setRequested] = useState(false);
+
+  useEffect(() => {
+    setItems(null);
+    setError(null);
+    setRequested(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, deps);
+
+  useEffect(() => {
+    if (!requested) return;
+    let cancelled = false;
+    load().then(
+      (result) => !cancelled && setItems(result.items),
+      (cause: unknown) => !cancelled && setError(cause),
+    );
+    return () => {
+      cancelled = true;
+    };
+    // Deps deliberately excludes `deps` and `load`: the reset effect above already clears `requested` to false
+    // whenever `deps` changes, so this only re-fires from that (`requested` flips) or from a fresh `request()`
+    // call once `deps` has settled — either way it runs after the reset, so it always sees the current `load`.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [requested]);
+
+  const request = useCallback(() => setRequested(true), []);
+  return { items, error, loading: requested && items === null && error === null, request };
 }

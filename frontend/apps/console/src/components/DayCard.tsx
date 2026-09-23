@@ -43,16 +43,16 @@ export function DayCard({ refreshKey }: Props) {
 
   return (
     <Card>
-      <h3 className="qms-label">{t("console.day.title")}</h3>
+      <h3 className="text-sm font-semibold text-fg">{t("console.day.title")}</h3>
       {day && (
-        <ul className="qms-list" data-testid="day">
+        <ul className="m-0 flex list-none flex-col gap-1.5 p-0 text-sm text-fg" data-testid="day">
           <li>{t("console.day.served", { count: formatNumber(day.served) })}</li>
           <li>{t("console.day.inQueue", { count: formatNumber(day.in_queue) })}</li>
           <li>{day.average_service_seconds === null ? t("console.day.averageNone") : t("console.day.average", { duration: duration(day.average_service_seconds) })}</li>
           <li>{t("console.day.breaks", { duration: duration(day.break_seconds) })}</li>
         </ul>
       )}
-      {!day && failed && <p className="qms-muted">{t("console.day.unavailable")}</p>}
+      {!day && failed && <p className="text-fg-muted">{t("console.day.unavailable")}</p>}
     </Card>
   );
 }

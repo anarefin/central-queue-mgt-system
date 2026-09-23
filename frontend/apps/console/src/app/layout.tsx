@@ -1,6 +1,7 @@
 import { ThemeScript } from "@qms/ui";
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
+import { ConsoleChrome } from "../components/ConsoleChrome";
 import "./global.css";
 import { Providers } from "./providers";
 
@@ -13,7 +14,9 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         <ThemeScript />
       </head>
       <body>
-        <Providers>{children}</Providers>
+        <Providers>
+          <ConsoleChrome>{children}</ConsoleChrome>
+        </Providers>
       </body>
     </html>
   );

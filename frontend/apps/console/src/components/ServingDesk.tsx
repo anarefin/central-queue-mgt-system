@@ -3,13 +3,16 @@
 import type { CounterSession, SessionTicket, TransferInput } from "@qms/api-client";
 import { formatTokenNumber } from "@qms/i18n";
 import { useI18n } from "@qms/i18n/react";
-import { Button, Card, SelectField } from "@qms/ui";
+import { Badge, Button, Card, SelectField, TextField } from "@qms/ui";
 import { useEffect } from "react";
 import { localisedName } from "../lib/console-support";
 import { BreakCard } from "./BreakCard";
 import { BreakPanel } from "./BreakPanel";
 import { CallTicketPanel } from "./CallTicketPanel";
 import { TransferPanel } from "./TransferPanel";
+
+/** The session state names that read as a problem, not a plain status (FR-AGT-005, §19.3). */
+const WARN_STATES = new Set(["closing", "force_closed"]);
 
 /** What the desk lets the agent do right now; the server checks every one of these again (FR-CFG-103). */
 export interface DeskActions {
@@ -127,32 +130,35 @@ export function ServingDesk({
   const waited = ticket?.wait_seconds ?? 0;
   const button = (label: string, key: string, enabled: boolean, run: () => void, variant?: "secondary") => (
     <Button type="button" variant={variant} disabled={!enabled || busy} onClick={run} aria-keyshortcuts={key}>
-      {label} <kbd>{key}</kbd>
+      {label} <kbd className="rounded border border-current/30 px-1 text-xs">{key}</kbd>
     </Button>
   );
+  const sessionBadgeVariant = WARN_STATES.has(session.state) ? "warn" : session.state === "on_break" ? "info" : session.state === "open" ? "ok" : "neutral";
+  const ticketBadgeVariant = ticket?.state === "serving" ? "ok" : ticket?.state === "called" ? "info" : "neutral";
 
   return (
-    <div className="qms-stack">
+    <div className="flex flex-col gap-4">
       <Card>
-        <div className="qms-row">
-          <h2 className="qms-heading">{t("console.session.counter", { label: session.counter.label })}</h2>
-          <span className="qms-muted">{t(`console.session.state.${session.state}`)}</span>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h2 className="text-lg font-semibold text-fg">{t("console.session.counter", { label: session.counter.label })}</h2>
+          <Badge variant={sessionBadgeVariant}>{t(`console.session.state.${session.state}`)}</Badge>
         </div>
-        <p className="qms-muted">
+        <p className="text-fg-muted">
           {t("console.session.services", { services: session.services.map((s) => localisedName(s.name_i18n, language)).join(", ") })}
         </p>
-        {session.state === "closing" && <p className="qms-warning">{t("console.session.closing")}</p>}
+        {session.state === "closing" && <p className="text-warn">{t("console.session.closing")}</p>}
       </Card>
 
+      {/* Live waiting counts and estimates per service, as compact stat tiles (ticket 64). */}
       <Card>
-        <h3 className="qms-label">{t("console.waiting.title")}</h3>
-        <ul className="qms-list" aria-label={t("console.waiting.title")}>
+        <h3 className="text-sm font-semibold text-fg">{t("console.waiting.title")}</h3>
+        <ul className="m-0 grid list-none grid-cols-1 gap-2 p-0 sm:grid-cols-2 lg:grid-cols-3" aria-label={t("console.waiting.title")}>
           {session.services.map((service) => {
             const count = waiting[service.id];
             const estimate = estimates[service.id];
             const values = { service: localisedName(service.name_i18n, language), count: count === undefined ? "–" : formatNumber(count) };
             return (
-              <li key={service.id} data-testid={`waiting-${service.id}`}>
+              <li key={service.id} data-testid={`waiting-${service.id}`} className="rounded-md border border-border bg-surface-muted px-3 py-2 text-sm text-fg">
                 {estimate
                   ? t("console.waiting.rowEstimate", { ...values, low: formatNumber(estimate.low), high: formatNumber(estimate.high) })
                   : t("console.waiting.row", values)}
@@ -162,157 +168,162 @@ export function ServingDesk({
         </ul>
       </Card>
 
-      {session.tickets.length > 1 && (
+      <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-[minmax(0,1fr)_20rem]">
+        {/* The current ticket, as a large card (ticket 64): token, state, visitor fields, purpose note and journey stops. */}
         <Card>
-          <h3 className="qms-label">{t("console.inProgress.title", { count: formatNumber(session.tickets.length) })}</h3>
-          <ul className="qms-list" aria-label={t("console.inProgress.list")}>
-            {session.tickets.map((inProgress) => (
-              <li key={inProgress.id} className="qms-row" data-testid={`in-progress-${inProgress.id}`}>
-                <span>
-                  <span className="qms-token">{formatTokenNumber(inProgress.token_number)}</span>{" "}
-                  <span className="qms-muted">
-                    {localisedName(inProgress.service.name_i18n, language)} · {t(`console.ticket.state.${inProgress.state}`)}
-                  </span>
-                </span>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  aria-pressed={inProgress.id === ticket?.id}
-                  disabled={busy || inProgress.id === ticket?.id}
-                  onClick={() => onSelect(inProgress.id)}
-                  aria-label={t("console.inProgress.select", { token: inProgress.token_number })}
-                >
-                  {t("console.inProgress.selectShort")}
-                </Button>
-              </li>
-            ))}
-          </ul>
-        </Card>
-      )}
-
-      <Card>
-        {!ticket && <p className="qms-muted">{t("console.ticket.none")}</p>}
-        {ticket && (
-          <>
-            <p className="qms-muted">{t(`console.ticket.state.${ticket.state}`)}</p>
-            <p className="qms-heading qms-token" data-testid="current-token">
-              {formatTokenNumber(ticket.token_number)}
-            </p>
-            <p>{t("console.ticket.service", { service: localisedName(ticket.service.name_i18n, language) })}</p>
-            <p className="qms-muted">
-              {t("console.ticket.channel", { channel: t(`catalogue.channel.${ticket.origin_channel}`) })} ·{" "}
-              {t(ticket.is_appointment ? "console.ticket.appointment.yes" : "console.ticket.appointment.no")} ·{" "}
-              {t("console.ticket.waited", { minutes: formatNumber(Math.floor(waited / 60)), seconds: formatNumber(waited % 60) })}
-            </p>
-            {ticket.visitor && (
-              <div data-testid="visitor" aria-label={t("console.visitor.title")}>
-                {ticket.visitor.name !== undefined && <p>{t("console.visitor.name", { name: ticket.visitor.name })}</p>}
-                {ticket.visitor.code !== undefined && <p>{t("console.visitor.code", { code: ticket.visitor.code })}</p>}
-                {ticket.visitor.category !== undefined && <p>{t("console.visitor.category", { category: ticket.visitor.category })}</p>}
-              </div>
-            )}
-            {ticket.purpose_note !== undefined && <p data-testid="purpose-note">{t("console.ticket.purpose", { note: ticket.purpose_note })}</p>}
-            {ticket.journey_stops.length > 0 && (
-              <div data-testid="journey-stops" aria-label={t("console.journey.title")}>
-                <h3 className="qms-label">{t("console.journey.title")}</h3>
-                <ul className="qms-list">
-                  {ticket.journey_stops.map((stop) => (
-                    <li key={stop.seq} data-testid={`journey-stop-${stop.seq}`}>
-                      <span className="qms-token">{stop.token_number ? formatTokenNumber(stop.token_number) : "–"}</span>{" "}
-                      <span className="qms-muted">
-                        {localisedName(stop.service.name_i18n, language)} · {t(`console.journey.state.${stop.state}`)}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-            {ticket.state === "called" && ticket.announce_count > 0 && (
-              <p className="qms-muted">
-                {t("console.ticket.announced", { count: formatNumber(ticket.announce_count), limit: formatNumber(ticket.announce_limit) })}
+          {!ticket && <p className="text-fg-muted">{t("console.ticket.none")}</p>}
+          {ticket && (
+            <>
+              <Badge variant={ticketBadgeVariant}>{t(`console.ticket.state.${ticket.state}`)}</Badge>
+              <p className="text-4xl font-semibold tracking-wide tabular-nums text-fg" data-testid="current-token">
+                {formatTokenNumber(ticket.token_number)}
               </p>
-            )}
-            {ticket.state === "called" && ticket.miss_count >= ticket.miss_limit && (
-              <p className="qms-warning">{t("console.ticket.missLast", { count: formatNumber(ticket.miss_count), limit: formatNumber(ticket.miss_limit) })}</p>
-            )}
-            {serving && (
-              <>
-                {ticket.outcomes.length > 0 && (
-                  <SelectField
-                    id="console-outcome"
-                    label={t("console.outcome.label")}
-                    value={outcome}
-                    onChange={(event) => onOutcome(event.target.value)}
-                    options={[
-                      { value: "", label: t("console.outcome.choose") },
-                      ...ticket.outcomes.map((o) => ({ value: o.id, label: localisedName(o.label_i18n, language) })),
-                    ]}
-                  />
-                )}
-                <div>
-                  <label className="qms-label" htmlFor="console-note">
-                    {t("console.note.label")}
-                  </label>
-                  <input className="qms-input" id="console-note" value={note} maxLength={1000} onChange={(event) => onNote(event.target.value)} />
+              <p>{t("console.ticket.service", { service: localisedName(ticket.service.name_i18n, language) })}</p>
+              <p className="text-fg-muted">
+                {t("console.ticket.channel", { channel: t(`catalogue.channel.${ticket.origin_channel}`) })} ·{" "}
+                {t(ticket.is_appointment ? "console.ticket.appointment.yes" : "console.ticket.appointment.no")} ·{" "}
+                {t("console.ticket.waited", { minutes: formatNumber(Math.floor(waited / 60)), seconds: formatNumber(waited % 60) })}
+              </p>
+              {ticket.visitor && (
+                <div data-testid="visitor" aria-label={t("console.visitor.title")} className="flex flex-col gap-1 rounded-md border border-border p-3">
+                  {ticket.visitor.name !== undefined && <p>{t("console.visitor.name", { name: ticket.visitor.name })}</p>}
+                  {ticket.visitor.code !== undefined && <p>{t("console.visitor.code", { code: ticket.visitor.code })}</p>}
+                  {ticket.visitor.category !== undefined && <p>{t("console.visitor.category", { category: ticket.visitor.category })}</p>}
                 </div>
-              </>
-            )}
-          </>
-        )}
-      </Card>
-
-      {ticket && timedOut && (
-        <Card>
-          <h3 className="qms-label">{t("console.timeout.title")}</h3>
-          <p className="qms-warning" data-testid="call-timeout">
-            {t("console.timeout.prompt", { token: formatTokenNumber(ticket.token_number), seconds: formatNumber(session.call_timeout_seconds) })}
-          </p>
-          <div className="qms-row">
-            <Button type="button" disabled={!actions.canReturn || busy} onClick={actions.returnToQueue}>
-              {t("console.timeout.return")}
-            </Button>
-            <Button type="button" variant="secondary" disabled={busy} onClick={onKeep}>
-              {t("console.timeout.keep")}
-            </Button>
-          </div>
+              )}
+              {ticket.purpose_note !== undefined && <p data-testid="purpose-note">{t("console.ticket.purpose", { note: ticket.purpose_note })}</p>}
+              {ticket.journey_stops.length > 0 && (
+                <div data-testid="journey-stops" aria-label={t("console.journey.title")}>
+                  <h3 className="text-sm font-semibold text-fg">{t("console.journey.title")}</h3>
+                  <ul className="m-0 flex list-none flex-col gap-1 p-0">
+                    {ticket.journey_stops.map((stop) => (
+                      <li key={stop.seq} data-testid={`journey-stop-${stop.seq}`}>
+                        <span className="font-medium tabular-nums text-fg">{stop.token_number ? formatTokenNumber(stop.token_number) : "–"}</span>{" "}
+                        <span className="text-fg-muted">
+                          {localisedName(stop.service.name_i18n, language)} · {t(`console.journey.state.${stop.state}`)}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {ticket.state === "called" && ticket.announce_count > 0 && (
+                <p className="text-fg-muted">
+                  {t("console.ticket.announced", { count: formatNumber(ticket.announce_count), limit: formatNumber(ticket.announce_limit) })}
+                </p>
+              )}
+              {ticket.state === "called" && ticket.miss_count >= ticket.miss_limit && (
+                <p className="text-warn">{t("console.ticket.missLast", { count: formatNumber(ticket.miss_count), limit: formatNumber(ticket.miss_limit) })}</p>
+              )}
+              {serving && (
+                <>
+                  {ticket.outcomes.length > 0 && (
+                    <SelectField
+                      id="console-outcome"
+                      label={t("console.outcome.label")}
+                      value={outcome}
+                      onChange={(event) => onOutcome(event.target.value)}
+                      options={[
+                        { value: "", label: t("console.outcome.choose") },
+                        ...ticket.outcomes.map((o) => ({ value: o.id, label: localisedName(o.label_i18n, language) })),
+                      ]}
+                    />
+                  )}
+                  <TextField id="console-note" label={t("console.note.label")} value={note} maxLength={1000} onChange={(event) => onNote(event.target.value)} />
+                </>
+              )}
+            </>
+          )}
         </Card>
-      )}
 
-      <BreakCard session={session} busy={busy} canEnd={actions.canEndBreak} onEnd={actions.takeBreak} />
+        {/* Held tickets and the call-timeout card, as side panels beside the current ticket (ticket 64). */}
+        <aside className="flex flex-col gap-4">
+          {session.tickets.length > 1 && (
+            <Card>
+              <h3 className="text-sm font-semibold text-fg">{t("console.inProgress.title", { count: formatNumber(session.tickets.length) })}</h3>
+              <ul className="m-0 flex list-none flex-col gap-2 p-0" aria-label={t("console.inProgress.list")}>
+                {session.tickets.map((inProgress) => (
+                  <li key={inProgress.id} className="flex flex-wrap items-center justify-between gap-2" data-testid={`in-progress-${inProgress.id}`}>
+                    <span>
+                      <span className="font-medium tabular-nums text-fg">{formatTokenNumber(inProgress.token_number)}</span>{" "}
+                      <span className="text-fg-muted">
+                        {localisedName(inProgress.service.name_i18n, language)} · {t(`console.ticket.state.${inProgress.state}`)}
+                      </span>
+                    </span>
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      aria-pressed={inProgress.id === ticket?.id}
+                      disabled={busy || inProgress.id === ticket?.id}
+                      onClick={() => onSelect(inProgress.id)}
+                      aria-label={t("console.inProgress.select", { token: inProgress.token_number })}
+                    >
+                      {t("console.inProgress.selectShort")}
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+            </Card>
+          )}
+
+          {ticket && timedOut && (
+            <Card>
+              <h3 className="text-sm font-semibold text-fg">{t("console.timeout.title")}</h3>
+              <p className="text-warn" data-testid="call-timeout">
+                {t("console.timeout.prompt", { token: formatTokenNumber(ticket.token_number), seconds: formatNumber(session.call_timeout_seconds) })}
+              </p>
+              <div className="flex flex-wrap gap-2">
+                <Button type="button" disabled={!actions.canReturn || busy} onClick={actions.returnToQueue}>
+                  {t("console.timeout.return")}
+                </Button>
+                <Button type="button" variant="secondary" disabled={busy} onClick={onKeep}>
+                  {t("console.timeout.keep")}
+                </Button>
+              </div>
+            </Card>
+          )}
+
+          <BreakCard session={session} busy={busy} canEnd={actions.canEndBreak} onEnd={actions.takeBreak} />
+
+          {held.length > 0 && (
+            <Card>
+              <h3 className="text-sm font-semibold text-fg">{t("console.held.title", { count: formatNumber(held.length), limit: formatNumber(session.hold_limit) })}</h3>
+              <ul className="m-0 flex list-none flex-col gap-2 p-0" aria-label={t("console.held.list")}>
+                {held.map((heldTicket) => (
+                  <li key={heldTicket.id} className="flex flex-wrap items-center justify-between gap-2" data-testid={`held-${heldTicket.id}`}>
+                    <span>
+                      <span className="font-medium tabular-nums text-fg">{formatTokenNumber(heldTicket.token_number)}</span>{" "}
+                      <span className="text-fg-muted">{localisedName(heldTicket.service.name_i18n, language)}</span>
+                    </span>
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      disabled={!actions.canResume || busy}
+                      onClick={() => actions.resume(heldTicket)}
+                      aria-label={t("console.held.resumeFor", { token: heldTicket.token_number })}
+                    >
+                      {t("console.held.resume")}
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+              {session.state === "closing" && <p className="text-warn">{t("console.held.closing")}</p>}
+            </Card>
+          )}
+        </aside>
+      </div>
+
       {breaking && session.state === "open" && <BreakPanel busy={busy} onSubmit={onStartBreak} onCancel={onCancelBreak} />}
 
       {callingSpecific && session.state === "open" && <CallTicketPanel session={session} busy={busy} onSubmit={onCallSpecific} onCancel={onCancelCallSpecific} />}
 
       {transferring && ticket && serving && <TransferPanel sessionId={session.id} ticket={ticket} busy={busy} onSubmit={onTransfer} onCancel={onCancelTransfer} />}
 
-      {held.length > 0 && (
-        <Card>
-          <h3 className="qms-label">{t("console.held.title", { count: formatNumber(held.length), limit: formatNumber(session.hold_limit) })}</h3>
-          <ul className="qms-list" aria-label={t("console.held.list")}>
-            {held.map((heldTicket) => (
-              <li key={heldTicket.id} className="qms-row" data-testid={`held-${heldTicket.id}`}>
-                <span>
-                  <span className="qms-token">{formatTokenNumber(heldTicket.token_number)}</span>{" "}
-                  <span className="qms-muted">{localisedName(heldTicket.service.name_i18n, language)}</span>
-                </span>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  disabled={!actions.canResume || busy}
-                  onClick={() => actions.resume(heldTicket)}
-                  aria-label={t("console.held.resumeFor", { token: heldTicket.token_number })}
-                >
-                  {t("console.held.resume")}
-                </Button>
-              </li>
-            ))}
-          </ul>
-          {session.state === "closing" && <p className="qms-warning">{t("console.held.closing")}</p>}
-        </Card>
-      )}
-
+      {/* The action bar: every button with its own <kbd> hint (ticket 64). */}
       <Card>
-        <div className="qms-row">
+        <div className="flex flex-wrap gap-2">
           {button(t("console.action.next"), "F2", actions.canCall, actions.call)}
           <Button type="button" variant="secondary" disabled={!actions.canCallSpecific || busy} onClick={actions.callSpecific}>
             {t("console.action.callTicket")}
@@ -326,7 +337,7 @@ export function ServingDesk({
           {button(session.state === "on_break" ? t("console.action.endBreak") : t("console.action.break"), "F9", actions.canBreak || actions.canEndBreak, actions.takeBreak, "secondary")}
           {button(t("console.action.close"), "F10", actions.canClose, actions.close, "secondary")}
         </div>
-        <p className="qms-muted">{t("console.shortcuts")}</p>
+        <p className="text-fg-muted">{t("console.shortcuts")}</p>
       </Card>
     </div>
   );
