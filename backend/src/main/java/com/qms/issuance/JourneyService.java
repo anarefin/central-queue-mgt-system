@@ -10,6 +10,8 @@ import com.qms.issuance.TicketRepository.ServiceTarget;
 import com.qms.platform.ApiException;
 import com.qms.platform.ErrorCode;
 import com.qms.platform.Profiles;
+import com.qms.platform.featureflags.FeatureFlagKey;
+import com.qms.platform.featureflags.FeatureFlags;
 import com.qms.platform.security.ScopeGuard;
 import com.qms.queue.QueueReads;
 import java.time.Clock;
@@ -45,6 +47,7 @@ public class JourneyService {
     private final AuditWriter audit;
     private final ScopeGuard scope;
     private final Clock clock;
+    private final FeatureFlags featureFlags;
 
     JourneyService(
             JourneyRepository journeys,
@@ -54,7 +57,8 @@ public class JourneyService {
             QueueReads queues,
             AuditWriter audit,
             ScopeGuard scope,
-            Clock clock) {
+            Clock clock,
+            FeatureFlags featureFlags) {
         this.journeys = journeys;
         this.issuance = issuance;
         this.tickets = tickets;
@@ -63,6 +67,7 @@ public class JourneyService {
         this.audit = audit;
         this.scope = scope;
         this.clock = clock;
+        this.featureFlags = featureFlags;
     }
 
     /** Whether journeys are switched on for this deployment (feature flag "per profile"; see {@link #settingsEnabled(boolean)}). */
@@ -81,6 +86,7 @@ public class JourneyService {
     /** The Journey templates offered at a Site, for Reception's picker (FR-QUE-060). */
     @Transactional(readOnly = true)
     public List<JourneyRepository.TemplateSummary> templatesForSite(UUID siteId) {
+        featureFlags.require(FeatureFlagKey.JOURNEY);
         return journeys.activeTemplatesForSite(siteId);
     }
 
@@ -90,6 +96,7 @@ public class JourneyService {
      */
     @Transactional
     public JourneyResponse issue(IssueJourneyRequest request, UUID actorId) {
+        featureFlags.require(FeatureFlagKey.JOURNEY);
         if (!journeys.enabled()) throw conflict("journeys_disabled");
         if (request == null) throw invalid("journey_template_id", "required");
 

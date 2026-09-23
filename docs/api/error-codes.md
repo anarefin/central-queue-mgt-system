@@ -155,5 +155,24 @@ already present, matched by its English name, is left untouched and listed under
 skipped and listed with `reason` `prefix_in_use` rather than silently renamed; an existing numbering rule on the
 seeded group is left exactly as it is. A missing `site_id` is `validation_failed` naming it.
 
+A feature flag's org-wide master switch (`GET`/`PUT /setup/feature-flags[/{key}]`, ticket 68, CFG-003, SRS §27.5) is
+checked before any of that feature's own finer settings, and refuses with `conflict`, `details.reason`
+`feature_disabled` and `details.feature` naming the flag's wire key (`appointment`, `virtual_queue`, `journey`,
+`multi_site`, `visitor_code_lookup`, `announce_visitor_name`) while it is off: `POST`/`PATCH`/`DELETE /appointments`,
+`POST /appointments/check-in`, `POST /kiosk/appointments/check-in` and `GET /services/{id}/appointments/availability`
+(`appointment`; appointment-only Services still issue normally, unaffected); `GET`/`POST /remote-join/{serviceId}`
+(`virtual_queue`, before `virtual_queue_disabled`); `POST /journeys` and `GET /sites/{id}/journey-templates`
+(`journey`, before `journeys_disabled`); `GET /kiosk/visitors/identify` and `GET /visitors/lookup` when the query
+resolves as a code rather than a phone number (`visitor_code_lookup`; a phone-shaped query is never gated, so a
+visitor can always be found by the number staff already have); and `POST /sites` (`multi_site`, only once one active
+Site already exists — the very first Site is never blocked). `announce_visitor_name` off forces the
+`announce_visitor_name` a display's `GET /devices/{id}/display-state` and its `zone:` realtime topic report to
+`false`, even where the calling Service's own flag is on. Turning a flag off never touches a ticket, appointment or
+journey already in flight; it only blocks a new one. `GET /setup/feature-flags` needs no configuration permission,
+any authenticated principal may read it (the same reach `GET /labels` already has); a device reads the same flags as
+part of `GET /config/bootstrap`. Writing (`PUT /setup/feature-flags/{key}`) still needs `config:org_sites_zones`, an
+unknown key is `validation_failed` naming `key`, and every write is audited as `feature_flag.updated` with the
+key's `before`/`after` value.
+
 The client library also synthesises two codes that never come from the server: `network_error` (no response) and
 `unexpected_response` (a reply that is not a §20.3 envelope, such as a proxy error page).

@@ -3,6 +3,7 @@
 import {
   ApiRequestError,
   newIdempotencyKey,
+  useFeatureFlags,
   type Appointment,
   type AppointmentSource,
   type Availability,
@@ -41,6 +42,8 @@ export function ReceptionDesk() {
   const { client } = useApi();
   const { user } = useAuth();
   const siteId = user?.sites[0] ?? null;
+  /** Ticket 68: the journey and appointment sections are org-wide features, each with its own master switch. */
+  const featureFlags = useFeatureFlags(client);
 
   const [services, setServices] = useState<SiteServices | null>(null);
   const [servicesError, setServicesError] = useState<unknown>(null);
@@ -222,9 +225,11 @@ export function ReceptionDesk() {
 
       {issued && <IssuedTicket ticket={issued} nameOf={nameOf} />}
 
-      {siteId && services && <JourneySection siteId={siteId} services={services.items} classes={classes ?? []} nameOf={nameOf} />}
+      {siteId && services && featureFlags.isEnabled("journey") && (
+        <JourneySection siteId={siteId} services={services.items} classes={classes ?? []} nameOf={nameOf} />
+      )}
 
-      {services && <AppointmentBookingSection services={services.items} nameOf={nameOf} />}
+      {services && featureFlags.isEnabled("appointment") && <AppointmentBookingSection services={services.items} nameOf={nameOf} />}
       </div>
 
       <div className="flex flex-col gap-4">

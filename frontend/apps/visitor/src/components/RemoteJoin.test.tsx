@@ -62,6 +62,19 @@ describe("RemoteJoin (ticket 42, FR-MOB-010, FR-MOB-023)", () => {
     expect(screen.queryByRole("button", { name: /join the queue/i })).not.toBeInTheDocument();
   });
 
+  it("shows a not-offered state when virtual_queue's org-wide flag is off (ticket 68), relying on the API refusal alone", async () => {
+    stubApi({
+      ...AUTHENTICATED_ROUTES,
+      "GET /remote-join/s1": () =>
+        json(409, { error: { code: "conflict", message: "x", details: { reason: "feature_disabled", feature: "virtual_queue" }, trace_id: "t" } }),
+    });
+
+    renderVisitor(<RemoteJoin serviceId="s1" />);
+
+    expect(await screen.findByText(/not offered right now/i)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /join the queue/i })).not.toBeInTheDocument();
+  });
+
   it("joins with an Idempotency-Key when the distance check is off, needing no device position", async () => {
     const calls = stubApi({
       ...AUTHENTICATED_ROUTES,

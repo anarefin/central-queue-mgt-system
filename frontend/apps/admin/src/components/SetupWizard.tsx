@@ -1,13 +1,18 @@
 "use client";
 
-import type { SeedCatalogueResult, SetupState, Site, VerticalProfile } from "@qms/api-client";
+import { useFeatureFlags, type SeedCatalogueResult, type SetupState, type Site, type VerticalProfile } from "@qms/api-client";
 import { useI18n } from "@qms/i18n/react";
 import { Button, Card, ErrorAlert, SelectField, StatusBadge, TextField, Toast } from "@qms/ui";
 import Link from "next/link";
 import { useEffect, useId, useState, type FormEvent, type ReactNode } from "react";
-import { describeError, useList, useSubmit } from "../lib/admin-support";
+import { describeError, useConfirmDialog, useList, useSubmit } from "../lib/admin-support";
 import { useAuth } from "../lib/auth";
 import { useApi } from "../lib/runtime";
+
+/** The closed vocabulary of feature-flag keys (CFG-001, SRS §3.3.6): mirrors the backend's own
+ * `com.qms.platform.featureflags.FeatureFlagKey`, which this screen has no way to read directly (it only sees the
+ * wire map `GET /setup/feature-flags` returns), so the six keys are named here too. */
+const FEATURE_FLAG_KEYS = ["appointment", "virtual_queue", "journey", "multi_site", "visitor_code_lookup", "announce_visitor_name"] as const;
 
 /** Roles that carry both permissions `POST /setup/seed-catalogue` needs (`config:org_sites_zones` and
  * `config:service_catalogue`); mirrors `AdminNav`'s own `SETUP_ADMINS` -- a UX convenience only, the API is what
@@ -54,6 +59,7 @@ export function SetupWizard() {
     <div className="flex flex-col gap-4">
       <p className="text-fg-muted">{t("setup.intro")}</p>
       <ProfileCard state={state} profiles={profiles} onChanged={refresh} />
+      <FeatureFlagsCard />
       <StepCard done={state.org_and_sites} label={t("setup.step.orgAndSites")}>
         <Link href="/sites/">{t("setup.link.openSites")}</Link>
       </StepCard>
@@ -143,6 +149,71 @@ function ProfileCard({ state, profiles, onChanged }: { state: SetupState; profil
           </div>
         </form>
       )}
+    </Card>
+  );
+}
+
+/**
+ * Feature flags (ticket 68, CFG-003, SRS §27.5): each flag's org-wide master switch, with a description and a
+ * confirm step before turning one off (it also blocks the endpoints that name it, org-wide, the instant it lands).
+ * Reads through {@link useFeatureFlags}, the same shared, once-per-session cache {@code ReceptionDesk}'s own section
+ * hiding reads, and calls its {@code refresh} right after a save so both update together without a page reload.
+ */
+function FeatureFlagsCard() {
+  const { t } = useI18n();
+  const { client } = useApi();
+  const flags = useFeatureFlags(client);
+  const { busy, error, run } = useSubmit();
+  const { ask, dialog } = useConfirmDialog();
+
+  async function setFlag(key: string, enabled: boolean) {
+    if (!client) return;
+    const ok = await run(() => client.setup.setFeatureFlag(key, enabled));
+    if (ok) flags.refresh();
+  }
+
+  function toggle(key: string, next: boolean) {
+    if (next) {
+      void setFlag(key, true);
+      return;
+    }
+    ask({
+      title: t(`setup.featureFlags.${key}.title`),
+      description: t("setup.featureFlags.confirmDisable"),
+      confirmLabel: t("setup.featureFlags.confirmDisableButton"),
+      danger: true,
+      onConfirm: () => void setFlag(key, false),
+    });
+  }
+
+  return (
+    <Card>
+      <h2 className="font-semibold text-fg">{t("setup.featureFlags.title")}</h2>
+      <p className="text-fg-muted">{t("setup.featureFlags.intro")}</p>
+      {flags.flags === null ? (
+        <p className="text-fg-muted">{t("setup.profile.loading")}</p>
+      ) : (
+        <ul className="m-0 list-none p-0 flex flex-col divide-y divide-border [&>li]:flex [&>li]:flex-wrap [&>li]:items-center [&>li]:justify-between [&>li]:gap-2 [&>li]:py-2.5">
+          {FEATURE_FLAG_KEYS.map((key) => (
+            <li key={key}>
+              <label className="flex flex-wrap items-center gap-3">
+                <input
+                  type="checkbox"
+                  checked={flags.flags![key] ?? true}
+                  disabled={busy}
+                  onChange={(event) => toggle(key, event.target.checked)}
+                />
+                <span className="flex flex-col">
+                  <span className="font-medium text-fg">{t(`setup.featureFlags.${key}.title`)}</span>
+                  <span className="text-sm text-fg-muted">{t(`setup.featureFlags.${key}.description`)}</span>
+                </span>
+              </label>
+            </li>
+          ))}
+        </ul>
+      )}
+      {dialog}
+      {error && <ErrorAlert>{error}</ErrorAlert>}
     </Card>
   );
 }

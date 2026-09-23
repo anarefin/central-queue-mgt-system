@@ -12,6 +12,7 @@ import { VisitorLogin } from "./VisitorLogin";
  * and the reason, never the message" shape, the same one {@code ReceptionDesk.tsx} already uses). */
 const REFUSALS = new Set([
   "virtual_queue_disabled",
+  "feature_disabled",
   "too_far",
   "remote_share_full",
   "too_early",
@@ -53,6 +54,10 @@ export function RemoteJoin({ serviceId }: { serviceId: string }) {
   const { status } = useAccount();
   const [policy, setPolicy] = useState<RemoteJoinPolicy | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  /** Ticket 68: `virtual_queue`'s org-wide master switch is off. The API refusal is the only signal this page relies
+   * on — it never pre-checks the flag itself, so an anonymous visitor sees the same "not offered" state a signed-in
+   * one does, from the one place both paths already go through: this policy read. */
+  const [notOffered, setNotOffered] = useState(false);
   const [joining, setJoining] = useState(false);
   const [joinError, setJoinError] = useState<string | null>(null);
 
@@ -60,7 +65,12 @@ export function RemoteJoin({ serviceId }: { serviceId: string }) {
     if (!client || status !== "authenticated") return;
     try {
       setPolicy(await client.remoteJoin.policy(serviceId));
-    } catch {
+    } catch (cause) {
+      const reason = cause instanceof ApiRequestError ? cause.body?.details?.reason : undefined;
+      if (reason === "feature_disabled") {
+        setNotOffered(true);
+        return;
+      }
       setLoadError(t("remoteJoin.error.generic"));
     }
   }, [client, status, serviceId, t]);
@@ -115,6 +125,17 @@ export function RemoteJoin({ serviceId }: { serviceId: string }) {
           <p className="text-fg-muted">{t("remoteJoin.signInFirst")}</p>
         </Card>
         <VisitorLogin />
+      </Page>
+    );
+  }
+
+  if (notOffered) {
+    return (
+      <Page>
+        <Card>
+          <h1 className="text-2xl font-semibold text-fg">{t("remoteJoin.title")}</h1>
+          <ErrorAlert>{t("remoteJoin.refused.feature_disabled")}</ErrorAlert>
+        </Card>
       </Page>
     );
   }

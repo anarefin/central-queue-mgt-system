@@ -1,5 +1,7 @@
 package com.qms.device;
 
+import com.qms.platform.featureflags.FeatureFlagKey;
+import com.qms.platform.featureflags.FeatureFlags;
 import com.qms.platform.i18n.Messages;
 import com.qms.queue.QueueReads;
 import com.qms.queue.WaitEstimate;
@@ -42,13 +44,15 @@ class DisplayStateReads {
     private final WaitEstimates waitEstimates;
     private final JsonMapper mapper;
     private final Messages messages;
+    private final FeatureFlags featureFlags;
 
-    DisplayStateReads(JdbcTemplate jdbc, QueueReads queues, WaitEstimates waitEstimates, JsonMapper mapper, Messages messages) {
+    DisplayStateReads(JdbcTemplate jdbc, QueueReads queues, WaitEstimates waitEstimates, JsonMapper mapper, Messages messages, FeatureFlags featureFlags) {
         this.jdbc = jdbc;
         this.queues = queues;
         this.waitEstimates = waitEstimates;
         this.mapper = mapper;
         this.messages = messages;
+        this.featureFlags = featureFlags;
     }
 
     record ServingRow(
@@ -149,6 +153,11 @@ class DisplayStateReads {
 
     private ServingRow servingRow(ResultSet rs, boolean clinical) throws SQLException {
         UUID serviceId = rs.getObject("service_id", UUID.class);
+        // Ticket 68: the org-wide announce_visitor_name flag is a master switch over the Service's own field — a
+        // display is told to announce the name only when both allow it, even though this build never puts the name
+        // itself on the wire (see AnnouncementData's own javadoc in the display app); forcing this false with the
+        // flag off is what "the announcement payload leaves out the visitor name" means at this layer.
+        boolean announceVisitorName = rs.getBoolean("announce_visitor_name") && featureFlags.isEnabled(FeatureFlagKey.ANNOUNCE_VISITOR_NAME);
         return new ServingRow(
                 rs.getObject("counter_id", UUID.class),
                 rs.getString("label"),
@@ -159,7 +168,7 @@ class DisplayStateReads {
                 rs.getString("staff_name"),
                 rs.getString("token_prefix"),
                 names(rs.getString("token_prefix_spoken")),
-                rs.getBoolean("announce_visitor_name"));
+                announceVisitorName);
     }
 
     @SuppressWarnings("unchecked")

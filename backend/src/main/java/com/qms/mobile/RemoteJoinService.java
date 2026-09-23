@@ -9,6 +9,8 @@ import com.qms.platform.ApiException;
 import com.qms.platform.ErrorCode;
 import com.qms.platform.Profiles;
 import com.qms.platform.connectivity.InternetConnectivityMonitor;
+import com.qms.platform.featureflags.FeatureFlagKey;
+import com.qms.platform.featureflags.FeatureFlags;
 import com.qms.platform.security.CurrentUser;
 import java.util.UUID;
 import org.springframework.context.annotation.Profile;
@@ -30,16 +32,24 @@ class RemoteJoinService {
     private final IssuanceService issuance;
     private final CurrentUser currentUser;
     private final InternetConnectivityMonitor connectivity;
+    private final FeatureFlags featureFlags;
 
-    RemoteJoinService(RemoteJoinRepository repository, IssuanceService issuance, CurrentUser currentUser, InternetConnectivityMonitor connectivity) {
+    RemoteJoinService(
+            RemoteJoinRepository repository,
+            IssuanceService issuance,
+            CurrentUser currentUser,
+            InternetConnectivityMonitor connectivity,
+            FeatureFlags featureFlags) {
         this.repository = repository;
         this.issuance = issuance;
         this.currentUser = currentUser;
         this.connectivity = connectivity;
+        this.featureFlags = featureFlags;
     }
 
     /** What the join screen shows before the visitor commits (FR-MOB-023): the policy alone, not yet its enforcement. */
     RemoteJoinViews.PolicyView policy(UUID serviceId) {
+        featureFlags.require(FeatureFlagKey.VIRTUAL_QUEUE);
         if (!repository.serviceExists(serviceId)) throw new ApiException(ErrorCode.NOT_FOUND);
         RemoteJoinRepository.Policy policy = repository.policyOf(serviceId);
         return new RemoteJoinViews.PolicyView(
@@ -53,6 +63,7 @@ class RemoteJoinService {
     }
 
     TicketResponse join(UUID serviceId, Double latitude, Double longitude) {
+        featureFlags.require(FeatureFlagKey.VIRTUAL_QUEUE);
         UUID visitorId = currentUser.require().userId();
         var command = new IssueCommand(serviceId, Channels.MOBILE, visitorId, ActorType.VISITOR, null, null, visitorId, false, null, null, null);
         return issuance.issueRemote(command, latitude, longitude);

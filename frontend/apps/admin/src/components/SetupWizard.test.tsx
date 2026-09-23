@@ -1,4 +1,4 @@
-import type { Site, SetupState, VerticalProfile } from "@qms/api-client";
+import { resetFeatureFlagsCacheForTests, type Site, type SetupState, type VerticalProfile } from "@qms/api-client";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -264,5 +264,63 @@ describe("setup wizard (SRS §26.2, FR-OPS-010, ticket 56)", () => {
     renderApp(<SetupWizard />);
 
     expect(await screen.findByRole("button", { name: "Seed starter catalogue" })).toBeDisabled();
+  });
+});
+
+describe("feature flags card (ticket 68, CFG-003, SRS §27.5)", () => {
+  afterEach(() => resetFeatureFlagsCacheForTests());
+
+  it("shows every flag's current state, loaded from GET /setup/feature-flags", async () => {
+    stubApi({
+      ...orgAdminSession(),
+      "GET /setup/state": () => json(200, state()),
+      "GET /setup/profiles": () => json(200, [profile("banking")]),
+      "GET /setup/feature-flags": () =>
+        json(200, { appointment: true, virtual_queue: false, journey: true, multi_site: false, visitor_code_lookup: true, announce_visitor_name: false }),
+    });
+    renderApp(<SetupWizard />);
+
+    expect(await screen.findByRole("checkbox", { name: /Appointments/ })).toBeChecked();
+    expect(screen.getByRole("checkbox", { name: /Virtual queue/ })).not.toBeChecked();
+    expect(screen.getByRole("checkbox", { name: /Multiple sites/ })).not.toBeChecked();
+  });
+
+  it("turns a flag on immediately, with no confirmation needed", async () => {
+    const calls = stubApi({
+      ...orgAdminSession(),
+      "GET /setup/state": () => json(200, state()),
+      "GET /setup/profiles": () => json(200, [profile("banking")]),
+      "GET /setup/feature-flags": () =>
+        json(200, { appointment: true, virtual_queue: false, journey: true, multi_site: true, visitor_code_lookup: true, announce_visitor_name: true }),
+      "PUT /setup/feature-flags/virtual_queue": () => json(200, { virtual_queue: true }),
+    });
+    renderApp(<SetupWizard />);
+
+    await userEvent.click(await screen.findByRole("checkbox", { name: /Virtual queue/ }));
+
+    await waitFor(() => expect(calls.some((c) => c.method === "PUT" && c.path === "/setup/feature-flags/virtual_queue")).toBe(true));
+    expect(JSON.parse(String(calls.find((c) => c.path === "/setup/feature-flags/virtual_queue")?.init.body))).toEqual({ enabled: true });
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("asks for confirmation before turning a flag off, and only writes it once confirmed", async () => {
+    const calls = stubApi({
+      ...orgAdminSession(),
+      "GET /setup/state": () => json(200, state()),
+      "GET /setup/profiles": () => json(200, [profile("banking")]),
+      "GET /setup/feature-flags": () =>
+        json(200, { appointment: true, virtual_queue: true, journey: true, multi_site: true, visitor_code_lookup: true, announce_visitor_name: true }),
+      "PUT /setup/feature-flags/appointment": () => json(200, { appointment: false }),
+    });
+    renderApp(<SetupWizard />);
+
+    await userEvent.click(await screen.findByRole("checkbox", { name: /Appointments/ }));
+    expect(calls.some((c) => c.path === "/setup/feature-flags/appointment")).toBe(false);
+    expect(await screen.findByText(/turns the feature off across the whole organisation/)).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Turn off" }));
+
+    await waitFor(() => expect(calls.some((c) => c.method === "PUT" && c.path === "/setup/feature-flags/appointment")).toBe(true));
+    expect(JSON.parse(String(calls.find((c) => c.path === "/setup/feature-flags/appointment")?.init.body))).toEqual({ enabled: false });
   });
 });

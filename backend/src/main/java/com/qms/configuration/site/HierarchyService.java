@@ -5,6 +5,8 @@ import com.qms.audit.AuditWriter;
 import com.qms.platform.ApiException;
 import com.qms.platform.ErrorCode;
 import com.qms.platform.Profiles;
+import com.qms.platform.featureflags.FeatureFlagKey;
+import com.qms.platform.featureflags.FeatureFlags;
 import com.qms.platform.i18n.LanguageProperties;
 import com.qms.platform.security.CurrentUser;
 import com.qms.platform.security.ScopeGuard;
@@ -41,6 +43,7 @@ public class HierarchyService {
     private final ScopeGuard scope;
     private final LanguageProperties languages;
     private final Clock clock;
+    private final FeatureFlags featureFlags;
 
     HierarchyService(
             HierarchyRepository repository,
@@ -48,13 +51,15 @@ public class HierarchyService {
             CurrentUser currentUser,
             ScopeGuard scope,
             LanguageProperties languages,
-            Clock clock) {
+            Clock clock,
+            FeatureFlags featureFlags) {
         this.repository = repository;
         this.audit = audit;
         this.currentUser = currentUser;
         this.scope = scope;
         this.languages = languages;
         this.clock = clock;
+        this.featureFlags = featureFlags;
     }
 
     // ---- sites -------------------------------------------------------------------------------------------------
@@ -73,11 +78,18 @@ public class HierarchyService {
         return requireSite(id);
     }
 
-    /** A new site is outside every existing site scope, so only an organisation-wide caller may add one. */
+    /**
+     * A new site is outside every existing site scope, so only an organisation-wide caller may add one. Ticket 68:
+     * the very first Site is never blocked (an installation always needs at least one); once one active Site
+     * exists, a second is refused while {@code multi_site} is off.
+     */
     @PreAuthorize(PERMISSION)
     @Transactional
     public Site createSite(String name, String code, String timezone, String address, String defaultLanguage, List<String> enabledLanguages) {
         if (!currentUser.require().siteIds().isEmpty()) throw new ApiException(ErrorCode.FORBIDDEN);
+        if (!featureFlags.isEnabled(FeatureFlagKey.MULTI_SITE) && repository.sites().stream().anyMatch(Site::active)) {
+            throw FeatureFlags.refusal(FeatureFlagKey.MULTI_SITE);
+        }
         String language = SiteRules.required("default_language", defaultLanguage, 3);
         Instant now = clock.instant();
         Site site = new Site(

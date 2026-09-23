@@ -15,6 +15,8 @@ import com.qms.issuance.TicketResponse;
 import com.qms.platform.ApiException;
 import com.qms.platform.ErrorCode;
 import com.qms.platform.Profiles;
+import com.qms.platform.featureflags.FeatureFlagKey;
+import com.qms.platform.featureflags.FeatureFlags;
 import com.qms.platform.security.CurrentUser;
 import com.qms.platform.security.ScopeGuard;
 import java.time.Clock;
@@ -63,6 +65,7 @@ public class AppointmentCheckInService {
     private final ScopeGuard scope;
     private final CurrentUser currentUser;
     private final Clock clock;
+    private final FeatureFlags featureFlags;
 
     AppointmentCheckInService(
             AppointmentBookingRepository repository,
@@ -73,7 +76,8 @@ public class AppointmentCheckInService {
             AuditWriter audit,
             ScopeGuard scope,
             CurrentUser currentUser,
-            Clock clock) {
+            Clock clock,
+            FeatureFlags featureFlags) {
         this.repository = repository;
         this.availabilityRepository = availabilityRepository;
         this.properties = properties;
@@ -83,6 +87,7 @@ public class AppointmentCheckInService {
         this.scope = scope;
         this.currentUser = currentUser;
         this.clock = clock;
+        this.featureFlags = featureFlags;
     }
 
     /** Reception check-in (FR-ISS-030): the caller is a signed-in staff member. */
@@ -101,6 +106,7 @@ public class AppointmentCheckInService {
     }
 
     private CheckInResponse checkIn(CheckInRequest request, UUID actorId, ActorType actorType, String walkInChannel) {
+        featureFlags.require(FeatureFlagKey.APPOINTMENT);
         String referenceCode = referenceCode(request);
         UUID id = repository.findByReferenceCode(referenceCode).orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND)).id();
 

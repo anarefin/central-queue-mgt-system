@@ -396,6 +396,9 @@ const MANDATORY_ID_GROUP: DeviceBootstrap = {
   service_tree: [group("grp-1", { en: "Outpatient" }, [service("svc-1", { en: "Consultation" }, "mandatory")])],
 };
 
+/** Ticket 68: the org-wide `visitor_code_lookup` flag is off; lookup by phone stays available. */
+const OPTIONAL_ID_GROUP_CODE_LOOKUP_OFF: DeviceBootstrap = { ...OPTIONAL_ID_GROUP, feature_flags: { visitor_code_lookup: false } };
+
 const INDIVIDUAL_GROUP: DeviceBootstrap = {
   branding: { site_name: "Main campus", default_language: "en" },
   languages: ["en"],
@@ -474,6 +477,16 @@ describe("KioskFlow identification (ticket 26, FR-ISS-013, FR-ISS-014, FR-CFG-01
     expect(screen.queryByText(/Identified as/)).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Get my token" }));
     await waitFor(() => expect(issuedBody(fetchImpl)).toEqual({ service_id: "svc-1" }));
+  });
+
+  it("hides the code and QR identify tiles while visitor_code_lookup is off, but keeps the phone one (ticket 68)", async () => {
+    render(<KioskFlow bootstrap={OPTIONAL_ID_GROUP_CODE_LOOKUP_OFF} client={clientWith(vi.fn())} printer={new ResolvingPrinter()} />);
+    await userEvent.click(screen.getByRole("button", { name: "Tap to begin" }));
+
+    expect(await screen.findByText("Identify yourself")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Enter code" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Scan QR code" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Enter mobile number" })).toBeInTheDocument();
   });
 
   it("never offers to skip when identification is mandatory, and shows a not-found message that can be retried", async () => {

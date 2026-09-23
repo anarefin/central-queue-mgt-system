@@ -15,6 +15,8 @@ import com.qms.audit.AuditWriter;
 import com.qms.platform.ApiException;
 import com.qms.platform.ErrorCode;
 import com.qms.platform.Profiles;
+import com.qms.platform.featureflags.FeatureFlagKey;
+import com.qms.platform.featureflags.FeatureFlags;
 import com.qms.platform.i18n.LanguageProperties;
 import com.qms.platform.security.CurrentUser;
 import com.qms.platform.security.ScopeGuard;
@@ -59,6 +61,7 @@ public class AppointmentAvailabilityService {
     private final CurrentUser currentUser;
     private final LanguageProperties languages;
     private final Clock clock;
+    private final FeatureFlags featureFlags;
 
     AppointmentAvailabilityService(
             AppointmentAvailabilityRepository repository,
@@ -67,7 +70,8 @@ public class AppointmentAvailabilityService {
             ScopeGuard scope,
             CurrentUser currentUser,
             LanguageProperties languages,
-            Clock clock) {
+            Clock clock,
+            FeatureFlags featureFlags) {
         this.repository = repository;
         this.bookings = bookings;
         this.audit = audit;
@@ -75,6 +79,7 @@ public class AppointmentAvailabilityService {
         this.currentUser = currentUser;
         this.languages = languages;
         this.clock = clock;
+        this.featureFlags = featureFlags;
     }
 
     // ---- slot templates (FR-APT-002) ---------------------------------------------------------------------------
@@ -174,6 +179,7 @@ public class AppointmentAvailabilityService {
     @PreAuthorize(SEARCH)
     @Transactional(readOnly = true)
     public Availability search(UUID serviceId, String dateParam) {
+        featureFlags.require(FeatureFlagKey.APPOINTMENT);
         LocalDate date = AppointmentAvailabilityFields.date("date", dateParam);
         if (date == null) throw AppointmentAvailabilityFields.invalid("date", "NotNull");
         Optional<Day> day = day(serviceId, date);

@@ -18,6 +18,8 @@ import com.qms.platform.ApiException;
 import com.qms.platform.ErrorCode;
 import com.qms.platform.Profiles;
 import com.qms.platform.i18n.LanguageProperties;
+import com.qms.platform.featureflags.FeatureFlagKey;
+import com.qms.platform.featureflags.FeatureFlags;
 import com.qms.platform.notifications.NotificationContext;
 import com.qms.platform.notifications.NotificationTrigger;
 import com.qms.platform.notifications.NotificationTriggerKeys;
@@ -86,6 +88,7 @@ public class AppointmentBookingService {
     private final ScopeGuard scope;
     private final CurrentUser currentUser;
     private final Clock clock;
+    private final FeatureFlags featureFlags;
     /** Empty outside the {@code serving} profile (the notification pipeline is @Profile(SERVING)-only, ADR-0010),
      * the same {@code com.qms.queue.TicketEvents} pattern (ticket 38, FR-NTF-003, FR-APT-050). */
     private final Optional<NotificationTrigger> notifications;
@@ -100,6 +103,7 @@ public class AppointmentBookingService {
             ScopeGuard scope,
             CurrentUser currentUser,
             Clock clock,
+            FeatureFlags featureFlags,
             Optional<NotificationTrigger> notifications) {
         this.repository = repository;
         this.availabilityRepository = availabilityRepository;
@@ -110,12 +114,14 @@ public class AppointmentBookingService {
         this.scope = scope;
         this.currentUser = currentUser;
         this.clock = clock;
+        this.featureFlags = featureFlags;
         this.notifications = notifications;
     }
 
     @PreAuthorize(BOOK)
     @Transactional
     public AppointmentResponse book(BookAppointmentRequest request) {
+        featureFlags.require(FeatureFlagKey.APPOINTMENT);
         AuthenticatedUser caller = currentUser.require();
         boolean visitorCaller = caller.roles().contains(Role.VISITOR);
         boolean hostSystemCaller = caller.roles().contains(Role.HOST_SYSTEM);
@@ -220,6 +226,7 @@ public class AppointmentBookingService {
     @PreAuthorize(BOOK)
     @Transactional
     public AppointmentResponse reschedule(UUID id, RescheduleAppointmentRequest request) {
+        featureFlags.require(FeatureFlagKey.APPOINTMENT);
         AuthenticatedUser caller = currentUser.require();
         boolean visitorCaller = caller.roles().contains(Role.VISITOR);
         RescheduleParsed target = AppointmentBookingFields.parseReschedule(request);
@@ -268,6 +275,7 @@ public class AppointmentBookingService {
     @PreAuthorize(BOOK)
     @Transactional
     public void cancel(UUID id, CancelAppointmentRequest request) {
+        featureFlags.require(FeatureFlagKey.APPOINTMENT);
         AuthenticatedUser caller = currentUser.require();
         boolean visitorCaller = caller.roles().contains(Role.VISITOR);
         String reason = AppointmentBookingFields.parseCancelReason(request);

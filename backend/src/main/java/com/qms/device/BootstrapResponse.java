@@ -15,7 +15,11 @@ record BootstrapResponse(
         List<String> languages,
         Layout layout,
         @JsonProperty("service_tree") List<ServiceTreeGroup> serviceTree,
-        @JsonProperty("print_template") PrintTemplate printTemplate) {
+        @JsonProperty("print_template") PrintTemplate printTemplate,
+        /** Every feature flag's org-wide master switch, by wire key (ticket 68): a device reads its own copy here
+         * rather than calling {@code GET /setup/feature-flags} itself, the same "shipped with bootstrap so a device
+         * never needs a second round trip" reasoning {@code printTemplate} already follows. */
+        @JsonProperty("feature_flags") Map<String, Boolean> featureFlags) {
 
     /**
      * {@code siteName}/{@code defaultLanguage} are per-site; {@code orgName}, {@code primaryColor} and {@code logoUrl}

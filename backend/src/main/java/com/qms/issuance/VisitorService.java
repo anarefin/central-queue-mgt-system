@@ -6,12 +6,15 @@ import com.qms.configuration.privacy.VisitorFieldConfigService;
 import com.qms.platform.ApiException;
 import com.qms.platform.ErrorCode;
 import com.qms.platform.Profiles;
+import com.qms.platform.featureflags.FeatureFlagKey;
+import com.qms.platform.featureflags.FeatureFlags;
 import java.security.SecureRandom;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.regex.Pattern;
 import org.springframework.context.annotation.Profile;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
@@ -32,12 +35,26 @@ class VisitorService {
     private static final int PASS_ATTEMPTS = 5;
     private static final SecureRandom RANDOM = new SecureRandom();
 
+    /**
+     * Ticket 68's "record the decision": {@link VisitorDirectory#lookup} resolves a query that could be a code, a
+     * phone number or a scanned QR payload all through the same {@code q} parameter, with no separate field for
+     * which kind it is. Since a phone number is always digits (an optional leading {@code +}, 7 to 15 of them once
+     * spaces, hyphens and parentheses are stripped) and no shipped code or pass reference is ever purely numeric
+     * (the pass reference always starts {@code V-}, and CSV-imported external codes are free text an Org Admin
+     * chose), this is read as "looks like a phone number" and never gated by {@code visitor_code_lookup}; anything
+     * else is read as a code and gated. A query that matches neither an existing code nor phone still answers {@code
+     * not_found} exactly as before, whether or not the flag is on — the gate only ever narrows what a caller may
+     * attempt, never what the directory itself would have found.
+     */
+    private static final Pattern PHONE_LIKE = Pattern.compile("\\+?[0-9]{7,15}");
+
     private final VisitorDirectoryGateway gateway;
     private final VisitorRepository visitors;
     private final VisitorProperties properties;
     private final VisitorFieldConfigService fieldConfig;
     private final AuditWriter audit;
     private final Clock clock;
+    private final FeatureFlags featureFlags;
 
     VisitorService(
             VisitorDirectoryGateway gateway,
@@ -45,17 +62,20 @@ class VisitorService {
             VisitorProperties properties,
             VisitorFieldConfigService fieldConfig,
             AuditWriter audit,
-            Clock clock) {
+            Clock clock,
+            FeatureFlags featureFlags) {
         this.gateway = gateway;
         this.visitors = visitors;
         this.properties = properties;
         this.fieldConfig = fieldConfig;
         this.audit = audit;
         this.clock = clock;
+        this.featureFlags = featureFlags;
     }
 
     /** {@code GET /visitors/lookup} (FR-ISS-020, FR-INT-012). Never blocks the caller past the directory's hard timeout. */
     VisitorLookupResponse lookup(String query) {
+        requireCodeLookupAllowed(query);
         VisitorDirectory.Match match = gateway.lookup(query).orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND));
         return new VisitorLookupResponse(match.id(), match.externalCode(), match.name(), match.category(), match.phone(), match.flags());
     }
@@ -66,6 +86,7 @@ class VisitorService {
      * kiosk is the visitor's own device, not staff, so nothing else on the visitor record may reach it.
      */
     KioskVisitorIdentifyResponse identifyForKiosk(String query) {
+        requireCodeLookupAllowed(query);
         VisitorDirectory.Match match = gateway.lookup(query).orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND));
         // FR-SEC-020's "Kiosk confirmation | Name, category" row, now Org Admin-configurable (ticket 54): a field
         // turned off here is left out of the response entirely, not merely hidden by the kiosk's own screen.
@@ -133,6 +154,12 @@ class VisitorService {
         StringBuilder sb = new StringBuilder("V-");
         for (int i = 0; i < PASS_LENGTH; i++) sb.append(PASS_ALPHABET[RANDOM.nextInt(PASS_ALPHABET.length)]);
         return sb.toString();
+    }
+
+    /** Ticket 68: gates a code lookup, but never a phone one — see {@link #PHONE_LIKE}'s javadoc for the decision. */
+    private void requireCodeLookupAllowed(String query) {
+        String normalized = query == null ? "" : query.replaceAll("[\\s()-]", "");
+        if (!PHONE_LIKE.matcher(normalized).matches()) featureFlags.require(FeatureFlagKey.VISITOR_CODE_LOOKUP);
     }
 
     private static String blank(String value) {

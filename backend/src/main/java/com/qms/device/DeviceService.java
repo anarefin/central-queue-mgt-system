@@ -23,6 +23,7 @@ import com.qms.identity.AccessTokenService;
 import com.qms.platform.ApiException;
 import com.qms.platform.ErrorCode;
 import com.qms.platform.Profiles;
+import com.qms.platform.featureflags.FeatureFlags;
 import com.qms.platform.realtime.RealtimePublisher;
 import com.qms.platform.realtime.Topics;
 import com.qms.platform.security.CurrentUser;
@@ -79,6 +80,7 @@ public class DeviceService {
     private final ScopeGuard scope;
     private final RealtimePublisher realtime;
     private final Clock clock;
+    private final FeatureFlags featureFlags;
 
     DeviceService(
             DeviceRepository devices,
@@ -95,7 +97,8 @@ public class DeviceService {
             CurrentUser currentUser,
             ScopeGuard scope,
             RealtimePublisher realtime,
-            Clock clock) {
+            Clock clock,
+            FeatureFlags featureFlags) {
         this.devices = devices;
         this.pairingCodes = pairingCodes;
         this.refreshTokens = refreshTokens;
@@ -111,6 +114,7 @@ public class DeviceService {
         this.scope = scope;
         this.realtime = realtime;
         this.clock = clock;
+        this.featureFlags = featureFlags;
     }
 
     // ---- pairing (device-facing, public) ------------------------------------------------------------------------
@@ -242,7 +246,7 @@ public class DeviceService {
         Branding responseBranding =
                 new Branding(site.name(), site.defaultLanguage(), orgBranding.orgName(), orgBranding.primaryColor(), orgBranding.logoUrl());
         var printTemplate = new BootstrapResponse.PrintTemplate(template.fields(), template.noticeLine());
-        return new BootstrapResponse(responseBranding, site.enabledLanguages(), layout, tree, printTemplate);
+        return new BootstrapResponse(responseBranding, site.enabledLanguages(), layout, tree, printTemplate, featureFlags.all());
     }
 
     // ---- fleet administration (staff-facing) --------------------------------------------------------------------

@@ -1,4 +1,4 @@
-import type { PriorityClass, QueueSnapshot, SiteServices, Ticket } from "@qms/api-client";
+import { resetFeatureFlagsCacheForTests, type PriorityClass, type QueueSnapshot, type SiteServices, type Ticket } from "@qms/api-client";
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -819,5 +819,38 @@ describe("staff appointment booking (ticket 33, SRS §9.2, FR-APT-011..016)", ()
     await userEvent.click(section.getByRole("button", { name: "Book appointment" }));
 
     expect(await section.findByText("This slot has no remaining capacity. Choose another.")).toBeInTheDocument();
+  });
+});
+
+describe("feature flags hide the journey and appointment sections (ticket 68, CFG-003)", () => {
+  afterEach(() => resetFeatureFlagsCacheForTests());
+
+  it("hides the journey section while the journey flag is off, and shows it again once it is on", async () => {
+    fakeApi(fresh(), {
+      "GET /sites/s1/journey-templates": () => json(200, []),
+      "GET /setup/feature-flags": () => json(200, { journey: false, appointment: true }),
+    });
+    renderApp(<ReceptionDesk />);
+
+    await screen.findByRole("radio", { name: /Consultation/ });
+    expect(screen.queryByRole("checkbox", { name: "Issue a multi-stop journey instead" })).not.toBeInTheDocument();
+  });
+
+  it("shows the journey section once its flag reads on", async () => {
+    fakeApi(fresh(), {
+      "GET /sites/s1/journey-templates": () => json(200, []),
+      "GET /setup/feature-flags": () => json(200, { journey: true, appointment: true }),
+    });
+    renderApp(<ReceptionDesk />);
+
+    expect(await screen.findByRole("checkbox", { name: "Issue a multi-stop journey instead" })).toBeInTheDocument();
+  });
+
+  it("hides the appointment booking section while the appointment flag is off", async () => {
+    fakeApi(fresh(), { "GET /setup/feature-flags": () => json(200, { journey: true, appointment: false }) });
+    renderApp(<ReceptionDesk />);
+
+    await screen.findByRole("radio", { name: /Consultation/ });
+    expect(screen.queryByTestId("appointment-booking")).not.toBeInTheDocument();
   });
 });

@@ -115,6 +115,12 @@ function saveAccessibilityPrefs(prefs: AccessibilityPrefs): void {
   }
 }
 
+/** Ticket 68: a flag missing from `bootstrap.feature_flags` reads as enabled, the same "no row yet" default the
+ * backend itself uses. */
+function featureEnabled(bootstrap: DeviceBootstrap, key: string): boolean {
+  return bootstrap.feature_flags?.[key] !== false;
+}
+
 function groupsFromBootstrap(bootstrap: DeviceBootstrap, language: string, defaultLanguage: string): GroupVM[] {
   return bootstrap.service_tree
     .filter((group) => group.services.length > 0)
@@ -582,6 +588,7 @@ function KioskFlowInner({ bootstrap, client, printer, inactivityTimeoutMs, langu
       {step.kind === "identify" && (
         <IdentifyScreen
           mandatory={step.mandatory}
+          codeLookupEnabled={featureEnabled(bootstrap, "visitor_code_lookup")}
           onEnter={(method) => setStep({ kind: "identifyEnter", selection: step.selection, mandatory: step.mandatory, method })}
           onScan={() => setStep({ kind: "identifyScan", selection: step.selection, mandatory: step.mandatory })}
           onSkip={() => skipIdentify(step)}
@@ -718,15 +725,23 @@ function ServiceScreen({ group, onPick, onBack }: { group: GroupVM | undefined; 
   );
 }
 
-/** FR-ISS-013: typed code, camera QR (where the browser supports it) or mobile number; skippable unless {@code mandatory}. */
+/**
+ * FR-ISS-013: typed code, camera QR (where the browser supports it) or mobile number; skippable unless {@code
+ * mandatory}. Ticket 68: {@code codeLookupEnabled} is the org-wide {@code visitor_code_lookup} flag — "by code" and
+ * "by QR" both resolve through {@code GET /kiosk/visitors/identify} with a query that is not phone-shaped, so both
+ * are gated the same way the server itself gates them (see {@code VisitorService#requireCodeLookupAllowed}'s own
+ * javadoc for the phone/code distinction); "by phone" is never gated.
+ */
 function IdentifyScreen({
   mandatory,
+  codeLookupEnabled,
   onEnter,
   onScan,
   onSkip,
   onBack,
 }: {
   mandatory: boolean;
+  codeLookupEnabled: boolean;
   onEnter: (method: IdentifyMethod) => void;
   onScan: () => void;
   onSkip: () => void;
@@ -739,9 +754,9 @@ function IdentifyScreen({
       <h1 className="text-3xl font-bold text-large:text-4xl">{t("kiosk.identify.title")}</h1>
       <p className="text-fg-muted">{t(mandatory ? "kiosk.identify.mandatoryPrompt" : "kiosk.identify.optionalPrompt")}</p>
       <TileGrid>
-        <Tile onClick={() => onEnter("code")}>{t("kiosk.identify.byCode")}</Tile>
+        {codeLookupEnabled && <Tile onClick={() => onEnter("code")}>{t("kiosk.identify.byCode")}</Tile>}
         <Tile onClick={() => onEnter("phone")}>{t("kiosk.identify.byPhone")}</Tile>
-        {canScan && <Tile onClick={onScan}>{t("kiosk.identify.byQr")}</Tile>}
+        {codeLookupEnabled && canScan && <Tile onClick={onScan}>{t("kiosk.identify.byQr")}</Tile>}
       </TileGrid>
       {!mandatory && <Tile onClick={onSkip}>{t("kiosk.identify.skip")}</Tile>}
       <Tile className={TILE_SECONDARY} onClick={onBack}>

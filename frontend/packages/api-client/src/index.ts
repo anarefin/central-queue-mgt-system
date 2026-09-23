@@ -24,6 +24,7 @@ export * from "./sessions";
 export * from "./setup";
 export * from "./stream";
 export * from "./tickets";
+export * from "./useFeatureFlags";
 export * from "./visitor-account";
 export * from "./visitor-session";
 export * from "./visitors";

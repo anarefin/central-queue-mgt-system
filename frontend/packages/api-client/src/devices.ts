@@ -87,6 +87,10 @@ export interface DeviceBootstrap {
   service_tree: KioskServiceTreeGroup[];
   /** The printed token layout (ticket 27, FR-CFG-031); optional for the same fixture-compatibility reason as above. */
   print_template?: { fields: PrintField[]; notice_line: string | null };
+  /** Every feature flag's org-wide master switch, by wire key (ticket 68, CFG-003): optional for the same
+   * fixture-compatibility reason as `print_template` — a device that reads none simply treats every flag as on,
+   * the same "no row yet" default the backend itself uses. */
+  feature_flags?: Record<string, boolean>;
 }
 
 /** A service the kiosk selection tree can lead to (ticket 26). `visitor_identifier` decides the identify step: `not_required`, `optional` or `mandatory` (FR-CFG-013). */
