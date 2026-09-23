@@ -61,6 +61,21 @@ describe("AppShell", () => {
     expect(screen.getByRole("button", { name: "Theme" })).toBeInTheDocument();
   });
 
+  it("renders a group heading once per group, in nav order (ticket 63)", () => {
+    const grouped = [
+      { href: "/sites/", label: "Sites", group: "Organisation" },
+      { href: "/devices/", label: "Devices", group: "Devices & displays" },
+      { href: "/catalogue/", label: "Services", group: "Devices & displays" },
+    ];
+    render(
+      <AppShell skipToContentLabel="Skip to content" menuButtonLabel="Menu" nav={grouped}>
+        <p>Page content</p>
+      </AppShell>,
+    );
+    expect(screen.getAllByText("Organisation")).toHaveLength(1);
+    expect(screen.getAllByText("Devices & displays")).toHaveLength(1);
+  });
+
   it("toggles the mobile menu button's expanded state", async () => {
     render(
       <AppShell skipToContentLabel="Skip to content" menuButtonLabel="Menu" nav={NAV}>

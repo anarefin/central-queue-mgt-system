@@ -16,11 +16,11 @@ export function StrategyCard({ site }: { site: Site }) {
 
   return (
     <Card>
-      <h2 className="qms-heading">{t("priority.strategy.title")}</h2>
-      <p className="qms-muted">{t("priority.strategy.intro")}</p>
+      <h2 className="font-semibold text-fg">{t("priority.strategy.title")}</h2>
+      <p className="text-fg-muted">{t("priority.strategy.intro")}</p>
       {groups.error !== null && <ErrorAlert>{describeError(t, groups.error)}</ErrorAlert>}
-      {groups.items?.length === 0 && <p className="qms-muted">{t("catalogue.groups.empty")}</p>}
-      <ul className="qms-list">
+      {groups.items?.length === 0 && <p className="text-fg-muted">{t("catalogue.groups.empty")}</p>}
+      <ul className="m-0 list-none p-0 flex flex-col divide-y divide-border [&>li]:flex [&>li]:flex-wrap [&>li]:items-center [&>li]:justify-between [&>li]:gap-2 [&>li]:py-2.5">
         {groups.items?.map((group) => (
           <GroupStrategy key={group.id} group={group} name={localisedName(group.name_i18n, language, site.default_language)} />
         ))}
@@ -65,10 +65,10 @@ function GroupStrategy({ group, name }: { group: ServiceGroup; name: string }) {
 
   return (
     <li>
-      <div className="qms-stack qms-grow">
+      <div className="flex flex-col gap-4 flex-1 min-w-0">
         <strong>{name}</strong>
         {loadError !== null && <ErrorAlert>{describeError(t, loadError)}</ErrorAlert>}
-        {current?.is_default && <span className="qms-muted">{t("priority.strategy.default")}</span>}
+        {current?.is_default && <span className="text-fg-muted">{t("priority.strategy.default")}</span>}
         <SelectField
           id={`strategy-${group.id}`}
           label={t("priority.strategy.group", { group: name })}
@@ -80,14 +80,14 @@ function GroupStrategy({ group, name }: { group: ServiceGroup; name: string }) {
           }}
           options={QUEUE_STRATEGIES.map((value) => ({ value, label: t(`priority.strategy.${value}`) }))}
         />
-        <div className="qms-row">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <Button type="button" aria-label={`${t("priority.strategy.save")} ${name}`} disabled={busy || current === null} onClick={save}>
             {t("priority.strategy.save")}
           </Button>
         </div>
         {error && <ErrorAlert>{error}</ErrorAlert>}
         {saved && (
-          <span className="qms-muted" role="status">
+          <span className="text-fg-muted" role="status">
             {t("priority.strategy.saved")}
           </span>
         )}

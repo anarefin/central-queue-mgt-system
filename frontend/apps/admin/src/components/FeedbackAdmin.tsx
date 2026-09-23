@@ -33,16 +33,16 @@ export function FeedbackAdmin() {
   const items = pending.items;
 
   return (
-    <div className="qms-stack">
-      <p className="qms-muted">{t("feedback.admin.intro")}</p>
+    <div className="flex flex-col gap-4">
+      <p className="text-fg-muted">{t("feedback.admin.intro")}</p>
       <Card>
-        <h2 className="qms-heading">{t("feedback.admin.title")}</h2>
+        <h2 className="font-semibold text-fg">{t("feedback.admin.title")}</h2>
         {pending.error !== null && <ErrorAlert>{describeError(t, pending.error)}</ErrorAlert>}
-        {items?.length === 0 && <p className="qms-muted">{t("feedback.admin.none")}</p>}
+        {items?.length === 0 && <p className="text-fg-muted">{t("feedback.admin.none")}</p>}
         {items && items.length > 0 && (
-          <ul className="qms-list">
+          <ul className="m-0 list-none p-0 flex flex-col divide-y divide-border [&>li]:flex [&>li]:flex-wrap [&>li]:items-center [&>li]:justify-between [&>li]:gap-2 [&>li]:py-2.5">
             {items.map((item) => (
-              <li key={item.id} className="qms-stack">
+              <li key={item.id} className="flex flex-col gap-4">
                 <p>
                   <strong>{item.token_number}</strong> — {t("feedback.admin.rating", { rating: formatNumber(item.rating) })}
                 </p>

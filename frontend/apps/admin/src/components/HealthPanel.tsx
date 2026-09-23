@@ -34,22 +34,22 @@ export function HealthPanel() {
 
   return (
     <Card>
-      <div className="qms-row">
-        <h2 className="qms-heading">{t("admin.health.title")}</h2>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h2 className="font-semibold text-fg">{t("admin.health.title")}</h2>
         <Button variant="secondary" type="button" onClick={load}>
           {t("common.retry")}
         </Button>
       </div>
 
       {configError && <ErrorAlert>{t("admin.health.unreachable")}</ErrorAlert>}
-      {!configError && state.kind === "loading" && <p className="qms-muted">{t("admin.health.checking")}</p>}
+      {!configError && state.kind === "loading" && <p className="text-fg-muted">{t("admin.health.checking")}</p>}
       {state.kind === "error" && (
         <ErrorAlert>
           {t("admin.health.unreachable")} {t(`errors.${state.code}`)}
         </ErrorAlert>
       )}
       {state.kind === "ok" && (
-        <ul className="qms-list">
+        <ul className="m-0 list-none p-0 flex flex-col divide-y divide-border [&>li]:flex [&>li]:flex-wrap [&>li]:items-center [&>li]:justify-between [&>li]:gap-2 [&>li]:py-2.5">
           <li>
             <span>{t("admin.health.backend")}</span>
             {status(state.health.status)}

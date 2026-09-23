@@ -44,7 +44,7 @@ export function SiteForm({ initial = EMPTY, submitLabel, onSubmit, onDone, onCan
   }
 
   return (
-    <form className="qms-stack" onSubmit={submit}>
+    <form className="flex flex-col gap-4" onSubmit={submit}>
       <TextField id={`${id}-name`} label={t("sites.fields.name")} value={values.name} onChange={set("name")} />
       <TextField id={`${id}-code`} label={t("sites.fields.code")} value={values.code} onChange={set("code")} />
       <TextField
@@ -55,7 +55,7 @@ export function SiteForm({ initial = EMPTY, submitLabel, onSubmit, onDone, onCan
         placeholder="Asia/Dhaka"
        
       />
-      <p className="qms-muted">{t("sites.hint.timezone")}</p>
+      <p className="text-fg-muted">{t("sites.hint.timezone")}</p>
       <TextField id={`${id}-address`} label={t("sites.fields.address")} value={values.address} onChange={set("address")} />
       <SelectField
         id={`${id}-language`}
@@ -71,8 +71,8 @@ export function SiteForm({ initial = EMPTY, submitLabel, onSubmit, onDone, onCan
         onChange={set("enabled_languages")}
         placeholder="bn, en"
       />
-      <p className="qms-muted">{t("sites.hint.languages")}</p>
-      <label htmlFor={`${id}-clinical`} className="qms-row">
+      <p className="text-fg-muted">{t("sites.hint.languages")}</p>
+      <label htmlFor={`${id}-clinical`} className="flex flex-wrap items-center justify-between gap-3">
         <input
           id={`${id}-clinical`}
           type="checkbox"
@@ -81,9 +81,9 @@ export function SiteForm({ initial = EMPTY, submitLabel, onSubmit, onDone, onCan
         />
         {t("sites.fields.clinical_sensitivity")}
       </label>
-      <p className="qms-muted">{t("sites.hint.clinicalSensitivity")}</p>
+      <p className="text-fg-muted">{t("sites.hint.clinicalSensitivity")}</p>
       {error && <ErrorAlert>{error}</ErrorAlert>}
-      <div className="qms-row">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <Button type="submit" disabled={busy}>
           {busy ? t("admin.action.saving") : submitLabel}
         </Button>

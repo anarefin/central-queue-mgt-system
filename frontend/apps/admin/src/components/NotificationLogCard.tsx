@@ -41,8 +41,8 @@ export function NotificationLogCard() {
 
   return (
     <Card>
-      <h2 className="qms-heading">{t("notifications.log.title")}</h2>
-      <div className="qms-row">
+      <h2 className="font-semibold text-fg">{t("notifications.log.title")}</h2>
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <TextField id={`${id}-ticket`} label={t("notifications.log.ticketId")} value={ticketId} onChange={(event) => setTicketId(event.target.value)} />
         <TextField id={`${id}-visitor`} label={t("notifications.log.visitorId")} value={visitorId} onChange={(event) => setVisitorId(event.target.value)} />
         <SelectField
@@ -57,15 +57,15 @@ export function NotificationLogCard() {
         </Button>
       </div>
       {error != null && <ErrorAlert>{describeError(t, error)}</ErrorAlert>}
-      {rows && rows.length === 0 && <p className="qms-muted">{t("notifications.log.empty")}</p>}
+      {rows && rows.length === 0 && <p className="text-fg-muted">{t("notifications.log.empty")}</p>}
       {rows && rows.length > 0 && (
-        <ul className="qms-list">
+        <ul className="m-0 list-none p-0 flex flex-col divide-y divide-border [&>li]:flex [&>li]:flex-wrap [&>li]:items-center [&>li]:justify-between [&>li]:gap-2 [&>li]:py-2.5">
           {rows.map(({ message }) => (
-            <li key={message.id} className="qms-row">
+            <li key={message.id} className="flex flex-wrap items-center justify-between gap-3">
               <span>{t(`notifications.trigger.${message.trigger_key}`)}</span>
-              <span className="qms-muted">{t(`notifications.channel.${message.channel}`)}</span>
-              <span className="qms-muted">{t(`notifications.status.${message.status}`)}</span>
-              <span className="qms-muted">{formatTime(new Date(message.created_at))}</span>
+              <span className="text-fg-muted">{t(`notifications.channel.${message.channel}`)}</span>
+              <span className="text-fg-muted">{t(`notifications.status.${message.status}`)}</span>
+              <span className="text-fg-muted">{formatTime(new Date(message.created_at))}</span>
             </li>
           ))}
         </ul>

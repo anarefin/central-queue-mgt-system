@@ -61,10 +61,10 @@ export function NumberingScopeRow({ scope, id, name, rule, fallback, serviceName
 
   return (
     <li>
-      <div className="qms-stack qms-grow">
+      <div className="flex flex-col gap-4 flex-1 min-w-0">
         <strong>{name}</strong>
-        <span className="qms-muted">{summary}</span>
-        <div className="qms-row">
+        <span className="text-fg-muted">{summary}</span>
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <Button variant="secondary" type="button" aria-label={`${t(rule ? "numbering.edit" : "numbering.set")} ${name}`} onClick={() => setEditing((v) => !v)}>
             {t(rule ? "numbering.edit" : "numbering.set")}
           </Button>
@@ -102,15 +102,15 @@ export function NumberingScopeRow({ scope, id, name, rule, fallback, serviceName
           />
         )}
         {waiting !== null && (
-          <span className="qms-warning" role="status">
+          <span className="text-warn" role="status">
             {waiting > 0 ? t("numbering.warning.waiting", { count: waiting }) : t("numbering.warning.none")}
           </span>
         )}
-        {preview && preview.items.length === 0 && <span className="qms-muted">{t("numbering.preview.none")}</span>}
+        {preview && preview.items.length === 0 && <span className="text-fg-muted">{t("numbering.preview.none")}</span>}
         {preview?.items.map((item) => (
           <span key={item.service_id} role="status">
             {t("numbering.preview.next", { service: scope === "service" ? name : (serviceNames[item.service_id] ?? name), token: item.token_number })}{" "}
-            <span className="qms-muted">
+            <span className="text-fg-muted">
               {item.next_reset_at
                 ? t("numbering.preview.reset", { when: new Date(item.next_reset_at).toLocaleString(language) })
                 : t("numbering.preview.never")}

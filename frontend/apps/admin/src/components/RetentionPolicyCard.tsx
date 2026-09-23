@@ -23,12 +23,12 @@ export function RetentionPolicyCard() {
 
   return (
     <Card>
-      <h2 className="qms-heading">{t("retention.title")}</h2>
-      <p className="qms-muted">{t("retention.intro")}</p>
+      <h2 className="font-semibold text-fg">{t("retention.title")}</h2>
+      <p className="text-fg-muted">{t("retention.intro")}</p>
 
       {policies.error !== null && <ErrorAlert>{describeError(t, policies.error)}</ErrorAlert>}
       {policies.items && policies.items.length > 0 && (
-        <ul className="qms-list">
+        <ul className="m-0 list-none p-0 flex flex-col divide-y divide-border [&>li]:flex [&>li]:flex-wrap [&>li]:items-center [&>li]:justify-between [&>li]:gap-2 [&>li]:py-2.5">
           {RETENTION_DATA_CLASSES.filter((dataClass) => policies.items!.some((p) => p.data_class === dataClass)).map((dataClass) => (
             <PolicyRow
               key={dataClass}
@@ -69,9 +69,9 @@ function PolicyRow({ policy, onSaved }: { policy: RetentionPolicy; onSaved: () =
 
   return (
     <li>
-      <div className="qms-stack qms-grow">
+      <div className="flex flex-col gap-4 flex-1 min-w-0">
         <strong>{t(`retention.dataClass.${policy.data_class}`)}</strong>
-        <div className="qms-row">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <TextField
             id={`${id}-months`}
             label={t("retention.retentionMonths")}
@@ -91,8 +91,8 @@ function PolicyRow({ policy, onSaved }: { policy: RetentionPolicy; onSaved: () =
             />
           )}
         </div>
-        <span className="qms-muted">{t("retention.updatedAt", { date: new Date(policy.updated_at).toLocaleString() })}</span>
-        <div className="qms-row">
+        <span className="text-fg-muted">{t("retention.updatedAt", { date: new Date(policy.updated_at).toLocaleString() })}</span>
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <Button type="button" onClick={save} disabled={busy || !dirty || !Number.isFinite(parsedMonths)}>
             {busy ? t("retention.saving") : t("retention.save")}
           </Button>

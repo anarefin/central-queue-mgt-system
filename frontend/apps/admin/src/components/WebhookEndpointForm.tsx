@@ -41,14 +41,14 @@ export function WebhookEndpointForm({ initial, submitLabel, onSubmit, onDone, on
   }
 
   return (
-    <form className="qms-stack" onSubmit={submit}>
+    <form className="flex flex-col gap-4" onSubmit={submit}>
       <TextField id={`${id}-description`} label={t("webhooks.fields.description")} value={description} onChange={(event) => setDescription(event.target.value)} />
       <TextField id={`${id}-url`} label={t("webhooks.fields.url")} type="url" value={url} onChange={(event) => setUrl(event.target.value)} />
-      <fieldset className="qms-stack">
+      <fieldset className="flex flex-col gap-4">
         <legend>{t("webhooks.fields.eventTypes")}</legend>
-        <div className="qms-stack">
+        <div className="flex flex-col gap-4">
           {WEBHOOK_EVENT_TYPES.map((type) => (
-            <label key={type} htmlFor={`${id}-type-${type}`} className="qms-row">
+            <label key={type} htmlFor={`${id}-type-${type}`} className="flex flex-wrap items-center justify-between gap-3">
               <input id={`${id}-type-${type}`} type="checkbox" checked={eventTypes.includes(type)} onChange={() => toggle(type)} />
               {t(`webhooks.eventType.${type}`)}
             </label>
@@ -56,7 +56,7 @@ export function WebhookEndpointForm({ initial, submitLabel, onSubmit, onDone, on
         </div>
       </fieldset>
       {error && <ErrorAlert>{error}</ErrorAlert>}
-      <div className="qms-row">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <Button type="submit" disabled={busy}>
           {busy ? t("admin.action.saving") : submitLabel}
         </Button>

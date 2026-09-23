@@ -170,8 +170,11 @@ describe("detailed token report (SRS §16.1, ticket 48)", () => {
     });
     renderApp(<ReportsAdmin />);
     await userEvent.click(await screen.findByRole("button", { name: "Run report" }));
+    // DataTable (ticket 63) always shows the column headers, even with nothing to show, so the columns stay
+    // visible while the empty state explains why the body is blank.
     expect(await screen.findByText("No rows match this filter.")).toBeInTheDocument();
-    expect(screen.queryByRole("table")).not.toBeInTheDocument();
+    expect(screen.getByRole("table")).toBeInTheDocument();
+    expect(within(screen.getByRole("table")).queryAllByRole("row")).toHaveLength(1);
 
     allowed = false;
     await userEvent.click(screen.getByRole("button", { name: "Run report" }));

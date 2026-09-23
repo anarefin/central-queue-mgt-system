@@ -162,7 +162,7 @@ export function ReceptionDesk() {
     return describeError(t, cause);
   }
 
-  if (user && !siteId) return <p className="qms-muted">{t("reception.noSite")}</p>;
+  if (user && !siteId) return <p className="text-fg-muted">{t("reception.noSite")}</p>;
 
   const defaultLanguage = services?.default_language ?? "";
   const nameOf = (names: Record<string, string>) => localisedName(names, language, defaultLanguage);
@@ -177,19 +177,20 @@ export function ReceptionDesk() {
   ];
 
   return (
-    <div className="qms-stack">
+    <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 lg:items-start">
+      <div className="flex flex-col gap-4">
       <Card>
-        <fieldset className="qms-stack">
-          <legend className="qms-heading">{t("reception.services.title")}</legend>
+        <fieldset className="flex flex-col gap-4">
+          <legend className="font-semibold text-fg">{t("reception.services.title")}</legend>
           {servicesError !== null && <ErrorAlert>{describeError(t, servicesError)}</ErrorAlert>}
-          {services?.items.length === 0 && <p className="qms-muted">{t("reception.services.none")}</p>}
+          {services?.items.length === 0 && <p className="text-fg-muted">{t("reception.services.none")}</p>}
           {services?.items.map((s) => (
-            <label key={s.id} className="qms-row">
+            <label key={s.id} className="flex flex-wrap items-center justify-between gap-3">
               <span>
                 <input type="radio" name="reception-service" value={s.id} checked={selected === s.id} onChange={() => setSelected(s.id)} /> {nameOf(s.name_i18n)}
-                <span className="qms-muted"> · {nameOf(s.service_group.name_i18n)}</span>
+                <span className="text-fg-muted"> · {nameOf(s.service_group.name_i18n)}</span>
               </span>
-              <span className="qms-muted">
+              <span className="text-fg-muted">
                 {s.estimated_wait_minutes
                   ? t("reception.services.waitingEstimate", {
                       count: s.waiting_count,
@@ -224,13 +225,15 @@ export function ReceptionDesk() {
       {siteId && services && <JourneySection siteId={siteId} services={services.items} classes={classes ?? []} nameOf={nameOf} />}
 
       {services && <AppointmentBookingSection services={services.items} nameOf={nameOf} />}
+      </div>
 
+      <div className="flex flex-col gap-4">
       <Card>
-        {!selectedService && <p className="qms-muted">{t("reception.queue.pick")}</p>}
+        {!selectedService && <p className="text-fg-muted">{t("reception.queue.pick")}</p>}
         {selectedService && (
           <>
-            <div className="qms-row">
-              <h2 className="qms-heading">{t("reception.queue.title", { service: nameOf(selectedService.name_i18n) })}</h2>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <h2 className="font-semibold text-fg">{t("reception.queue.title", { service: nameOf(selectedService.name_i18n) })}</h2>
               <Button variant="secondary" type="button" onClick={() => void loadQueue(selected)}>
                 {t("reception.queue.refresh")}
               </Button>
@@ -238,24 +241,24 @@ export function ReceptionDesk() {
             {queueError !== null && <ErrorAlert>{describeError(t, queueError)}</ErrorAlert>}
             {queue && (
               <>
-                <p className="qms-muted">{t("reception.queue.count", { count: queue.waiting_count })}</p>
+                <p className="text-fg-muted">{t("reception.queue.count", { count: queue.waiting_count })}</p>
                 {queue.estimated_wait_minutes && (
-                  <p className="qms-muted">
+                  <p className="text-fg-muted">
                     {t("reception.queue.estimate", { low: formatNumber(queue.estimated_wait_minutes.low), high: formatNumber(queue.estimated_wait_minutes.high) })}
                   </p>
                 )}
-                {queue.tickets.length === 0 && <p className="qms-muted">{t("reception.queue.empty")}</p>}
+                {queue.tickets.length === 0 && <p className="text-fg-muted">{t("reception.queue.empty")}</p>}
                 {queue.tickets.length > 0 && (
-                  <ol className="qms-list" aria-label={t("reception.queue.title", { service: nameOf(selectedService.name_i18n) })}>
+                  <ol className="m-0 list-none p-0 flex flex-col divide-y divide-border [&>li]:flex [&>li]:flex-wrap [&>li]:items-center [&>li]:justify-between [&>li]:gap-2 [&>li]:py-2.5" aria-label={t("reception.queue.title", { service: nameOf(selectedService.name_i18n) })}>
                     {queue.tickets.map((entry) => (
                       <li key={entry.id}>
                         <strong>{formatTokenNumber(entry.token_number)}</strong>
-                        <span className="qms-muted">
+                        <span className="text-fg-muted">
                           {t(`reception.state.${entry.state}`)} · {t("reception.queue.position", { position: entry.position })}
                           {entry.priority_class && entry.priority_class.id !== defaultClassId && <> · {nameOf(entry.priority_class.name_i18n)}</>}
                         </span>
-                        {entry.escalated && <span className="qms-warning">{t("reception.queue.escalated")}</span>}
-                        <span className="qms-row">
+                        {entry.escalated && <span className="text-warn">{t("reception.queue.escalated")}</span>}
+                        <span className="flex flex-wrap items-center justify-between gap-3">
                           {entry.state === "waiting" && (
                             <Button
                               variant="secondary"
@@ -282,7 +285,7 @@ export function ReceptionDesk() {
               </>
             )}
             {notice !== null && (
-              <p role="status" className="qms-muted">
+              <p role="status" className="text-fg-muted">
                 {notice}
               </p>
             )}
@@ -301,6 +304,7 @@ export function ReceptionDesk() {
           onDone={(message) => void actionDone(message)}
         />
       )}
+      </div>
     </div>
   );
 }
@@ -394,10 +398,10 @@ function VisitorPanel({
   }
 
   return (
-    <fieldset className="qms-stack">
-      <legend className="qms-heading">{t("reception.visitor.title")}</legend>
+    <fieldset className="flex flex-col gap-4">
+      <legend className="font-semibold text-fg">{t("reception.visitor.title")}</legend>
       {visitor && (
-        <p className="qms-row">
+        <p className="flex flex-wrap items-center justify-between gap-3">
           <span>{t(visitor.name === null ? "reception.visitor.selectedNoName" : "reception.visitor.selected", { name: visitor.name ?? "" })}</span>
           <Button type="button" variant="secondary" onClick={onClear}>
             {t("reception.visitor.clear")}
@@ -405,13 +409,13 @@ function VisitorPanel({
         </p>
       )}
       {registered !== null && (
-        <p role="status" className="qms-muted">
+        <p role="status" className="text-fg-muted">
           {registered}
         </p>
       )}
       {!visitor && (
         <>
-          <div className="qms-row">
+          <div className="flex flex-wrap items-center justify-between gap-3">
             <TextField id={`${idPrefix}-visitor-query`} label={t("reception.visitor.searchLabel")} value={query} onChange={(event) => setQuery(event.target.value)} />
             <Button type="button" variant="secondary" disabled={searching || query.trim() === ""} onClick={() => void search()}>
               {t(searching ? "reception.visitor.searching" : "reception.visitor.search")}
@@ -419,11 +423,11 @@ function VisitorPanel({
           </div>
           {searchError !== null && <ErrorAlert>{searchError}</ErrorAlert>}
           {found && (
-            <p className="qms-row">
+            <p className="flex flex-wrap items-center justify-between gap-3">
               <span>
                 {found.name ?? found.external_code}
-                {found.category && <span className="qms-muted"> · {found.category}</span>}
-                {found.phone && <span className="qms-muted"> · {found.phone}</span>}
+                {found.category && <span className="text-fg-muted"> · {found.category}</span>}
+                {found.phone && <span className="text-fg-muted"> · {found.phone}</span>}
               </span>
               <Button type="button" onClick={() => use(found)}>
                 {t("reception.visitor.use")}
@@ -436,7 +440,7 @@ function VisitorPanel({
             </Button>
           )}
           {registering && (
-            <fieldset className="qms-stack" aria-label={t("reception.visitor.registerTitle")}>
+            <fieldset className="flex flex-col gap-4" aria-label={t("reception.visitor.registerTitle")}>
               <legend>{t("reception.visitor.registerTitle")}</legend>
               <TextField id={`${idPrefix}-visitor-name`} label={t("reception.visitor.name")} value={regName} onChange={(event) => setRegName(event.target.value)} />
               <TextField id={`${idPrefix}-visitor-phone`} label={t("reception.visitor.phone")} value={regPhone} onChange={(event) => setRegPhone(event.target.value)} />
@@ -444,7 +448,7 @@ function VisitorPanel({
               <TextField id={`${idPrefix}-visitor-category`} label={t("reception.visitor.category")} value={regCategory} onChange={(event) => setRegCategory(event.target.value)} />
               <TextField id={`${idPrefix}-visitor-purpose`} label={t("reception.visitor.purpose")} value={regPurpose} onChange={(event) => setRegPurpose(event.target.value)} />
               {registerError !== null && <ErrorAlert>{registerError}</ErrorAlert>}
-              <div className="qms-row">
+              <div className="flex flex-wrap items-center justify-between gap-3">
                 <Button type="button" disabled={registerBusy || regName.trim() === "" || regPhone.trim() === ""} onClick={() => void register()}>
                   {t(registerBusy ? "reception.visitor.registering" : "reception.visitor.register")}
                 </Button>
@@ -464,11 +468,23 @@ function IssuedTicket({ ticket, nameOf }: { ticket: Ticket; nameOf: (names: Reco
   const { t, formatNumber } = useI18n();
   const zone = ticket.zone;
   const estimate = ticket.estimated_wait_minutes;
+  const [copied, setCopied] = useState(false);
+
+  async function copySecret() {
+    if (!ticket.secret) return;
+    try {
+      await navigator.clipboard.writeText(ticket.secret);
+      setCopied(true);
+    } catch {
+      setCopied(false);
+    }
+  }
+
   return (
     <Card>
-      <h2 className="qms-heading">{t("reception.result.title")}</h2>
-      <p className="qms-muted">{t("reception.result.token")}</p>
-      <p className="qms-heading" data-testid="issued-token">
+      <h2 className="font-semibold text-fg">{t("reception.result.title")}</h2>
+      <p className="text-fg-muted">{t("reception.result.token")}</p>
+      <p className="font-semibold text-fg" data-testid="issued-token">
         {formatTokenNumber(ticket.token_number)}
       </p>
       <p>{t("reception.result.service", { service: nameOf(ticket.service.name_i18n) })}</p>
@@ -481,13 +497,18 @@ function IssuedTicket({ ticket, nameOf }: { ticket: Ticket; nameOf: (names: Reco
             : t("reception.result.zoneNoBuilding", { zone: zone.name, floor: zone.floor_label })}
       </p>
       {ticket.position !== null && <p>{t("reception.result.position", { position: ticket.position })}</p>}
-      <p className="qms-muted">
+      <p className="text-fg-muted">
         {estimate ? t("reception.result.estimate", { low: formatNumber(estimate.low), high: formatNumber(estimate.high) }) : t("reception.result.estimateNone")}
       </p>
       {ticket.secret && (
         <>
-          <p>{t("reception.result.secret", { secret: ticket.secret })}</p>
-          <p className="qms-muted">{t("reception.result.secretNote")}</p>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <p>{t("reception.result.secret", { secret: ticket.secret })}</p>
+            <Button type="button" variant="secondary" size="sm" onClick={() => void copySecret()}>
+              {t(copied ? "reception.result.secretCopied" : "reception.result.secretCopy")}
+            </Button>
+          </div>
+          <p className="text-fg-muted">{t("reception.result.secretNote")}</p>
         </>
       )}
     </Card>
@@ -589,13 +610,13 @@ function JourneySection({
 
   return (
     <Card>
-      <label className="qms-row">
+      <label className="flex flex-wrap items-center justify-between gap-3">
         <span>
           <input type="checkbox" checked={open} onChange={(event) => setOpen(event.target.checked)} /> {t("reception.journey.toggle")}
         </span>
       </label>
       {open && (
-        <div className="qms-stack">
+        <div className="flex flex-col gap-4">
           {templatesError !== null && <ErrorAlert>{describeError(t, templatesError)}</ErrorAlert>}
           {templates && (
             <SelectField
@@ -611,8 +632,8 @@ function JourneySection({
           )}
           {!adHoc && template && (
             <div>
-              <p className="qms-muted">{t(template.ordered ? "reception.journey.ordered.label" : "reception.journey.unordered.label")}</p>
-              <ol className="qms-list">
+              <p className="text-fg-muted">{t(template.ordered ? "reception.journey.ordered.label" : "reception.journey.unordered.label")}</p>
+              <ol className="m-0 list-none p-0 flex flex-col divide-y divide-border [&>li]:flex [&>li]:flex-wrap [&>li]:items-center [&>li]:justify-between [&>li]:gap-2 [&>li]:py-2.5">
                 {template.stops.map((stop) => (
                   <li key={stop.seq}>{nameOf(stop.service_names)}</li>
                 ))}
@@ -620,20 +641,20 @@ function JourneySection({
             </div>
           )}
           {adHoc && (
-            <fieldset className="qms-stack">
-              <legend className="qms-heading">{t("reception.journey.services.title")}</legend>
+            <fieldset className="flex flex-col gap-4">
+              <legend className="font-semibold text-fg">{t("reception.journey.services.title")}</legend>
               {services.map((s) => {
                 const index = picked.indexOf(s.id);
                 return (
-                  <div key={s.id} className="qms-row">
+                  <div key={s.id} className="flex flex-wrap items-center justify-between gap-3">
                     <label>
                       <input type="checkbox" checked={index !== -1} onChange={() => togglePicked(s.id)} /> {nameOf(s.name_i18n)}
                     </label>
-                    {index !== -1 && <span className="qms-muted">{t("reception.journey.stopNumber", { seq: index + 1 })}</span>}
+                    {index !== -1 && <span className="text-fg-muted">{t("reception.journey.stopNumber", { seq: index + 1 })}</span>}
                   </div>
                 );
               })}
-              <div className="qms-row">
+              <div className="flex flex-wrap items-center justify-between gap-3">
                 <label>
                   <input type="radio" name="journey-ordered" checked={ordered} onChange={() => setOrdered(true)} /> {t("reception.journey.ordered.label")}
                 </label>
@@ -666,14 +687,14 @@ function JourneySection({
 
       {result && (
         <div data-testid="journey-result">
-          <h3 className="qms-heading">{t("reception.journey.result.title")}</h3>
-          <ol className="qms-list">
+          <h3 className="font-semibold text-fg">{t("reception.journey.result.title")}</h3>
+          <ol className="m-0 list-none p-0 flex flex-col divide-y divide-border [&>li]:flex [&>li]:flex-wrap [&>li]:items-center [&>li]:justify-between [&>li]:gap-2 [&>li]:py-2.5">
             {result.stops.map((stop) => (
               <li key={stop.seq} data-testid={`journey-result-stop-${stop.seq}`}>
                 {stop.ticket
                   ? t("reception.journey.result.stop", { service: nameOf(stop.service_names), token: formatTokenNumber(stop.ticket.token_number) })
                   : t("reception.journey.result.planned", { service: nameOf(stop.service_names) })}
-                {stop.soonest && <span className="qms-muted"> {t("reception.journey.result.soonest")}</span>}
+                {stop.soonest && <span className="text-fg-muted"> {t("reception.journey.result.soonest")}</span>}
               </li>
             ))}
           </ol>
@@ -779,13 +800,13 @@ function AppointmentBookingSection({ services, nameOf }: { services: SiteService
   return (
     <div data-testid="appointment-booking">
     <Card>
-      <label className="qms-row">
+      <label className="flex flex-wrap items-center justify-between gap-3">
         <span>
           <input type="checkbox" checked={open} onChange={(event) => setOpen(event.target.checked)} /> {t("reception.appointment.toggle")}
         </span>
       </label>
       {open && (
-        <div className="qms-stack">
+        <div className="flex flex-col gap-4">
           <SelectField
             id="appointment-service"
             label={t("reception.appointment.service.label")}
@@ -797,7 +818,7 @@ function AppointmentBookingSection({ services, nameOf }: { services: SiteService
             }}
             options={[{ value: "", label: t("reception.appointment.service.placeholder") }, ...services.map((s) => ({ value: s.id, label: nameOf(s.name_i18n) }))]}
           />
-          <div className="qms-row">
+          <div className="flex flex-wrap items-center justify-between gap-3">
             <TextField id="appointment-date" type="date" label={t("reception.appointment.date.label")} value={date} onChange={(event) => setDate(event.target.value)} />
             <Button type="button" variant="secondary" disabled={!serviceId || searching} onClick={() => void search()}>
               {t(searching ? "reception.appointment.searching" : "reception.appointment.search")}
@@ -805,13 +826,13 @@ function AppointmentBookingSection({ services, nameOf }: { services: SiteService
           </div>
           {availabilityError !== null && <ErrorAlert>{describeError(t, availabilityError)}</ErrorAlert>}
           {availability && (
-            <fieldset className="qms-stack">
-              <legend className="qms-heading">{t("reception.appointment.slots.title")}</legend>
-              {availability.slots.length === 0 && <p className="qms-muted">{t("reception.appointment.slots.none")}</p>}
+            <fieldset className="flex flex-col gap-4">
+              <legend className="font-semibold text-fg">{t("reception.appointment.slots.title")}</legend>
+              {availability.slots.length === 0 && <p className="text-fg-muted">{t("reception.appointment.slots.none")}</p>}
               {availability.slots.map((slot) => {
                 const key = `${slot.start}-${slot.end}`;
                 return (
-                  <label key={key} className="qms-row">
+                  <label key={key} className="flex flex-wrap items-center justify-between gap-3">
                     <input type="radio" name="appointment-slot" value={key} checked={slotKey === key} onChange={() => setSlotKey(key)} />
                     {t("reception.appointment.slot.label", { start: slot.start, end: slot.end, count: slot.remaining_capacity })}
                   </label>
@@ -837,10 +858,10 @@ function AppointmentBookingSection({ services, nameOf }: { services: SiteService
       )}
 
       {booked && (
-        <div data-testid="appointment-result" className="qms-stack">
-          <h3 className="qms-heading">{t("reception.appointment.result.title")}</h3>
+        <div data-testid="appointment-result" className="flex flex-col gap-4">
+          <h3 className="font-semibold text-fg">{t("reception.appointment.result.title")}</h3>
           <p data-testid="appointment-reference">{t("reception.appointment.result.reference", { code: booked.reference_code })}</p>
-          <p className="qms-muted">{t("reception.appointment.result.slot", { date: booked.date, start: booked.start, end: booked.end })}</p>
+          <p className="text-fg-muted">{t("reception.appointment.result.slot", { date: booked.date, start: booked.start, end: booked.end })}</p>
           <QrCode value={booked.reference_code} size={120} label={t("reception.appointment.result.qrLabel", { code: booked.reference_code })} />
         </div>
       )}

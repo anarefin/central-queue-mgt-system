@@ -127,8 +127,8 @@ export function DomainReportsCard({ site }: { site: Site }) {
   function extraTable(title: string, rows: DomainReportRow[]) {
     if (rows.length === 0) return null;
     return (
-      <div className="qms-table-scroll" key={title}>
-        <table className="qms-table">
+      <div className="overflow-x-auto" key={title}>
+        <table className="w-full border-collapse text-sm [font-variant-numeric:tabular-nums] [&_th]:border-b [&_th]:border-border [&_th]:px-2.5 [&_th]:py-1.5 [&_th]:text-start [&_td]:border-b [&_td]:border-border [&_td]:px-2.5 [&_td]:py-1.5 [&_td]:text-start">
           <caption>{title}</caption>
           <thead>
             <tr>
@@ -158,9 +158,9 @@ export function DomainReportsCard({ site }: { site: Site }) {
 
   return (
     <Card>
-      <h2 className="qms-heading">{t("reports.domain.title")}</h2>
-      <p className="qms-muted">{t("reports.domain.intro")}</p>
-      <div className="qms-row">
+      <h2 className="font-semibold text-fg">{t("reports.domain.title")}</h2>
+      <p className="text-fg-muted">{t("reports.domain.intro")}</p>
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <SelectField
           id="domain-report-key"
           label={t("reports.domain.pickReport")}
@@ -173,13 +173,13 @@ export function DomainReportsCard({ site }: { site: Site }) {
           options={ALL_KEYS.map((k) => ({ value: k, label: t(`reports.${camel(k)}.title`) }))}
         />
       </div>
-      <p className="qms-muted">{t(`reports.${camel(key)}.intro`)}</p>
-      <div className="qms-row">
+      <p className="text-fg-muted">{t(`reports.${camel(key)}.intro`)}</p>
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <TextField id="domain-report-from" label={t("reports.filters.from")} type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
         <TextField id="domain-report-to" label={t("reports.filters.to")} type="date" value={to} onChange={(e) => setTo(e.target.value)} />
       </div>
       {key !== "audit" && (
-        <div className="qms-row">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           {showsGroupAndService && (
             <>
               <SelectField
@@ -213,7 +213,7 @@ export function DomainReportsCard({ site }: { site: Site }) {
           <TextField id="domain-report-visitor-category" label={t("reports.filters.visitorCategory")} value={visitorCategory} onChange={(e) => setVisitorCategory(e.target.value)} />
         </div>
       )}
-      <div className="qms-row">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <Button type="button" disabled={busy} onClick={() => void runReport()}>
           {t(busy ? "reports.domain.running" : "reports.domain.run")}
         </Button>
@@ -222,8 +222,8 @@ export function DomainReportsCard({ site }: { site: Site }) {
 
       {key !== "audit" && result && (
         <>
-          <div className="qms-table-scroll">
-            <table className="qms-table">
+          <div className="overflow-x-auto">
+            <table className="w-full border-collapse text-sm [font-variant-numeric:tabular-nums] [&_th]:border-b [&_th]:border-border [&_th]:px-2.5 [&_th]:py-1.5 [&_th]:text-start [&_td]:border-b [&_td]:border-border [&_td]:px-2.5 [&_td]:py-1.5 [&_td]:text-start">
               <caption>{t("reports.domain.rows", { count: result.total_rows })}</caption>
               <thead>
                 <tr>
@@ -237,7 +237,7 @@ export function DomainReportsCard({ site }: { site: Site }) {
               <tbody>
                 {result.rows.length === 0 ? (
                   <tr>
-                    <td colSpan={columns.length} className="qms-muted">
+                    <td colSpan={columns.length} className="text-fg-muted">
                       {t("reports.empty")}
                     </td>
                   </tr>
@@ -260,7 +260,7 @@ export function DomainReportsCard({ site }: { site: Site }) {
               {extraTable(t("reports.domain.extra.noShowByAgent"), (extra["no_show_rate_by_agent"] as DomainReportRow[]) ?? [])}
               {extraTable(t("reports.domain.extra.noShowByVisitorCategory"), (extra["no_show_rate_by_visitor_category"] as DomainReportRow[]) ?? [])}
               {extra["adherence"] && (
-                <p className="qms-muted">
+                <p className="text-fg-muted">
                   {t("reports.domain.extra.adherence", { pct: String(formatValue("adherence_pct", (extra["adherence"] as DomainReportRow)["adherence_pct"] ?? null)) })}
                 </p>
               )}
@@ -268,7 +268,7 @@ export function DomainReportsCard({ site }: { site: Site }) {
           )}
 
           {key === "journey" && extra && (
-            <p className="qms-muted">
+            <p className="text-fg-muted">
               {t("reports.domain.extra.journeyCompletion", {
                 pct: String(formatValue("completion_rate_pct", extra["completion_rate_pct"] as DomainReportValue)),
                 wait: String(formatValue("avg_stop_wait_seconds", extra["avg_stop_wait_seconds"] as DomainReportValue)),
@@ -277,7 +277,7 @@ export function DomainReportsCard({ site }: { site: Site }) {
           )}
 
           {key === "feedback" && extra && (
-            <p className="qms-muted">
+            <p className="text-fg-muted">
               {t("reports.domain.extra.avgRating", { rating: String(formatValue("avg_rating", extra["avg_rating"] as DomainReportValue)) })}
             </p>
           )}
@@ -286,8 +286,8 @@ export function DomainReportsCard({ site }: { site: Site }) {
 
       {key === "audit" && auditResult && (
         <>
-          <div className="qms-table-scroll">
-            <table className="qms-table">
+          <div className="overflow-x-auto">
+            <table className="w-full border-collapse text-sm [font-variant-numeric:tabular-nums] [&_th]:border-b [&_th]:border-border [&_th]:px-2.5 [&_th]:py-1.5 [&_th]:text-start [&_td]:border-b [&_td]:border-border [&_td]:px-2.5 [&_td]:py-1.5 [&_td]:text-start">
               <caption>{t("reports.audit.title")}</caption>
               <thead>
                 <tr>
@@ -300,7 +300,7 @@ export function DomainReportsCard({ site }: { site: Site }) {
               <tbody>
                 {auditResult.items.length === 0 ? (
                   <tr>
-                    <td colSpan={4} className="qms-muted">
+                    <td colSpan={4} className="text-fg-muted">
                       {t("reports.empty")}
                     </td>
                   </tr>

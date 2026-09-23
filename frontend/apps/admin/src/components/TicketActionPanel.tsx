@@ -72,9 +72,9 @@ export function TicketActionPanel({ mode, entry, classes, nameOf, onClose, onDon
   const noClass = mode === "priority" && options.length === 0;
   return (
     <Card>
-      <form className="qms-stack" onSubmit={submit} aria-label={mode === "priority" ? t("reception.priorityChange.title", { token }) : t("reception.cancelTicket.title", { token })}>
-        <h3 className="qms-heading">{mode === "priority" ? t("reception.priorityChange.title", { token }) : t("reception.cancelTicket.title", { token })}</h3>
-        {noClass && <p className="qms-muted">{t("reception.priorityChange.none")}</p>}
+      <form className="flex flex-col gap-4" onSubmit={submit} aria-label={mode === "priority" ? t("reception.priorityChange.title", { token }) : t("reception.cancelTicket.title", { token })}>
+        <h3 className="font-semibold text-fg">{mode === "priority" ? t("reception.priorityChange.title", { token }) : t("reception.cancelTicket.title", { token })}</h3>
+        {noClass && <p className="text-fg-muted">{t("reception.priorityChange.none")}</p>}
         {mode === "priority" && !noClass && (
           <SelectField
             id={`ticket-class-${entry.id}`}
@@ -95,7 +95,7 @@ export function TicketActionPanel({ mode, entry, classes, nameOf, onClose, onDon
           onChange={(event) => setReason(event.target.value)}
         />
         {error !== null && <ErrorAlert>{error}</ErrorAlert>}
-        <div className="qms-row">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <Button type="submit" disabled={busy || noClass}>
             {mode === "priority" ? t(busy ? "reception.priorityChange.saving" : "reception.priorityChange.save") : t(busy ? "reception.cancelTicket.cancelling" : "reception.cancelTicket.confirm")}
           </Button>

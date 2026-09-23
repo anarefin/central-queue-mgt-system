@@ -22,14 +22,14 @@ export function BreakTypesAdmin() {
   const nameOf = (b: BreakType) => b.name_i18n[language] ?? b.name_i18n.en ?? Object.values(b.name_i18n)[0] ?? "";
 
   return (
-    <div className="qms-stack">
-      <p className="qms-muted">{t("breaks.intro")}</p>
+    <div className="flex flex-col gap-4">
+      <p className="text-fg-muted">{t("breaks.intro")}</p>
       <Card>
-        <h2 className="qms-heading">{t("breaks.title")}</h2>
+        <h2 className="font-semibold text-fg">{t("breaks.title")}</h2>
         {types.error !== null && <ErrorAlert>{describeError(t, types.error)}</ErrorAlert>}
-        {types.items?.length === 0 && <p className="qms-muted">{t("breaks.none")}</p>}
+        {types.items?.length === 0 && <p className="text-fg-muted">{t("breaks.none")}</p>}
         {types.items && types.items.length > 0 && (
-          <ul className="qms-list">
+          <ul className="m-0 list-none p-0 flex flex-col divide-y divide-border [&>li]:flex [&>li]:flex-wrap [&>li]:items-center [&>li]:justify-between [&>li]:gap-2 [&>li]:py-2.5">
             {types.items.map((b) => (
               <EntityRow
                 key={b.id}

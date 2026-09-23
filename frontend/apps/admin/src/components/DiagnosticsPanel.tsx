@@ -41,13 +41,13 @@ export function DiagnosticsPanel() {
 
   return (
     <Card>
-      <div className="qms-row">
-        <h2 className="qms-heading">{t("ops.diagnostics.title")}</h2>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h2 className="font-semibold text-fg">{t("ops.diagnostics.title")}</h2>
         <Button variant="secondary" type="button" onClick={download} disabled={state.kind === "downloading"}>
           {t("ops.diagnostics.download")}
         </Button>
       </div>
-      <p className="qms-muted">{t("ops.diagnostics.intro")}</p>
+      <p className="text-fg-muted">{t("ops.diagnostics.intro")}</p>
       {state.kind === "error" && (
         <ErrorAlert>
           {t("ops.diagnostics.failed")} {t(`errors.${state.code}`)}

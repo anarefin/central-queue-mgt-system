@@ -15,7 +15,7 @@ import type {
 import { useI18n } from "@qms/i18n/react";
 import { Button, Card, ErrorAlert, SelectField, StatusBadge, TextField, type StatusKind } from "@qms/ui";
 import { useId, useState, type FormEvent } from "react";
-import { describeError, useList, useSubmit } from "../lib/admin-support";
+import { describeError, useConfirmDialog, useList, useSubmit } from "../lib/admin-support";
 import { useApi } from "../lib/runtime";
 
 /** The configurable column set of FR-DSP-004, in display order; `token` and `counter` may never be turned off. */
@@ -41,7 +41,7 @@ export function DeviceAdmin() {
   const devices = useList<DeviceView>(client ? () => client.devices.list() : null, [client]);
 
   return (
-    <div className="qms-stack">
+    <div className="flex flex-col gap-4">
       <PairingCodeCard sites={sites.items ?? []} onPaired={devices.reload} />
       <DeviceListCard devices={devices} sites={sites.items ?? []} />
     </div>
@@ -74,8 +74,8 @@ function PairingCodeCard({ sites, onPaired }: { sites: Site[]; onPaired: () => v
 
   return (
     <Card>
-      <h2 className="qms-heading">{t("devices.pairingCode.title")}</h2>
-      <form className="qms-stack" onSubmit={submit}>
+      <h2 className="font-semibold text-fg">{t("devices.pairingCode.title")}</h2>
+      <form className="flex flex-col gap-4" onSubmit={submit}>
         <SelectField
           id={`${id}-kind`}
           label={t("devices.fields.kind")}
@@ -107,7 +107,7 @@ function PairingCodeCard({ sites, onPaired }: { sites: Site[]; onPaired: () => v
         )}
         <TextField id={`${id}-label`} label={t("devices.fields.label")} value={label} onChange={(e) => setLabel(e.target.value)} />
         {error && <ErrorAlert>{error}</ErrorAlert>}
-        <div className="qms-row">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <Button type="submit" disabled={busy}>
             {busy ? t("devices.pairingCode.generating") : t("devices.pairingCode.generate")}
           </Button>
@@ -115,8 +115,8 @@ function PairingCodeCard({ sites, onPaired }: { sites: Site[]; onPaired: () => v
       </form>
       {result && (
         <>
-          <p className="qms-muted">{t("devices.pairingCode.result", { code: result.code })}</p>
-          <p className="qms-muted">{t("devices.pairingCode.expires", { time: new Date(result.expires_at).toLocaleString() })}</p>
+          <p className="text-fg-muted">{t("devices.pairingCode.result", { code: result.code })}</p>
+          <p className="text-fg-muted">{t("devices.pairingCode.expires", { time: new Date(result.expires_at).toLocaleString() })}</p>
         </>
       )}
     </Card>
@@ -130,11 +130,11 @@ function DeviceListCard({ devices, sites }: { devices: ReturnType<typeof useList
 
   return (
     <Card>
-      <h2 className="qms-heading">{t("devices.list.title")}</h2>
+      <h2 className="font-semibold text-fg">{t("devices.list.title")}</h2>
       {devices.error !== null && <ErrorAlert>{describeError(t, devices.error)}</ErrorAlert>}
-      {devices.items?.length === 0 && <p className="qms-muted">{t("devices.list.empty")}</p>}
+      {devices.items?.length === 0 && <p className="text-fg-muted">{t("devices.list.empty")}</p>}
       {devices.items && devices.items.length > 0 && (
-        <ul className="qms-list">
+        <ul className="m-0 list-none p-0 flex flex-col divide-y divide-border [&>li]:flex [&>li]:flex-wrap [&>li]:items-center [&>li]:justify-between [&>li]:gap-2 [&>li]:py-2.5">
           {devices.items.map((device) => (
             <DeviceRow key={device.id} device={device} siteLabel={siteName(device.site_id)} onChanged={devices.reload} />
           ))}
@@ -148,36 +148,39 @@ function DeviceRow({ device, siteLabel, onChanged }: { device: DeviceView; siteL
   const { t, formatDate, formatTime } = useI18n();
   const { client } = useApi();
   const { busy, error, run } = useSubmit();
-  const [confirming, setConfirming] = useState(false);
   const [configuring, setConfiguring] = useState(false);
+  const { ask, dialog } = useConfirmDialog();
   const seen = device.last_heartbeat_at ? new Date(device.last_heartbeat_at) : null;
 
   async function push(command: DeviceCommand) {
     await run(() => client!.devices.command(device.id, command));
   }
 
-  async function revoke() {
-    if (await run(async () => client!.devices.revoke(device.id))) {
-      setConfirming(false);
-      onChanged();
-    }
+  function confirmRevoke() {
+    ask({
+      title: `${t("devices.revoke")} ${device.label}`,
+      description: t("devices.revoke.confirm", { label: device.label }),
+      confirmLabel: t("admin.action.confirmDeactivate"),
+      danger: true,
+      onConfirm: () => void run(async () => client!.devices.revoke(device.id)).then((ok) => ok && onChanged()),
+    });
   }
 
   return (
     <li>
-      <div className="qms-row">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <span>
           {device.label} ({t(`devices.kind.${device.kind}`)}, {siteLabel})
         </span>
         <StatusBadge status={CONNECTIVITY_STATUS[device.connectivity]}>{t(`devices.connectivity.${device.connectivity}`)}</StatusBadge>
       </div>
-      <p className="qms-muted">
+      <p className="text-fg-muted">
         {seen ? t("devices.lastHeartbeat", { when: `${formatDate(seen)} ${formatTime(seen)}` }) : t("devices.lastHeartbeat.never")}
       </p>
-      <p className="qms-muted">
+      <p className="text-fg-muted">
         {device.last_app_version ? t("devices.version", { version: device.last_app_version }) : t("devices.version.unknown")}
       </p>
-      <div className="qms-row">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <Button variant="secondary" type="button" disabled={!device.active || busy} onClick={() => void push("reload")}>
           {t("devices.reload")}
         </Button>
@@ -189,24 +192,12 @@ function DeviceRow({ device, siteLabel, onChanged }: { device: DeviceView; siteL
             {t("devices.display.settings")}
           </Button>
         )}
-        <Button variant="secondary" type="button" disabled={!device.active || busy} onClick={() => setConfirming(true)}>
+        <Button variant="secondary" type="button" disabled={!device.active || busy} onClick={confirmRevoke}>
           {t("devices.revoke")}
         </Button>
       </div>
       {configuring && <DisplayConfigForm device={device} onSaved={onChanged} />}
-      {confirming && (
-        <div className="qms-stack" role="group" aria-label={`${t("devices.revoke")} ${device.label}`}>
-          <p>{t("devices.revoke.confirm", { label: device.label })}</p>
-          <div className="qms-row">
-            <Button type="button" disabled={busy} onClick={() => void revoke()}>
-              {t("admin.action.confirmDeactivate")}
-            </Button>
-            <Button variant="secondary" type="button" onClick={() => setConfirming(false)}>
-              {t("admin.action.cancel")}
-            </Button>
-          </div>
-        </div>
-      )}
+      {dialog}
       {error && <ErrorAlert>{error}</ErrorAlert>}
     </li>
   );
@@ -273,7 +264,7 @@ function DisplayConfigForm({ device, onSaved }: { device: DeviceView; onSaved: (
   }
 
   return (
-    <form className="qms-stack" onSubmit={submit} aria-label={t("devices.display.settings")}>
+    <form className="flex flex-col gap-4" onSubmit={submit} aria-label={t("devices.display.settings")}>
       <SelectField
         id={`${id}-layout`}
         label={t("devices.display.layout")}
@@ -308,10 +299,10 @@ function DisplayConfigForm({ device, onSaved }: { device: DeviceView; onSaved: (
         value={languageCycleSeconds}
         onChange={(e) => setLanguageCycleSeconds(e.target.value)}
       />
-      <fieldset className="qms-stack">
-        <legend className="qms-label">{t("devices.display.columnsLegend")}</legend>
+      <fieldset className="flex flex-col gap-4">
+        <legend className="block mb-1 font-medium text-fg text-sm">{t("devices.display.columnsLegend")}</legend>
         {DISPLAY_COLUMNS.map((column) => (
-          <div className="qms-row" key={column}>
+          <div className="flex flex-wrap items-center justify-between gap-3" key={column}>
             <input
               type="checkbox"
               id={`${id}-column-${column}`}
@@ -355,8 +346,8 @@ function DisplayConfigForm({ device, onSaved }: { device: DeviceView; onSaved: (
         />
       )}
       {error && <ErrorAlert>{error}</ErrorAlert>}
-      {saved && !error && <p className="qms-muted">{t("devices.display.saved")}</p>}
-      <div className="qms-row">
+      {saved && !error && <p className="text-fg-muted">{t("devices.display.saved")}</p>}
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <Button type="submit" disabled={busy}>
           {busy ? t("admin.action.saving") : t("devices.display.save")}
         </Button>

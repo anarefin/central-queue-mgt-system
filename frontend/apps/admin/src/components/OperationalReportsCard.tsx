@@ -150,9 +150,9 @@ export function OperationalReportsCard({ site }: { site: Site }) {
 
   return (
     <Card>
-      <h2 className="qms-heading">{t("reports.operational.title")}</h2>
-      <p className="qms-muted">{t("reports.operational.intro")}</p>
-      <div className="qms-row">
+      <h2 className="font-semibold text-fg">{t("reports.operational.title")}</h2>
+      <p className="text-fg-muted">{t("reports.operational.intro")}</p>
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <SelectField
           id="operational-report-key"
           label={t("reports.operational.pickReport")}
@@ -173,12 +173,12 @@ export function OperationalReportsCard({ site }: { site: Site }) {
           />
         )}
       </div>
-      <p className="qms-muted">{t(`reports.${camelKey(key)}.intro`)}</p>
-      <div className="qms-row">
+      <p className="text-fg-muted">{t(`reports.${camelKey(key)}.intro`)}</p>
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <TextField id="operational-report-from" label={t("reports.filters.from")} type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
         <TextField id="operational-report-to" label={t("reports.filters.to")} type="date" value={to} onChange={(e) => setTo(e.target.value)} />
       </div>
-      <div className="qms-row">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <SelectField
           id="operational-report-zone"
           label={t("reports.filters.zone")}
@@ -204,7 +204,7 @@ export function OperationalReportsCard({ site }: { site: Site }) {
           options={[{ value: "", label: t("reports.filters.allServices") }, ...(services.items ?? []).map((s) => ({ value: s.id, label: nameOf(s.name_i18n) }))]}
         />
       </div>
-      <div className="qms-row">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <SelectField
           id="operational-report-agent"
           label={t("reports.filters.agent")}
@@ -233,17 +233,17 @@ export function OperationalReportsCard({ site }: { site: Site }) {
           onChange={(e) => setVisitorCategory(e.target.value)}
         />
       </div>
-      <div className="qms-row">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <Button type="button" disabled={busy || !rangeChosen} onClick={() => void runReport()}>
           {t(busy ? "reports.operational.running" : "reports.operational.run")}
         </Button>
-        {!rangeChosen && <span className="qms-muted">{t("reports.operational.rangeRequired")}</span>}
+        {!rangeChosen && <span className="text-fg-muted">{t("reports.operational.rangeRequired")}</span>}
       </div>
       {error && <ErrorAlert>{error}</ErrorAlert>}
       {result && (
         <>
-          <div className="qms-table-scroll">
-            <table className="qms-table">
+          <div className="overflow-x-auto">
+            <table className="w-full border-collapse text-sm [font-variant-numeric:tabular-nums] [&_th]:border-b [&_th]:border-border [&_th]:px-2.5 [&_th]:py-1.5 [&_th]:text-start [&_td]:border-b [&_td]:border-border [&_td]:px-2.5 [&_td]:py-1.5 [&_td]:text-start">
               <caption>{t("reports.operational.rows", { grain: key === "visitor-flow" ? t(`reports.operational.grain.${grain}`) : label(meta.nameField) })}</caption>
               <thead>
                 <tr>
@@ -258,7 +258,7 @@ export function OperationalReportsCard({ site }: { site: Site }) {
               <tbody>
                 {result.rows.length === 0 ? (
                   <tr>
-                    <td colSpan={meta.metrics.length + 1} className="qms-muted">
+                    <td colSpan={meta.metrics.length + 1} className="text-fg-muted">
                       {t("reports.empty")}
                     </td>
                   </tr>
@@ -276,8 +276,8 @@ export function OperationalReportsCard({ site }: { site: Site }) {
             </table>
           </div>
 
-          <div className="qms-table-scroll">
-            <table className="qms-table">
+          <div className="overflow-x-auto">
+            <table className="w-full border-collapse text-sm [font-variant-numeric:tabular-nums] [&_th]:border-b [&_th]:border-border [&_th]:px-2.5 [&_th]:py-1.5 [&_th]:text-start [&_td]:border-b [&_td]:border-border [&_td]:px-2.5 [&_td]:py-1.5 [&_td]:text-start">
               <thead>
                 <tr>
                   <th scope="col" />
@@ -320,8 +320,8 @@ export function OperationalReportsCard({ site }: { site: Site }) {
           </div>
 
           {key === "service" && waitByHourBand.length > 0 && (
-            <div className="qms-table-scroll">
-              <table className="qms-table">
+            <div className="overflow-x-auto">
+              <table className="w-full border-collapse text-sm [font-variant-numeric:tabular-nums] [&_th]:border-b [&_th]:border-border [&_th]:px-2.5 [&_th]:py-1.5 [&_th]:text-start [&_td]:border-b [&_td]:border-border [&_td]:px-2.5 [&_td]:py-1.5 [&_td]:text-start">
                 <caption>{t("reports.operational.waitByHourBand")}</caption>
                 <thead>
                   <tr>
@@ -350,8 +350,8 @@ export function OperationalReportsCard({ site }: { site: Site }) {
           )}
 
           {key === "visitor-flow" && channelMix.length > 0 && (
-            <div className="qms-table-scroll">
-              <table className="qms-table">
+            <div className="overflow-x-auto">
+              <table className="w-full border-collapse text-sm [font-variant-numeric:tabular-nums] [&_th]:border-b [&_th]:border-border [&_th]:px-2.5 [&_th]:py-1.5 [&_th]:text-start [&_td]:border-b [&_td]:border-border [&_td]:px-2.5 [&_td]:py-1.5 [&_td]:text-start">
                 <caption>{t("reports.operational.channelMix")}</caption>
                 <thead>
                   <tr>

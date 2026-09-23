@@ -2,9 +2,9 @@
 
 import { SCHEDULABLE_REPORT_KEYS, type ReportScheduleCadence, type ReportScheduleDelivery, type ReportExportFormat, type ReportSchedule, type Site } from "@qms/api-client";
 import { useI18n } from "@qms/i18n/react";
-import { Button, Card, ErrorAlert, SelectField, TextField } from "@qms/ui";
+import { Badge, Button, Card, ErrorAlert, SelectField, TextField } from "@qms/ui";
 import { useId, useState } from "react";
-import { describeError, useList, useSubmit } from "../lib/admin-support";
+import { describeError, useConfirmDialog, useList, useSubmit } from "../lib/admin-support";
 import { useApi } from "../lib/runtime";
 
 const CADENCES: ReportScheduleCadence[] = ["daily", "weekly", "monthly"];
@@ -51,21 +51,21 @@ export function ReportScheduleCard({ site }: { site: Site }) {
 
   return (
     <Card>
-      <h2 className="qms-heading">{t("reports.schedule.title")}</h2>
-      <p className="qms-muted">{t("reports.schedule.intro")}</p>
+      <h2 className="font-semibold text-fg">{t("reports.schedule.title")}</h2>
+      <p className="text-fg-muted">{t("reports.schedule.intro")}</p>
 
       {schedules.error !== null && <ErrorAlert>{describeError(t, schedules.error)}</ErrorAlert>}
-      {schedules.items?.length === 0 && <p className="qms-muted">{t("reports.schedule.empty")}</p>}
+      {schedules.items?.length === 0 && <p className="text-fg-muted">{t("reports.schedule.empty")}</p>}
       {schedules.items && schedules.items.length > 0 && (
-        <ul className="qms-list">
+        <ul className="m-0 list-none p-0 flex flex-col divide-y divide-border [&>li]:flex [&>li]:flex-wrap [&>li]:items-center [&>li]:justify-between [&>li]:gap-2 [&>li]:py-2.5">
           {schedules.items.map((schedule) => (
             <ScheduleRow key={schedule.id} schedule={schedule} onChanged={schedules.reload} />
           ))}
         </ul>
       )}
 
-      <div className="qms-stack">
-        <div className="qms-row">
+      <div className="flex flex-col gap-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <SelectField
             id={`${id}-key`}
             label={t("reports.schedule.reportKey")}
@@ -89,18 +89,18 @@ export function ReportScheduleCard({ site }: { site: Site }) {
           />
         </div>
         <div>
-          <label className="qms-label" htmlFor={`${id}-recipients`}>
+          <label className="block mb-1 font-medium text-fg text-sm" htmlFor={`${id}-recipients`}>
             {t("reports.schedule.recipients")}
           </label>
           <textarea
-            className="qms-input"
+            className="w-full rounded-md border border-border bg-surface px-3 py-2 text-fg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
             id={`${id}-recipients`}
             rows={3}
             value={recipientsText}
             onChange={(event) => setRecipientsText(event.target.value)}
             placeholder="ops@example.com"
           />
-          <span className="qms-muted">{t("reports.schedule.recipientsHint")}</span>
+          <span className="text-fg-muted">{t("reports.schedule.recipientsHint")}</span>
         </div>
         <Button type="button" onClick={create} disabled={busy || parseRecipients(recipientsText).length === 0}>
           {busy ? t("reports.schedule.creating") : t("reports.schedule.create")}
@@ -120,6 +120,7 @@ function ScheduleRow({ schedule, onChanged }: { schedule: ReportSchedule; onChan
     [client, showDeliveries, schedule.id],
   );
   const { busy, error, run } = useSubmit();
+  const { ask, dialog } = useConfirmDialog();
 
   async function toggleEnabled() {
     if (!client) return;
@@ -136,10 +137,16 @@ function ScheduleRow({ schedule, onChanged }: { schedule: ReportSchedule; onChan
     if (ok) onChanged();
   }
 
-  async function remove() {
-    if (!client || !window.confirm(t("reports.schedule.confirmDelete"))) return;
-    const ok = await run(() => client.reports.schedules.remove(schedule.id));
-    if (ok) onChanged();
+  function remove() {
+    if (!client) return;
+    ask({
+      title: t("reports.schedule.delete"),
+      description: t("reports.schedule.confirmDelete"),
+      danger: true,
+      onConfirm: () => {
+        void run(() => client.reports.schedules.remove(schedule.id)).then((ok) => ok && onChanged());
+      },
+    });
   }
 
   function deliveryLine(delivery: ReportScheduleDelivery): string {
@@ -151,21 +158,19 @@ function ScheduleRow({ schedule, onChanged }: { schedule: ReportSchedule; onChan
 
   return (
     <li>
-      <div className="qms-stack qms-grow">
-        <div className="qms-row">
+      <div className="flex flex-col gap-4 flex-1 min-w-0">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <strong>{schedule.report_key}</strong>
-          <span className={`qms-badge qms-badge--${schedule.enabled ? "up" : "not_configured"}`}>
-            {t(schedule.enabled ? "reports.schedule.enabled" : "reports.schedule.disabled")}
-          </span>
+          <Badge variant={schedule.enabled ? "ok" : "neutral"}>{t(schedule.enabled ? "reports.schedule.enabled" : "reports.schedule.disabled")}</Badge>
         </div>
-        <span className="qms-muted">
+        <span className="text-fg-muted">
           {t(`reports.schedule.cadence.${schedule.cadence}`)} · {schedule.format.toUpperCase()} · {t("reports.schedule.recipientCount", { count: schedule.recipients.length })}
         </span>
-        <span className="qms-muted">
+        <span className="text-fg-muted">
           {t("reports.schedule.nextRun")}: {new Date(schedule.next_run_at).toLocaleString()} · {t("reports.schedule.lastRun")}:{" "}
           {schedule.last_run_at ? new Date(schedule.last_run_at).toLocaleString() : t("reports.schedule.never")}
         </span>
-        <div className="qms-row">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <Button variant="secondary" type="button" onClick={toggleEnabled} disabled={busy}>
             {t(schedule.enabled ? "reports.schedule.disable" : "reports.schedule.enable")}
           </Button>
@@ -178,14 +183,14 @@ function ScheduleRow({ schedule, onChanged }: { schedule: ReportSchedule; onChan
         </div>
         {error && <ErrorAlert>{error}</ErrorAlert>}
         {showDeliveries && (
-          <div className="qms-stack">
+          <div className="flex flex-col gap-4">
             {deliveries.error !== null && <ErrorAlert>{describeError(t, deliveries.error)}</ErrorAlert>}
-            {deliveries.items?.length === 0 && <span className="qms-muted">{t("reports.schedule.deliveries.empty")}</span>}
+            {deliveries.items?.length === 0 && <span className="text-fg-muted">{t("reports.schedule.deliveries.empty")}</span>}
             {deliveries.items && deliveries.items.length > 0 && (
-              <ul className="qms-list">
+              <ul className="m-0 list-none p-0 flex flex-col divide-y divide-border [&>li]:flex [&>li]:flex-wrap [&>li]:items-center [&>li]:justify-between [&>li]:gap-2 [&>li]:py-2.5">
                 {deliveries.items.map((delivery) => (
                   <li key={delivery.id}>
-                    <span className={delivery.status === "sent" ? "qms-muted" : "qms-warning"}>{deliveryLine(delivery)}</span>
+                    <span className={delivery.status === "sent" ? "text-fg-muted" : "text-warn"}>{deliveryLine(delivery)}</span>
                   </li>
                 ))}
               </ul>
@@ -193,6 +198,7 @@ function ScheduleRow({ schedule, onChanged }: { schedule: ReportSchedule; onChan
           </div>
         )}
       </div>
+      {dialog}
     </li>
   );
 }

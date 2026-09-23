@@ -32,10 +32,10 @@ export function DryRunCard({ site }: { site: Site }) {
 
   return (
     <Card>
-      <h2 className="qms-heading">{t("priority.dryRun.title")}</h2>
-      <p className="qms-muted">{t("priority.dryRun.intro")}</p>
+      <h2 className="font-semibold text-fg">{t("priority.dryRun.title")}</h2>
+      <p className="text-fg-muted">{t("priority.dryRun.intro")}</p>
       {services.error !== null && <ErrorAlert>{describeError(t, services.error)}</ErrorAlert>}
-      {services.items?.length === 0 && <p className="qms-muted">{t("reception.services.none")}</p>}
+      {services.items?.length === 0 && <p className="text-fg-muted">{t("reception.services.none")}</p>}
       {services.items && services.items.length > 0 && (
         <>
           <SelectField
@@ -58,7 +58,7 @@ export function DryRunCard({ site }: { site: Site }) {
               ...QUEUE_STRATEGIES.map((value) => ({ value, label: t(`priority.strategy.${value}`) })),
             ]}
           />
-          <div className="qms-row">
+          <div className="flex flex-wrap items-center justify-between gap-3">
             <Button type="button" disabled={busy || !selected} onClick={dryRun}>
               {t(busy ? "priority.dryRun.running" : "priority.dryRun.run")}
             </Button>
@@ -75,12 +75,12 @@ export function DryRunCard({ site }: { site: Site }) {
               time: formatTime(new Date(result.computed_at)),
             })}
           </p>
-          <p className="qms-muted">{t("priority.dryRun.note")}</p>
+          <p className="text-fg-muted">{t("priority.dryRun.note")}</p>
           {result.tickets.length === 0 ? (
-            <p className="qms-muted">{t("priority.dryRun.empty")}</p>
+            <p className="text-fg-muted">{t("priority.dryRun.empty")}</p>
           ) : (
-            <div className="qms-table-scroll">
-            <table className="qms-table">
+            <div className="overflow-x-auto">
+            <table className="w-full border-collapse text-sm [font-variant-numeric:tabular-nums] [&_th]:border-b [&_th]:border-border [&_th]:px-2.5 [&_th]:py-1.5 [&_th]:text-start [&_td]:border-b [&_td]:border-border [&_td]:px-2.5 [&_td]:py-1.5 [&_td]:text-start">
               <thead>
                 <tr>
                   {["position", "token", "class", "wait", "headstart", "appointment", "escalation", "adjustment", "score", "status"].map((column) => (
@@ -103,8 +103,8 @@ export function DryRunCard({ site }: { site: Site }) {
                     <td>{formatNumber(ticket.terms.score_adjustment_minutes)}</td>
                     <td>{formatNumber(ticket.score)}</td>
                     <td>
-                      {ticket.escalated && <span className="qms-warning">{t("priority.dryRun.escalated")}</span>}
-                      {ticket.terms.adjustment_overridden && <span className="qms-muted"> {t("priority.dryRun.overridden")}</span>}
+                      {ticket.escalated && <span className="text-warn">{t("priority.dryRun.escalated")}</span>}
+                      {ticket.terms.adjustment_overridden && <span className="text-fg-muted"> {t("priority.dryRun.overridden")}</span>}
                     </td>
                   </tr>
                 ))}

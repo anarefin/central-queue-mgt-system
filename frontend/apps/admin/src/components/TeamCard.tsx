@@ -35,17 +35,17 @@ export function TeamCard({ group, groupName }: { group: ServiceGroup; groupName:
 
   return (
     <Card>
-      <h2 className="qms-heading">{t("catalogue.team.title", { group: groupName })}</h2>
-      <p className="qms-muted">{t("catalogue.team.hint")}</p>
+      <h2 className="font-semibold text-fg">{t("catalogue.team.title", { group: groupName })}</h2>
+      <p className="text-fg-muted">{t("catalogue.team.hint")}</p>
       {team.error !== null && <ErrorAlert>{describeError(t, team.error)}</ErrorAlert>}
-      {team.items && members.length === 0 && <p className="qms-muted">{t("catalogue.team.empty")}</p>}
+      {team.items && members.length === 0 && <p className="text-fg-muted">{t("catalogue.team.empty")}</p>}
       {members.length > 0 && (
-        <ul className="qms-list">
+        <ul className="m-0 list-none p-0 flex flex-col divide-y divide-border [&>li]:flex [&>li]:flex-wrap [&>li]:items-center [&>li]:justify-between [&>li]:gap-2 [&>li]:py-2.5">
           {members.map((m) => {
             const label = m.display_name ?? m.username;
             return (
               <li key={m.user_id}>
-                <div className="qms-row qms-grow">
+                <div className="flex flex-wrap items-center justify-between gap-3 flex-1 min-w-0">
                   <span>
                     {label}
                     {!m.active && ` ${t("catalogue.team.disabled")}`}
@@ -68,8 +68,8 @@ export function TeamCard({ group, groupName }: { group: ServiceGroup; groupName:
         </ul>
       )}
       {rowError.error && <ErrorAlert>{rowError.error}</ErrorAlert>}
-      <h3 className="qms-heading">{t("catalogue.team.add")}</h3>
-      <form className="qms-stack" onSubmit={add}>
+      <h3 className="font-semibold text-fg">{t("catalogue.team.add")}</h3>
+      <form className="flex flex-col gap-4" onSubmit={add}>
         {users.error !== null && <ErrorAlert>{describeError(t, users.error)}</ErrorAlert>}
         <SelectField
           id={`${id}-user`}

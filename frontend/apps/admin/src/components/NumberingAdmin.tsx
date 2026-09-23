@@ -23,9 +23,9 @@ export function NumberingAdmin() {
   const site = sites.items?.find((s) => s.id === siteId) ?? sites.items?.[0] ?? null;
 
   return (
-    <div className="qms-stack">
+    <div className="flex flex-col gap-4">
       {sites.error !== null && <ErrorAlert>{describeError(t, sites.error)}</ErrorAlert>}
-      {sites.items?.length === 0 && <p className="qms-muted">{t("catalogue.site.none")}</p>}
+      {sites.items?.length === 0 && <p className="text-fg-muted">{t("catalogue.site.none")}</p>}
       {sites.items && sites.items.length > 1 && (
         <SelectField
           id="numbering-site"
@@ -53,19 +53,19 @@ function SiteNumbering({ site }: { site: Site }) {
 
   return (
     <Card>
-      <h2 className="qms-heading">{t("numbering.groups.title", { site: site.name })}</h2>
-      <p className="qms-muted">{t("numbering.intro")}</p>
+      <h2 className="font-semibold text-fg">{t("numbering.groups.title", { site: site.name })}</h2>
+      <p className="text-fg-muted">{t("numbering.intro")}</p>
       {error !== null && <ErrorAlert>{describeError(t, error)}</ErrorAlert>}
-      {groups.items?.length === 0 && <p className="qms-muted">{t("catalogue.groups.empty")}</p>}
+      {groups.items?.length === 0 && <p className="text-fg-muted">{t("catalogue.groups.empty")}</p>}
       {groups.items && rules.items && (
-        <ul className="qms-list">
+        <ul className="m-0 list-none p-0 flex flex-col divide-y divide-border [&>li]:flex [&>li]:flex-wrap [&>li]:items-center [&>li]:justify-between [&>li]:gap-2 [&>li]:py-2.5">
           {groups.items.map((group) => {
             const groupName = localisedName(group.name_i18n, language, site.default_language);
             const own = (services.items ?? []).filter((s) => s.service_group.id === group.id);
             return (
               <li key={group.id}>
-                <div className="qms-stack qms-grow">
-                  <ul className="qms-list">
+                <div className="flex flex-col gap-4 flex-1 min-w-0">
+                  <ul className="m-0 list-none p-0 flex flex-col divide-y divide-border [&>li]:flex [&>li]:flex-wrap [&>li]:items-center [&>li]:justify-between [&>li]:gap-2 [&>li]:py-2.5">
                     <NumberingScopeRow
                       scope="service_group"
                       id={group.id}

@@ -24,7 +24,7 @@ export function SiteAdmin() {
   const site = sites.items?.find((s) => s.id === siteId) ?? null;
 
   return (
-    <div className="qms-stack">
+    <div className="flex flex-col gap-4">
       <SitesCard sites={sites} selectedId={siteId} onSelect={setSiteId} />
       {site && <ZonesCard key={site.id} site={site} />}
     </div>
@@ -45,11 +45,11 @@ function SitesCard({
 
   return (
     <Card>
-      <h2 className="qms-heading">{t("sites.list.title")}</h2>
+      <h2 className="font-semibold text-fg">{t("sites.list.title")}</h2>
       {sites.error !== null && <ErrorAlert>{describeError(t, sites.error)}</ErrorAlert>}
-      {sites.items?.length === 0 && <p className="qms-muted">{t("sites.list.empty")}</p>}
+      {sites.items?.length === 0 && <p className="text-fg-muted">{t("sites.list.empty")}</p>}
       {sites.items && sites.items.length > 0 && (
-        <ul className="qms-list">
+        <ul className="m-0 list-none p-0 flex flex-col divide-y divide-border [&>li]:flex [&>li]:flex-wrap [&>li]:items-center [&>li]:justify-between [&>li]:gap-2 [&>li]:py-2.5">
           {sites.items.map((site) => {
             const changed = new Date(site.updated_at);
             return (
@@ -103,7 +103,7 @@ function SitesCard({
           })}
         </ul>
       )}
-      <h3 className="qms-heading">{t("sites.add")}</h3>
+      <h3 className="font-semibold text-fg">{t("sites.add")}</h3>
       <SiteForm
         key={sites.items?.length ?? 0}
         submitLabel={t("sites.add")}
@@ -129,11 +129,11 @@ function ZonesCard({ site }: { site: Site }) {
   return (
     <>
       <Card>
-        <h2 className="qms-heading">{t("sites.zones.title", { site: site.name })}</h2>
+        <h2 className="font-semibold text-fg">{t("sites.zones.title", { site: site.name })}</h2>
         {zones.error !== null && <ErrorAlert>{describeError(t, zones.error)}</ErrorAlert>}
-        {zones.items?.length === 0 && <p className="qms-muted">{t("sites.zones.empty")}</p>}
+        {zones.items?.length === 0 && <p className="text-fg-muted">{t("sites.zones.empty")}</p>}
         {zones.items && zones.items.length > 0 && (
-          <ul className="qms-list">
+          <ul className="m-0 list-none p-0 flex flex-col divide-y divide-border [&>li]:flex [&>li]:flex-wrap [&>li]:items-center [&>li]:justify-between [&>li]:gap-2 [&>li]:py-2.5">
             {zones.items.map((zone) => (
               <EntityRow
                 key={zone.id}
@@ -176,7 +176,7 @@ function ZonesCard({ site }: { site: Site }) {
             ))}
           </ul>
         )}
-        <h3 className="qms-heading">{t("sites.zones.add")}</h3>
+        <h3 className="font-semibold text-fg">{t("sites.zones.add")}</h3>
         <ZoneForm
           key={zones.items?.length ?? 0}
           submitLabel={t("sites.zones.add")}
@@ -199,11 +199,11 @@ function CountersCard({ zone }: { zone: Zone }) {
 
   return (
     <Card>
-      <h2 className="qms-heading">{t("sites.counters.title", { zone: zone.name })}</h2>
+      <h2 className="font-semibold text-fg">{t("sites.counters.title", { zone: zone.name })}</h2>
       {counters.error !== null && <ErrorAlert>{describeError(t, counters.error)}</ErrorAlert>}
-      {counters.items?.length === 0 && <p className="qms-muted">{t("sites.counters.empty")}</p>}
+      {counters.items?.length === 0 && <p className="text-fg-muted">{t("sites.counters.empty")}</p>}
       {counters.items && counters.items.length > 0 && (
-        <ul className="qms-list">
+        <ul className="m-0 list-none p-0 flex flex-col divide-y divide-border [&>li]:flex [&>li]:flex-wrap [&>li]:items-center [&>li]:justify-between [&>li]:gap-2 [&>li]:py-2.5">
           {counters.items.map((counter) => (
             <EntityRow
               key={counter.id}
@@ -236,7 +236,7 @@ function CountersCard({ zone }: { zone: Zone }) {
           ))}
         </ul>
       )}
-      <h3 className="qms-heading">{t("sites.counters.add")}</h3>
+      <h3 className="font-semibold text-fg">{t("sites.counters.add")}</h3>
       <CounterForm
         key={counters.items?.length ?? 0}
         submitLabel={t("sites.counters.add")}

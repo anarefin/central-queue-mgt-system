@@ -17,11 +17,11 @@ export function OutcomeCodesCard({ site, service, serviceName }: { site: Site; s
 
   return (
     <Card>
-      <h2 className="qms-heading">{t("catalogue.outcomes.title", { service: serviceName })}</h2>
+      <h2 className="font-semibold text-fg">{t("catalogue.outcomes.title", { service: serviceName })}</h2>
       {outcomes.error !== null && <ErrorAlert>{describeError(t, outcomes.error)}</ErrorAlert>}
-      {outcomes.items?.length === 0 && <p className="qms-muted">{t("catalogue.outcomes.empty")}</p>}
+      {outcomes.items?.length === 0 && <p className="text-fg-muted">{t("catalogue.outcomes.empty")}</p>}
       {outcomes.items && outcomes.items.length > 0 && (
-        <ul className="qms-list">
+        <ul className="m-0 list-none p-0 flex flex-col divide-y divide-border [&>li]:flex [&>li]:flex-wrap [&>li]:items-center [&>li]:justify-between [&>li]:gap-2 [&>li]:py-2.5">
           {outcomes.items.map((o) => (
             <EntityRow
               key={o.id}
@@ -60,7 +60,7 @@ export function OutcomeCodesCard({ site, service, serviceName }: { site: Site; s
           ))}
         </ul>
       )}
-      <h3 className="qms-heading">{t("catalogue.outcomes.add")}</h3>
+      <h3 className="font-semibold text-fg">{t("catalogue.outcomes.add")}</h3>
       <OutcomeCodeForm
         key={outcomes.items?.length ?? 0}
         site={site}

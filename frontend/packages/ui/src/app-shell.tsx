@@ -1,12 +1,15 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { Fragment, useState, type ReactNode } from "react";
 import { cn } from "./cn";
 
 export interface AppShellNavItem {
   href: string;
   label: ReactNode;
   active?: boolean;
+  /** A heading rendered above this item, shown once whenever it differs from the previous item's own group
+   *  (ticket 63's grouped admin sidebar: Setup, Organisation, Queue & services, ...). Omit for an ungrouped list. */
+  group?: string;
 }
 
 export interface AppShellProps {
@@ -39,19 +42,24 @@ export function AppShell({ skipToContentLabel, menuButtonLabel, nav, title, site
       </a>
       <nav aria-label={menuButtonLabel} className={cn("shrink-0 border-e border-border bg-surface md:block md:w-64", navOpen ? "block" : "hidden")}>
         <ul className="flex flex-col gap-1 p-3">
-          {nav.map((item) => (
-            <li key={item.href}>
-              <a
-                href={item.href}
-                aria-current={item.active ? "page" : undefined}
-                className={cn(
-                  "block rounded-md px-3 py-2 text-sm font-medium motion-safe:transition-colors",
-                  item.active ? "bg-primary text-primary-fg" : "text-fg hover:bg-surface-muted",
-                )}
-              >
-                {item.label}
-              </a>
-            </li>
+          {nav.map((item, index) => (
+            <Fragment key={item.href}>
+              {item.group && item.group !== nav[index - 1]?.group && (
+                <li className="px-3 pb-1 pt-4 text-xs font-semibold uppercase tracking-wide text-fg-muted first:pt-0">{item.group}</li>
+              )}
+              <li>
+                <a
+                  href={item.href}
+                  aria-current={item.active ? "page" : undefined}
+                  className={cn(
+                    "block rounded-md px-3 py-2 text-sm font-medium motion-safe:transition-colors",
+                    item.active ? "bg-primary text-primary-fg" : "text-fg hover:bg-surface-muted",
+                  )}
+                >
+                  {item.label}
+                </a>
+              </li>
+            </Fragment>
           ))}
         </ul>
       </nav>

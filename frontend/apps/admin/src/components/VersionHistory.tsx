@@ -4,7 +4,7 @@ import type { ConfigVersionView, Items } from "@qms/api-client";
 import { useI18n } from "@qms/i18n/react";
 import { Button, ErrorAlert } from "@qms/ui";
 import { useState } from "react";
-import { describeError, useSubmit } from "../lib/admin-support";
+import { describeError, useConfirmDialog, useSubmit } from "../lib/admin-support";
 
 interface VersionHistoryProps {
   /** Identifies the row this history belongs to, for accessible labels. */
@@ -25,8 +25,24 @@ export function VersionHistory({ name, load, revert, onReverted }: VersionHistor
   const [open, setOpen] = useState(false);
   const [versions, setVersions] = useState<ConfigVersionView[] | null>(null);
   const [loadError, setLoadError] = useState<unknown>(null);
-  const [confirmingId, setConfirmingId] = useState<string | null>(null);
-  const { busy, error, run } = useSubmit();
+  const { error, run } = useSubmit();
+  const { ask, dialog } = useConfirmDialog();
+
+  function confirmRevert(version: ConfigVersionView) {
+    ask({
+      title: `${t("admin.versionHistory.revert")} ${name} ${new Date(version.changed_at).toLocaleString(language)}`,
+      description: t("admin.versionHistory.confirmRevert"),
+      confirmLabel: t("admin.versionHistory.confirmRevertAction"),
+      danger: true,
+      onConfirm: () => {
+        void run(() => revert(version.id)).then((ok) => {
+          if (!ok) return;
+          setOpen(false);
+          onReverted();
+        });
+      },
+    });
+  }
 
   async function toggle() {
     if (open) {
@@ -44,49 +60,27 @@ export function VersionHistory({ name, load, revert, onReverted }: VersionHistor
   }
 
   return (
-    <div className="qms-stack">
+    <div className="flex flex-col gap-4">
       <Button variant="secondary" type="button" aria-label={`${t("admin.versionHistory.toggle")} ${name}`} onClick={() => void toggle()}>
         {t("admin.versionHistory.toggle")}
       </Button>
       {open && (
-        <div className="qms-stack" role="group" aria-label={`${t("admin.versionHistory.title")} ${name}`}>
+        <div className="flex flex-col gap-4" role="group" aria-label={`${t("admin.versionHistory.title")} ${name}`}>
           {loadError !== null && <ErrorAlert>{describeError(t, loadError)}</ErrorAlert>}
-          {versions !== null && versions.length === 0 && <p className="qms-muted">{t("admin.versionHistory.empty")}</p>}
+          {versions !== null && versions.length === 0 && <p className="text-fg-muted">{t("admin.versionHistory.empty")}</p>}
           {versions !== null && versions.length > 0 && (
-            <ul className="qms-list">
+            <ul className="m-0 list-none p-0 flex flex-col divide-y divide-border [&>li]:flex [&>li]:flex-wrap [&>li]:items-center [&>li]:justify-between [&>li]:gap-2 [&>li]:py-2.5">
               {versions.map((version) => (
-                <li key={version.id} className="qms-row">
-                  <span className="qms-muted">{new Date(version.changed_at).toLocaleString(language)}</span>
-                  {confirmingId === version.id ? (
-                    <span className="qms-row" role="group" aria-label={`${t("admin.versionHistory.confirmRevert")} ${name}`}>
-                      <span>{t("admin.versionHistory.confirmRevert")}</span>
-                      <Button
-                        type="button"
-                        disabled={busy}
-                        onClick={async () => {
-                          if (await run(() => revert(version.id))) {
-                            setConfirmingId(null);
-                            setOpen(false);
-                            onReverted();
-                          }
-                        }}
-                      >
-                        {t("admin.versionHistory.confirmRevertAction")}
-                      </Button>
-                      <Button variant="secondary" type="button" onClick={() => setConfirmingId(null)}>
-                        {t("admin.action.cancel")}
-                      </Button>
-                    </span>
-                  ) : (
-                    <Button
-                      variant="secondary"
-                      type="button"
-                      aria-label={`${t("admin.versionHistory.revert")} ${name} ${new Date(version.changed_at).toLocaleString(language)}`}
-                      onClick={() => setConfirmingId(version.id)}
-                    >
-                      {t("admin.versionHistory.revert")}
-                    </Button>
-                  )}
+                <li key={version.id} className="flex flex-wrap items-center justify-between gap-3">
+                  <span className="text-fg-muted">{new Date(version.changed_at).toLocaleString(language)}</span>
+                  <Button
+                    variant="secondary"
+                    type="button"
+                    aria-label={`${t("admin.versionHistory.revert")} ${name} ${new Date(version.changed_at).toLocaleString(language)}`}
+                    onClick={() => confirmRevert(version)}
+                  >
+                    {t("admin.versionHistory.revert")}
+                  </Button>
                 </li>
               ))}
             </ul>
@@ -94,6 +88,7 @@ export function VersionHistory({ name, load, revert, onReverted }: VersionHistor
           {error && <ErrorAlert>{error}</ErrorAlert>}
         </div>
       )}
+      {dialog}
     </div>
   );
 }

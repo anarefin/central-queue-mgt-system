@@ -39,10 +39,10 @@ export function NoticeBoardAdmin() {
     });
 
   return (
-    <div className="qms-stack">
-      <p className="qms-muted">{t("noticeBoard.intro")}</p>
+    <div className="flex flex-col gap-4">
+      <p className="text-fg-muted">{t("noticeBoard.intro")}</p>
       <Card>
-        <div className="qms-stack">
+        <div className="flex flex-col gap-4">
           <SelectField
             id={`${id}-site`}
             label={t("devices.fields.site")}
@@ -65,15 +65,15 @@ export function NoticeBoardAdmin() {
         </div>
       </Card>
 
-      {!zoneId && <p className="qms-muted">{t("noticeBoard.selectZonePrompt")}</p>}
+      {!zoneId && <p className="text-fg-muted">{t("noticeBoard.selectZonePrompt")}</p>}
 
       {zoneId && (
         <Card>
-          <h2 className="qms-heading">{t("noticeBoard.list.title")}</h2>
+          <h2 className="font-semibold text-fg">{t("noticeBoard.list.title")}</h2>
           {notices.error !== null && <ErrorAlert>{describeError(t, notices.error)}</ErrorAlert>}
-          {notices.items?.length === 0 && <p className="qms-muted">{t("noticeBoard.list.empty")}</p>}
+          {notices.items?.length === 0 && <p className="text-fg-muted">{t("noticeBoard.list.empty")}</p>}
           {notices.items && notices.items.length > 0 && (
-            <ul className="qms-list">
+            <ul className="m-0 list-none p-0 flex flex-col divide-y divide-border [&>li]:flex [&>li]:flex-wrap [&>li]:items-center [&>li]:justify-between [&>li]:gap-2 [&>li]:py-2.5">
               {notices.items.map((n) => (
                 <EntityRow
                   key={n.id}

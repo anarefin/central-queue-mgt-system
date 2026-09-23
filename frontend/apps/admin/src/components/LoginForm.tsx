@@ -33,8 +33,8 @@ export function LoginForm() {
 
   return (
     <Card>
-      <h1 className="qms-heading">{t("auth.title")}</h1>
-      <form className="qms-stack" onSubmit={submit}>
+      <h1 className="font-semibold text-fg">{t("auth.title")}</h1>
+      <form className="flex flex-col gap-4" onSubmit={submit}>
         <TextField
           id="username"
           label={t("auth.username")}

@@ -19,16 +19,16 @@ export function VisitorImportAdmin() {
   const runs = useList<VisitorImportReport>(client ? () => client.visitorImport.runs() : null, [client]);
 
   return (
-    <div className="qms-stack">
-      <p className="qms-muted">{t("visitorImport.intro")}</p>
+    <div className="flex flex-col gap-4">
+      <p className="text-fg-muted">{t("visitorImport.intro")}</p>
       <MappingCard />
       <UploadCard onImported={runs.reload} />
       <Card>
-        <h2 className="qms-heading">{t("visitorImport.runs.title")}</h2>
+        <h2 className="font-semibold text-fg">{t("visitorImport.runs.title")}</h2>
         {runs.error !== null && <ErrorAlert>{describeError(t, runs.error)}</ErrorAlert>}
-        {runs.items?.length === 0 && <p className="qms-muted">{t("visitorImport.runs.none")}</p>}
+        {runs.items?.length === 0 && <p className="text-fg-muted">{t("visitorImport.runs.none")}</p>}
         {runs.items && runs.items.length > 0 && (
-          <ul className="qms-list">
+          <ul className="m-0 list-none p-0 flex flex-col divide-y divide-border [&>li]:flex [&>li]:flex-wrap [&>li]:items-center [&>li]:justify-between [&>li]:gap-2 [&>li]:py-2.5">
             {runs.items.map((run) => (
               <li key={run.id}>
                 <RunSummary run={run} />
@@ -81,11 +81,11 @@ function MappingCard() {
 
   return (
     <Card>
-      <h2 className="qms-heading">{t("visitorImport.mapping.title")}</h2>
-      <p className="qms-muted">{t("visitorImport.mapping.intro")}</p>
+      <h2 className="font-semibold text-fg">{t("visitorImport.mapping.title")}</h2>
+      <p className="text-fg-muted">{t("visitorImport.mapping.intro")}</p>
       {loadError !== null && <ErrorAlert>{describeError(t, loadError)}</ErrorAlert>}
       {value && (
-        <form className="qms-stack" onSubmit={submit}>
+        <form className="flex flex-col gap-4" onSubmit={submit}>
           <TextField
             id={`${id}-external-code`}
             label={t("visitorImport.mapping.externalCodeColumn")}
@@ -119,8 +119,8 @@ function MappingCard() {
             onChange={(e) => setField("category_column", e.target.value)}
           />
           {error && <ErrorAlert>{error}</ErrorAlert>}
-          {saved && !error && <p className="qms-muted">{t("visitorImport.mapping.saved")}</p>}
-          <div className="qms-row">
+          {saved && !error && <p className="text-fg-muted">{t("visitorImport.mapping.saved")}</p>}
+          <div className="flex flex-wrap items-center justify-between gap-3">
             <Button type="submit" disabled={busy}>
               {busy ? t("admin.action.saving") : t("visitorImport.mapping.save")}
             </Button>
@@ -169,17 +169,17 @@ function UploadCard({ onImported }: { onImported: () => void }) {
 
   return (
     <Card>
-      <h2 className="qms-heading">{t("visitorImport.upload.title")}</h2>
-      <p className="qms-muted">{t("visitorImport.upload.intro")}</p>
-      <form className="qms-stack" onSubmit={submit}>
+      <h2 className="font-semibold text-fg">{t("visitorImport.upload.title")}</h2>
+      <p className="text-fg-muted">{t("visitorImport.upload.intro")}</p>
+      <form className="flex flex-col gap-4" onSubmit={submit}>
         <div>
-          <label className="qms-label" htmlFor="visitor-import-file">
+          <label className="block mb-1 font-medium text-fg text-sm" htmlFor="visitor-import-file">
             {t("visitorImport.upload.file")}
           </label>
-          <input className="qms-input" id="visitor-import-file" type="file" accept=".csv,text/csv" onChange={pickFile} />
+          <input className="w-full rounded-md border border-border bg-surface px-3 py-2 text-fg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary" id="visitor-import-file" type="file" accept=".csv,text/csv" onChange={pickFile} />
         </div>
         {error && <ErrorAlert>{error}</ErrorAlert>}
-        <div className="qms-row">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <Button type="submit" disabled={busy || !filename}>
             {busy ? t("visitorImport.upload.importing") : t("visitorImport.upload.import")}
           </Button>
@@ -194,7 +194,7 @@ function ReportCard({ title, report }: { title: string; report: VisitorImportRep
   const { t } = useI18n();
   return (
     <Card>
-      <h2 className="qms-heading">{title}</h2>
+      <h2 className="font-semibold text-fg">{title}</h2>
       <p>
         {t("visitorImport.report.counts", {
           total: report.total_rows,
@@ -204,7 +204,7 @@ function ReportCard({ title, report }: { title: string; report: VisitorImportRep
         })}
       </p>
       {report.errors.length > 0 && (
-        <table className="qms-table">
+        <table className="w-full border-collapse text-sm [font-variant-numeric:tabular-nums] [&_th]:border-b [&_th]:border-border [&_th]:px-2.5 [&_th]:py-1.5 [&_th]:text-start [&_td]:border-b [&_td]:border-border [&_td]:px-2.5 [&_td]:py-1.5 [&_td]:text-start">
           <thead>
             <tr>
               <th>{t("visitorImport.report.line")}</th>
@@ -230,13 +230,13 @@ function ReportCard({ title, report }: { title: string; report: VisitorImportRep
 function RunSummary({ run }: { run: VisitorImportReport }) {
   const { t } = useI18n();
   return (
-    <div className="qms-stack">
-      <div className="qms-row">
+    <div className="flex flex-col gap-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <strong>{run.filename ?? t("visitorImport.runs.noFilename")}</strong>
-        <span className="qms-muted">{t(`visitorImport.runs.source.${run.source}`)}</span>
-        <span className="qms-muted">{new Date(run.started_at).toLocaleString()}</span>
+        <span className="text-fg-muted">{t(`visitorImport.runs.source.${run.source}`)}</span>
+        <span className="text-fg-muted">{new Date(run.started_at).toLocaleString()}</span>
       </div>
-      <p className="qms-muted">
+      <p className="text-fg-muted">
         {t("visitorImport.report.counts", {
           total: run.total_rows,
           inserted: run.inserted_count,

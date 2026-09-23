@@ -1,22 +1,18 @@
 "use client";
 
 import { useI18n } from "@qms/i18n/react";
-import { Page } from "@qms/ui";
-import Link from "next/link";
+import { PageHeader } from "@qms/ui";
 import { RequireAuth } from "../../components/RequireAuth";
 import { PrivacyControlsCard } from "../../components/PrivacyControlsCard";
 
 export default function PrivacyPage() {
   const { t } = useI18n();
   return (
-    <Page>
-      <RequireAuth>
-        <div className="qms-row">
-          <h1 className="qms-heading">{t("privacy.title")}</h1>
-          <Link href="/">{t("privacy.back")}</Link>
-        </div>
+    <RequireAuth>
+      <div className="mx-auto flex w-full max-w-5xl flex-col gap-6">
+        <PageHeader title={t("privacy.title")} />
         <PrivacyControlsCard />
-      </RequireAuth>
-    </Page>
+      </div>
+    </RequireAuth>
   );
 }

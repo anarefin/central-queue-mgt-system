@@ -9,8 +9,8 @@ import { WebhookEndpointsCard } from "./WebhookEndpointsCard";
 export function WebhooksAdmin() {
   const { t } = useI18n();
   return (
-    <div className="qms-stack">
-      <p className="qms-muted">{t("webhooks.intro")}</p>
+    <div className="flex flex-col gap-4">
+      <p className="text-fg-muted">{t("webhooks.intro")}</p>
       <WebhookEndpointsCard />
       <WebhookDeliveryLogCard />
     </div>

@@ -44,13 +44,13 @@ export function PriorityDefaultsCard({ site }: { site: Site }) {
 
   return (
     <Card>
-      <h2 className="qms-heading">{t("priority.defaults.title")}</h2>
-      <p className="qms-muted">{t("priority.defaults.intro")}</p>
+      <h2 className="font-semibold text-fg">{t("priority.defaults.title")}</h2>
+      <p className="text-fg-muted">{t("priority.defaults.intro")}</p>
       {loadError !== null && <ErrorAlert>{describeError(t, loadError)}</ErrorAlert>}
       {classes && defaults && services && (
         <>
-          <h3 className="qms-label">{t("priority.defaults.channels")}</h3>
-          <ul className="qms-list">
+          <h3 className="block mb-1 font-medium text-fg text-sm">{t("priority.defaults.channels")}</h3>
+          <ul className="m-0 list-none p-0 flex flex-col divide-y divide-border [&>li]:flex [&>li]:flex-wrap [&>li]:items-center [&>li]:justify-between [&>li]:gap-2 [&>li]:py-2.5">
             {CHANNELS.map((channel: Channel) => (
               <DefaultRow
                 key={channel}
@@ -66,9 +66,9 @@ export function PriorityDefaultsCard({ site }: { site: Site }) {
               />
             ))}
           </ul>
-          <h3 className="qms-label">{t("priority.defaults.services")}</h3>
-          {services.items.length === 0 && <p className="qms-muted">{t("priority.defaults.noServices")}</p>}
-          <ul className="qms-list">
+          <h3 className="block mb-1 font-medium text-fg text-sm">{t("priority.defaults.services")}</h3>
+          {services.items.length === 0 && <p className="text-fg-muted">{t("priority.defaults.noServices")}</p>}
+          <ul className="m-0 list-none p-0 flex flex-col divide-y divide-border [&>li]:flex [&>li]:flex-wrap [&>li]:items-center [&>li]:justify-between [&>li]:gap-2 [&>li]:py-2.5">
             {services.items.map((service) => (
               <DefaultRow
                 key={service.id}
@@ -117,7 +117,7 @@ function DefaultRow({
 
   return (
     <li>
-      <div className="qms-stack qms-grow">
+      <div className="flex flex-col gap-4 flex-1 min-w-0">
         <strong>{name}</strong>
         <SelectField
           id={id}
@@ -129,14 +129,14 @@ function DefaultRow({
           }}
           options={options}
         />
-        <div className="qms-row">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <Button type="button" aria-label={`${t("priority.defaults.save")} ${name}`} disabled={busy || chosen === (current ?? "")} onClick={submit}>
             {t("priority.defaults.save")}
           </Button>
         </div>
         {error && <ErrorAlert>{error}</ErrorAlert>}
         {saved && (
-          <span className="qms-muted" role="status">
+          <span className="text-fg-muted" role="status">
             {t("priority.defaults.saved")}
           </span>
         )}

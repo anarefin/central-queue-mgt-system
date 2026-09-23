@@ -33,14 +33,14 @@ export function CounterLinksCard({ group, service, serviceName }: { group: Servi
 
   return (
     <Card>
-      <h2 className="qms-heading">{t("catalogue.links.title", { service: serviceName })}</h2>
+      <h2 className="font-semibold text-fg">{t("catalogue.links.title", { service: serviceName })}</h2>
       {links.error !== null && <ErrorAlert>{describeError(t, links.error)}</ErrorAlert>}
-      {links.items?.length === 0 && <p className="qms-muted">{t("catalogue.links.empty")}</p>}
+      {links.items?.length === 0 && <p className="text-fg-muted">{t("catalogue.links.empty")}</p>}
       {links.items && links.items.length > 0 && (
-        <ul className="qms-list">
+        <ul className="m-0 list-none p-0 flex flex-col divide-y divide-border [&>li]:flex [&>li]:flex-wrap [&>li]:items-center [&>li]:justify-between [&>li]:gap-2 [&>li]:py-2.5">
           {links.items.map((link) => (
             <li key={link.counter_id}>
-              <div className="qms-row qms-grow">
+              <div className="flex flex-wrap items-center justify-between gap-3 flex-1 min-w-0">
                 <span>{t("catalogue.link.line", { counter: link.counter_label, weight: link.preference_weight })}</span>
                 <Button
                   variant="secondary"
@@ -59,8 +59,8 @@ export function CounterLinksCard({ group, service, serviceName }: { group: Servi
         </ul>
       )}
       {rowError.error && <ErrorAlert>{rowError.error}</ErrorAlert>}
-      <h3 className="qms-heading">{t("catalogue.links.add")}</h3>
-      <form className="qms-stack" onSubmit={add}>
+      <h3 className="font-semibold text-fg">{t("catalogue.links.add")}</h3>
+      <form className="flex flex-col gap-4" onSubmit={add}>
         <SelectField
           id={`${id}-counter`}
           label={t("catalogue.fields.counter_id")}
@@ -78,7 +78,7 @@ export function CounterLinksCard({ group, service, serviceName }: { group: Servi
           value={weight}
           onChange={(event) => setWeight(event.target.value)}
         />
-        <p className="qms-muted">{t("catalogue.links.hint")}</p>
+        <p className="text-fg-muted">{t("catalogue.links.hint")}</p>
         {error && <ErrorAlert>{error}</ErrorAlert>}
         <Button type="submit" disabled={busy || counterId === ""}>
           {t("catalogue.links.add")}

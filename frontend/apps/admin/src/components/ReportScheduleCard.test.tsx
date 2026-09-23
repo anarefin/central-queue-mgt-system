@@ -106,12 +106,12 @@ describe("scheduled report delivery (SRS §16, FR-RPT-005, ticket 52)", () => {
   });
 
   it("deletes a schedule once the confirmation is accepted", async () => {
-    vi.stubGlobal("confirm", () => true);
     fakeApi({ schedules: [schedule()] });
     renderApp(<ReportScheduleCard site={SITE} />);
 
     const row = within(await screen.findByRole("listitem"));
     await userEvent.click(row.getByRole("button", { name: "Delete" }));
+    await userEvent.click(screen.getByRole("button", { name: "Confirm" }));
 
     await waitFor(() => expect(screen.getByText("No scheduled reports yet.")).toBeInTheDocument());
   });

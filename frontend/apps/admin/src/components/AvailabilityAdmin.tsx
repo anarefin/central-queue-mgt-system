@@ -46,13 +46,13 @@ function Row({ agent, types, onChanged }: { agent: AgentAvailability; types: Bre
 
   return (
     <li>
-      <div className="qms-stack qms-grow">
-        <div className="qms-row">
+      <div className="flex flex-col gap-4 flex-1 min-w-0">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <strong>{who}</strong>
           <StatusBadge status={agent.status === "available" ? "up" : "not_configured"}>{t(`availability.status.${agent.status}`)}</StatusBadge>
         </div>
-        <span className="qms-muted">{t("availability.row", { counter: agent.counter.label })}</span>
-        {agent.break && <span className="qms-muted">{t("availability.onBreak", { type: nameOf(agent.break.type.name_i18n) })}</span>}
+        <span className="text-fg-muted">{t("availability.row", { counter: agent.counter.label })}</span>
+        {agent.break && <span className="text-fg-muted">{t("availability.onBreak", { type: nameOf(agent.break.type.name_i18n) })}</span>}
         {agent.status === "available" && (
           <SelectField
             id={`availability-type-${agent.agent_id}`}
@@ -65,7 +65,7 @@ function Row({ agent, types, onChanged }: { agent: AgentAvailability; types: Bre
         {(agent.status === "available" || onBreak) && (
           <TextField id={`availability-reason-${agent.agent_id}`} label={`${t("availability.reason")} — ${who}`} value={reason} maxLength={1000} onChange={(event) => setReason(event.target.value)} />
         )}
-        <div className="qms-row">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           {agent.status === "available" && (
             <Button type="button" variant="secondary" disabled={busy || typeId === ""} aria-label={t("availability.putOnBreakFor", { agent: who })} onClick={() => void change("on_break")}>
               {t("availability.putOnBreak")}
@@ -108,14 +108,14 @@ export function AvailabilityAdmin() {
   }, [client]);
 
   return (
-    <div className="qms-stack">
-      <p className="qms-muted">{t("availability.intro")}</p>
+    <div className="flex flex-col gap-4">
+      <p className="text-fg-muted">{t("availability.intro")}</p>
       <Card>
-        <h2 className="qms-heading">{t("availability.title")}</h2>
+        <h2 className="font-semibold text-fg">{t("availability.title")}</h2>
         {agents.error !== null && <ErrorAlert>{describeError(t, agents.error)}</ErrorAlert>}
-        {agents.items?.length === 0 && <p className="qms-muted">{t("availability.none")}</p>}
+        {agents.items?.length === 0 && <p className="text-fg-muted">{t("availability.none")}</p>}
         {agents.items && agents.items.length > 0 && (
-          <ul className="qms-list">
+          <ul className="m-0 list-none p-0 flex flex-col divide-y divide-border [&>li]:flex [&>li]:flex-wrap [&>li]:items-center [&>li]:justify-between [&>li]:gap-2 [&>li]:py-2.5">
             {agents.items.map((agent) => (
               <Row key={agent.agent_id} agent={agent} types={types} onChanged={agents.reload} />
             ))}

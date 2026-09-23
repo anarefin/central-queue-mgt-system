@@ -24,10 +24,10 @@ export function NotificationsAdmin() {
   const site = sites.items?.find((s) => s.id === siteId) ?? sites.items?.[0] ?? null;
 
   return (
-    <div className="qms-stack">
-      <p className="qms-muted">{t("notifications.intro")}</p>
+    <div className="flex flex-col gap-4">
+      <p className="text-fg-muted">{t("notifications.intro")}</p>
       {sites.error !== null && <ErrorAlert>{describeError(t, sites.error)}</ErrorAlert>}
-      {sites.items?.length === 0 && <p className="qms-muted">{t("catalogue.site.none")}</p>}
+      {sites.items?.length === 0 && <p className="text-fg-muted">{t("catalogue.site.none")}</p>}
       {sites.items && sites.items.length > 1 && (
         <SelectField
           id="notifications-site"

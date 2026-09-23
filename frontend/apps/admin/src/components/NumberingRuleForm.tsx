@@ -41,7 +41,7 @@ export function NumberingRuleForm({ initial, onSubmit, onDone, onCancel }: Numbe
   }
 
   return (
-    <form className="qms-stack" onSubmit={submit}>
+    <form className="flex flex-col gap-4" onSubmit={submit}>
       <SelectField
         id={`${id}-source`}
         label={t("catalogue.fields.prefix_source")}
@@ -81,7 +81,7 @@ export function NumberingRuleForm({ initial, onSubmit, onDone, onCancel }: Numbe
         <TextField id={`${id}-time`} type="time" label={t("catalogue.fields.reset_time")} value={time} onChange={(e) => setTime(e.target.value)} />
       )}
       {error && <ErrorAlert>{error}</ErrorAlert>}
-      <div className="qms-row">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <Button type="submit" disabled={busy}>
           {busy ? t("admin.action.saving") : t("admin.action.save")}
         </Button>

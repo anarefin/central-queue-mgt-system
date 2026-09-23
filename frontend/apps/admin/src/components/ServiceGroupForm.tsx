@@ -31,7 +31,7 @@ export function ServiceGroupForm({ site, initial, submitLabel, onSubmit, onDone,
   }
 
   return (
-    <form className="qms-stack" onSubmit={submit}>
+    <form className="flex flex-col gap-4" onSubmit={submit}>
       <TranslatedNameFields
         id={`${id}-name`}
         label={t("catalogue.fields.name_i18n")}
@@ -49,7 +49,7 @@ export function ServiceGroupForm({ site, initial, submitLabel, onSubmit, onDone,
         onChange={(e) => setOrder(e.target.value)}
       />
       {error && <ErrorAlert>{error}</ErrorAlert>}
-      <div className="qms-row">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <Button type="submit" disabled={busy}>
           {busy ? t("admin.action.saving") : submitLabel}
         </Button>

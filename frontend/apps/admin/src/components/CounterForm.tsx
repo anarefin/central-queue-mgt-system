@@ -28,11 +28,11 @@ export function CounterForm({ initial = { label: "", location_note: "" }, submit
   }
 
   return (
-    <form className="qms-stack" onSubmit={submit}>
+    <form className="flex flex-col gap-4" onSubmit={submit}>
       <TextField id={`${id}-label`} label={t("sites.fields.label")} value={values.label} onChange={set("label")} />
       <TextField id={`${id}-note`} label={t("sites.fields.location_note")} value={values.location_note} onChange={set("location_note")} />
       {error && <ErrorAlert>{error}</ErrorAlert>}
-      <div className="qms-row">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <Button type="submit" disabled={busy}>
           {busy ? t("admin.action.saving") : submitLabel}
         </Button>

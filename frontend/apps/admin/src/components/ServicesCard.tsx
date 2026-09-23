@@ -4,7 +4,7 @@ import { ApiRequestError, type ServiceEntry, type ServiceGroup, type Site } from
 import { useI18n } from "@qms/i18n/react";
 import { Button, Card, ErrorAlert } from "@qms/ui";
 import { useState } from "react";
-import { describeError, languageName, localisedName, useList, useSubmit } from "../lib/admin-support";
+import { describeError, languageName, localisedName, useConfirmDialog, useList, useSubmit } from "../lib/admin-support";
 import { useApi } from "../lib/runtime";
 import { CounterLinksCard } from "./CounterLinksCard";
 import { EntityRow } from "./EntityRow";
@@ -27,11 +27,11 @@ export function ServicesCard({ site, group }: { site: Site; group: ServiceGroup 
   return (
     <>
       <Card>
-        <h2 className="qms-heading">{t("catalogue.services.title", { group: groupName })}</h2>
+        <h2 className="font-semibold text-fg">{t("catalogue.services.title", { group: groupName })}</h2>
         {services.error !== null && <ErrorAlert>{describeError(t, services.error)}</ErrorAlert>}
-        {services.items?.length === 0 && <p className="qms-muted">{t("catalogue.services.empty")}</p>}
+        {services.items?.length === 0 && <p className="text-fg-muted">{t("catalogue.services.empty")}</p>}
         {services.items && services.items.length > 0 && (
-          <ul className="qms-list">
+          <ul className="m-0 list-none p-0 flex flex-col divide-y divide-border [&>li]:flex [&>li]:flex-wrap [&>li]:items-center [&>li]:justify-between [&>li]:gap-2 [&>li]:py-2.5">
             {services.items.map((s) => (
               <EntityRow
                 key={s.id}
@@ -104,7 +104,7 @@ export function ServicesCard({ site, group }: { site: Site; group: ServiceGroup 
             ))}
           </ul>
         )}
-        <h3 className="qms-heading">{t("catalogue.services.add")}</h3>
+        <h3 className="font-semibold text-fg">{t("catalogue.services.add")}</h3>
         <ServiceForm
           key={services.items?.length ?? 0}
           site={site}
@@ -128,43 +128,37 @@ export function ServicesCard({ site, group }: { site: Site; group: ServiceGroup 
  */
 function DeleteService({ name, onDelete }: { name: string; onDelete: () => Promise<unknown> }) {
   const { t } = useI18n();
-  const [confirming, setConfirming] = useState(false);
   const [blocked, setBlocked] = useState(false);
   const { busy, error, run } = useSubmit();
+  const { ask, dialog } = useConfirmDialog();
 
-  if (!confirming) {
-    return (
-      <Button variant="secondary" type="button" aria-label={`${t("catalogue.service.delete")} ${name}`} onClick={() => setConfirming(true)}>
+  function confirmDelete() {
+    ask({
+      title: `${t("catalogue.service.confirmDelete")} ${name}`,
+      description: t("catalogue.service.deleteConfirm", { name }),
+      confirmLabel: t("catalogue.service.confirmDelete"),
+      danger: true,
+      onConfirm: () => {
+        setBlocked(false);
+        void run(async () => {
+          try {
+            await onDelete();
+          } catch (cause) {
+            if (cause instanceof ApiRequestError && cause.code === "conflict") setBlocked(true);
+            throw cause;
+          }
+        });
+      },
+    });
+  }
+
+  return (
+    <>
+      <Button variant="secondary" type="button" disabled={busy} aria-label={`${t("catalogue.service.delete")} ${name}`} onClick={confirmDelete}>
         {t("catalogue.service.delete")}
       </Button>
-    );
-  }
-  return (
-    <div className="qms-stack" role="group" aria-label={`${t("catalogue.service.confirmDelete")} ${name}`}>
-      <p>{t("catalogue.service.deleteConfirm", { name })}</p>
-      <div className="qms-row">
-        <Button
-          type="button"
-          disabled={busy}
-          onClick={async () => {
-            setBlocked(false);
-            if (await run(async () => {
-              try {
-                await onDelete();
-              } catch (cause) {
-                if (cause instanceof ApiRequestError && cause.code === "conflict") setBlocked(true);
-                throw cause;
-              }
-            })) setConfirming(false);
-          }}
-        >
-          {t("catalogue.service.confirmDelete")}
-        </Button>
-        <Button variant="secondary" type="button" onClick={() => setConfirming(false)}>
-          {t("admin.action.cancel")}
-        </Button>
-      </div>
       {error && <ErrorAlert>{blocked ? t("catalogue.service.deleteBlocked") : error}</ErrorAlert>}
-    </div>
+      {dialog}
+    </>
   );
 }

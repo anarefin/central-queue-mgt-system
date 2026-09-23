@@ -67,7 +67,7 @@ export function NotificationTemplatesCard() {
 
   return (
     <Card>
-      <h2 className="qms-heading">{t("notifications.templates.title")}</h2>
+      <h2 className="font-semibold text-fg">{t("notifications.templates.title")}</h2>
       {catalogue.error != null && <ErrorAlert>{describeError(t, catalogue.error)}</ErrorAlert>}
       {catalogue.items && catalogue.items.length > 0 && (
         <SelectField
@@ -93,17 +93,17 @@ export function NotificationTemplatesCard() {
         options={LANGUAGES.map((value) => ({ value, label: t(`languages.${value}`) }))}
       />
       {selected && (
-        <p className="qms-muted">{t("notifications.templates.variables", { variables: selected.variables.map((v) => `{{${v}}}`).join(", ") })}</p>
+        <p className="text-fg-muted">{t("notifications.templates.variables", { variables: selected.variables.map((v) => `{{${v}}}`).join(", ") })}</p>
       )}
       <TextField id={`${id}-subject`} label={t("notifications.templates.subject")} value={subject} onChange={(event) => setSubject(event.target.value)} />
       <div>
-        <label className="qms-label" htmlFor={`${id}-body`}>
+        <label className="block mb-1 font-medium text-fg text-sm" htmlFor={`${id}-body`}>
           {t("notifications.templates.body")}
         </label>
-        <textarea id={`${id}-body`} className="qms-input" rows={4} value={body} onChange={(event) => setBody(event.target.value)} />
+        <textarea id={`${id}-body`} className="w-full rounded-md border border-border bg-surface px-3 py-2 text-fg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary" rows={4} value={body} onChange={(event) => setBody(event.target.value)} />
       </div>
       {error && <ErrorAlert>{error}</ErrorAlert>}
-      <div className="qms-row">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <Button type="button" disabled={busy || !triggerKey} onClick={() => void save()}>
           {busy ? t("admin.action.saving") : t("admin.action.save")}
         </Button>

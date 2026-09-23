@@ -32,11 +32,11 @@ export function OutcomeCodeForm({ site, initial, submitLabel, onSubmit, onDone, 
   }
 
   return (
-    <form className="qms-stack" onSubmit={submit}>
+    <form className="flex flex-col gap-4" onSubmit={submit}>
       {!initial && (
         <>
           <TextField id={`${id}-code`} label={t("catalogue.fields.code")} value={code} onChange={(e) => setCode(e.target.value)} />
-          <p className="qms-muted">{t("catalogue.hint.code")}</p>
+          <p className="text-fg-muted">{t("catalogue.hint.code")}</p>
         </>
       )}
       <TranslatedNameFields
@@ -49,7 +49,7 @@ export function OutcomeCodeForm({ site, initial, submitLabel, onSubmit, onDone, 
       />
       <TextField id={`${id}-order`} type="number" label={t("catalogue.fields.display_order")} value={order} onChange={(e) => setOrder(e.target.value)} />
       {error && <ErrorAlert>{error}</ErrorAlert>}
-      <div className="qms-row">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <Button type="submit" disabled={busy}>
           {busy ? t("admin.action.saving") : submitLabel}
         </Button>

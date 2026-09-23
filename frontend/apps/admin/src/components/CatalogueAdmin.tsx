@@ -25,9 +25,9 @@ export function CatalogueAdmin() {
   const site = sites.items?.find((s) => s.id === siteId) ?? sites.items?.[0] ?? null;
 
   return (
-    <div className="qms-stack">
+    <div className="flex flex-col gap-4">
       {sites.error !== null && <ErrorAlert>{describeError(t, sites.error)}</ErrorAlert>}
-      {sites.items?.length === 0 && <p className="qms-muted">{t("catalogue.site.none")}</p>}
+      {sites.items?.length === 0 && <p className="text-fg-muted">{t("catalogue.site.none")}</p>}
       {sites.items && sites.items.length > 1 && (
         <SelectField
           id="catalogue-site"
@@ -55,11 +55,11 @@ function GroupsCard({ site }: { site: Site }) {
   return (
     <>
       <Card>
-        <h2 className="qms-heading">{t("catalogue.groups.title", { site: site.name })}</h2>
+        <h2 className="font-semibold text-fg">{t("catalogue.groups.title", { site: site.name })}</h2>
         {groups.error !== null && <ErrorAlert>{describeError(t, groups.error)}</ErrorAlert>}
-        {groups.items?.length === 0 && <p className="qms-muted">{t("catalogue.groups.empty")}</p>}
+        {groups.items?.length === 0 && <p className="text-fg-muted">{t("catalogue.groups.empty")}</p>}
         {groups.items && groups.items.length > 0 && (
-          <ul className="qms-list">
+          <ul className="m-0 list-none p-0 flex flex-col divide-y divide-border [&>li]:flex [&>li]:flex-wrap [&>li]:items-center [&>li]:justify-between [&>li]:gap-2 [&>li]:py-2.5">
             {groups.items.map((g) => (
               <EntityRow
                 key={g.id}
@@ -119,7 +119,7 @@ function GroupsCard({ site }: { site: Site }) {
             ))}
           </ul>
         )}
-        <h3 className="qms-heading">{t("catalogue.groups.add")}</h3>
+        <h3 className="font-semibold text-fg">{t("catalogue.groups.add")}</h3>
         <ServiceGroupForm
           key={groups.items?.length ?? 0}
           site={site}

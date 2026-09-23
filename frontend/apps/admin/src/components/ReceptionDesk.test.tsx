@@ -403,7 +403,7 @@ describe("reception desk (SRS §8.3)", () => {
 
     fakeApi(fresh(), { ...health, "GET /auth/me": () => json(200, { ...ME, roles: ["agent"] }) });
     renderApp(<Home />);
-    await screen.findByText("Agent");
+    await screen.findByText("Signed in with: Agent");
     expect(screen.queryByRole("link", { name: "Reception desk" })).not.toBeInTheDocument();
   });
 });

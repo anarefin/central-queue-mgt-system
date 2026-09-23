@@ -111,10 +111,10 @@ describe("privacy controls (SRS §25.3-25.4, ticket 54)", () => {
       { "POST /visitors/v1/anonymize": () => json(200, { id: "v1", anonymized_at: "2026-09-19T11:00:00Z", tickets_anonymized: 1 }) },
     );
     renderApp(<PrivacyControlsCard />);
-    vi.stubGlobal("confirm", vi.fn(() => true));
 
     await userEvent.type(await screen.findByLabelText("Visitor ID"), "v1");
     await userEvent.click(screen.getByRole("button", { name: "Delete (anonymise)" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Confirm" }));
 
     await waitFor(() => {
       expect(calls.some((c) => c.method === "POST" && c.path === "/visitors/v1/anonymize")).toBe(true);

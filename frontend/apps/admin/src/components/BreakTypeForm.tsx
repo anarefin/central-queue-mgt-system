@@ -34,7 +34,7 @@ export function BreakTypeForm({ initial, submitLabel, onSubmit, onDone, onCancel
   }
 
   return (
-    <form className="qms-stack" onSubmit={submit}>
+    <form className="flex flex-col gap-4" onSubmit={submit}>
       <TranslatedNameFields
         id={`${id}-name`}
         label={t("catalogue.fields.name_i18n")}
@@ -45,7 +45,7 @@ export function BreakTypeForm({ initial, submitLabel, onSubmit, onDone, onCancel
       />
       <TextField id={`${id}-max`} type="number" min={1} label={t("catalogue.fields.max_minutes")} value={max} onChange={(e) => setMax(e.target.value)} />
       {error && <ErrorAlert>{error}</ErrorAlert>}
-      <div className="qms-row">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <Button type="submit" disabled={busy}>
           {busy ? t("admin.action.saving") : submitLabel}
         </Button>

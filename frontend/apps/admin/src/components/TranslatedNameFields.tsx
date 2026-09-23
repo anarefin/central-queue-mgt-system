@@ -23,7 +23,7 @@ export function TranslatedNameFields({ id, label, languages, defaultLanguage, va
   const { t } = useI18n();
   const blank = languages.filter((language) => (value[language] ?? "").trim() === "");
   return (
-    <div className="qms-stack">
+    <div className="flex flex-col gap-4">
       {languages.map((language) => (
         <TextField
           key={language}
@@ -35,7 +35,7 @@ export function TranslatedNameFields({ id, label, languages, defaultLanguage, va
         />
       ))}
       {blank.length > 0 && (
-        <p className="qms-warning" role="status">
+        <p className="text-warn" role="status">
           {t("catalogue.names.missing", {
             languages: blank.map((language) => languageName(t, language)).join(", "),
             default: languageName(t, defaultLanguage),

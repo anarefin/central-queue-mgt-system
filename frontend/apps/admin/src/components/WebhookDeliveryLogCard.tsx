@@ -49,8 +49,8 @@ export function WebhookDeliveryLogCard() {
 
   return (
     <Card>
-      <h2 className="qms-heading">{t("webhooks.log.title")}</h2>
-      <div className="qms-row">
+      <h2 className="font-semibold text-fg">{t("webhooks.log.title")}</h2>
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <TextField id={`${id}-endpoint`} label={t("webhooks.log.endpointId")} value={endpointId} onChange={(event) => setEndpointId(event.target.value)} />
         <TextField id={`${id}-type`} label={t("webhooks.log.eventType")} value={eventType} onChange={(event) => setEventType(event.target.value)} />
         <SelectField
@@ -66,15 +66,15 @@ export function WebhookDeliveryLogCard() {
       </div>
       {error != null && <ErrorAlert>{describeError(t, error)}</ErrorAlert>}
       {replay.error && <ErrorAlert>{replay.error}</ErrorAlert>}
-      {rows && rows.length === 0 && <p className="qms-muted">{t("webhooks.log.empty")}</p>}
+      {rows && rows.length === 0 && <p className="text-fg-muted">{t("webhooks.log.empty")}</p>}
       {rows && rows.length > 0 && (
-        <ul className="qms-list">
+        <ul className="m-0 list-none p-0 flex flex-col divide-y divide-border [&>li]:flex [&>li]:flex-wrap [&>li]:items-center [&>li]:justify-between [&>li]:gap-2 [&>li]:py-2.5">
           {rows.map(({ delivery }) => (
-            <li key={delivery.id} className="qms-row">
+            <li key={delivery.id} className="flex flex-wrap items-center justify-between gap-3">
               <span>{delivery.event_type}</span>
-              <span className="qms-muted">{t(`webhooks.log.statusValue.${delivery.status}`)}</span>
-              <span className="qms-muted">{delivery.attempt_count}</span>
-              <span className="qms-muted">{formatTime(new Date(delivery.created_at))}</span>
+              <span className="text-fg-muted">{t(`webhooks.log.statusValue.${delivery.status}`)}</span>
+              <span className="text-fg-muted">{delivery.attempt_count}</span>
+              <span className="text-fg-muted">{formatTime(new Date(delivery.created_at))}</span>
               <Button
                 variant="secondary"
                 type="button"

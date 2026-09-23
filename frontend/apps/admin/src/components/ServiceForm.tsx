@@ -70,7 +70,7 @@ export function ServiceForm({ site, initial, submitLabel, onSubmit, onDone, onCa
   }
 
   return (
-    <form className="qms-stack" onSubmit={submit}>
+    <form className="flex flex-col gap-4" onSubmit={submit}>
       <TranslatedNameFields
         id={`${id}-name`}
         label={t("catalogue.fields.name_i18n")}
@@ -88,10 +88,10 @@ export function ServiceForm({ site, initial, submitLabel, onSubmit, onDone, onCa
         onChange={(e) => setExpected(e.target.value)}
       />
       <TextField id={`${id}-sla`} type="number" label={t("catalogue.fields.sla_wait_minutes")} value={sla} onChange={(e) => setSla(e.target.value)} />
-      <fieldset className="qms-stack">
-        <legend className="qms-label">{t("catalogue.fields.channels")}</legend>
+      <fieldset className="flex flex-col gap-4">
+        <legend className="block mb-1 font-medium text-fg text-sm">{t("catalogue.fields.channels")}</legend>
         {CHANNELS.map((channel) => (
-          <label key={channel} className="qms-row">
+          <label key={channel} className="flex flex-wrap items-center justify-between gap-3">
             <input type="checkbox" checked={channels.includes(channel)} onChange={() => toggle(channel)} />
             {t(`catalogue.channel.${channel}`)}
           </label>
@@ -113,7 +113,7 @@ export function ServiceForm({ site, initial, submitLabel, onSubmit, onDone, onCa
         onChange={(e) => setBooking(e.target.value as BookingMode)}
         options={BOOKING_MODES.map((value) => ({ value, label: t(`catalogue.bookingMode.${value}`) }))}
       />
-      <label className="qms-row">
+      <label className="flex flex-wrap items-center justify-between gap-3">
         <input type="checkbox" checked={parallel} onChange={(e) => setParallel(e.target.checked)} />
         {t("catalogue.fields.parallel_serving")}
       </label>
@@ -127,7 +127,7 @@ export function ServiceForm({ site, initial, submitLabel, onSubmit, onDone, onCa
         />
       )}
       {error && <ErrorAlert>{error}</ErrorAlert>}
-      <div className="qms-row">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <Button type="submit" disabled={busy}>
           {busy ? t("admin.action.saving") : submitLabel}
         </Button>

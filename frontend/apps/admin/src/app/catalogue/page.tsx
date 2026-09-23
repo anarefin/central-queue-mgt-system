@@ -1,22 +1,18 @@
 "use client";
 
 import { useI18n } from "@qms/i18n/react";
-import { Page } from "@qms/ui";
-import Link from "next/link";
-import { CatalogueAdmin } from "../../components/CatalogueAdmin";
+import { PageHeader } from "@qms/ui";
 import { RequireAuth } from "../../components/RequireAuth";
+import { CatalogueAdmin } from "../../components/CatalogueAdmin";
 
 export default function CataloguePage() {
   const { t } = useI18n();
   return (
-    <Page>
-      <RequireAuth>
-        <div className="qms-row">
-          <h1 className="qms-heading">{t("catalogue.title")}</h1>
-          <Link href="/">{t("sites.back")}</Link>
-        </div>
+    <RequireAuth>
+      <div className="mx-auto flex w-full max-w-5xl flex-col gap-6">
+        <PageHeader title={t("catalogue.title")} />
         <CatalogueAdmin />
-      </RequireAuth>
-    </Page>
+      </div>
+    </RequireAuth>
   );
 }

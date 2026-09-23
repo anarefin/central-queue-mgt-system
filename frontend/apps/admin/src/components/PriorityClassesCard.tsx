@@ -39,11 +39,11 @@ export function PriorityClassesCard() {
 
   return (
     <Card>
-      <h2 className="qms-heading">{t("priority.classes.title")}</h2>
-      <p className="qms-muted">{t("priority.classes.intro")}</p>
+      <h2 className="font-semibold text-fg">{t("priority.classes.title")}</h2>
+      <p className="text-fg-muted">{t("priority.classes.intro")}</p>
       {classes.error !== null && <ErrorAlert>{describeError(t, classes.error)}</ErrorAlert>}
       {classes.items && (
-        <ul className="qms-list">
+        <ul className="m-0 list-none p-0 flex flex-col divide-y divide-border [&>li]:flex [&>li]:flex-wrap [&>li]:items-center [&>li]:justify-between [&>li]:gap-2 [&>li]:py-2.5">
           {classes.items.map((c) => (
             <EntityRow
               key={c.id}

@@ -42,11 +42,11 @@ export function SetupWizard() {
   const refresh = () => setVersion((v) => v + 1);
 
   if (loadError !== null) return <ErrorAlert>{describeError(t, loadError)}</ErrorAlert>;
-  if (!state || !profiles) return <p className="qms-muted">{t("setup.profile.loading")}</p>;
+  if (!state || !profiles) return <p className="text-fg-muted">{t("setup.profile.loading")}</p>;
 
   return (
-    <div className="qms-stack">
-      <p className="qms-muted">{t("setup.intro")}</p>
+    <div className="flex flex-col gap-4">
+      <p className="text-fg-muted">{t("setup.intro")}</p>
       <ProfileCard state={state} profiles={profiles} onChanged={refresh} />
       <StepCard done={state.org_and_sites} label={t("setup.step.orgAndSites")}>
         <Link href="/sites/">{t("setup.link.openSites")}</Link>
@@ -59,7 +59,7 @@ export function SetupWizard() {
         <Link href="/numbering/">{t("setup.link.openNumbering")}</Link>
       </StepCard>
       <StepCard done={state.users_and_roles} label={t("setup.step.usersAndRoles")}>
-        <span className="qms-muted">{t("setup.usersHint")}</span>
+        <span className="text-fg-muted">{t("setup.usersHint")}</span>
       </StepCard>
       <StepCard done={state.devices_registered} label={t("setup.step.devices")}>
         <Link href="/devices/">{t("setup.link.openDevices")}</Link>
@@ -74,11 +74,11 @@ function StepCard({ done, label, children }: { done: boolean; label: string; chi
   const { t } = useI18n();
   return (
     <Card>
-      <div className="qms-row">
-        <h2 className="qms-heading">{label}</h2>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h2 className="font-semibold text-fg">{label}</h2>
         <StatusBadge status={done ? "up" : "not_configured"}>{t(done ? "setup.status.done" : "setup.status.pending")}</StatusBadge>
       </div>
-      {children && <div className="qms-row">{children}</div>}
+      {children && <div className="flex flex-wrap items-center justify-between gap-3">{children}</div>}
     </Card>
   );
 }
@@ -109,9 +109,9 @@ function ProfileCard({ state, profiles, onChanged }: { state: SetupState; profil
 
   return (
     <Card>
-      <h2 className="qms-heading">{t("setup.step.profile")}</h2>
+      <h2 className="font-semibold text-fg">{t("setup.step.profile")}</h2>
       {state.active_profile && (
-        <div className="qms-row">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <StatusBadge status="up">{t("setup.status.done")}</StatusBadge>
           <span>{t("setup.profile.applied", { profile: profileName(t, state.active_profile.id) })}</span>
           <Button variant="secondary" type="button" onClick={() => setShowChooser((v) => !v)}>
@@ -120,7 +120,7 @@ function ProfileCard({ state, profiles, onChanged }: { state: SetupState; profil
         </div>
       )}
       {(showChooser || !state.profile_applied) && (
-        <form className="qms-stack" onSubmit={apply}>
+        <form className="flex flex-col gap-4" onSubmit={apply}>
           <SelectField
             id={`${id}-profile`}
             label={t("setup.step.profile")}
@@ -129,7 +129,7 @@ function ProfileCard({ state, profiles, onChanged }: { state: SetupState; profil
             options={profiles.map((p) => ({ value: p.id, label: profileName(t, p.id) }))}
           />
           {error && <ErrorAlert>{error}</ErrorAlert>}
-          <div className="qms-row">
+          <div className="flex flex-wrap items-center justify-between gap-3">
             <Button type="submit" disabled={busy}>
               {t(state.profile_applied ? "setup.profile.resetButton" : "setup.profile.applyButton")}
             </Button>
@@ -174,19 +174,19 @@ function TestTokenCard({ state, onChanged }: { state: SetupState; onChanged: () 
 
   return (
     <Card>
-      <h2 className="qms-heading">{t("setup.step.testToken")}</h2>
-      <p className="qms-muted">{t("setup.testToken.intro")}</p>
-      <div className="qms-row">
+      <h2 className="font-semibold text-fg">{t("setup.step.testToken")}</h2>
+      <p className="text-fg-muted">{t("setup.testToken.intro")}</p>
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <TestStatus done={token.issued} label={t("setup.testToken.status.issued")} />
         <TestStatus done={token.printed} label={t("setup.testToken.status.printed")} />
         <TestStatus done={token.called} label={t("setup.testToken.status.called")} />
         <TestStatus done={token.announced} label={t("setup.testToken.status.announced")} />
       </div>
       {!token.issued && (
-        <form className="qms-stack" onSubmit={issue}>
+        <form className="flex flex-col gap-4" onSubmit={issue}>
           <TextField id={`${id}-service`} label={t("setup.testToken.serviceLabel")} value={serviceId} onChange={(e) => setServiceId(e.target.value)} required />
           {error && <ErrorAlert>{error}</ErrorAlert>}
-          <div className="qms-row">
+          <div className="flex flex-wrap items-center justify-between gap-3">
             <Button type="submit" disabled={busy || serviceId.trim() === ""}>
               {t("setup.testToken.issueButton")}
             </Button>
@@ -194,25 +194,25 @@ function TestTokenCard({ state, onChanged }: { state: SetupState; onChanged: () 
         </form>
       )}
       {token.issued && (
-        <div className="qms-stack">
+        <div className="flex flex-col gap-4">
           <p>{t("setup.testToken.issued", { token: token.token_number ?? "" })}</p>
           {error && <ErrorAlert>{error}</ErrorAlert>}
           {!token.printed && (
-            <div className="qms-row">
+            <div className="flex flex-wrap items-center justify-between gap-3">
               <Button type="button" onClick={confirmPrint} disabled={busy}>
                 {t("setup.testToken.confirmPrintButton")}
               </Button>
             </div>
           )}
-          {token.printed && !token.called && <p className="qms-muted">{t("setup.testToken.waitingForCall")}</p>}
+          {token.printed && !token.called && <p className="text-fg-muted">{t("setup.testToken.waitingForCall")}</p>}
           {token.called && !token.announced && (
-            <div className="qms-row">
+            <div className="flex flex-wrap items-center justify-between gap-3">
               <Button type="button" onClick={confirmAnnounce} disabled={busy}>
                 {t("setup.testToken.confirmAnnounceButton")}
               </Button>
             </div>
           )}
-          <div className="qms-row">
+          <div className="flex flex-wrap items-center justify-between gap-3">
             <Button variant="secondary" type="button" onClick={onChanged}>
               {t("setup.testToken.refreshButton")}
             </Button>
@@ -241,14 +241,14 @@ function GoLiveCard({ state, onChanged }: { state: SetupState; onChanged: () => 
 
   return (
     <Card>
-      <h2 className="qms-heading">{t("setup.step.goLive")}</h2>
+      <h2 className="font-semibold text-fg">{t("setup.step.goLive")}</h2>
       {state.go_live_at ? (
         <p>{t("setup.goLive.done", { at: new Date(state.go_live_at).toLocaleString() })}</p>
       ) : (
-        <div className="qms-stack">
-          {!state.go_live_ready && <p className="qms-muted">{t("setup.goLive.blocked")}</p>}
+        <div className="flex flex-col gap-4">
+          {!state.go_live_ready && <p className="text-fg-muted">{t("setup.goLive.blocked")}</p>}
           {error && <ErrorAlert>{error}</ErrorAlert>}
-          <div className="qms-row">
+          <div className="flex flex-wrap items-center justify-between gap-3">
             <Button type="button" onClick={goLive} disabled={busy || !state.go_live_ready}>
               {t("setup.goLive.button")}
             </Button>

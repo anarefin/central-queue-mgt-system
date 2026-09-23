@@ -6,6 +6,7 @@ import {
   type Channel,
   type DetailedTokenReportPage,
   type DetailedTokenReportRequest,
+  type DetailedTokenReportRow,
   type PriorityClass,
   type ReportExportFormat,
   type ReportExportJob,
@@ -18,7 +19,7 @@ import {
   type Zone,
 } from "@qms/api-client";
 import { useI18n } from "@qms/i18n/react";
-import { Button, Card, ErrorAlert, SelectField, TextField } from "@qms/ui";
+import { Badge, Button, Card, DataTable, EmptyState, ErrorAlert, SelectField, TextField, type DataTableColumn } from "@qms/ui";
 import { useEffect, useRef, useState } from "react";
 import { describeError, localisedName, useList, useSubmit } from "../lib/admin-support";
 import { useApi } from "../lib/runtime";
@@ -187,15 +188,63 @@ export function DetailedTokenReportCard({ site }: { site: Site }) {
     void runReport({ sort: column, direction: nextDirection, page: 0 });
   }
 
+  const columns: DataTableColumn<DetailedTokenReportRow>[] = COLUMNS.map((column) => ({
+    key: column.sort,
+    header: t(`reports.detailedToken.col.${column.key}`),
+    sortable: true,
+    render: (row) => {
+      switch (column.key) {
+        case "token":
+          return row.token;
+        case "visitorCode":
+          return row.visitor_code ?? "—";
+        case "visitorName":
+          return row.visitor_name ?? "—";
+        case "category":
+          return row.visitor_category ?? "—";
+        case "serviceGroup":
+          return nameOf(row.service_group);
+        case "service":
+          return nameOf(row.service);
+        case "channel":
+          return t(`catalogue.channel.${row.channel}`);
+        case "priority":
+          return nameOf(row.priority_class);
+        case "issueTime":
+          return dateTime(row.issue_time);
+        case "callTime":
+          return dateTime(row.call_time);
+        case "startTime":
+          return dateTime(row.start_time);
+        case "endTime":
+          return dateTime(row.end_time);
+        case "wait":
+          return minutes(row.wait_seconds);
+        case "serviceDuration":
+          return minutes(row.service_seconds);
+        case "counter":
+          return row.counter ?? "—";
+        case "agent":
+          return row.agent ?? "—";
+        case "outcome":
+          return Object.keys(row.outcome).length > 0 ? nameOf(row.outcome) : "—";
+        case "transfers":
+          return row.transfers;
+        default:
+          return null;
+      }
+    },
+  }));
+
   return (
     <Card>
-      <h2 className="qms-heading">{t("reports.detailedToken.title")}</h2>
-      <p className="qms-muted">{t("reports.detailedToken.intro")}</p>
-      <div className="qms-row">
+      <h2 className="font-semibold text-fg">{t("reports.detailedToken.title")}</h2>
+      <p className="text-fg-muted">{t("reports.detailedToken.intro")}</p>
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <TextField id="report-from" label={t("reports.filters.from")} type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
         <TextField id="report-to" label={t("reports.filters.to")} type="date" value={to} onChange={(e) => setTo(e.target.value)} />
       </div>
-      <div className="qms-row">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <SelectField
           id="report-zone"
           label={t("reports.filters.zone")}
@@ -221,7 +270,7 @@ export function DetailedTokenReportCard({ site }: { site: Site }) {
           options={[{ value: "", label: t("reports.filters.allServices") }, ...(services.items ?? []).map((s) => ({ value: s.id, label: nameOf(s.name_i18n) }))]}
         />
       </div>
-      <div className="qms-row">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <SelectField
           id="report-agent"
           label={t("reports.filters.agent")}
@@ -245,7 +294,7 @@ export function DetailedTokenReportCard({ site }: { site: Site }) {
         />
         <TextField id="report-visitor-category" label={t("reports.filters.visitorCategory")} value={visitorCategory} onChange={(e) => setVisitorCategory(e.target.value)} />
       </div>
-      <div className="qms-row">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <Button type="button" disabled={busy} onClick={() => runReport({ page: 0 })}>
           {t(busy ? "reports.running" : "reports.run")}
         </Button>
@@ -262,61 +311,39 @@ export function DetailedTokenReportCard({ site }: { site: Site }) {
       </div>
       {error && <ErrorAlert>{error}</ErrorAlert>}
       {exporting.error && <ErrorAlert>{exporting.error}</ErrorAlert>}
-      {job && (job.status === "queued" || job.status === "running") && <p role="status">{t("reports.export.queued")}</p>}
-      {job && job.status === "done" && <p role="status">{t("reports.export.ready")}</p>}
-      {job && job.status === "failed" && <ErrorAlert>{t("reports.export.failed")}</ErrorAlert>}
+      {job && (job.status === "queued" || job.status === "running") && (
+        <p role="status" className="flex items-center gap-2">
+          <Badge variant="info">{t("reports.export.status.queued")}</Badge> {t("reports.export.queued")}
+        </p>
+      )}
+      {job && job.status === "done" && (
+        <p role="status" className="flex items-center gap-2">
+          <Badge variant="ok">{t("reports.export.status.ready")}</Badge> {t("reports.export.ready")}
+        </p>
+      )}
+      {job && job.status === "failed" && (
+        <ErrorAlert>
+          <span className="flex items-center gap-2">
+            <Badge variant="danger">{t("reports.export.status.failed")}</Badge> {t("reports.export.failed")}
+          </span>
+        </ErrorAlert>
+      )}
       {result && (
         <>
           <p role="status">{t("reports.summary", { total: result.total_rows, issued: result.tickets_issued })}</p>
-          {result.rows.length === 0 ? (
-            <p className="qms-muted">{t("reports.empty")}</p>
-          ) : (
-            <div className="qms-table-scroll">
-              <table className="qms-table">
-                <thead>
-                  <tr>
-                    {COLUMNS.map((column) => (
-                      <th key={column.key} scope="col">
-                        <button type="button" className="qms-button qms-button--secondary" onClick={() => sortBy(column.sort)}>
-                          {t(`reports.detailedToken.col.${column.key}`)}
-                          {sort === column.sort ? (direction === "asc" ? " ↑" : " ↓") : ""}
-                        </button>
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {result.rows.map((row) => (
-                    <tr key={row.ticket_id}>
-                      <th scope="row">{row.token}</th>
-                      <td>{row.visitor_code ?? "—"}</td>
-                      <td>{row.visitor_name ?? "—"}</td>
-                      <td>{row.visitor_category ?? "—"}</td>
-                      <td>{nameOf(row.service_group)}</td>
-                      <td>{nameOf(row.service)}</td>
-                      <td>{t(`catalogue.channel.${row.channel}`)}</td>
-                      <td>{nameOf(row.priority_class)}</td>
-                      <td>{dateTime(row.issue_time)}</td>
-                      <td>{dateTime(row.call_time)}</td>
-                      <td>{dateTime(row.start_time)}</td>
-                      <td>{dateTime(row.end_time)}</td>
-                      <td>{minutes(row.wait_seconds)}</td>
-                      <td>{minutes(row.service_seconds)}</td>
-                      <td>{row.counter ?? "—"}</td>
-                      <td>{row.agent ?? "—"}</td>
-                      <td>{Object.keys(row.outcome).length > 0 ? nameOf(row.outcome) : "—"}</td>
-                      <td>{row.transfers}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-          <div className="qms-row">
+          <DataTable
+            columns={columns}
+            rows={result.rows}
+            rowKey={(row) => row.ticket_id}
+            sort={{ key: sort, direction: direction === "asc" ? "ascending" : "descending" }}
+            onSortChange={(key) => sortBy(key as ReportSort)}
+            emptyState={<EmptyState title={t("reports.empty")} />}
+          />
+          <div className="flex flex-wrap items-center justify-between gap-3">
             <Button variant="secondary" type="button" disabled={busy || page === 0} onClick={() => runReport({ page: page - 1 })}>
               {t("reports.prevPage")}
             </Button>
-            <span className="qms-muted">{t("reports.pageOf", { page: page + 1, total: Math.max(result.total_pages, 1) })}</span>
+            <span className="text-fg-muted">{t("reports.pageOf", { page: page + 1, total: Math.max(result.total_pages, 1) })}</span>
             <Button variant="secondary" type="button" disabled={busy || page + 1 >= result.total_pages} onClick={() => runReport({ page: page + 1 })}>
               {t("reports.nextPage")}
             </Button>

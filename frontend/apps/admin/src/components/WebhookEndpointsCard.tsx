@@ -37,22 +37,22 @@ export function WebhookEndpointsCard() {
 
   return (
     <Card>
-      <h2 className="qms-heading">{t("webhooks.endpoints.title")}</h2>
-      <p className="qms-muted">{t("webhooks.endpoints.intro")}</p>
+      <h2 className="font-semibold text-fg">{t("webhooks.endpoints.title")}</h2>
+      <p className="text-fg-muted">{t("webhooks.endpoints.intro")}</p>
       {revealedSecret && (
-        <div className="qms-stack" role="status">
+        <div className="flex flex-col gap-4" role="status">
           <p>{t("webhooks.endpoints.secretRevealed", { description: revealedSecret.description })}</p>
           <code>{revealedSecret.secret}</code>
-          <p className="qms-muted">{t("webhooks.endpoints.secretRevealedHint")}</p>
+          <p className="text-fg-muted">{t("webhooks.endpoints.secretRevealedHint")}</p>
           <Button variant="secondary" type="button" onClick={() => setRevealedSecret(null)}>
             {t("admin.action.dismiss")}
           </Button>
         </div>
       )}
       {endpoints.error !== null && <ErrorAlert>{describeError(t, endpoints.error)}</ErrorAlert>}
-      {endpoints.items?.length === 0 && <p className="qms-muted">{t("webhooks.endpoints.none")}</p>}
+      {endpoints.items?.length === 0 && <p className="text-fg-muted">{t("webhooks.endpoints.none")}</p>}
       {endpoints.items && endpoints.items.length > 0 && (
-        <ul className="qms-list">
+        <ul className="m-0 list-none p-0 flex flex-col divide-y divide-border [&>li]:flex [&>li]:flex-wrap [&>li]:items-center [&>li]:justify-between [&>li]:gap-2 [&>li]:py-2.5">
           {endpoints.items.map((endpoint) => (
             <EntityRow
               key={endpoint.id}

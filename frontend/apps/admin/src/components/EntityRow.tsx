@@ -3,7 +3,7 @@
 import { useI18n } from "@qms/i18n/react";
 import { Button, ErrorAlert } from "@qms/ui";
 import { useState, type ReactNode } from "react";
-import { ActiveBadge, useSubmit } from "../lib/admin-support";
+import { ActiveBadge, useConfirmDialog, useSubmit } from "../lib/admin-support";
 
 interface EntityRowProps {
   /** Shown as the heading and used to tell the buttons of one row from another's. */
@@ -32,35 +32,45 @@ interface EntityRowProps {
 export function EntityRow({ name, heading, lines, warnings = [], active, canDeactivate = true, confirmText, onDeactivate, onActivate, editForm, extra, selected }: EntityRowProps) {
   const { t } = useI18n();
   const [editing, setEditing] = useState(false);
-  const [confirming, setConfirming] = useState(false);
   const { busy, error, run } = useSubmit();
+  const { ask, dialog } = useConfirmDialog();
+
+  function confirmDeactivate() {
+    ask({
+      title: `${t("admin.action.confirmDeactivate")} ${name}`,
+      description: confirmText,
+      confirmLabel: t("admin.action.confirmDeactivate"),
+      danger: true,
+      onConfirm: () => void run(onDeactivate),
+    });
+  }
 
   return (
     <li aria-current={selected ? "true" : undefined}>
-      <div className="qms-stack qms-grow">
-        <div className="qms-row">
+      <div className="flex flex-col gap-4 flex-1 min-w-0">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <strong>{heading}</strong>
           <ActiveBadge active={active} />
         </div>
         {lines.map((line, index) => (
-          <span className="qms-muted" key={index}>
+          <span className="text-fg-muted" key={index}>
             {line}
           </span>
         ))}
         {warnings.map((warning, index) => (
-          <span className="qms-warning" role="status" key={index}>
+          <span className="text-warn" role="status" key={index}>
             {warning}
           </span>
         ))}
-        <div className="qms-row">
-          <div className="qms-row">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
             {extra}
             <Button variant="secondary" type="button" aria-label={`${t("admin.action.edit")} ${name}`} onClick={() => setEditing((v) => !v)}>
               {t("admin.action.edit")}
             </Button>
             {active ? (
               canDeactivate && (
-                <Button variant="secondary" type="button" aria-label={`${t("admin.action.deactivate")} ${name}`} onClick={() => setConfirming(true)}>
+                <Button variant="secondary" type="button" aria-label={`${t("admin.action.deactivate")} ${name}`} onClick={confirmDeactivate}>
                   {t("admin.action.deactivate")}
                 </Button>
               )
@@ -71,28 +81,10 @@ export function EntityRow({ name, heading, lines, warnings = [], active, canDeac
             )}
           </div>
         </div>
-        {confirming && (
-          <div className="qms-stack" role="group" aria-label={`${t("admin.action.confirmDeactivate")} ${name}`}>
-            <p>{confirmText}</p>
-            <div className="qms-row">
-              <Button
-                type="button"
-                disabled={busy}
-                onClick={async () => {
-                  if (await run(onDeactivate)) setConfirming(false);
-                }}
-              >
-                {t("admin.action.confirmDeactivate")}
-              </Button>
-              <Button variant="secondary" type="button" onClick={() => setConfirming(false)}>
-                {t("admin.action.cancel")}
-              </Button>
-            </div>
-          </div>
-        )}
         {error && <ErrorAlert>{error}</ErrorAlert>}
         {editing && editForm(() => setEditing(false))}
       </div>
+      {dialog}
     </li>
   );
 }

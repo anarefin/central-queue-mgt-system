@@ -1,4 +1,5 @@
 import { I18nProvider } from "@qms/i18n/react";
+import { ThemeProvider } from "@qms/ui";
 import { render } from "@testing-library/react";
 import type { ReactElement } from "react";
 import { vi } from "vitest";
@@ -45,13 +46,15 @@ export function stubApi(routes: Routes): Recorded[] {
 function Shell({ children }: { children: ReactNode }) {
   const [userLanguage, setUserLanguage] = useState<string | null>(null);
   return (
-    <UserLanguageContext.Provider value={setUserLanguage}>
-      <I18nProvider loadExtra={false} userLanguage={userLanguage}>
-        <RuntimeProvider>
-          <AuthProvider>{children}</AuthProvider>
-        </RuntimeProvider>
-      </I18nProvider>
-    </UserLanguageContext.Provider>
+    <ThemeProvider>
+      <UserLanguageContext.Provider value={setUserLanguage}>
+        <I18nProvider loadExtra={false} userLanguage={userLanguage}>
+          <RuntimeProvider>
+            <AuthProvider>{children}</AuthProvider>
+          </RuntimeProvider>
+        </I18nProvider>
+      </UserLanguageContext.Provider>
+    </ThemeProvider>
   );
 }
 

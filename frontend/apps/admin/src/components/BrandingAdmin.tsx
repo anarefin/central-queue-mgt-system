@@ -39,8 +39,8 @@ export function BrandingAdmin() {
   }, [client]);
 
   return (
-    <div className="qms-stack">
-      <p className="qms-muted">{t("branding.intro")}</p>
+    <div className="flex flex-col gap-4">
+      <p className="text-fg-muted">{t("branding.intro")}</p>
       {loadError !== null && <ErrorAlert>{describeError(t, loadError)}</ErrorAlert>}
       {branding && <BrandingCard value={branding} onSaved={setBranding} />}
       {template && <TemplateCard value={template} onSaved={setTemplate} />}
@@ -74,8 +74,8 @@ function BrandingCard({ value, onSaved }: { value: OrgBranding; onSaved: (b: Org
 
   return (
     <Card>
-      <h2 className="qms-heading">{t("branding.section.orgBranding")}</h2>
-      <form className="qms-stack" onSubmit={submit}>
+      <h2 className="font-semibold text-fg">{t("branding.section.orgBranding")}</h2>
+      <form className="flex flex-col gap-4" onSubmit={submit}>
         <TextField id={`${id}-org-name`} label={t("branding.orgNameLabel")} value={orgName} onChange={(e) => setOrgName(e.target.value)} required />
         <TextField
           id={`${id}-primary-color`}
@@ -86,8 +86,8 @@ function BrandingCard({ value, onSaved }: { value: OrgBranding; onSaved: (b: Org
         />
         <TextField id={`${id}-logo-url`} label={t("branding.logoUrlLabel")} value={logoUrl} onChange={(e) => setLogoUrl(e.target.value)} />
         {error && <ErrorAlert>{error}</ErrorAlert>}
-        {saved && !error && <p className="qms-muted">{t("branding.brandingSaved")}</p>}
-        <div className="qms-row">
+        {saved && !error && <p className="text-fg-muted">{t("branding.brandingSaved")}</p>}
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <Button type="submit" disabled={busy}>
             {busy ? t("admin.action.saving") : t("branding.saveBranding")}
           </Button>
@@ -124,13 +124,13 @@ function TemplateCard({ value, onSaved }: { value: PrintTemplate; onSaved: (t: P
 
   return (
     <Card>
-      <h2 className="qms-heading">{t("branding.section.template")}</h2>
-      <p className="qms-muted">{t("branding.templateIntro")}</p>
-      <form className="qms-stack" onSubmit={submit}>
-        <fieldset className="qms-stack">
-          <legend className="qms-label">{t("branding.fieldsLegend")}</legend>
+      <h2 className="font-semibold text-fg">{t("branding.section.template")}</h2>
+      <p className="text-fg-muted">{t("branding.templateIntro")}</p>
+      <form className="flex flex-col gap-4" onSubmit={submit}>
+        <fieldset className="flex flex-col gap-4">
+          <legend className="block mb-1 font-medium text-fg text-sm">{t("branding.fieldsLegend")}</legend>
           {PRINT_FIELDS.map((field) => (
-            <div className="qms-row" key={field}>
+            <div className="flex flex-wrap items-center justify-between gap-3" key={field}>
               <input
                 type="checkbox"
                 id={`${id}-field-${field}`}
@@ -143,8 +143,8 @@ function TemplateCard({ value, onSaved }: { value: PrintTemplate; onSaved: (t: P
         </fieldset>
         <TextField id={`${id}-notice-line`} label={t("branding.noticeLineLabel")} value={noticeLine} onChange={(e) => setNoticeLine(e.target.value)} />
         {error && <ErrorAlert>{error}</ErrorAlert>}
-        {saved && !error && <p className="qms-muted">{t("branding.templateSaved")}</p>}
-        <div className="qms-row">
+        {saved && !error && <p className="text-fg-muted">{t("branding.templateSaved")}</p>}
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <Button type="submit" disabled={busy}>
             {busy ? t("admin.action.saving") : t("branding.saveTemplate")}
           </Button>
@@ -199,13 +199,13 @@ function PreviewCard({ branding, template }: { branding: OrgBranding; template: 
 
   return (
     <Card>
-      <h2 className="qms-heading">{t("branding.section.preview")}</h2>
-      <p className="qms-muted">{t("branding.previewIntro")}</p>
-      <div className="qms-print-slip-preview" aria-label={t("branding.preview.regionLabel")}>
+      <h2 className="font-semibold text-fg">{t("branding.section.preview")}</h2>
+      <p className="text-fg-muted">{t("branding.previewIntro")}</p>
+      <div className="block print:hidden rounded-lg border border-border p-4 max-w-xs" aria-label={t("branding.preview.regionLabel")}>
         <SlipContent branding={branding} template={template} t={t} />
       </div>
       {printError && <ErrorAlert>{t("branding.preview.printUnavailable")}</ErrorAlert>}
-      <div className="qms-row">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <Button type="button" onClick={testPrint}>
           {t("branding.testPrint")}
         </Button>
@@ -221,8 +221,8 @@ function SlipContent({ branding, template, t }: { branding: OrgBranding; templat
   const fields = template.fields;
   return (
     <div style={{ ["--qms-print-accent" as string]: branding.primary_color }}>
-      <div className="qms-print-slip-accent" />
-      {branding.logo_url && <img className="qms-print-slip-logo" src={branding.logo_url} alt={t("branding.logoAlt", { org: branding.org_name })} />}
+      <div className="block h-1 w-full" />
+      {branding.logo_url && <img className="max-w-32 max-h-16" src={branding.logo_url} alt={t("branding.logoAlt", { org: branding.org_name })} />}
       <p>
         <strong>{branding.org_name}</strong>
       </p>

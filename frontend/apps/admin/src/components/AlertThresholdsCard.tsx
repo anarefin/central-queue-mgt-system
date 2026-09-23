@@ -81,8 +81,8 @@ export function AlertThresholdsCard({ site }: { site: Site }) {
 
   return (
     <Card>
-      <h2 className="qms-heading">{t("alerts.thresholds.title")}</h2>
-      <p className="qms-muted">{t("alerts.thresholds.intro")}</p>
+      <h2 className="font-semibold text-fg">{t("alerts.thresholds.title")}</h2>
+      <p className="text-fg-muted">{t("alerts.thresholds.intro")}</p>
       {services.items && services.items.length > 0 && (
         <SelectField
           id="alert-threshold-service"
@@ -97,8 +97,8 @@ export function AlertThresholdsCard({ site }: { site: Site }) {
       )}
       {(services.error ?? loadError) != null && <ErrorAlert>{describeError(t, services.error ?? loadError)}</ErrorAlert>}
       {serviceId && values && (
-        <div className="qms-stack">
-          <div className="qms-row">
+        <div className="flex flex-col gap-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
             {FIELDS.map((field) => (
               <TextField
                 key={field}
@@ -112,7 +112,7 @@ export function AlertThresholdsCard({ site }: { site: Site }) {
           <Button type="button" onClick={save} disabled={busy}>
             {t("alerts.thresholds.save")}
           </Button>
-          {saved && <p className="qms-muted">{t("alerts.thresholds.saved")}</p>}
+          {saved && <p className="text-fg-muted">{t("alerts.thresholds.saved")}</p>}
           {error && <ErrorAlert>{error}</ErrorAlert>}
         </div>
       )}

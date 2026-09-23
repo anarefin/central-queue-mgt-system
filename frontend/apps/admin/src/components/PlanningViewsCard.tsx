@@ -83,8 +83,8 @@ export function PlanningViewsCard({ site }: { site: Site }) {
     const byCell = new Map<string, number>();
     for (const cell of response.cells) byCell.set(`${cell.day_of_week}:${cell.hour_of_day}`, cell.ticket_count);
     return (
-      <div className="qms-table-scroll">
-        <table className="qms-table">
+      <div className="overflow-x-auto">
+        <table className="w-full border-collapse text-sm [font-variant-numeric:tabular-nums] [&_th]:border-b [&_th]:border-border [&_th]:px-2.5 [&_th]:py-1.5 [&_th]:text-start [&_td]:border-b [&_td]:border-border [&_td]:px-2.5 [&_td]:py-1.5 [&_td]:text-start">
           <caption>{t("reports.peakHours.grid")}</caption>
           <thead>
             <tr>
@@ -114,8 +114,8 @@ export function PlanningViewsCard({ site }: { site: Site }) {
 
   function staffingGapTable(response: StaffingGapResponse) {
     return (
-      <div className="qms-table-scroll">
-        <table className="qms-table">
+      <div className="overflow-x-auto">
+        <table className="w-full border-collapse text-sm [font-variant-numeric:tabular-nums] [&_th]:border-b [&_th]:border-border [&_th]:px-2.5 [&_th]:py-1.5 [&_th]:text-start [&_td]:border-b [&_td]:border-border [&_td]:px-2.5 [&_td]:py-1.5 [&_td]:text-start">
           <caption>{t("reports.staffingGap.title")}</caption>
           <thead>
             <tr>
@@ -142,9 +142,9 @@ export function PlanningViewsCard({ site }: { site: Site }) {
 
   return (
     <Card>
-      <h2 className="qms-heading">{t("reports.planning.title")}</h2>
-      <p className="qms-muted">{t("reports.planning.intro")}</p>
-      <div className="qms-row">
+      <h2 className="font-semibold text-fg">{t("reports.planning.title")}</h2>
+      <p className="text-fg-muted">{t("reports.planning.intro")}</p>
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <SelectField
           id="planning-view-key"
           label={t("reports.planning.pickView")}
@@ -156,12 +156,12 @@ export function PlanningViewsCard({ site }: { site: Site }) {
           options={PLANNING_VIEW_KEYS.map((k) => ({ value: k, label: t(`reports.${camel(k)}.title`) }))}
         />
       </div>
-      <p className="qms-muted">{t(`reports.${camel(key)}.intro`)}</p>
-      <div className="qms-row">
+      <p className="text-fg-muted">{t(`reports.${camel(key)}.intro`)}</p>
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <TextField id="planning-view-from" label={t("reports.filters.from")} type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
         <TextField id="planning-view-to" label={t("reports.filters.to")} type="date" value={to} onChange={(e) => setTo(e.target.value)} />
       </div>
-      <div className="qms-row">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <SelectField
           id="planning-view-group"
           label={t("reports.filters.serviceGroup")}
@@ -187,7 +187,7 @@ export function PlanningViewsCard({ site }: { site: Site }) {
           options={[{ value: "", label: t("reports.filters.allAgents") }, ...(users.items ?? []).map((u) => ({ value: u.id, label: u.display_name ?? u.username }))]}
         />
       </div>
-      <div className="qms-row">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <SelectField
           id="planning-view-priority"
           label={t("reports.filters.priorityClass")}
@@ -204,11 +204,11 @@ export function PlanningViewsCard({ site }: { site: Site }) {
         />
         <TextField id="planning-view-visitor-category" label={t("reports.filters.visitorCategory")} value={visitorCategory} onChange={(e) => setVisitorCategory(e.target.value)} />
       </div>
-      <div className="qms-row">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <Button type="button" disabled={busy || !rangeChosen} onClick={() => void runView()}>
           {t(busy ? "reports.planning.running" : "reports.planning.run")}
         </Button>
-        {!rangeChosen && <span className="qms-muted">{t("reports.planning.rangeRequired")}</span>}
+        {!rangeChosen && <span className="text-fg-muted">{t("reports.planning.rangeRequired")}</span>}
       </div>
       {error && <ErrorAlert>{error}</ErrorAlert>}
       {result && result.key === "peak-hours" && peakHoursGrid(result)}

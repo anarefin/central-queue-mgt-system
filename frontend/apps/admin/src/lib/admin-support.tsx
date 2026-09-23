@@ -4,8 +4,8 @@ import { ApiRequestError, type Items } from "@qms/api-client";
 import type { I18n } from "@qms/i18n";
 import { useI18n } from "@qms/i18n/react";
 import { SHIPPED_LANGUAGES } from "@qms/i18n";
-import { StatusBadge } from "@qms/ui";
-import { useCallback, useEffect, useState } from "react";
+import { ConfirmDialog, StatusBadge } from "@qms/ui";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 
 /** Field names of the service catalogue; their labels live under `catalogue.fields`, the rest under `sites.fields`. */
 const CATALOGUE_FIELDS = new Set([
@@ -102,6 +102,47 @@ export function useSubmit() {
     [t],
   );
   return { busy, error, run, clearError: () => setError(null) };
+}
+
+interface ConfirmRequest {
+  title: ReactNode;
+  description?: ReactNode;
+  /** Defaults to the generic "Confirm" (`common.confirm`); pass the specific action's own label to keep it. */
+  confirmLabel?: string;
+  danger?: boolean;
+  onConfirm: () => void;
+}
+
+/**
+ * A shared `ConfirmDialog` (ticket 63): replaces the inline expand/collapse "are you sure" panels and
+ * `window.confirm` calls scattered across admin with one accessible, focus-trapped dialog. `ask` opens it;
+ * `dialog` is rendered once near the top of the component tree that owns the destructive action.
+ */
+export function useConfirmDialog() {
+  const { t } = useI18n();
+  const [request, setRequest] = useState<ConfirmRequest | null>(null);
+
+  const ask = useCallback((next: ConfirmRequest) => setRequest(next), []);
+  const cancel = useCallback(() => setRequest(null), []);
+
+  const dialog = (
+    <ConfirmDialog
+      open={request !== null}
+      title={request?.title ?? ""}
+      description={request?.description}
+      danger={request?.danger}
+      confirmLabel={request?.confirmLabel ?? t("common.confirm")}
+      cancelLabel={t("common.cancel")}
+      onConfirm={() => {
+        const current = request;
+        setRequest(null);
+        current?.onConfirm();
+      }}
+      onCancel={cancel}
+    />
+  );
+
+  return { ask, dialog };
 }
 
 export function ActiveBadge({ active }: { active: boolean }) {

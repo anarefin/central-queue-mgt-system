@@ -28,12 +28,12 @@ export function ZoneForm({ initial = { name: "", floor_label: "", building_label
   }
 
   return (
-    <form className="qms-stack" onSubmit={submit}>
+    <form className="flex flex-col gap-4" onSubmit={submit}>
       <TextField id={`${id}-name`} label={t("sites.fields.name")} value={values.name} onChange={set("name")} />
       <TextField id={`${id}-floor`} label={t("sites.fields.floor_label")} value={values.floor_label} onChange={set("floor_label")} />
       <TextField id={`${id}-building`} label={t("sites.fields.building_label")} value={values.building_label} onChange={set("building_label")} />
       {error && <ErrorAlert>{error}</ErrorAlert>}
-      <div className="qms-row">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <Button type="submit" disabled={busy}>
           {busy ? t("admin.action.saving") : submitLabel}
         </Button>

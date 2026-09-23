@@ -340,7 +340,7 @@ describe("service catalogue screen", () => {
     });
 
     await userEvent.click(within(card).getByRole("button", { name: "Deactivate Resolved" }));
-    await userEvent.click(within(within(card).getByRole("group", { name: "Confirm deactivation Resolved" })).getByRole("button", { name: "Confirm deactivation" }));
+    await userEvent.click(within(card).getByRole("button", { name: "Confirm deactivation" }));
     expect(await within(card).findByRole("button", { name: "Activate Resolved" })).toBeInTheDocument();
     expect(within(card).queryByRole("button", { name: /^Delete/ })).not.toBeInTheDocument();
   });
@@ -379,13 +379,13 @@ describe("service catalogue screen", () => {
 
     await userEvent.click(await within(card).findByRole("button", { name: "Delete Consultation" }));
     expect(within(card).getByText(/A service that has tickets cannot be deleted; deactivate it instead\./)).toBeInTheDocument();
-    await userEvent.click(within(within(card).getByRole("group", { name: "Confirm delete Consultation" })).getByRole("button", { name: "Confirm delete" }));
+    await userEvent.click(within(card).getByRole("button", { name: "Confirm delete" }));
 
     expect(await within(card).findByRole("alert")).toHaveTextContent("This service has tickets, so it cannot be deleted. Deactivate it instead.");
     expect(within(card).getByText("Consultation")).toBeInTheDocument();
 
     await userEvent.click(within(card).getByRole("button", { name: "Deactivate Consultation" }));
-    await userEvent.click(within(within(card).getByRole("group", { name: "Confirm deactivation Consultation" })).getByRole("button", { name: "Confirm deactivation" }));
+    await userEvent.click(within(card).getByRole("button", { name: "Confirm deactivation" }));
     expect(await within(card).findByRole("button", { name: "Activate Consultation" })).toBeInTheDocument();
   });
 
@@ -396,7 +396,7 @@ describe("service catalogue screen", () => {
     const card = await openServices();
 
     await userEvent.click(await within(card).findByRole("button", { name: "Delete Consultation" }));
-    await userEvent.click(within(within(card).getByRole("group", { name: "Confirm delete Consultation" })).getByRole("button", { name: "Confirm delete" }));
+    await userEvent.click(within(card).getByRole("button", { name: "Confirm delete" }));
 
     expect(await within(card).findByText("This service group has no services yet.")).toBeInTheDocument();
     expect(calls.some((c) => c.method === "DELETE" && c.path === "/services/v1")).toBe(true);

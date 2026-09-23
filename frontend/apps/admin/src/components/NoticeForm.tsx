@@ -55,7 +55,7 @@ export function NoticeForm({ zoneId, languages, defaultLanguage, initial, submit
   }
 
   return (
-    <form className="qms-stack" onSubmit={submit}>
+    <form className="flex flex-col gap-4" onSubmit={submit}>
       <SelectField
         id={`${id}-type`}
         label={t("noticeBoard.fields.type")}
@@ -75,7 +75,7 @@ export function NoticeForm({ zoneId, languages, defaultLanguage, initial, submit
       <TextField id={`${id}-ends`} type="datetime-local" label={t("noticeBoard.fields.endsAt")} value={endsAt} onChange={(e) => setEndsAt(e.target.value)} />
       <TextField id={`${id}-sort`} type="number" min={0} label={t("noticeBoard.fields.sortOrder")} value={sortOrder} onChange={(e) => setSortOrder(e.target.value)} />
       {error && <ErrorAlert>{error}</ErrorAlert>}
-      <div className="qms-row">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <Button type="submit" disabled={busy}>
           {busy ? t("admin.action.saving") : submitLabel}
         </Button>

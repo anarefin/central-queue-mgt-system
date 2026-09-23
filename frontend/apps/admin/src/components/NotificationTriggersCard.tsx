@@ -33,8 +33,8 @@ export function NotificationTriggersCard({ site }: { site: Site }) {
 
   return (
     <Card>
-      <h2 className="qms-heading">{t("notifications.triggers.title")}</h2>
-      <p className="qms-muted">{t("notifications.triggers.intro")}</p>
+      <h2 className="font-semibold text-fg">{t("notifications.triggers.title")}</h2>
+      <p className="text-fg-muted">{t("notifications.triggers.intro")}</p>
       {services.items && services.items.length > 0 && (
         <SelectField
           id="notification-trigger-service"
@@ -49,24 +49,24 @@ export function NotificationTriggersCard({ site }: { site: Site }) {
       )}
       {(catalogue.error ?? triggers.error) != null && <ErrorAlert>{describeError(t, catalogue.error ?? triggers.error)}</ErrorAlert>}
       {error && <ErrorAlert>{error}</ErrorAlert>}
-      <ul className="qms-list">
+      <ul className="m-0 list-none p-0 flex flex-col divide-y divide-border [&>li]:flex [&>li]:flex-wrap [&>li]:items-center [&>li]:justify-between [&>li]:gap-2 [&>li]:py-2.5">
         {triggers.items?.map((trigger) => {
           const meta = catalogue.items?.find((c) => c.trigger_key === trigger.trigger_key);
           return (
-            <li key={trigger.trigger_key} className="qms-row">
+            <li key={trigger.trigger_key} className="flex flex-wrap items-center justify-between gap-3">
               <span>
                 {t(`notifications.trigger.${trigger.trigger_key}`)}
                 {meta?.essential && ` (${t("notifications.triggers.essential")})`}
               </span>
-              <span className="qms-muted">{trigger.channel_order.join(" → ")}</span>
-              <span className="qms-muted">
+              <span className="text-fg-muted">{trigger.channel_order.join(" → ")}</span>
+              <span className="text-fg-muted">
                 {trigger.service_overridden
                   ? t("notifications.triggers.overriddenService")
                   : trigger.site_overridden
                     ? t("notifications.triggers.overriddenSite")
                     : t("notifications.triggers.default")}
               </span>
-              <button type="button" className="qms-button qms-button--secondary" disabled={busy} onClick={() => void toggle(trigger)}>
+              <button type="button" className="inline-flex items-center justify-center gap-2 rounded-md px-4 py-2 text-sm font-medium motion-safe:transition-colors bg-primary text-primary-fg hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-60 " disabled={busy} onClick={() => void toggle(trigger)}>
                 {t(trigger.enabled ? "notifications.triggers.disable" : "notifications.triggers.enable")}
               </button>
             </li>
