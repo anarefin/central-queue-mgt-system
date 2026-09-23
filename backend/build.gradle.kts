@@ -52,6 +52,9 @@ dependencies {
 
 // Tests that boot the application must not write signing keys into the source tree.
 tasks.withType<Test>().configureEach {
+    // Default worker heap is too small once the IT suite accumulates ~70+ Spring contexts
+    // in one forked JVM; without this the executor OOMs during shutdown after all tests pass.
+    maxHeapSize = "3g"
     systemProperty("qms.security.key-dir", layout.buildDirectory.dir("test-keys").get().asFile.absolutePath)
     // The scheduled numbering reset is driven by hand in tests; a clock-driven one would race with them.
     systemProperty("qms.numbering.scheduler.cron", "-")
