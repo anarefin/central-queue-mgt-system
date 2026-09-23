@@ -1,17 +1,13 @@
 "use client";
 
 import { useI18n } from "@qms/i18n/react";
-import { AppShell, Badge, Button, ThemeToggle } from "@qms/ui";
+import { APP_SHELL_BARE_ROUTES, AppShell, Badge, Button, ThemeToggle } from "@qms/ui";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import type { ReactNode } from "react";
 import { useAuth } from "../lib/auth";
 import { useElapsedSeconds } from "../lib/console-support";
 import { useSessionStatus } from "../lib/session-status";
-
-/** Routes that stay a full-page, centred card outside the app shell (ticket 64, matching ticket 63's admin
- *  chrome): signed-out visitors have no counter status, user menu or theme toggle to show yet. */
-const BARE_ROUTES = ["/login/", "/signed-out/"];
 
 const WARN_STATES = new Set(["closing", "force_closed"]);
 
@@ -29,7 +25,7 @@ export function ConsoleChrome({ children }: { children: ReactNode }) {
   const router = useRouter();
   const session = useSessionStatus();
 
-  if (BARE_ROUTES.includes(pathname)) return <>{children}</>;
+  if (APP_SHELL_BARE_ROUTES.includes(pathname)) return <>{children}</>;
 
   async function signOut() {
     await logout();

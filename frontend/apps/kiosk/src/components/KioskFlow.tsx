@@ -666,11 +666,15 @@ function AccessibilityBar({ prefs, onChange }: { prefs: AccessibilityPrefs; onCh
   const { t } = useI18n();
   return (
     <div className="flex justify-end gap-2">
+      {/* min-h-[4rem] (64px, matching every other kiosk touch control, e.g. TILE_* above): the default Button
+          sizes top out well under that, and these two toggles are otherwise the only kiosk controls a visitor
+          taps that aren't a Tile. */}
       <Button
         type="button"
         variant={prefs.highContrast ? "primary" : "secondary"}
         aria-pressed={prefs.highContrast}
         onClick={() => onChange({ ...prefs, highContrast: !prefs.highContrast })}
+        className="min-h-[4rem] min-w-[4rem]"
       >
         {t("kiosk.accessibility.highContrast")}
       </Button>
@@ -679,6 +683,7 @@ function AccessibilityBar({ prefs, onChange }: { prefs: AccessibilityPrefs; onCh
         variant={prefs.largeText ? "primary" : "secondary"}
         aria-pressed={prefs.largeText}
         onClick={() => onChange({ ...prefs, largeText: !prefs.largeText })}
+        className="min-h-[4rem] min-w-[4rem]"
       >
         {t("kiosk.accessibility.largeText")}
       </Button>

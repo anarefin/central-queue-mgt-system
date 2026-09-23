@@ -134,10 +134,16 @@ export function counterLabel(value: string): FieldError {
 
 // ---- Notice (backend/.../configuration/notice/NoticeRules.java) ---------------------------------------------------
 
-/** `NoticeRules.dates`: `ends_at` must be strictly after `starts_at`, checked only once both are set — an
- * incomplete pair is either still being typed or is the input's own `required`, not this rule's business. */
-export function noticeDates(startsAt: string, endsAt: string): FieldError {
-  if (startsAt.trim() === "" || endsAt.trim() === "") return undefined;
+/** `NoticeRules.dates`: `starts_at` is required (`NotNull`). */
+export function noticeStartsAt(startsAt: string): FieldError {
+  return startsAt.trim() === "" ? "validation.required" : undefined;
+}
+
+/** `NoticeRules.dates`: `ends_at` is required (`NotNull`), and once both dates are set, must be strictly after
+ * `starts_at`. A blank `starts_at` is left to `noticeStartsAt`'s own required error rather than reported twice. */
+export function noticeEndsAt(startsAt: string, endsAt: string): FieldError {
+  if (endsAt.trim() === "") return "validation.required";
+  if (startsAt.trim() === "") return undefined;
   const start = new Date(startsAt).getTime();
   const end = new Date(endsAt).getTime();
   if (Number.isNaN(start) || Number.isNaN(end)) return undefined;

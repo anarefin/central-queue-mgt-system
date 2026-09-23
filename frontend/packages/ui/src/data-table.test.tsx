@@ -48,4 +48,16 @@ describe("DataTable", () => {
     await userEvent.click(screen.getByRole("button", { name: /Name/ }));
     expect(onSortChange).toHaveBeenCalledWith("name");
   });
+
+  it("renders an accessible caption and a rowHeader column as th scope=row", () => {
+    const columns: DataTableColumn<Site>[] = [
+      { key: "name", header: "Name", rowHeader: true, render: (row) => row.name },
+      { key: "timezone", header: "Timezone", render: (row) => row.timezone },
+    ];
+    render(<DataTable columns={columns} rows={SITES} rowKey={(row) => row.id} caption="Every site" />);
+    expect(screen.getByText("Every site").closest("caption")).toBeInTheDocument();
+    const rowHeader = screen.getByRole("rowheader", { name: "Main campus" });
+    expect(rowHeader.tagName).toBe("TH");
+    expect(screen.getAllByRole("cell", { name: "Asia/Dhaka" })).toHaveLength(2);
+  });
 });

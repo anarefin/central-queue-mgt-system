@@ -920,7 +920,7 @@ API, all under `/api/v1` and needing `notice_board:manage`: `GET /zones/{zoneId}
 
 ## 26. Notifications
 
-A System Admin, Org Admin or Team Admin with `config:service_catalogue` configures the whole notification pipeline
+A System Admin or Org Admin with `config:service_catalogue` configures the whole notification pipeline
 from `/admin/notifications/` (ticket 38, SRS §14): the trigger catalogue and its per-Site/Service settings
 (FR-NTF-010), message templates with a live preview (FR-NTF-020, FR-NTF-021), the delivery log, and each Service's
 own alert thresholds (ticket 47) all sit on this one screen, picked per Site.

@@ -3,6 +3,11 @@
 import { Fragment, useState, type ReactNode } from "react";
 import { cn } from "./cn";
 
+/** Routes that stay a full-page, centred card outside any `AppShell`-based chrome (ticket 63, matched by ticket
+ * 64's console chrome): signed-out visitors have no sidebar, site switcher, user menu or theme toggle to show yet.
+ * Shared here so every `AppShell`-based app's own chrome checks the same list instead of redeclaring it. */
+export const APP_SHELL_BARE_ROUTES = ["/login/", "/signed-out/"];
+
 export interface AppShellNavItem {
   href: string;
   label: ReactNode;

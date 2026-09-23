@@ -305,7 +305,6 @@ describe("KioskFlow accessibility (FR-ISS-017, NFR-USA-003)", () => {
 
     await userEvent.click(start);
     for (const button of await screen.findAllByRole("button")) {
-      if (button.getAttribute("aria-pressed") !== null) continue; // the high-contrast/large-text toggles, not a flow tile
       expect(minHeightRem(button)).toBeGreaterThanOrEqual(4);
     }
   });

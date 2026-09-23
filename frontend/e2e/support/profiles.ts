@@ -9,10 +9,6 @@ export type ProfileId = "banking" | "healthcare" | "producer_services";
 
 export interface ProfileFixture {
     id: ProfileId;
-    /** The seeded starter catalogue's one Service group name (ticket 67: the profile's own `entity.service_group`
-     * label — `CatalogueSeeding.GroupDef`'s name), needed to pick it on the kiosk's Group screen whenever a spec
-     * has created a second group of its own (ticket 70: the Group screen no longer auto-skips once that happens). */
-    serviceGroupName: string;
     /** The first starter service the profile ships (§3.4), used to drive the kiosk/console flows generically. */
     starterServiceName: string;
     /** A priority class with a head-start > 0, for U6 (a priority visitor arriving into a long normal queue). */
@@ -24,21 +20,18 @@ export interface ProfileFixture {
 export const PROFILES: Record<ProfileId, ProfileFixture> = {
     banking: {
         id: "banking",
-        serviceGroupName: "Branch function",
         starterServiceName: "Cash deposit",
         priorityClassWithHeadStart: "Priority banking",
         visitorLabel: "Customer",
     },
     healthcare: {
         id: "healthcare",
-        serviceGroupName: "Department / clinic",
         starterServiceName: "Registration",
         priorityClassWithHeadStart: "Emergency",
         visitorLabel: "Patient",
     },
     producer_services: {
         id: "producer_services",
-        serviceGroupName: "Department",
         starterServiceName: "Helpdesk query",
         priorityClassWithHeadStart: "Distant-district producer",
         visitorLabel: "Producer",

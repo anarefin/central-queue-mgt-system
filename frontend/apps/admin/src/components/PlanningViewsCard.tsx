@@ -14,7 +14,7 @@ import {
   type UserSummary,
 } from "@qms/api-client";
 import { useI18n } from "@qms/i18n/react";
-import { Button, Card, ErrorAlert, reportRange, SelectField, TextField } from "@qms/ui";
+import { Button, Card, DataTable, ErrorAlert, reportRange, SelectField, TextField, type DataTableColumn } from "@qms/ui";
 import { useState } from "react";
 import { localisedName, useFormValidation, useList, useSubmit } from "../lib/admin-support";
 import { useApi } from "../lib/runtime";
@@ -88,62 +88,27 @@ export function PlanningViewsCard({ site }: { site: Site }) {
   function peakHoursGrid(response: PeakHoursResponse) {
     const byCell = new Map<string, number>();
     for (const cell of response.cells) byCell.set(`${cell.day_of_week}:${cell.hour_of_day}`, cell.ticket_count);
+    const columns: DataTableColumn<number>[] = [
+      { key: "hour", header: t("reports.peakHours.hour"), rowHeader: true, render: (hour) => hour },
+      ...DAY_KEYS.map((d, i) => ({
+        key: d,
+        header: t(`reports.peakHours.day.${d}`),
+        render: (hour: number) => byCell.get(`${i + 1}:${hour}`) ?? 0,
+      })),
+    ];
     return (
-      <div className="overflow-x-auto">
-        <table className="w-full border-collapse text-sm [font-variant-numeric:tabular-nums] [&_th]:border-b [&_th]:border-border [&_th]:px-2.5 [&_th]:py-1.5 [&_th]:text-start [&_td]:border-b [&_td]:border-border [&_td]:px-2.5 [&_td]:py-1.5 [&_td]:text-start">
-          <caption>{t("reports.peakHours.grid")}</caption>
-          <thead>
-            <tr>
-              <th scope="col">{t("reports.peakHours.hour")}</th>
-              {DAY_KEYS.map((d) => (
-                <th key={d} scope="col">
-                  {t(`reports.peakHours.day.${d}`)}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {Array.from({ length: 24 }, (_, hour) => (
-              <tr key={hour}>
-                <th scope="row">{hour}</th>
-                {DAY_KEYS.map((_, i) => {
-                  const dayOfWeek = i + 1;
-                  return <td key={dayOfWeek}>{byCell.get(`${dayOfWeek}:${hour}`) ?? 0}</td>;
-                })}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <DataTable caption={t("reports.peakHours.grid")} columns={columns} rows={Array.from({ length: 24 }, (_, hour) => hour)} rowKey={(hour) => String(hour)} />
     );
   }
 
   function staffingGapTable(response: StaffingGapResponse) {
-    return (
-      <div className="overflow-x-auto">
-        <table className="w-full border-collapse text-sm [font-variant-numeric:tabular-nums] [&_th]:border-b [&_th]:border-border [&_th]:px-2.5 [&_th]:py-1.5 [&_th]:text-start [&_td]:border-b [&_td]:border-border [&_td]:px-2.5 [&_td]:py-1.5 [&_td]:text-start">
-          <caption>{t("reports.staffingGap.title")}</caption>
-          <thead>
-            <tr>
-              <th scope="col">{t("reports.staffingGap.hour")}</th>
-              <th scope="col">{t("reports.metric.tickets_offered")}</th>
-              <th scope="col">{t("reports.metric.counter_hours_available")}</th>
-              <th scope="col">{t("reports.metric.sla_attainment_pct")}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {response.rows.map((row) => (
-              <tr key={row.hour_of_day}>
-                <th scope="row">{row.hour_of_day}</th>
-                <td>{row.tickets_offered}</td>
-                <td>{row.counter_hours_available}</td>
-                <td>{formatPct(row.sla_attainment_pct)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    );
+    const columns: DataTableColumn<StaffingGapResponse["rows"][number]>[] = [
+      { key: "hour", header: t("reports.staffingGap.hour"), rowHeader: true, render: (row) => row.hour_of_day },
+      { key: "tickets_offered", header: t("reports.metric.tickets_offered"), render: (row) => row.tickets_offered },
+      { key: "counter_hours_available", header: t("reports.metric.counter_hours_available"), render: (row) => row.counter_hours_available },
+      { key: "sla_attainment_pct", header: t("reports.metric.sla_attainment_pct"), render: (row) => formatPct(row.sla_attainment_pct) },
+    ];
+    return <DataTable caption={t("reports.staffingGap.title")} columns={columns} rows={response.rows} rowKey={(row) => String(row.hour_of_day)} />;
   }
 
   return (

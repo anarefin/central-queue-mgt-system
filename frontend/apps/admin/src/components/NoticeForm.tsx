@@ -2,7 +2,7 @@
 
 import type { Notice, NoticeInput, NoticeType } from "@qms/api-client";
 import { useI18n } from "@qms/i18n/react";
-import { Button, ErrorAlert, noticeDates, noticeSortOrder, SelectField, TextField } from "@qms/ui";
+import { Button, ErrorAlert, noticeEndsAt, noticeSortOrder, noticeStartsAt, SelectField, TextField } from "@qms/ui";
 import { useId, useState, type FormEvent } from "react";
 import { useFormValidation, useSubmit } from "../lib/admin-support";
 import { nameValues, TranslatedNameFields } from "./TranslatedNameFields";
@@ -41,10 +41,11 @@ export function NoticeForm({ zoneId, languages, defaultLanguage, initial, submit
   const [sortOrder, setSortOrder] = useState(String(initial?.sort_order ?? 0));
   const { busy, error, run } = useSubmit();
 
-  const fieldIds = { ends: `${id}-ends`, sortOrder: `${id}-sort` };
+  const fieldIds = { starts: `${id}-starts`, ends: `${id}-ends`, sortOrder: `${id}-sort` };
   const validation = useFormValidation<{ startsAt: string; endsAt: string; sortOrder: string }>(
     {
-      ends: (v) => noticeDates(v.startsAt, v.endsAt),
+      starts: (v) => noticeStartsAt(v.startsAt),
+      ends: (v) => noticeEndsAt(v.startsAt, v.endsAt),
       sortOrder: (v) => noticeSortOrder(Number(v.sortOrder)),
     },
     fieldIds,
@@ -83,12 +84,16 @@ export function NoticeForm({ zoneId, languages, defaultLanguage, initial, submit
         onChange={setContent}
       />
       <TextField
-        id={`${id}-starts`}
+        id={fieldIds.starts}
         type="datetime-local"
         label={t("noticeBoard.fields.startsAt")}
         value={startsAt}
         onChange={(e) => setStartsAt(e.target.value)}
-        onBlur={() => validation.validateField("ends", { ...validationValues, startsAt })}
+        onBlur={() => {
+          validation.validateField("starts", { ...validationValues, startsAt });
+          validation.validateField("ends", { ...validationValues, startsAt });
+        }}
+        error={validation.message("starts")}
       />
       <TextField
         id={fieldIds.ends}

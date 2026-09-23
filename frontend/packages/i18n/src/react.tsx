@@ -217,3 +217,33 @@ export function useLabels(): LabelsContextValue {
   if (!value) throw new Error("useLabels must be used inside <LabelsProvider>");
   return value;
 }
+
+/** The subset of a staff app's generated API client this needs: just enough to build `fetchLabels`. */
+export interface LabelsClient {
+  labels: { get(lang: string): Promise<Record<string, string>> };
+}
+
+/**
+ * Shared plumbing behind a signed-in app's own `AppLabelsProvider` (ticket 69, SRS §3.2): `GET /labels` needs any
+ * authenticated principal, so this waits for sign-in before fetching — before that, every screen just shows the
+ * pack's own default noun, which is also what a failed fetch falls back to. Each app still owns its own
+ * `AppLabelsProvider` wrapper (one line, passing its own `useApi()`/`useAuth()` through) since those hooks are each
+ * app's own context implementation, not something to share; this factors out only the `fetchLabels` construction
+ * that was previously duplicated byte-for-byte between the admin and console apps.
+ */
+export function AuthenticatedLabelsProvider({
+  children,
+  client,
+  authenticated,
+}: {
+  children: ReactNode;
+  client: LabelsClient | null | undefined;
+  authenticated: boolean;
+}) {
+  const fetchLabels = useMemo(() => {
+    if (!client || !authenticated) return undefined;
+    return (lang: string) => client.labels.get(lang);
+  }, [client, authenticated]);
+
+  return <LabelsProvider fetchLabels={fetchLabels}>{children}</LabelsProvider>;
+}

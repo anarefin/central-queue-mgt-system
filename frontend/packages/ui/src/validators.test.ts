@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   counterLabel,
-  noticeDates,
+  noticeEndsAt,
   noticeSortOrder,
+  noticeStartsAt,
   optionalText,
   parseLanguageList,
   reportRange,
@@ -168,23 +169,37 @@ describe("counterLabel", () => {
   });
 });
 
-describe("noticeDates (NoticeRules.dates)", () => {
+describe("noticeStartsAt (NoticeRules.dates)", () => {
+  it("requires a value", () => {
+    expect(noticeStartsAt("")).toBe("validation.required");
+    expect(noticeStartsAt("  ")).toBe("validation.required");
+  });
+
+  it("accepts any non-blank value", () => {
+    expect(noticeStartsAt("2026-06-01T09:00")).toBeUndefined();
+  });
+});
+
+describe("noticeEndsAt (NoticeRules.dates)", () => {
+  it("requires a value even when starts_at is also blank", () => {
+    expect(noticeEndsAt("", "")).toBe("validation.required");
+    expect(noticeEndsAt("2026-06-01T09:00", "")).toBe("validation.required");
+  });
+
+  it("stays silent on ordering while starts_at is still unset (that half is starts_at's own required error)", () => {
+    expect(noticeEndsAt("", "2026-06-01T09:00")).toBeUndefined();
+  });
+
   it("rejects an end equal to the start", () => {
-    expect(noticeDates("2026-06-01T09:00", "2026-06-01T09:00")).toBe("validation.notice.endsAt.notAfterStarts");
+    expect(noticeEndsAt("2026-06-01T09:00", "2026-06-01T09:00")).toBe("validation.notice.endsAt.notAfterStarts");
   });
 
   it("rejects an end before the start", () => {
-    expect(noticeDates("2026-06-02T09:00", "2026-06-01T09:00")).toBe("validation.notice.endsAt.notAfterStarts");
+    expect(noticeEndsAt("2026-06-02T09:00", "2026-06-01T09:00")).toBe("validation.notice.endsAt.notAfterStarts");
   });
 
   it("accepts an end strictly after the start", () => {
-    expect(noticeDates("2026-06-01T09:00", "2026-06-01T09:01")).toBeUndefined();
-  });
-
-  it("stays silent while either end is still unset", () => {
-    expect(noticeDates("", "")).toBeUndefined();
-    expect(noticeDates("2026-06-01T09:00", "")).toBeUndefined();
-    expect(noticeDates("", "2026-06-01T09:00")).toBeUndefined();
+    expect(noticeEndsAt("2026-06-01T09:00", "2026-06-01T09:01")).toBeUndefined();
   });
 });
 

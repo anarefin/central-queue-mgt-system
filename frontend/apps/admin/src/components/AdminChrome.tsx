@@ -1,16 +1,12 @@
 "use client";
 
 import { useI18n } from "@qms/i18n/react";
-import { AppShell, Button, ThemeToggle, type AppShellNavItem } from "@qms/ui";
+import { APP_SHELL_BARE_ROUTES, AppShell, Button, ThemeToggle, type AppShellNavItem } from "@qms/ui";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import type { ReactNode } from "react";
 import { useAuth } from "../lib/auth";
 import { visibleAdminNavItems } from "./AdminNav";
-
-/** Routes that stay a full-page, centred card outside the app shell (ticket 63): signed-out visitors have no
- *  sidebar, site switcher or user menu to show yet. */
-const BARE_ROUTES = ["/login/", "/signed-out/"];
 
 /**
  * Wraps every signed-in admin route in the shared `AppShell` (ticket 63): a grouped, role-gated sidebar, and a top
@@ -24,7 +20,7 @@ export function AdminChrome({ children }: { children: ReactNode }) {
   const { status, user, logout } = useAuth();
   const router = useRouter();
 
-  if (BARE_ROUTES.includes(pathname)) return <>{children}</>;
+  if (APP_SHELL_BARE_ROUTES.includes(pathname)) return <>{children}</>;
 
   const nav: AppShellNavItem[] = visibleAdminNavItems(user?.roles ?? []).map((item) => ({
     href: item.href,

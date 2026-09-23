@@ -14,7 +14,7 @@ import {
   type UserSummary,
 } from "@qms/api-client";
 import { useI18n } from "@qms/i18n/react";
-import { Button, Card, ErrorAlert, reportRange, SelectField, TextField } from "@qms/ui";
+import { Button, Card, DataTable, EmptyState, ErrorAlert, reportRange, SelectField, TextField, type DataTableColumn } from "@qms/ui";
 import { useState } from "react";
 import { localisedName, useFormValidation, useList, useSubmit } from "../lib/admin-support";
 import { useApi } from "../lib/runtime";
@@ -131,36 +131,37 @@ export function DomainReportsCard({ site }: { site: Site }) {
     return String(value);
   }
 
+  const extraColumns: DataTableColumn<{ row: DomainReportRow; i: number }>[] = NO_SHOW_EXTRA_COLUMNS.map((c) => ({
+    key: c,
+    header: label(c),
+    render: ({ row }) => formatValue(c, row[c] ?? null),
+  }));
+
   function extraTable(title: string, rows: DomainReportRow[]) {
     if (rows.length === 0) return null;
     return (
-      <div className="overflow-x-auto" key={title}>
-        <table className="w-full border-collapse text-sm [font-variant-numeric:tabular-nums] [&_th]:border-b [&_th]:border-border [&_th]:px-2.5 [&_th]:py-1.5 [&_th]:text-start [&_td]:border-b [&_td]:border-border [&_td]:px-2.5 [&_td]:py-1.5 [&_td]:text-start">
-          <caption>{title}</caption>
-          <thead>
-            <tr>
-              {NO_SHOW_EXTRA_COLUMNS.map((c) => (
-                <th key={c} scope="col">
-                  {label(c)}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((row, i) => (
-              <tr key={i}>
-                {NO_SHOW_EXTRA_COLUMNS.map((c) => (
-                  <td key={c}>{formatValue(c, row[c] ?? null)}</td>
-                ))}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <DataTable
+        key={title}
+        caption={title}
+        columns={extraColumns}
+        rows={rows.map((row, i) => ({ row, i }))}
+        rowKey={(item) => String(item.i)}
+      />
     );
   }
 
-  const columns = key === "audit" ? [] : COLUMNS[key];
+  const fieldColumns = key === "audit" ? [] : COLUMNS[key];
+  const rowsColumns: DataTableColumn<{ row: DomainReportRow; i: number }>[] = fieldColumns.map((c) => ({
+    key: c,
+    header: label(c),
+    render: ({ row }) => formatValue(c, row[c] ?? null),
+  }));
+  const auditColumns: DataTableColumn<AuditReportEntry>[] = [
+    { key: "actor_role", header: label("actor_role"), render: (entry) => entry.actor_role ?? "—" },
+    { key: "action", header: label("action"), render: (entry) => entry.action },
+    { key: "entity", header: label("entity"), render: (entry) => entry.entity },
+    { key: "occurred_at", header: label("occurred_at"), render: (entry) => formatValue("occurred_at", entry.occurred_at) },
+  ];
   const extra = result?.extra ?? null;
 
   return (
@@ -237,37 +238,13 @@ export function DomainReportsCard({ site }: { site: Site }) {
 
       {key !== "audit" && result && (
         <>
-          <div className="overflow-x-auto">
-            <table className="w-full border-collapse text-sm [font-variant-numeric:tabular-nums] [&_th]:border-b [&_th]:border-border [&_th]:px-2.5 [&_th]:py-1.5 [&_th]:text-start [&_td]:border-b [&_td]:border-border [&_td]:px-2.5 [&_td]:py-1.5 [&_td]:text-start">
-              <caption>{t("reports.domain.rows", { count: result.total_rows })}</caption>
-              <thead>
-                <tr>
-                  {columns.map((c) => (
-                    <th key={c} scope="col">
-                      {label(c)}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {result.rows.length === 0 ? (
-                  <tr>
-                    <td colSpan={columns.length} className="text-fg-muted">
-                      {t("reports.empty")}
-                    </td>
-                  </tr>
-                ) : (
-                  result.rows.map((row, i) => (
-                    <tr key={i}>
-                      {columns.map((c) => (
-                        <td key={c}>{formatValue(c, row[c] ?? null)}</td>
-                      ))}
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
+          <DataTable
+            caption={t("reports.domain.rows", { count: result.total_rows })}
+            columns={rowsColumns}
+            rows={result.rows.map((row, i) => ({ row, i }))}
+            rowKey={(item) => String(item.i)}
+            emptyState={<EmptyState title={t("reports.empty")} />}
+          />
 
           {key === "appointment" && extra && (
             <>
@@ -301,37 +278,13 @@ export function DomainReportsCard({ site }: { site: Site }) {
 
       {key === "audit" && auditResult && (
         <>
-          <div className="overflow-x-auto">
-            <table className="w-full border-collapse text-sm [font-variant-numeric:tabular-nums] [&_th]:border-b [&_th]:border-border [&_th]:px-2.5 [&_th]:py-1.5 [&_th]:text-start [&_td]:border-b [&_td]:border-border [&_td]:px-2.5 [&_td]:py-1.5 [&_td]:text-start">
-              <caption>{t("reports.audit.title")}</caption>
-              <thead>
-                <tr>
-                  <th scope="col">{label("actor_role")}</th>
-                  <th scope="col">{label("action")}</th>
-                  <th scope="col">{label("entity")}</th>
-                  <th scope="col">{label("occurred_at")}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {auditResult.items.length === 0 ? (
-                  <tr>
-                    <td colSpan={4} className="text-fg-muted">
-                      {t("reports.empty")}
-                    </td>
-                  </tr>
-                ) : (
-                  auditResult.items.map((entry: AuditReportEntry) => (
-                    <tr key={entry.id}>
-                      <td>{entry.actor_role ?? "—"}</td>
-                      <td>{entry.action}</td>
-                      <td>{entry.entity}</td>
-                      <td>{formatValue("occurred_at", entry.occurred_at)}</td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
+          <DataTable
+            caption={t("reports.audit.title")}
+            columns={auditColumns}
+            rows={auditResult.items}
+            rowKey={(entry) => entry.id}
+            emptyState={<EmptyState title={t("reports.empty")} />}
+          />
           {auditResult.next_cursor && (
             <Button type="button" disabled={busy} onClick={() => void loadMoreAudit()}>
               {t("reports.audit.loadMore")}

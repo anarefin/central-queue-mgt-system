@@ -6,6 +6,9 @@ export interface DataTableColumn<T> {
   header: ReactNode;
   render: (row: T) => ReactNode;
   sortable?: boolean;
+  /** Render this column's cell as an accessible row header (`<th scope="row">`) instead of `<td>` — for the one
+   * column, if any, that names/identifies the row (unrelated to `sortable`). */
+  rowHeader?: boolean;
 }
 
 export interface DataTableSort {
@@ -22,15 +25,18 @@ export interface DataTableProps<T> {
   loading?: boolean;
   loadingRowCount?: number;
   emptyState?: ReactNode;
+  /** An accessible `<caption>`, naming the table for assistive tech the same way a heading names a section. */
+  caption?: ReactNode;
 }
 
 /** Column headers with an optional sort indicator, a loading-skeleton state, an empty slot, and horizontal scroll kept inside the card, not the page. */
-export function DataTable<T>({ columns, rows, rowKey, sort, onSortChange, loading = false, loadingRowCount = 3, emptyState }: DataTableProps<T>) {
+export function DataTable<T>({ columns, rows, rowKey, sort, onSortChange, loading = false, loadingRowCount = 3, emptyState, caption }: DataTableProps<T>) {
   const showEmpty = !loading && rows.length === 0;
 
   return (
     <div className="overflow-x-auto rounded-lg border border-border">
       <table className="w-full text-start text-sm">
+        {caption && <caption className="px-3 py-2 text-start text-fg-muted">{caption}</caption>}
         <thead>
           <tr className="border-b border-border bg-surface-muted">
             {columns.map((column) => {
@@ -68,11 +74,17 @@ export function DataTable<T>({ columns, rows, rowKey, sort, onSortChange, loadin
           {!loading &&
             rows.map((row) => (
               <tr key={rowKey(row)} className="border-b border-border last:border-0">
-                {columns.map((column) => (
-                  <td key={column.key} className="px-3 py-2 text-fg">
-                    {column.render(row)}
-                  </td>
-                ))}
+                {columns.map((column) =>
+                  column.rowHeader ? (
+                    <th key={column.key} scope="row" className="px-3 py-2 text-start font-medium text-fg">
+                      {column.render(row)}
+                    </th>
+                  ) : (
+                    <td key={column.key} className="px-3 py-2 text-fg">
+                      {column.render(row)}
+                    </td>
+                  ),
+                )}
               </tr>
             ))}
         </tbody>

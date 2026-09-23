@@ -17,7 +17,7 @@ import {
   type Zone,
 } from "@qms/api-client";
 import { useI18n } from "@qms/i18n/react";
-import { Button, Card, ErrorAlert, reportRange, SelectField, TextField } from "@qms/ui";
+import { Button, Card, DataTable, EmptyState, ErrorAlert, reportRange, SelectField, TextField, type DataTableColumn } from "@qms/ui";
 import { useState } from "react";
 import { localisedName, useFormValidation, useList, useSubmit } from "../lib/admin-support";
 import { useApi } from "../lib/runtime";
@@ -154,6 +154,40 @@ export function OperationalReportsCard({ site }: { site: Site }) {
   const waitByHourBand = (result?.extra?.["wait_by_hour_band"] as OperationalReportRow[] | undefined) ?? [];
   const channelMix = (result?.extra?.["channel_mix"] as OperationalReportRow[] | undefined) ?? [];
 
+  // No column here is sortable: none of these four report shapes has a server-side sort to wire a `DataTable`
+  // indicator to (unlike the detailed token report's `ReportSort`) — `DataTable` is used for its shared chrome
+  // (borders, skeleton state, empty slot), not for sorting it does not yet support.
+  const rowsColumns: DataTableColumn<{ row: OperationalReportRow; i: number }>[] = [
+    { key: meta.nameField, header: label(meta.nameField), rowHeader: true, render: ({ row }) => formatValue(meta.nameField, row[meta.nameField] ?? null) },
+    ...meta.metrics.map((m) => ({ key: m, header: label(m), render: ({ row }: { row: OperationalReportRow; i: number }) => formatValue(m, row[m] ?? null) })),
+  ];
+
+  const totalsMetrics = meta.metrics.filter((m) => m in (result?.totals ?? {}));
+  type TotalsRow = { label: string; get: (m: string) => string };
+  const totalsRows: TotalsRow[] = result
+    ? [
+        { label: t("reports.operational.totals"), get: (m) => formatValue(m, result.totals[m] ?? null) },
+        { label: t("reports.operational.previousTotals"), get: (m) => formatValue(m, result.previous_totals[m] ?? null) },
+        { label: t("reports.operational.change"), get: (m) => changeCell(m) },
+      ]
+    : [];
+  const totalsColumns: DataTableColumn<TotalsRow>[] = [
+    { key: "__label", header: "", rowHeader: true, render: (row) => row.label },
+    ...totalsMetrics.map((m) => ({ key: m, header: label(m), render: (row: TotalsRow) => row.get(m) })),
+  ];
+
+  const waitByHourBandColumns: DataTableColumn<OperationalReportRow>[] = [
+    { key: "service_id", header: t("reports.metric.service_name"), render: (row) => String(row["service_id"] ?? "—") },
+    { key: "hour_band", header: t("reports.operational.hourBand"), render: (row) => String(row["hour_band"] ?? "—") },
+    { key: "avg_wait_seconds", header: t("reports.metric.avg_wait_seconds"), render: (row) => formatValue("avg_wait_seconds", (row["avg_wait_seconds"] as OperationalReportValue) ?? null) },
+    { key: "p90_wait_seconds", header: t("reports.metric.p90_wait_seconds"), render: (row) => formatValue("p90_wait_seconds", (row["p90_wait_seconds"] as OperationalReportValue) ?? null) },
+  ];
+
+  const channelMixColumns: DataTableColumn<OperationalReportRow>[] = [
+    { key: "channel", header: t("reports.filters.channel"), render: (row) => t(`catalogue.channel.${String(row["channel"])}`) },
+    { key: "count", header: t("reports.metric.issued"), render: (row) => String(row["count"] ?? "—") },
+  ];
+
   return (
     <Card>
       <h2 className="font-semibold text-fg">{t("reports.operational.title")}</h2>
@@ -256,133 +290,36 @@ export function OperationalReportsCard({ site }: { site: Site }) {
       {error && <ErrorAlert>{error}</ErrorAlert>}
       {result && (
         <>
-          <div className="overflow-x-auto">
-            <table className="w-full border-collapse text-sm [font-variant-numeric:tabular-nums] [&_th]:border-b [&_th]:border-border [&_th]:px-2.5 [&_th]:py-1.5 [&_th]:text-start [&_td]:border-b [&_td]:border-border [&_td]:px-2.5 [&_td]:py-1.5 [&_td]:text-start">
-              <caption>{t("reports.operational.rows", { grain: key === "visitor-flow" ? t(`reports.operational.grain.${grain}`) : label(meta.nameField) })}</caption>
-              <thead>
-                <tr>
-                  <th scope="col">{label(meta.nameField)}</th>
-                  {meta.metrics.map((m) => (
-                    <th key={m} scope="col">
-                      {label(m)}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {result.rows.length === 0 ? (
-                  <tr>
-                    <td colSpan={meta.metrics.length + 1} className="text-fg-muted">
-                      {t("reports.empty")}
-                    </td>
-                  </tr>
-                ) : (
-                  result.rows.map((row, i) => (
-                    <tr key={i}>
-                      <th scope="row">{formatValue(meta.nameField, row[meta.nameField] ?? null)}</th>
-                      {meta.metrics.map((m) => (
-                        <td key={m}>{formatValue(m, row[m] ?? null)}</td>
-                      ))}
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
+          <DataTable
+            caption={t("reports.operational.rows", { grain: key === "visitor-flow" ? t(`reports.operational.grain.${grain}`) : label(meta.nameField) })}
+            columns={rowsColumns}
+            rows={result.rows.map((row, i) => ({ row, i }))}
+            rowKey={(item) => String(item.i)}
+            emptyState={<EmptyState title={t("reports.empty")} />}
+          />
 
-          <div className="overflow-x-auto">
-            <table className="w-full border-collapse text-sm [font-variant-numeric:tabular-nums] [&_th]:border-b [&_th]:border-border [&_th]:px-2.5 [&_th]:py-1.5 [&_th]:text-start [&_td]:border-b [&_td]:border-border [&_td]:px-2.5 [&_td]:py-1.5 [&_td]:text-start">
-              <thead>
-                <tr>
-                  <th scope="col" />
-                  {meta.metrics
-                    .filter((m) => m in result.totals)
-                    .map((m) => (
-                      <th key={m} scope="col">
-                        {label(m)}
-                      </th>
-                    ))}
-                </tr>
-              </thead>
-              <tbody>
-                <tr>
-                  <th scope="row">{t("reports.operational.totals")}</th>
-                  {meta.metrics
-                    .filter((m) => m in result.totals)
-                    .map((m) => (
-                      <td key={m}>{formatValue(m, result.totals[m] ?? null)}</td>
-                    ))}
-                </tr>
-                <tr>
-                  <th scope="row">{t("reports.operational.previousTotals")}</th>
-                  {meta.metrics
-                    .filter((m) => m in result.totals)
-                    .map((m) => (
-                      <td key={m}>{formatValue(m, result.previous_totals[m] ?? null)}</td>
-                    ))}
-                </tr>
-                <tr>
-                  <th scope="row">{t("reports.operational.change")}</th>
-                  {meta.metrics
-                    .filter((m) => m in result.totals)
-                    .map((m) => (
-                      <td key={m}>{changeCell(m)}</td>
-                    ))}
-                </tr>
-              </tbody>
-            </table>
-          </div>
+          <DataTable columns={totalsColumns} rows={totalsRows} rowKey={(row) => row.label} />
 
+          {/* This breakdown can span every Service at the Site (no Service filter chosen), so it names each row by
+              its raw id rather than a localised name — resolving that would need a Site-wide Service directory this
+              card has no other reason to load; the primary rows table above already shows each Service's own
+              localised name. */}
           {key === "service" && waitByHourBand.length > 0 && (
-            <div className="overflow-x-auto">
-              <table className="w-full border-collapse text-sm [font-variant-numeric:tabular-nums] [&_th]:border-b [&_th]:border-border [&_th]:px-2.5 [&_th]:py-1.5 [&_th]:text-start [&_td]:border-b [&_td]:border-border [&_td]:px-2.5 [&_td]:py-1.5 [&_td]:text-start">
-                <caption>{t("reports.operational.waitByHourBand")}</caption>
-                <thead>
-                  <tr>
-                    <th scope="col">{t("reports.metric.service_name")}</th>
-                    <th scope="col">{t("reports.operational.hourBand")}</th>
-                    <th scope="col">{t("reports.metric.avg_wait_seconds")}</th>
-                    <th scope="col">{t("reports.metric.p90_wait_seconds")}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {/* This breakdown can span every Service at the Site (no Service filter chosen), so it names each
-                      row by its raw id rather than a localised name — resolving that would need a Site-wide Service
-                      directory this card has no other reason to load; the primary rows table above already shows
-                      each Service's own localised name. */}
-                  {waitByHourBand.map((row, i) => (
-                    <tr key={i}>
-                      <td>{String(row["service_id"] ?? "—")}</td>
-                      <td>{String(row["hour_band"] ?? "—")}</td>
-                      <td>{formatValue("avg_wait_seconds", (row["avg_wait_seconds"] as OperationalReportValue) ?? null)}</td>
-                      <td>{formatValue("p90_wait_seconds", (row["p90_wait_seconds"] as OperationalReportValue) ?? null)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <DataTable
+              caption={t("reports.operational.waitByHourBand")}
+              columns={waitByHourBandColumns}
+              rows={waitByHourBand}
+              rowKey={(row) => `${String(row["service_id"] ?? "")}-${String(row["hour_band"] ?? "")}`}
+            />
           )}
 
           {key === "visitor-flow" && channelMix.length > 0 && (
-            <div className="overflow-x-auto">
-              <table className="w-full border-collapse text-sm [font-variant-numeric:tabular-nums] [&_th]:border-b [&_th]:border-border [&_th]:px-2.5 [&_th]:py-1.5 [&_th]:text-start [&_td]:border-b [&_td]:border-border [&_td]:px-2.5 [&_td]:py-1.5 [&_td]:text-start">
-                <caption>{t("reports.operational.channelMix")}</caption>
-                <thead>
-                  <tr>
-                    <th scope="col">{t("reports.filters.channel")}</th>
-                    <th scope="col">{t("reports.metric.issued")}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {channelMix.map((row, i) => (
-                    <tr key={i}>
-                      <td>{t(`catalogue.channel.${String(row["channel"])}`)}</td>
-                      <td>{String(row["count"] ?? "—")}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <DataTable
+              caption={t("reports.operational.channelMix")}
+              columns={channelMixColumns}
+              rows={channelMix}
+              rowKey={(row) => String(row["channel"])}
+            />
           )}
         </>
       )}
