@@ -32,7 +32,7 @@ export function SingleCounterBoard({ feed: { state, stale, now, highlightUntil }
           {t("nowServing.stale")}
         </span>
       )}
-      <div className={`text-[12rem] font-bold leading-none tabular-nums ${highlighted ? "motion-safe:animate-highlight-pulse" : ""}`}>
+      <div className={`text-[clamp(5rem,20vw,12rem)] font-bold leading-none tabular-nums ${highlighted ? "motion-safe:animate-highlight-pulse" : ""}`}>
         {formatToken(row.token_number ?? "—")}
       </div>
       <div className="text-4xl">{row.counter_label}</div>

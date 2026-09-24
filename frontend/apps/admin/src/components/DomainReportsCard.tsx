@@ -168,7 +168,7 @@ export function DomainReportsCard({ site }: { site: Site }) {
     <Card>
       <h2 className="font-semibold text-fg">{t("reports.domain.title")}</h2>
       <p className="text-fg-muted">{t("reports.domain.intro")}</p>
-      <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="grid grid-cols-1 items-start gap-3 sm:grid-cols-2 lg:grid-cols-3">
         <SelectField
           id="domain-report-key"
           label={t("reports.domain.pickReport")}
@@ -182,7 +182,7 @@ export function DomainReportsCard({ site }: { site: Site }) {
         />
       </div>
       <p className="text-fg-muted">{t(`reports.${camel(key)}.intro`)}</p>
-      <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="grid grid-cols-1 items-start gap-3 sm:grid-cols-2 lg:grid-cols-3">
         <TextField id="domain-report-from" label={t("reports.filters.from")} type="date" value={from} onChange={(e) => setFrom(e.target.value)} onBlur={validateRange} />
         <TextField
           id="domain-report-to"
@@ -195,7 +195,7 @@ export function DomainReportsCard({ site }: { site: Site }) {
         />
       </div>
       {key !== "audit" && (
-        <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="grid grid-cols-1 items-start gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {showsGroupAndService && (
             <>
               <SelectField

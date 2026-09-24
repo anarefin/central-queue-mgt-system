@@ -1,4 +1,4 @@
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { json, renderVisitor, stubApi } from "../test-utils";
@@ -83,32 +83,31 @@ describe("RemoteCheckIn", () => {
   });
 
   it("delays the ticket once, after confirming, and hides the button afterwards (FR-MOB-031)", async () => {
-    vi.stubGlobal("confirm", vi.fn().mockReturnValue(true));
     stubGeolocation({ latitude: 23.8103, longitude: 90.4125 });
     stubApi({ "POST /tickets/t1/delay": () => json(200, { ...VIEW, state: "remote" }) });
     const user = userEvent.setup();
 
     renderVisitor(<RemoteCheckIn ticketId="t1" credential="s3cr3t" qr={false} />);
     await user.click(await screen.findByRole("button", { name: "I'm not ready yet" }));
+    await user.click(within(screen.getByRole("dialog", { hidden: true })).getByRole("button", { name: "Confirm" }));
 
     await waitFor(() => expect(screen.getByText("Your token has been moved back. You'll be called later.")).toBeInTheDocument());
     expect(screen.queryByRole("button", { name: "I'm not ready yet" })).not.toBeInTheDocument();
   });
 
   it("does not delay when the visitor does not confirm", async () => {
-    vi.stubGlobal("confirm", vi.fn().mockReturnValue(false));
     stubGeolocation({ latitude: 23.8103, longitude: 90.4125 });
     const calls = stubApi({});
     const user = userEvent.setup();
 
     renderVisitor(<RemoteCheckIn ticketId="t1" credential="s3cr3t" qr={false} />);
     await user.click(await screen.findByRole("button", { name: "I'm not ready yet" }));
+    await user.click(within(screen.getByRole("dialog", { hidden: true })).getByRole("button", { name: "Cancel" }));
 
     expect(calls.some((c) => c.path === "/tickets/t1/delay")).toBe(false);
   });
 
   it("shows the specific refusal once the one delay has already been used", async () => {
-    vi.stubGlobal("confirm", vi.fn().mockReturnValue(true));
     stubGeolocation({ latitude: 23.8103, longitude: 90.4125 });
     stubApi({
       "POST /tickets/t1/delay": () =>
@@ -118,6 +117,7 @@ describe("RemoteCheckIn", () => {
 
     renderVisitor(<RemoteCheckIn ticketId="t1" credential="s3cr3t" qr={false} />);
     await user.click(await screen.findByRole("button", { name: "I'm not ready yet" }));
+    await user.click(within(screen.getByRole("dialog", { hidden: true })).getByRole("button", { name: "Confirm" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent("You've already used your one delay for this token.");
   });

@@ -2,7 +2,7 @@
 
 import type { SetupState } from "@qms/api-client";
 import { useI18n } from "@qms/i18n/react";
-import { Badge, Card, ErrorAlert } from "@qms/ui";
+import { Badge, Card, ErrorAlert, Loading } from "@qms/ui";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { describeError } from "../lib/admin-support";
@@ -46,7 +46,7 @@ export function SetupProgressCard() {
   return (
     <Card header={t("admin.overview.setup.title")} actions={<Link href="/setup/">{t("admin.overview.setup.open")}</Link>}>
       {error !== null && <ErrorAlert>{describeError(t, error)}</ErrorAlert>}
-      {error === null && !state && <p className="text-fg-muted">{t("setup.profile.loading")}</p>}
+      {error === null && !state && <Loading>{t("setup.profile.loading")}</Loading>}
       {state && (
         <>
           <p className="text-fg-muted">{t("admin.overview.setup.progress", { done, total: STEPS.length })}</p>

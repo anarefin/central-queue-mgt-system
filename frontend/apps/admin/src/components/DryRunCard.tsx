@@ -2,7 +2,7 @@
 
 import { QUEUE_STRATEGIES, type QueueDryRun, type QueueStrategy, type Site, type SiteServices } from "@qms/api-client";
 import { useI18n } from "@qms/i18n/react";
-import { Button, Card, ErrorAlert, SelectField } from "@qms/ui";
+import { Button, Card, ErrorAlert, SelectField , DataTable } from "@qms/ui";
 import { useState } from "react";
 import { describeError, localisedName, useList, useSubmit } from "../lib/admin-support";
 import { useApi } from "../lib/runtime";
@@ -79,38 +79,31 @@ export function DryRunCard({ site }: { site: Site }) {
           {result.tickets.length === 0 ? (
             <p className="text-fg-muted">{t("priority.dryRun.empty")}</p>
           ) : (
-            <div className="overflow-x-auto">
-            <table className="w-full border-collapse text-sm [font-variant-numeric:tabular-nums] [&_th]:border-b [&_th]:border-border [&_th]:px-2.5 [&_th]:py-1.5 [&_th]:text-start [&_td]:border-b [&_td]:border-border [&_td]:px-2.5 [&_td]:py-1.5 [&_td]:text-start">
-              <thead>
-                <tr>
-                  {["position", "token", "class", "wait", "headstart", "appointment", "escalation", "adjustment", "score", "status"].map((column) => (
-                    <th key={column} scope="col">
-                      {t(`priority.dryRun.col.${column}`)}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {result.tickets.map((ticket) => (
-                  <tr key={ticket.id}>
-                    <td>{ticket.position}</td>
-                    <th scope="row">{ticket.token_number}</th>
-                    <td>{classOf(ticket.priority_class?.name_i18n)}</td>
-                    <td>{formatNumber(ticket.terms.effective_wait_minutes)}</td>
-                    <td>{formatNumber(ticket.terms.headstart_minutes)}</td>
-                    <td>{formatNumber(ticket.terms.appointment_bonus)}</td>
-                    <td>{formatNumber(ticket.terms.escalation_bonus)}</td>
-                    <td>{formatNumber(ticket.terms.score_adjustment_minutes)}</td>
-                    <td>{formatNumber(ticket.score)}</td>
-                    <td>
+            <DataTable
+              rowKey={(ticket) => ticket.id}
+              rows={result.tickets}
+              columns={[
+                { key: "position", header: t("priority.dryRun.col.position"), render: (ticket) => ticket.position },
+                { key: "token", header: t("priority.dryRun.col.token"), rowHeader: true, render: (ticket) => ticket.token_number },
+                { key: "class", header: t("priority.dryRun.col.class"), render: (ticket) => classOf(ticket.priority_class?.name_i18n) },
+                { key: "wait", header: t("priority.dryRun.col.wait"), render: (ticket) => formatNumber(ticket.terms.effective_wait_minutes) },
+                { key: "headstart", header: t("priority.dryRun.col.headstart"), render: (ticket) => formatNumber(ticket.terms.headstart_minutes) },
+                { key: "appointment", header: t("priority.dryRun.col.appointment"), render: (ticket) => formatNumber(ticket.terms.appointment_bonus) },
+                { key: "escalation", header: t("priority.dryRun.col.escalation"), render: (ticket) => formatNumber(ticket.terms.escalation_bonus) },
+                { key: "adjustment", header: t("priority.dryRun.col.adjustment"), render: (ticket) => formatNumber(ticket.terms.score_adjustment_minutes) },
+                { key: "score", header: t("priority.dryRun.col.score"), render: (ticket) => formatNumber(ticket.score) },
+                {
+                  key: "status",
+                  header: t("priority.dryRun.col.status"),
+                  render: (ticket) => (
+                    <>
                       {ticket.escalated && <span className="text-warn">{t("priority.dryRun.escalated")}</span>}
                       {ticket.terms.adjustment_overridden && <span className="text-fg-muted"> {t("priority.dryRun.overridden")}</span>}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            </div>
+                    </>
+                  ),
+                },
+              ]}
+            />
           )}
         </>
       )}

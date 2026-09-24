@@ -2,7 +2,7 @@
 
 import { SCHEDULABLE_REPORT_KEYS, type ReportScheduleCadence, type ReportScheduleDelivery, type ReportExportFormat, type ReportSchedule, type Site } from "@qms/api-client";
 import { useI18n } from "@qms/i18n/react";
-import { Badge, Button, Card, ErrorAlert, SelectField, TextField } from "@qms/ui";
+import { Badge, Button, Card, ErrorAlert, FIELD_INPUT_CLASSES, SelectField, TextField } from "@qms/ui";
 import { useId, useState } from "react";
 import { describeError, useConfirmDialog, useList, useSubmit } from "../lib/admin-support";
 import { useApi } from "../lib/runtime";
@@ -93,7 +93,7 @@ export function ReportScheduleCard({ site }: { site: Site }) {
             {t("reports.schedule.recipients")}
           </label>
           <textarea
-            className="w-full rounded-md border border-border bg-surface px-3 py-2 text-fg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+            className={FIELD_INPUT_CLASSES}
             id={`${id}-recipients`}
             rows={3}
             value={recipientsText}

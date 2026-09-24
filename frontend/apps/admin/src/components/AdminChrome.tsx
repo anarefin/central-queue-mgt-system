@@ -39,13 +39,14 @@ export function AdminChrome({ children }: { children: ReactNode }) {
       skipToContentLabel={t("common.skipToContent")}
       menuButtonLabel={t("common.menu")}
       nav={nav}
+      linkComponent={Link}
       title={<Link href="/">{t("app.admin")}</Link>}
       siteSwitcher={<SiteSwitcher siteIds={user?.sites ?? []} />}
       themeToggle={<ThemeToggle groupLabel={t("theme.toggleLabel")} labels={{ system: t("theme.system"), light: t("theme.light"), dark: t("theme.dark") }} />}
       userMenu={
         status === "authenticated" && user ? (
           <div className="flex items-center gap-3">
-            <span className="text-sm text-fg-muted">{t("auth.signedInAs", { name: user.display_name ?? user.username })}</span>
+            <span className="hidden text-sm text-fg-muted lg:inline">{t("auth.signedInAs", { name: user.display_name ?? user.username })}</span>
             <Button variant="secondary" size="sm" type="button" onClick={() => void signOut()}>
               {t("common.signOut")}
             </Button>
@@ -67,7 +68,6 @@ function SiteSwitcher({ siteIds }: { siteIds: string[] }) {
   if (siteIds.length === 1) return <span className="text-sm text-fg-muted">{siteIds[0]}</span>;
   return (
     <label className="flex items-center gap-2 text-sm text-fg-muted">
-      <span className="sr-only">{t("admin.chrome.siteSwitcher")}</span>
       <select
         aria-label={t("admin.chrome.siteSwitcher")}
         defaultValue={siteIds[0]}

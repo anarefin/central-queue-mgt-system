@@ -2,7 +2,7 @@
 
 import { useFeatureFlags, type SeedCatalogueResult, type SetupState, type Site, type VerticalProfile } from "@qms/api-client";
 import { useI18n } from "@qms/i18n/react";
-import { Button, Card, ErrorAlert, SelectField, StatusBadge, TextField, Toast } from "@qms/ui";
+import { Button, Card, ErrorAlert, Loading, SelectField, StatusBadge, TextField, Toast } from "@qms/ui";
 import Link from "next/link";
 import { useEffect, useId, useState, type FormEvent, type ReactNode } from "react";
 import { describeError, useConfirmDialog, useList, useSubmit } from "../lib/admin-support";
@@ -53,7 +53,7 @@ export function SetupWizard() {
   const refresh = () => setVersion((v) => v + 1);
 
   if (loadError !== null) return <ErrorAlert>{describeError(t, loadError)}</ErrorAlert>;
-  if (!state || !profiles) return <p className="text-fg-muted">{t("setup.profile.loading")}</p>;
+  if (!state || !profiles) return <Loading>{t("setup.profile.loading")}</Loading>;
 
   return (
     <div className="flex flex-col gap-4">
@@ -191,19 +191,20 @@ function FeatureFlagsCard() {
       <h2 className="font-semibold text-fg">{t("setup.featureFlags.title")}</h2>
       <p className="text-fg-muted">{t("setup.featureFlags.intro")}</p>
       {flags.flags === null ? (
-        <p className="text-fg-muted">{t("setup.profile.loading")}</p>
+        <Loading>{t("setup.profile.loading")}</Loading>
       ) : (
         <ul className="m-0 list-none p-0 flex flex-col divide-y divide-border [&>li]:flex [&>li]:flex-wrap [&>li]:items-center [&>li]:justify-between [&>li]:gap-2 [&>li]:py-2.5">
           {FEATURE_FLAG_KEYS.map((key) => (
             <li key={key}>
-              <label className="flex flex-wrap items-center gap-3">
+              <label className="flex items-start gap-3">
                 <input
+                  className="mt-1"
                   type="checkbox"
                   checked={flags.flags![key] ?? true}
                   disabled={busy}
                   onChange={(event) => toggle(key, event.target.checked)}
                 />
-                <span className="flex flex-col">
+                <span className="flex min-w-0 flex-col">
                   <span className="font-medium text-fg">{t(`setup.featureFlags.${key}.title`)}</span>
                   <span className="text-sm text-fg-muted">{t(`setup.featureFlags.${key}.description`)}</span>
                 </span>

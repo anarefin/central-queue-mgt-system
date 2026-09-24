@@ -2,7 +2,7 @@
 
 import { ApiRequestError } from "@qms/api-client";
 import { useI18n } from "@qms/i18n/react";
-import { Button, ErrorAlert } from "@qms/ui";
+import { Button, ConfirmDialog, ErrorAlert } from "@qms/ui";
 import { useState } from "react";
 import { useApi } from "../lib/runtime";
 
@@ -20,6 +20,7 @@ export function RemoteCheckIn({ ticketId, credential, qr }: { ticketId: string; 
   const [delaying, setDelaying] = useState(false);
   const [delayError, setDelayError] = useState<string | null>(null);
   const [delayed, setDelayed] = useState(false);
+  const [confirmingDelay, setConfirmingDelay] = useState(false);
 
   async function checkIn(method: "qr" | "geofence") {
     if (!client) return;
@@ -44,7 +45,8 @@ export function RemoteCheckIn({ ticketId, credential, qr }: { ticketId: string; 
   }
 
   async function delay() {
-    if (!client || !window.confirm(t("visitor.delay.confirm"))) return;
+    setConfirmingDelay(false);
+    if (!client) return;
     setDelaying(true);
     setDelayError(null);
     try {
@@ -80,9 +82,18 @@ export function RemoteCheckIn({ ticketId, credential, qr }: { ticketId: string; 
       {!delayed ? (
         <>
           {delayError && <ErrorAlert>{delayError}</ErrorAlert>}
-          <Button className="w-full" variant="secondary" onClick={() => void delay()} disabled={delaying}>
+          <Button className="w-full" variant="secondary" onClick={() => setConfirmingDelay(true)} disabled={delaying}>
             {delaying ? t("visitor.delay.delaying") : t("visitor.delay.button")}
           </Button>
+          <ConfirmDialog
+            open={confirmingDelay}
+            title={t("visitor.delay.button")}
+            description={t("visitor.delay.confirm")}
+            confirmLabel={t("common.confirm")}
+            cancelLabel={t("common.cancel")}
+            onConfirm={() => void delay()}
+            onCancel={() => setConfirmingDelay(false)}
+          />
         </>
       ) : (
         <p className="text-fg-muted">{t("visitor.delay.done")}</p>

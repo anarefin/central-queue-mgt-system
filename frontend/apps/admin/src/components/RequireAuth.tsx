@@ -1,5 +1,6 @@
 "use client";
 
+import { Loading } from "@qms/ui";
 import { useI18n } from "@qms/i18n/react";
 import { useRouter } from "next/navigation";
 import { useEffect, type ReactNode } from "react";
@@ -16,5 +17,5 @@ export function RequireAuth({ children }: { children: ReactNode }) {
   }, [status, router]);
 
   if (status === "authenticated") return <>{children}</>;
-  return <p className="text-fg-muted">{t("common.loading")}</p>;
+  return <Loading>{t("common.loading")}</Loading>;
 }

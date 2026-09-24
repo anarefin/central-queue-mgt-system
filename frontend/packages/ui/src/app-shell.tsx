@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useState, type ReactNode } from "react";
+import { Fragment, useEffect, useId, useRef, useState, type ComponentType, type ReactNode } from "react";
 import { cn } from "./cn";
 
 /** Routes that stay a full-page, centred card outside any `AppShell`-based chrome (ticket 63, matched by ticket
@@ -32,6 +32,8 @@ export interface AppShellProps {
   siteSwitcher?: ReactNode;
   userMenu?: ReactNode;
   themeToggle?: ReactNode;
+  /** Link element for nav items (e.g. `next/link` for client-side routing); a plain `<a>` when omitted. */
+  linkComponent?: "a" | ComponentType<{ href: string; className?: string; children?: ReactNode; onClick?: () => void; "aria-current"?: "page" }>;
   children: ReactNode;
 }
 
@@ -42,9 +44,24 @@ export interface AppShellProps {
  * "no sidebar on the serving desk"). `<main id="main">` is the skip link's target and the sole landmark for page
  * content (ticket 62).
  */
-export function AppShell({ skipToContentLabel, menuButtonLabel, nav = [], sidebar, title, siteSwitcher, userMenu, themeToggle, children }: AppShellProps) {
+export function AppShell({ skipToContentLabel, menuButtonLabel, nav = [], sidebar, title, siteSwitcher, userMenu, themeToggle, linkComponent: NavLink = "a", children }: AppShellProps) {
   const [navOpen, setNavOpen] = useState(false);
+  const navId = useId();
+  const menuButtonRef = useRef<HTMLButtonElement>(null);
   const hasSidebar = sidebar !== undefined || nav.length > 0;
+
+  // Esc closes the mobile drawer and hands focus back to the menu button.
+  useEffect(() => {
+    if (!navOpen) return;
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setNavOpen(false);
+        menuButtonRef.current?.focus();
+      }
+    }
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [navOpen]);
 
   return (
     <div className="flex min-h-dvh flex-col bg-surface-muted text-fg md:flex-row">
@@ -55,7 +72,18 @@ export function AppShell({ skipToContentLabel, menuButtonLabel, nav = [], sideba
         {skipToContentLabel}
       </a>
       {hasSidebar && (
-        <nav aria-label={menuButtonLabel} className={cn("shrink-0 border-e border-border bg-surface md:block md:w-64", navOpen ? "block" : "hidden")}>
+        <>
+        {navOpen && <div aria-hidden="true" onClick={() => setNavOpen(false)} className="fixed inset-0 z-30 bg-black/50 md:hidden" />}
+        <nav
+          id={navId}
+          aria-label={menuButtonLabel}
+          className={cn(
+            "z-40 w-64 max-w-[85vw] shrink-0 overflow-y-auto border-e border-border bg-surface",
+            "max-md:fixed max-md:inset-y-0 max-md:start-0 max-md:shadow-lg",
+            "md:sticky md:top-0 md:block md:h-dvh md:max-w-none",
+            navOpen ? "block" : "hidden",
+          )}
+        >
           {sidebar ?? (
             <ul className="flex flex-col gap-1 p-3">
               {nav.map((item, index) => (
@@ -64,8 +92,9 @@ export function AppShell({ skipToContentLabel, menuButtonLabel, nav = [], sideba
                     <li className="px-3 pb-1 pt-4 text-xs font-semibold uppercase tracking-wide text-fg-muted first:pt-0">{item.group}</li>
                   )}
                   <li>
-                    <a
+                    <NavLink
                       href={item.href}
+                      onClick={() => setNavOpen(false)}
                       aria-current={item.active ? "page" : undefined}
                       className={cn(
                         "block rounded-md px-3 py-2 text-sm font-medium motion-safe:transition-colors",
@@ -73,30 +102,38 @@ export function AppShell({ skipToContentLabel, menuButtonLabel, nav = [], sideba
                       )}
                     >
                       {item.label}
-                    </a>
+                    </NavLink>
                   </li>
                 </Fragment>
               ))}
             </ul>
           )}
         </nav>
+        </>
       )}
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex items-center gap-3 border-b border-border bg-surface px-4 py-3">
+        <header className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-border bg-surface px-4 py-3">
           {hasSidebar && (
-            <button type="button" onClick={() => setNavOpen((value) => !value)} aria-expanded={navOpen} className="rounded-md p-2 text-fg hover:bg-surface-muted md:hidden">
+            <button
+              ref={menuButtonRef}
+              type="button"
+              onClick={() => setNavOpen((value) => !value)}
+              aria-expanded={navOpen}
+              aria-controls={navId}
+              className="inline-flex size-11 items-center justify-center rounded-md text-fg hover:bg-surface-muted md:hidden"
+            >
               <span aria-hidden="true">☰</span>
               <span className="sr-only">{menuButtonLabel}</span>
             </button>
           )}
-          {title && <div className="font-semibold">{title}</div>}
+          {title && <div className="min-w-0 font-semibold">{title}</div>}
           {siteSwitcher}
-          <div className="ms-auto flex items-center gap-3">
+          <div className="ms-auto flex flex-wrap items-center gap-3">
             {themeToggle}
             {userMenu}
           </div>
         </header>
-        <main id="main" className="flex-1 p-4">
+        <main id="main" className="flex-1 p-4 md:p-6">
           {children}
         </main>
       </div>

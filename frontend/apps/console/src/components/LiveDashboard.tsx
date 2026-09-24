@@ -2,7 +2,7 @@
 
 import type { Alert, DashboardFilter, DashboardSnapshot, PriorityClass, ServiceGroup, Zone } from "@qms/api-client";
 import { useI18n } from "@qms/i18n/react";
-import { Badge, Button, Card, EmptyState, ErrorAlert, Picker, Skeleton, TextField } from "@qms/ui";
+import { Badge, Button, Card, EmptyState, ErrorAlert, FIELD_INPUT_CLASSES, Picker, Skeleton, TextField } from "@qms/ui";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -357,7 +357,7 @@ function LongestWaitsCard({
           <label className="text-sm font-medium text-fg" htmlFor="reprioritise-ticket">
             {t("dashboard.actions.reprioritise")}
           </label>
-          <select id="reprioritise-ticket" className="w-full rounded-md border border-border bg-surface px-3 py-2 text-fg" value={selected} onChange={(e) => setSelected(e.target.value)}>
+          <select id="reprioritise-ticket" className={FIELD_INPUT_CLASSES} value={selected} onChange={(e) => setSelected(e.target.value)}>
             <option value="">{t("dashboard.filter.all")}</option>
             {snapshot.longest_waits.map((row) => (
               <option key={row.ticket_id} value={row.ticket_id}>
@@ -519,7 +519,7 @@ function AgentStatusCard({ client, onChanged }: { client: ActionApiLike | null; 
       <div className="flex flex-col gap-2">
         <Picker id="availability-agent" label={t("dashboard.filter.agent")} value={agentId} onChange={setAgentId} options={agentOptions} onOpen={agents.request} noMatchesLabel={t("dashboard.filter.noMatches")} />
         <select
-          className="w-full rounded-md border border-border bg-surface px-3 py-2 text-fg"
+          className={FIELD_INPUT_CLASSES}
           value={status}
           onChange={(e) => setStatus(e.target.value as "available" | "on_break")}
           aria-label={t("dashboard.actions.setAvailability")}

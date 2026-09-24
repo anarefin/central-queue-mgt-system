@@ -2,7 +2,7 @@
 
 import { ApiRequestError } from "@qms/api-client";
 import { useI18n } from "@qms/i18n/react";
-import { Button, Card, ErrorAlert, SelectField } from "@qms/ui";
+import { Button, Card, ErrorAlert, FIELD_INPUT_CLASSES, SelectField } from "@qms/ui";
 import { useState } from "react";
 import { useApi } from "../lib/runtime";
 
@@ -74,7 +74,7 @@ export function FeedbackForm({ ticketId, credential }: { ticketId: string; crede
           {t("visitor.feedback.commentLabel")}
         </label>
         <textarea
-          className="min-h-24 rounded-md border border-border bg-surface px-3 py-2 text-fg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+          className={`${FIELD_INPUT_CLASSES} min-h-24`}
           id="feedback-comment"
           value={comment}
           onChange={(event) => setComment(event.target.value)}

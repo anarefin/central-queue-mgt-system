@@ -2,7 +2,7 @@
 
 import type { VisitorImportMapping, VisitorImportReport } from "@qms/api-client";
 import { useI18n } from "@qms/i18n/react";
-import { Button, Card, ErrorAlert, TextField } from "@qms/ui";
+import { Button, Card, ErrorAlert, FIELD_INPUT_CLASSES, TextField } from "@qms/ui";
 import { useEffect, useId, useState, type ChangeEvent, type FormEvent } from "react";
 import { describeError, useList, useSubmit } from "../lib/admin-support";
 import { useApi } from "../lib/runtime";
@@ -176,7 +176,7 @@ function UploadCard({ onImported }: { onImported: () => void }) {
           <label className="block mb-1 font-medium text-fg text-sm" htmlFor="visitor-import-file">
             {t("visitorImport.upload.file")}
           </label>
-          <input className="w-full rounded-md border border-border bg-surface px-3 py-2 text-fg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary" id="visitor-import-file" type="file" accept=".csv,text/csv" onChange={pickFile} />
+          <input className={FIELD_INPUT_CLASSES} id="visitor-import-file" type="file" accept=".csv,text/csv" onChange={pickFile} />
         </div>
         {error && <ErrorAlert>{error}</ErrorAlert>}
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -204,6 +204,7 @@ function ReportCard({ title, report }: { title: string; report: VisitorImportRep
         })}
       </p>
       {report.errors.length > 0 && (
+        <div className="overflow-x-auto">
         <table className="w-full border-collapse text-sm [font-variant-numeric:tabular-nums] [&_th]:border-b [&_th]:border-border [&_th]:px-2.5 [&_th]:py-1.5 [&_th]:text-start [&_td]:border-b [&_td]:border-border [&_td]:px-2.5 [&_td]:py-1.5 [&_td]:text-start">
           <thead>
             <tr>
@@ -222,6 +223,7 @@ function ReportCard({ title, report }: { title: string; report: VisitorImportRep
             ))}
           </tbody>
         </table>
+        </div>
       )}
     </Card>
   );

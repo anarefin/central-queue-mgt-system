@@ -46,7 +46,7 @@ export function ConsoleChrome({ children }: { children: ReactNode }) {
       userMenu={
         status === "authenticated" && user ? (
           <div className="flex items-center gap-3">
-            <span className="text-sm text-fg-muted">{t("auth.signedInAs", { name: user.display_name ?? user.username })}</span>
+            <span className="hidden text-sm text-fg-muted lg:inline">{t("auth.signedInAs", { name: user.display_name ?? user.username })}</span>
             <Button variant="secondary" size="sm" type="button" onClick={() => router.push("/dashboard/")}>
               {t("dashboard.title")}
             </Button>

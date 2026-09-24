@@ -34,10 +34,10 @@ export function DataTable<T>({ columns, rows, rowKey, sort, onSortChange, loadin
   const showEmpty = !loading && rows.length === 0;
 
   return (
-    <div className="overflow-x-auto rounded-lg border border-border">
-      <table className="w-full text-start text-sm">
+    <div className="max-w-full overflow-x-auto rounded-lg border border-border">
+      <table className="w-full min-w-max text-start text-sm" aria-busy={loading || undefined}>
         {caption && <caption className="px-3 py-2 text-start text-fg-muted">{caption}</caption>}
-        <thead>
+        <thead className="sticky top-0 z-10 bg-surface-muted">
           <tr className="border-b border-border bg-surface-muted">
             {columns.map((column) => {
               const isSorted = sort?.key === column.key;

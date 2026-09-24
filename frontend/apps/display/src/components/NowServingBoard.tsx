@@ -119,7 +119,7 @@ export function NowServingBoard({ deviceId, speaker }: { deviceId: string; speak
             return (
               <tr key={row.counter_id} className={highlighted ? "bg-primary/15 motion-safe:animate-highlight-pulse" : undefined}>
                 {state.columns.includes("token") && (
-                  <td className="border-b border-border px-4 py-3 text-[60px] font-bold tabular-nums">{formatToken(row.token_number ?? "—")}</td>
+                  <td className="border-b border-border px-4 py-3 text-[clamp(1.75rem,4vw,60px)] font-bold tabular-nums">{formatToken(row.token_number ?? "—")}</td>
                 )}
                 {state.columns.includes("counter") && <td className="border-b border-border px-4 py-3">{row.counter_label}</td>}
                 {state.columns.includes("service") && <td className="border-b border-border px-4 py-3">{localised(row.service_names, language) ?? "—"}</td>}

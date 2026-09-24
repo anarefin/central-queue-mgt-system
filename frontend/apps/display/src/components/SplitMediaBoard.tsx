@@ -51,7 +51,7 @@ export function SplitMediaBoard({ feed: { state, stale } }: { feed: ZoneFeed }) 
               {serving.map((row) => (
                 <tr key={row.counter_id}>
                   {state.columns.includes("token") && (
-                    <td className="border-b border-border px-4 py-3 text-[60px] font-bold tabular-nums">{formatToken(row.token_number ?? "—")}</td>
+                    <td className="border-b border-border px-4 py-3 text-[clamp(1.75rem,4vw,60px)] font-bold tabular-nums">{formatToken(row.token_number ?? "—")}</td>
                   )}
                   {state.columns.includes("counter") && <td className="border-b border-border px-4 py-3">{row.counter_label}</td>}
                   {state.columns.includes("service") && <td className="border-b border-border px-4 py-3">{name(row.service_names)}</td>}

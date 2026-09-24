@@ -245,7 +245,7 @@ export function DetailedTokenReportCard({ site }: { site: Site }) {
     <Card>
       <h2 className="font-semibold text-fg">{t("reports.detailedToken.title")}</h2>
       <p className="text-fg-muted">{t("reports.detailedToken.intro")}</p>
-      <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="grid grid-cols-1 items-start gap-3 sm:grid-cols-2 lg:grid-cols-3">
         <TextField id="report-from" label={t("reports.filters.from")} type="date" value={from} onChange={(e) => setFrom(e.target.value)} onBlur={validateRange} />
         <TextField
           id="report-to"
@@ -257,7 +257,7 @@ export function DetailedTokenReportCard({ site }: { site: Site }) {
           error={rangeValidation.message("range")}
         />
       </div>
-      <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="grid grid-cols-1 items-start gap-3 sm:grid-cols-2 lg:grid-cols-3">
         <SelectField
           id="report-zone"
           label={t("reports.filters.zone")}
@@ -283,7 +283,7 @@ export function DetailedTokenReportCard({ site }: { site: Site }) {
           options={[{ value: "", label: t("reports.filters.allServices") }, ...(services.items ?? []).map((s) => ({ value: s.id, label: nameOf(s.name_i18n) }))]}
         />
       </div>
-      <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="grid grid-cols-1 items-start gap-3 sm:grid-cols-2 lg:grid-cols-3">
         <SelectField
           id="report-agent"
           label={t("reports.filters.agent")}

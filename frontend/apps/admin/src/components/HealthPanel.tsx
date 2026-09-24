@@ -2,7 +2,7 @@
 
 import { ApiRequestError, type DependencyHealth } from "@qms/api-client";
 import { useI18n } from "@qms/i18n/react";
-import { Button, Card, ErrorAlert, StatusBadge, type StatusKind } from "@qms/ui";
+import { Button, Card, ErrorAlert, Loading, StatusBadge, type StatusKind } from "@qms/ui";
 import { useCallback, useEffect, useState } from "react";
 import { useApi } from "../lib/runtime";
 
@@ -42,7 +42,7 @@ export function HealthPanel() {
       </div>
 
       {configError && <ErrorAlert>{t("admin.health.unreachable")}</ErrorAlert>}
-      {!configError && state.kind === "loading" && <p className="text-fg-muted">{t("admin.health.checking")}</p>}
+      {!configError && state.kind === "loading" && <Loading lines={2}>{t("admin.health.checking")}</Loading>}
       {state.kind === "error" && (
         <ErrorAlert>
           {t("admin.health.unreachable")} {t(`errors.${state.code}`)}

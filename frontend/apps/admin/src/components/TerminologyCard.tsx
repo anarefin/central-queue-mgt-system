@@ -2,7 +2,7 @@
 
 import { SHIPPED_LANGUAGES, SHIPPED_PACKS } from "@qms/i18n";
 import { ENTITY_KEYS, useI18n, useLabels } from "@qms/i18n/react";
-import { Button, Card, ErrorAlert, requiredText, TextField } from "@qms/ui";
+import { Button, Card, ErrorAlert, Loading, requiredText, TextField } from "@qms/ui";
 import { useEffect, useId, useState } from "react";
 import { languageName, useSubmit } from "../lib/admin-support";
 import { useApi } from "../lib/runtime";
@@ -62,16 +62,16 @@ export function TerminologyCard() {
       <p className="text-fg-muted">{t("admin.labels.intro")}</p>
       {loadError && <ErrorAlert>{loadError}</ErrorAlert>}
       {overrides === null ? (
-        <p className="text-fg-muted">{t("admin.labels.loading")}</p>
+        <Loading>{t("admin.labels.loading")}</Loading>
       ) : (
         <>
           <div className="overflow-x-auto">
             <table className="w-full border-collapse text-sm">
               <thead>
                 <tr className="border-b border-border text-start">
-                  <th className="py-2 pe-4 font-semibold text-fg">{t("admin.labels.col.key")}</th>
+                  <th scope="col" className="py-2 pe-4 font-semibold text-fg">{t("admin.labels.col.key")}</th>
                   {SHIPPED_LANGUAGES.map((lang) => (
-                    <th key={lang} className="py-2 pe-4 font-semibold text-fg">
+                    <th key={lang} scope="col" className="py-2 pe-4 font-semibold text-fg">
                       {languageName(t, lang)}
                     </th>
                   ))}
@@ -143,12 +143,14 @@ function LabelCellView({
     <div className="flex flex-wrap items-center gap-2">
       <span className="text-fg">{value ?? defaultValue}</span>
       {value === undefined && <span className="text-xs text-fg-muted">{t("admin.labels.default")}</span>}
-      <Button type="button" onClick={onEdit}>
+      <Button type="button" size="sm" variant="secondary" onClick={onEdit}>
         {t("admin.action.edit")}
       </Button>
       {onReset && (
         <Button
           type="button"
+          size="sm"
+          variant="ghost"
           disabled={resetting}
           onClick={async () => {
             setResetting(true);
@@ -211,7 +213,7 @@ function LabelCellEditor({
         <Button type="submit" disabled={busy}>
           {t("admin.action.save")}
         </Button>
-        <Button type="button" onClick={onCancel} disabled={busy}>
+        <Button type="button" variant="secondary" onClick={onCancel} disabled={busy}>
           {t("admin.action.cancel")}
         </Button>
       </div>

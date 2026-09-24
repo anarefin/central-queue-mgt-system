@@ -223,3 +223,32 @@
   max-inline-size: 8rem;
   max-block-size: 4rem;
 }
+
+/* Native form controls follow the brand colour and get a comfortable size; touch devices get a 44px tap row. */
+input[type="checkbox"],
+input[type="radio"] {
+  accent-color: var(--color-primary);
+  width: 1.125rem;
+  height: 1.125rem;
+  flex-shrink: 0;
+}
+
+input[type="file"]::file-selector-button {
+  margin-inline-end: 0.75rem;
+  padding: 0.25rem 0.75rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-muted);
+  color: var(--color-fg);
+  cursor: pointer;
+}
+
+@media (pointer: coarse) {
+  label:has(> input[type="checkbox"]),
+  label:has(> input[type="radio"]) {
+    display: flex;
+    align-items: center;
+    gap: 0.625rem;
+    min-height: 2.75rem;
+  }
+}

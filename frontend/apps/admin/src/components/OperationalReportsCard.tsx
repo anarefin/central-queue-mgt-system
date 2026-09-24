@@ -192,7 +192,7 @@ export function OperationalReportsCard({ site }: { site: Site }) {
     <Card>
       <h2 className="font-semibold text-fg">{t("reports.operational.title")}</h2>
       <p className="text-fg-muted">{t("reports.operational.intro")}</p>
-      <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="grid grid-cols-1 items-start gap-3 sm:grid-cols-2 lg:grid-cols-3">
         <SelectField
           id="operational-report-key"
           label={t("reports.operational.pickReport")}
@@ -214,7 +214,7 @@ export function OperationalReportsCard({ site }: { site: Site }) {
         )}
       </div>
       <p className="text-fg-muted">{t(`reports.${camelKey(key)}.intro`)}</p>
-      <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="grid grid-cols-1 items-start gap-3 sm:grid-cols-2 lg:grid-cols-3">
         <TextField id="operational-report-from" label={t("reports.filters.from")} type="date" value={from} onChange={(e) => setFrom(e.target.value)} onBlur={validateRange} />
         <TextField
           id="operational-report-to"
@@ -226,7 +226,7 @@ export function OperationalReportsCard({ site }: { site: Site }) {
           error={rangeValidation.message("range")}
         />
       </div>
-      <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="grid grid-cols-1 items-start gap-3 sm:grid-cols-2 lg:grid-cols-3">
         <SelectField
           id="operational-report-zone"
           label={t("reports.filters.zone")}
@@ -252,7 +252,7 @@ export function OperationalReportsCard({ site }: { site: Site }) {
           options={[{ value: "", label: t("reports.filters.allServices") }, ...(services.items ?? []).map((s) => ({ value: s.id, label: nameOf(s.name_i18n) }))]}
         />
       </div>
-      <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="grid grid-cols-1 items-start gap-3 sm:grid-cols-2 lg:grid-cols-3">
         <SelectField
           id="operational-report-agent"
           label={t("reports.filters.agent")}

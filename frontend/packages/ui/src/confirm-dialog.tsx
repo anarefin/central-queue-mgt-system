@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, type ReactNode } from "react";
+import { useEffect, useId, useRef, type ReactNode } from "react";
 import { Button } from "./components";
 
 export interface ConfirmDialogProps {
@@ -22,6 +22,7 @@ export interface ConfirmDialogProps {
 export function ConfirmDialog({ open, title, description, confirmLabel, cancelLabel, onConfirm, onCancel, danger }: ConfirmDialogProps) {
   const ref = useRef<HTMLDialogElement>(null);
   const triggerRef = useRef<Element | null>(null);
+  const titleId = useId();
 
   useEffect(() => {
     const dialog = ref.current;
@@ -47,13 +48,17 @@ export function ConfirmDialog({ open, title, description, confirmLabel, cancelLa
         event.preventDefault();
         onCancel();
       }}
-      onClose={onCancel}
-      className="rounded-lg border border-border bg-surface p-0 text-fg shadow-lg backdrop:bg-neutral-950/50"
+      onClose={() => {
+        // A confirm closes the dialog from the parent too; only report a dismissal while it is still meant to be open.
+        if (open) onCancel();
+      }}
+      aria-labelledby={titleId}
+      className="m-auto w-[calc(100%-2rem)] max-w-md rounded-lg border border-border bg-surface p-0 text-fg shadow-lg backdrop:bg-neutral-950/50"
     >
       <div className="flex flex-col gap-4 p-6">
-        <h2 className="text-lg font-semibold">{title}</h2>
+        <h2 id={titleId} className="text-lg font-semibold">{title}</h2>
         {description && <p className="text-fg-muted">{description}</p>}
-        <div className="flex justify-end gap-2">
+        <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
           <Button type="button" variant="secondary" onClick={onCancel}>
             {cancelLabel}
           </Button>

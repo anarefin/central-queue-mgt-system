@@ -2,7 +2,7 @@
 
 import type { NotificationTriggerCatalogueEntry } from "@qms/api-client";
 import { useI18n } from "@qms/i18n/react";
-import { Button, Card, ErrorAlert, SelectField, TextField } from "@qms/ui";
+import { Button, Card, ErrorAlert, FIELD_INPUT_CLASSES, SelectField, TextField } from "@qms/ui";
 import { useEffect, useId, useState } from "react";
 import { describeError, useList, useSubmit } from "../lib/admin-support";
 import { useApi } from "../lib/runtime";
@@ -100,7 +100,7 @@ export function NotificationTemplatesCard() {
         <label className="block mb-1 font-medium text-fg text-sm" htmlFor={`${id}-body`}>
           {t("notifications.templates.body")}
         </label>
-        <textarea id={`${id}-body`} className="w-full rounded-md border border-border bg-surface px-3 py-2 text-fg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary" rows={4} value={body} onChange={(event) => setBody(event.target.value)} />
+        <textarea id={`${id}-body`} className={FIELD_INPUT_CLASSES} rows={4} value={body} onChange={(event) => setBody(event.target.value)} />
       </div>
       {error && <ErrorAlert>{error}</ErrorAlert>}
       <div className="flex flex-wrap items-center justify-between gap-3">

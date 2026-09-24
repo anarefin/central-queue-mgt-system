@@ -1,4 +1,4 @@
-import { useMemo, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes } from "react";
+import { useMemo, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes } from "react";
 import { cn } from "./cn";
 import { encodeQrMatrix } from "./qrcode";
 
@@ -47,7 +47,7 @@ export function Button({
       aria-busy={loading || undefined}
       disabled={disabled || loading}
       className={cn(
-        "inline-flex items-center justify-center gap-2 rounded-md font-medium motion-safe:transition-colors",
+        "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md font-medium motion-safe:transition-colors pointer-coarse:min-h-11",
         "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
         "disabled:cursor-not-allowed disabled:opacity-60",
         BUTTON_VARIANT_CLASSES[variant],
@@ -74,11 +74,11 @@ export function Card({
   children?: ReactNode;
 }) {
   return (
-    <section className={cn("flex flex-col gap-4 rounded-lg border border-border bg-surface p-5 shadow-sm", className)}>
+    <section className={cn("flex flex-col gap-4 rounded-lg border border-border bg-surface p-4 shadow-sm sm:p-5", className)}>
       {(header || actions) && (
         <div className="flex flex-wrap items-center justify-between gap-3">
-          {header && <div className="font-semibold text-fg">{header}</div>}
-          {actions && <div className="flex items-center gap-2">{actions}</div>}
+          {header && <h2 className="font-semibold text-fg">{header}</h2>}
+          {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
         </div>
       )}
       {children}
@@ -151,8 +151,9 @@ function fieldDescribedBy(id: string, hasHelp: boolean, hasError: boolean): stri
   return undefined;
 }
 
-const FIELD_INPUT_CLASSES =
-  "rounded-md border border-border bg-surface px-3 py-2 text-fg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary";
+/** The one look for every text-like control; use on raw `<input type="file">`/`<select>` that the field components do not cover. */
+export const FIELD_INPUT_CLASSES =
+  "w-full rounded-md border border-border bg-surface px-3 py-2 text-fg pointer-coarse:min-h-11 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary";
 
 export function TextField({
   label,
@@ -191,9 +192,13 @@ const STATUS_BADGE_CLASSES: Record<StatusKind, string> = {
   not_configured: "text-warn",
 };
 
+/** A glyph beside the label so status never relies on colour alone. */
+const STATUS_BADGE_ICONS: Record<StatusKind, string> = { up: "✓", down: "✕", not_configured: "!" };
+
 export function StatusBadge({ status, children }: { status: StatusKind; children: ReactNode }) {
   return (
-    <span className={cn("inline-flex items-center rounded-full border border-current px-2.5 py-0.5 text-sm font-semibold", STATUS_BADGE_CLASSES[status])}>
+    <span className={cn("inline-flex items-center gap-1.5 rounded-full border border-current px-2.5 py-0.5 text-sm font-semibold", STATUS_BADGE_CLASSES[status])}>
+      <span aria-hidden="true">{STATUS_BADGE_ICONS[status]}</span>
       {children}
     </span>
   );
@@ -282,6 +287,75 @@ export function SelectField({
           </p>
         )
       )}
+    </div>
+  );
+}
+
+export function TextareaField({
+  label,
+  id,
+  helpText,
+  error,
+  className,
+  ...props
+}: TextareaHTMLAttributes<HTMLTextAreaElement> & { label: string; id: string; helpText?: string; error?: string }) {
+  return (
+    <div className={cn("flex flex-col gap-1.5", className)}>
+      <label className="text-sm font-medium text-fg" htmlFor={id}>
+        {label}
+      </label>
+      <textarea id={id} rows={4} className={FIELD_INPUT_CLASSES} aria-invalid={error ? true : undefined} aria-describedby={fieldDescribedBy(id, Boolean(helpText), Boolean(error))} {...props} />
+      {error ? (
+        <p id={`${id}-error`} role="alert" className="text-sm text-danger">
+          {error}
+        </p>
+      ) : (
+        helpText && (
+          <p id={`${id}-help`} className="text-sm text-fg-muted">
+            {helpText}
+          </p>
+        )
+      )}
+    </div>
+  );
+}
+
+/** A native checkbox (or radio, via `type`) with its label: a 44px-tall tap row on touch, accent-coloured with the theme. */
+export function CheckboxField({
+  label,
+  id,
+  helpText,
+  type = "checkbox",
+  className,
+  ...props
+}: Omit<InputHTMLAttributes<HTMLInputElement>, "type"> & { label: ReactNode; id: string; helpText?: string; type?: "checkbox" | "radio" }) {
+  return (
+    <div className={cn("flex flex-col gap-0.5", className)}>
+      <label htmlFor={id} className="flex items-center gap-2.5 text-sm text-fg pointer-coarse:min-h-11">
+        <input id={id} type={type} className="size-4 shrink-0 accent-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary" aria-describedby={helpText ? `${id}-help` : undefined} {...props} />
+        <span>{label}</span>
+      </label>
+      {helpText && (
+        <p id={`${id}-help`} className="ps-6.5 text-sm text-fg-muted">
+          {helpText}
+        </p>
+      )}
+    </div>
+  );
+}
+
+/** A loading placeholder announced to assistive tech: spinner and message plus shimmering lines that hold the layout
+ *  so content does not jump when it arrives. */
+export function Loading({ children, lines = 3 }: { children: ReactNode; lines?: number }) {
+  return (
+    <div role="status" className="flex flex-col gap-3">
+      <p className="flex items-center gap-2 text-fg-muted">
+        <ButtonSpinner />
+        {children}
+      </p>
+      {Array.from({ length: lines }, (_, index) => (
+        <Skeleton key={index} className={index === lines - 1 ? "h-4 w-2/3" : "h-4 w-full"} />
+      ))}
     </div>
   );
 }

@@ -2,7 +2,7 @@
 
 import type { NotificationTriggerCatalogueEntry, NotificationTriggerSetting, Site } from "@qms/api-client";
 import { useI18n } from "@qms/i18n/react";
-import { Card, ErrorAlert, SelectField } from "@qms/ui";
+import { Button, Card, ErrorAlert, SelectField } from "@qms/ui";
 import { useState } from "react";
 import { describeError, localisedName, useList, useSubmit } from "../lib/admin-support";
 import { useApi } from "../lib/runtime";
@@ -66,9 +66,9 @@ export function NotificationTriggersCard({ site }: { site: Site }) {
                     ? t("notifications.triggers.overriddenSite")
                     : t("notifications.triggers.default")}
               </span>
-              <button type="button" className="inline-flex items-center justify-center gap-2 rounded-md px-4 py-2 text-sm font-medium motion-safe:transition-colors bg-primary text-primary-fg hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-60 " disabled={busy} onClick={() => void toggle(trigger)}>
+              <Button type="button" size="sm" variant={trigger.enabled ? "secondary" : "primary"} disabled={busy} onClick={() => void toggle(trigger)}>
                 {t(trigger.enabled ? "notifications.triggers.disable" : "notifications.triggers.enable")}
-              </button>
+              </Button>
             </li>
           );
         })}
