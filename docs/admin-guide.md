@@ -53,7 +53,9 @@ Open `http://localhost:8080/admin/`. All five apps and the API share one origin,
 30. [Config bundle and versioning](#30-config-bundle-and-versioning)
 
 See also: [`docs/api/error-codes.md`](api/error-codes.md) for the full `code` vocabulary every refusal below draws
-from, and [`docs/adr/`](adr/) for the design rationale behind them.
+from, and [`docs/adr/`](adr/) for the design rationale behind them. To **verify** what this guide configures, use the
+[testing guide](testing-guide/index.html) (open it from disk in a browser): scenario walkthroughs per industry, a numbered
+test-case catalogue with expected results and refusals, and how to run the automated suites.
 
 - **First System Administrator.** With no users yet, the backend creates one from `QMS_BOOTSTRAP_ADMIN_USERNAME` and
   `QMS_BOOTSTRAP_ADMIN_PASSWORD`. The password must satisfy the password policy or the backend refuses to start. Once a

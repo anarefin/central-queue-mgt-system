@@ -1,0 +1,213 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Live dashboard, threshold alerts and escalation — cqms testing guide</title>
+<link rel="stylesheet" href="styles.css">
+<script>
+(function(){try{var t=localStorage.getItem('qms-guide-theme');if(t)document.documentElement.setAttribute('data-theme',t);}catch(e){}
+document.addEventListener('DOMContentLoaded',function(){var b=document.getElementById('theme-toggle');if(!b)return;
+b.addEventListener('click',function(){var cur=document.documentElement.getAttribute('data-theme');
+if(!cur){cur=window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';}
+var n=cur==='dark'?'light':'dark';document.documentElement.setAttribute('data-theme',n);try{localStorage.setItem('qms-guide-theme',n);}catch(e){}});});})();
+</script>
+</head>
+<body>
+<a class="skip" href="#content">Skip to content</a>
+<div class="layout">
+<nav class="side" aria-label="Guide navigation"><a class="brand" href="index.html">cqms testing guide</a><div class="sub">Queue Management System</div><h2>Start here</h2><ul><li><a href="01-getting-started.html">Getting started</a></li><li><a href="02-roles-and-permissions.html">Roles and permissions</a></li><li><a href="03-industry-configuration.html">Industry configuration</a></li><li><a href="04-walkthroughs.html">Industry walkthroughs</a></li><li><a href="05-setup-wizard-and-config.html">Setup wizard and config bundle</a></li></ul><h2>Configuration</h2><ul><li><a href="06-auth-and-users.html">Auth, users and approvals</a></li><li><a href="07-organisation.html">Sites, zones, counters</a></li><li><a href="08-catalogue-numbering-priority.html">Catalogue, numbering, priority</a></li></ul><h2>Serving visitors</h2><ul><li><a href="09-issuance.html">Issuance</a></li><li><a href="10-visitors.html">Visitors</a></li><li><a href="11-queue-engine.html">Queue engine</a></li><li><a href="12-counter-sessions.html">Counter sessions</a></li><li><a href="13-journeys.html">Journeys</a></li><li><a href="14-appointments.html">Appointments</a></li><li><a href="15-mobile-visitor.html">Mobile visitor</a></li></ul><h2>Surfaces and comms</h2><ul><li><a href="16-displays-and-voice.html">Displays and voice</a></li><li><a href="17-notifications.html">Notifications</a></li><li><a href="18-dashboard-and-alerts.html" aria-current="page">Dashboard and alerts</a></li></ul><h2>Data and platform</h2><ul><li><a href="19-reports-and-exports.html">Reports and exports</a></li><li><a href="20-integrations.html">Webhooks and service accounts</a></li><li><a href="21-devices-and-realtime.html">Devices and realtime</a></li><li><a href="22-audit-log.html">Audit log</a></li><li><a href="23-operations.html">Operations</a></li></ul><h2>Quality</h2><ul><li><a href="24-cross-cutting.html">Cross-cutting checks</a></li><li><a href="25-automated-suites.html">Automated suites</a></li><li><a href="26-appendices.html">Appendices</a></li></ul><div class="theme"><button id="theme-toggle" type="button">Toggle light / dark</button></div></nav>
+<main id="content">
+<h1>Live dashboard, threshold alerts and escalation</h1>
+<p class="lede">Where is it going wrong right now: the live tiles and filters, acting from the dashboard, and the six alert thresholds with grouping, acknowledgement and escalation.</p>
+<h2 id="live-dashboard-console-dashboard">Live dashboard (<code>/console/dashboard/</code>)</h2>
+<p>Refreshes through the <strong>realtime channel</strong>, not polling, and shows data <strong>no more than 5 seconds stale</strong> (FR-MON-001). It needs <code>dashboard:view_all</code> (System and Org Admin) or <code>dashboard:view_own_groups</code> (Team Admin, Reception, and Agent as <code>S</code>); anyone else is told *You do not have permission to view the dashboard* instead of a broken page.</p>
+<p><strong>Filters</strong> are chosen from lists, not typed ids: Site, Zone, Service group, Service, Priority class, Agent. Service needs a group chosen first. The filter state is <strong>shareable as a URL</strong>.</p>
+<div class="tablewrap"><table><thead><tr><th>Tile</th><th>Shows</th></tr></thead><tbody><tr><td>Waiting now</td><td>per Service group: *N waiting, longest 12m*</td></tr><tr><td>Serving now</td><td>*Token at Counter - elapsed*</td></tr><tr><td>Counters</td><td>Open, On break, Closed, Idle with a queue waiting</td></tr><tr><td>Longest waits</td><td>top 10 by wait, flagged <strong>Past SLA</strong> and <strong>Escalated</strong></td></tr><tr><td>Throughput today</td><td>Served, Cancelled, No-show, Transferred</td></tr><tr><td>Appointments today</td><td>Booked, Checked in, No-show, Upcoming in the next hour</td></tr><tr><td>Remote queue</td><td>Remote, Approaching, Present, Forfeited</td></tr><tr><td>Device health</td><td>Kiosks offline, Displays offline (*Printers offline: not tracked yet*)</td></tr><tr><td>Served per open Counter</td><td>load balancing</td></tr></tbody></table></div>
+<p><strong>Actions from the dashboard:</strong> *Re-prioritise* (with a mandatory reason, *Change priority*), *Force-close* a session, *Change agent status*, *Send a staff alert*.</p>
+<h2 id="cases">Cases</h2>
+<article class="tc happy" id="TC-MON-001">
+<header><span class="tcid"><a href="#TC-MON-001">TC-MON-001</a></span><h4>Dashboard shows live tiles</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-MON-001, FR-MON-003</dd></div><div><dt>Role</dt><dd>team_admin, org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Open <code>/console/dashboard/</code> and choose a Site.</li><li>Keep a few Tickets waiting, call one, complete one.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>*Waiting now*, *Serving now*, *Counters* and *Throughput today* change within about 5 seconds without a reload.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>GET /dashboard/live?site_id= ; realtime topic site:{id}:dashboard</code></pre><p><strong>Automated:</strong> <code>DashboardIT</code>, <code>LiveDashboard.test.tsx</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc edge" id="TC-MON-002">
+<header><span class="tcid"><a href="#TC-MON-002">TC-MON-002</a></span><h4>The dashboard needs a Site</h4><span class="badge edge">edge</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-MON-002</dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Open the dashboard with no Site selected.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>*Choose a Site to see its live dashboard.*</p></div>
+<details class="dev"><summary>Dev / API</summary><p><strong>Automated:</strong> <code>LiveDashboard.test.tsx</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-MON-003">
+<header><span class="tcid"><a href="#TC-MON-003">TC-MON-003</a></span><h4>Filter by Zone, group, Service, class and agent</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-MON-002</dd></div><div><dt>Role</dt><dd>team_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Use the Filters panel: pick a Service group, then a Service; then a Priority class. (No agent filter exists in this build.)</li><li>Copy the URL into a new tab.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>Every tile narrows to the selection. Service is disabled with *Choose a Service group first* until a group is picked. The copied URL restores the same filters.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>GET /dashboard/live?site_id=&amp;zone_id=&amp;service_group_id=&amp;service_id=&amp;priority_class_id=</code></pre><p><strong>Automated:</strong> <code>LiveDashboard.test.tsx</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-MON-004">
+<header><span class="tcid"><a href="#TC-MON-004">TC-MON-004</a></span><h4>Scope narrows the dashboard</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-CFG-106, §5.2</dd></div><div><dt>Role</dt><dd>team_admin, reception_operator</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Sign in as a Team Admin of Group A only and look at the dashboard.</li><li>Request Group B's data by API.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>Only Group A appears. Group B is refused <code>403 forbidden</code> (or absent). System and Org Admin (<code>dashboard:view_all</code>) see all groups.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>GET /dashboard/live?service_group_id=&lt;B&gt; -&gt; 403</code></pre><p><strong>Automated:</strong> <code>DashboardIT</code>, <code>ScopeTest</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-MON-005">
+<header><span class="tcid"><a href="#TC-MON-005">TC-MON-005</a></span><h4>No permission is explained, not broken</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>§5.2, ticket 64</dd></div><div><dt>Role</dt><dd>kiosk, display, visitor tokens</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Open <code>/console/dashboard/</code> with a role that lacks both dashboard permissions.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>The page says *You do not have permission to view the dashboard - Ask your team admin if you believe this is a mistake* with a *Back to the Counter* link. The API answers <code>403</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>GET /dashboard/live -&gt; 403</code></pre><p><strong>Automated:</strong> <code>LiveDashboard.test.tsx</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-MON-006">
+<header><span class="tcid"><a href="#TC-MON-006">TC-MON-006</a></span><h4>Longest waits flag Past SLA and Escalated</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-MON-003, FR-QUE-022</dd></div><div><dt>Role</dt><dd>team_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Give a Service an SLA of 1 minute and a class max wait of 2 minutes.</li><li>Leave a Ticket waiting for 3 minutes.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>The Ticket in *Longest waits* is marked <strong>Past SLA</strong> and then <strong>Escalated</strong>.</p></div>
+<details class="dev"><summary>Dev / API</summary><p><strong>Automated:</strong> <code>DashboardIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-MON-007">
+<header><span class="tcid"><a href="#TC-MON-007">TC-MON-007</a></span><h4>Re-prioritise from the dashboard</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-MON-004, FR-QUE-012, UAT U9</dd></div><div><dt>Role</dt><dd>reception_operator, team_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>In *Longest waits* choose a Ticket, pick a class, type a reason, press <strong>Change priority</strong>.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>The order changes on every open dashboard within 5 seconds; the reason is in the audit log. Errors (<code>ticket_not_waiting</code>, <code>same_priority_class</code>, <code>version_mismatch</code>) are shown next to the form.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /tickets/{id}/priority</code></pre><p><strong>Automated:</strong> <code>LiveDashboard.test.tsx</code>; e2e U9</p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-MON-008">
+<header><span class="tcid"><a href="#TC-MON-008">TC-MON-008</a></span><h4>Force-close and change agent status from the dashboard</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-MON-004</dd></div><div><dt>Role</dt><dd>team_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Force-close an idle session; set an agent on break; see <a href="12-counter-sessions.html">Counter sessions</a>.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>The actions behave exactly as from their own screens and are audited.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /sessions/{id}/force-close ; PUT /agents/{id}/availability</code></pre><p><strong>Automated:</strong> <code>LiveDashboard.test.tsx</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-MON-009">
+<header><span class="tcid"><a href="#TC-MON-009">TC-MON-009</a></span><h4>Send a staff alert</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-MON-004</dd></div><div><dt>Role</dt><dd>team_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Press <strong>Send a staff alert</strong>, type a message to the Site's admins.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>The alert reaches the Site's team and org admins in-app. Audit <code>dashboard.staff_alert_sent</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /dashboard/{site_id}/staff-alert</code></pre><p><strong>Automated:</strong> <code>DashboardIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc edge" id="TC-MON-010">
+<header><span class="tcid"><a href="#TC-MON-010">TC-MON-010</a></span><h4>Agent KPIs and service KPIs</h4><span class="badge edge">edge</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-MON-010, FR-MON-011</dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Open *Reports* &gt; operational reports for the day; compare with the previous equivalent period.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>Average and 90th-percentile wait come from raw Tickets (never an average of averages); SLA attainment, abandonment, peak concurrency and utilisation agree with the dashboard. See <a href="19-reports-and-exports.html">Reports</a>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /reports/{key}/run</code></pre><p><strong>Automated:</strong> <code>OperationalReportsIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc edge" id="TC-MON-011">
+<header><span class="tcid"><a href="#TC-MON-011">TC-MON-011</a></span><h4>Agent sees only their own day</h4><span class="badge edge">edge</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-AGT-040, FR-AGT-041</dd></div><div><dt>Role</dt><dd>agent</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>As an Agent open *My day* in the Console.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>Only own figures (served, times, breaks); nothing to rank against other agents.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>GET /sessions/stats</code></pre><p><strong>Automated:</strong> <code>ConsoleContextIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<h2 id="threshold-alerts">Threshold alerts</h2>
+<p>Per <strong>Service</strong> (<code>GET|PUT /services/{id}/alert-thresholds</code>, <code>config:service_catalogue</code>) set maxima for six metrics; each left null leaves that metric <strong>unmonitored</strong>:</p>
+<div class="tablewrap"><table><thead><tr><th>Threshold type</th><th>Fires trigger</th><th>Meaning</th></tr></thead><tbody><tr><td><code>queue_length</code></td><td><code>queue_sla_breach</code></td><td>Tickets waiting exceeds the maximum</td></tr><tr><td><code>longest_wait</code></td><td><code>queue_sla_breach</code></td><td>longest wait exceeds the maximum</td></tr><tr><td><code>no_show_rate</code></td><td><code>queue_sla_breach</code></td><td>no-show rate exceeds the maximum</td></tr><tr><td><code>idle_counters</code></td><td><code>counter_unattended</code></td><td>Counters idle with a queue waiting</td></tr><tr><td><code>device_offline</code></td><td><code>kiosk_display_offline</code></td><td>a kiosk or display offline longer than the maximum</td></tr><tr><td><code>break_overrun</code></td><td><code>agent_break_overrun</code></td><td>a break runs past its type's maximum</td></tr></tbody></table></div>
+<p><code>group_window_minutes</code> (default 15) groups repeat breaches into <strong>one</strong> alert; <code>escalation_delay_minutes</code> (default 30) escalates an unacknowledged alert to the Org Admin. The sweep runs every 30 seconds (<code>qms.alerts.threshold-check-cron</code>, <code>escalation-check-cron</code>). Alerts are listed at <code>GET /sites/{id}/alerts</code> and acknowledged with an optional note (<code>POST /alerts/{id}/acknowledge</code>).</p>
+<article class="tc happy" id="TC-MON-012">
+<header><span class="tcid"><a href="#TC-MON-012">TC-MON-012</a></span><h4>Set alert thresholds</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-MON-020</dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Admin &gt; Notifications &gt; *Alert thresholds* for a Service: queue_length_max 3, longest_wait_minutes_max 2.</li><li>Save.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>Saved. Audit <code>alert_threshold.updated</code> with before and after.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>PUT /services/{id}/alert-thresholds {queue_length_max:3,longest_wait_minutes_max:2,idle_counters_with_queue_max,no_show_rate_percent_max,device_offline_minutes_max,group_window_minutes,escalation_delay_minutes}</code></pre><p><strong>Automated:</strong> <code>ThresholdAlertIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-MON-013">
+<header><span class="tcid"><a href="#TC-MON-013">TC-MON-013</a></span><h4>Threshold validation and permission</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-MON-020</dd></div><div><dt>Role</dt><dd>org_admin, team_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Save a negative maximum (0 is accepted); then save as a Team Admin.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>400 validation_failed</code> for the negative number; <code>403 forbidden</code> for the Team Admin.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>PUT /services/{id}/alert-thresholds -&gt; 400 / 403</code></pre><p><strong>Automated:</strong> <code>ThresholdAlertIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-MON-014">
+<header><span class="tcid"><a href="#TC-MON-014">TC-MON-014</a></span><h4>Queue-length breach raises an alert</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-MON-021</dd></div><div><dt>Role</dt><dd>team_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>With <code>queue_length</code> 3 issue 4 Tickets and wait up to 30 seconds for the sweep.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>An in-app alert appears for the responsible Team Admin (trigger <code>queue_sla_breach</code>). Audit <code>alert.raised</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>GET /sites/{id}/alerts</code></pre><p><strong>Automated:</strong> <code>ThresholdAlertIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc edge" id="TC-MON-015">
+<header><span class="tcid"><a href="#TC-MON-015">TC-MON-015</a></span><h4>Repeated breaches are grouped into one alert</h4><span class="badge edge">edge</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-MON-023</dd></div><div><dt>Role</dt><dd>team_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Keep the breach for several sweeps (within the 15-minute window).</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>Still <strong>one</strong> alert, not one per sweep.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>qms.alerts.default-group-window-minutes=15</code></pre><p><strong>Automated:</strong> <code>ThresholdAlertIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-MON-016">
+<header><span class="tcid"><a href="#TC-MON-016">TC-MON-016</a></span><h4>Acknowledge an alert with a note</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-MON-022</dd></div><div><dt>Role</dt><dd>team_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Open the alert and press acknowledge with the note *Sent extra agent*.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>The alert shows acknowledged by you with the note and time. Audit <code>alert.acknowledged</code>. It no longer escalates.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /alerts/{id}/acknowledge {note}</code></pre><p><strong>Automated:</strong> <code>ThresholdAlertIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc edge" id="TC-MON-017">
+<header><span class="tcid"><a href="#TC-MON-017">TC-MON-017</a></span><h4>An unacknowledged alert escalates to the Org Admin</h4><span class="badge edge">edge</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-MON-021</dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Set <code>escalation_delay_minutes</code> to 1.</li><li>Leave an alert unacknowledged for over a minute.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>The Org Admin also receives it (audit <code>alert.escalated</code>).</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>qms.alerts.default-escalation-delay-minutes=30</code></pre><p><strong>Automated:</strong> <code>ThresholdAlertIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-MON-018">
+<header><span class="tcid"><a href="#TC-MON-018">TC-MON-018</a></span><h4>Idle counters with a queue waiting</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-MON-020</dd></div><div><dt>Role</dt><dd>team_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Set <code>idle_counters_with_queue_max</code> to 0 (the rule fires when idle counters are greater than the max, so 0 means one idle counter).</li><li>Open a session and leave it idle while a Ticket waits (or a Ticket waits with no session).</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>A <code>counter_unattended</code> alert is raised.</p></div>
+<details class="dev"><summary>Dev / API</summary><p><strong>Automated:</strong> <code>ThresholdAlertIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-MON-019">
+<header><span class="tcid"><a href="#TC-MON-019">TC-MON-019</a></span><h4>Device offline alert</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-MON-020, FR-OPS-041</dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Set <code>device_offline</code> to 2 minutes.</li><li>Stop a paired kiosk's heartbeats (close its browser) for over 2 minutes.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>kiosk_display_offline</code> alert raised, and *Kiosks offline* shows 1 on the dashboard.</p></div>
+<details class="dev"><summary>Dev / API</summary><p><strong>Automated:</strong> <code>ThresholdAlertIT</code>, <code>DeviceFleetIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-MON-020">
+<header><span class="tcid"><a href="#TC-MON-020">TC-MON-020</a></span><h4>Agent break overrun alert</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-AGT-023</dd></div><div><dt>Role</dt><dd>team_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Create a break type with a 1-minute maximum.</li><li>Start it as an agent and stay on it for 2 minutes.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>An <code>agent_break_overrun</code> alert reaches the Team Admin; the break report counts the overrun.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>qms.session.break-overrun-check-cron='*/30 * * * * *'</code></pre><p><strong>Automated:</strong> <code>BreakOverrunIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-MON-021">
+<header><span class="tcid"><a href="#TC-MON-021">TC-MON-021</a></span><h4>Alerts are scoped to the responsible admin</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-MON-021, FR-CFG-106</dd></div><div><dt>Role</dt><dd>team_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Read <code>GET /sites/{id}/alerts</code> as a Team Admin of a different group.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>Alerts of other groups are filtered out of the list; acknowledging one is <code>403 forbidden</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /alerts/{id}/acknowledge -&gt; 403</code></pre><p><strong>Automated:</strong> <code>ThresholdAlertIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-MON-022">
+<header><span class="tcid"><a href="#TC-MON-022">TC-MON-022</a></span><h4>Unknown alert or Site</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>§20.3</dd></div><div><dt>Role</dt><dd>team_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Acknowledge an alert id that does not exist.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>404 not_found</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /alerts/{random}/acknowledge -&gt; 404</code></pre><p><strong>Automated:</strong> <code>ThresholdAlertIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article><section class="signoff"><h2 id="sign-off-sheet">Sign-off sheet</h2><p class="hint">Print this page range, one sheet per run. Tick Pass or Fail and note the build, date and tester at the top.</p><div class="tablewrap"><table><thead><tr><th>TC</th><th>Title</th><th>Type</th><th>Pass</th><th>Fail</th><th>Notes</th></tr></thead><tbody><tr><td><a href="#TC-MON-001">TC-MON-001</a></td><td>Dashboard shows live tiles</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-MON-002">TC-MON-002</a></td><td>The dashboard needs a Site</td><td><span class="badge edge">edge</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-MON-003">TC-MON-003</a></td><td>Filter by Zone, group, Service, class and agent</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-MON-004">TC-MON-004</a></td><td>Scope narrows the dashboard</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-MON-005">TC-MON-005</a></td><td>No permission is explained, not broken</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-MON-006">TC-MON-006</a></td><td>Longest waits flag Past SLA and Escalated</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-MON-007">TC-MON-007</a></td><td>Re-prioritise from the dashboard</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-MON-008">TC-MON-008</a></td><td>Force-close and change agent status from the dashboard</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-MON-009">TC-MON-009</a></td><td>Send a staff alert</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-MON-010">TC-MON-010</a></td><td>Agent KPIs and service KPIs</td><td><span class="badge edge">edge</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-MON-011">TC-MON-011</a></td><td>Agent sees only their own day</td><td><span class="badge edge">edge</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-MON-012">TC-MON-012</a></td><td>Set alert thresholds</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-MON-013">TC-MON-013</a></td><td>Threshold validation and permission</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-MON-014">TC-MON-014</a></td><td>Queue-length breach raises an alert</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-MON-015">TC-MON-015</a></td><td>Repeated breaches are grouped into one alert</td><td><span class="badge edge">edge</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-MON-016">TC-MON-016</a></td><td>Acknowledge an alert with a note</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-MON-017">TC-MON-017</a></td><td>An unacknowledged alert escalates to the Org Admin</td><td><span class="badge edge">edge</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-MON-018">TC-MON-018</a></td><td>Idle counters with a queue waiting</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-MON-019">TC-MON-019</a></td><td>Device offline alert</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-MON-020">TC-MON-020</a></td><td>Agent break overrun alert</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-MON-021">TC-MON-021</a></td><td>Alerts are scoped to the responsible admin</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-MON-022">TC-MON-022</a></td><td>Unknown alert or Site</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr></tbody></table></div></section>
+<div class="pager"><a href="17-notifications.html">← Notifications</a><a href="19-reports-and-exports.html">Reports and exports →</a></div>
+</main>
+</div>
+</body>
+</html>

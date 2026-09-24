@@ -384,6 +384,25 @@ public class HierarchyService {
         return repository.countersOfZone(zoneId);
     }
 
+    // ---- notice board reads ---------------------------------------------------------------------------------------
+    // notice_board:manage is held by Team Admin, who does not hold config:org_sites_zones, so the notice board
+    // reads the Zone and Site it needs through these narrower, scope-checked methods instead of zone() and site().
+
+    @PreAuthorize("hasAuthority(T(com.qms.platform.security.Authorities).NOTICE_BOARD_MANAGE)")
+    @Transactional(readOnly = true)
+    public Zone zoneForNoticeBoard(UUID id) {
+        Zone zone = requireZone(id);
+        scope.requireSite(zone.siteId());
+        return zone;
+    }
+
+    @PreAuthorize("hasAuthority(T(com.qms.platform.security.Authorities).NOTICE_BOARD_MANAGE)")
+    @Transactional(readOnly = true)
+    public Site siteForNoticeBoard(UUID id) {
+        scope.requireSite(id);
+        return requireSite(id);
+    }
+
     // ---- internals ---------------------------------------------------------------------------------------------
 
     private void deactivateZoneRow(UUID zoneId, Instant now, String reason) {

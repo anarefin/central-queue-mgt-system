@@ -1,0 +1,263 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Reports, exports, schedules, retention and the BI extract — cqms testing guide</title>
+<link rel="stylesheet" href="styles.css">
+<script>
+(function(){try{var t=localStorage.getItem('qms-guide-theme');if(t)document.documentElement.setAttribute('data-theme',t);}catch(e){}
+document.addEventListener('DOMContentLoaded',function(){var b=document.getElementById('theme-toggle');if(!b)return;
+b.addEventListener('click',function(){var cur=document.documentElement.getAttribute('data-theme');
+if(!cur){cur=window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';}
+var n=cur==='dark'?'light':'dark';document.documentElement.setAttribute('data-theme',n);try{localStorage.setItem('qms-guide-theme',n);}catch(e){}});});})();
+</script>
+</head>
+<body>
+<a class="skip" href="#content">Skip to content</a>
+<div class="layout">
+<nav class="side" aria-label="Guide navigation"><a class="brand" href="index.html">cqms testing guide</a><div class="sub">Queue Management System</div><h2>Start here</h2><ul><li><a href="01-getting-started.html">Getting started</a></li><li><a href="02-roles-and-permissions.html">Roles and permissions</a></li><li><a href="03-industry-configuration.html">Industry configuration</a></li><li><a href="04-walkthroughs.html">Industry walkthroughs</a></li><li><a href="05-setup-wizard-and-config.html">Setup wizard and config bundle</a></li></ul><h2>Configuration</h2><ul><li><a href="06-auth-and-users.html">Auth, users and approvals</a></li><li><a href="07-organisation.html">Sites, zones, counters</a></li><li><a href="08-catalogue-numbering-priority.html">Catalogue, numbering, priority</a></li></ul><h2>Serving visitors</h2><ul><li><a href="09-issuance.html">Issuance</a></li><li><a href="10-visitors.html">Visitors</a></li><li><a href="11-queue-engine.html">Queue engine</a></li><li><a href="12-counter-sessions.html">Counter sessions</a></li><li><a href="13-journeys.html">Journeys</a></li><li><a href="14-appointments.html">Appointments</a></li><li><a href="15-mobile-visitor.html">Mobile visitor</a></li></ul><h2>Surfaces and comms</h2><ul><li><a href="16-displays-and-voice.html">Displays and voice</a></li><li><a href="17-notifications.html">Notifications</a></li><li><a href="18-dashboard-and-alerts.html">Dashboard and alerts</a></li></ul><h2>Data and platform</h2><ul><li><a href="19-reports-and-exports.html" aria-current="page">Reports and exports</a></li><li><a href="20-integrations.html">Webhooks and service accounts</a></li><li><a href="21-devices-and-realtime.html">Devices and realtime</a></li><li><a href="22-audit-log.html">Audit log</a></li><li><a href="23-operations.html">Operations</a></li></ul><h2>Quality</h2><ul><li><a href="24-cross-cutting.html">Cross-cutting checks</a></li><li><a href="25-automated-suites.html">Automated suites</a></li><li><a href="26-appendices.html">Appendices</a></li></ul><div class="theme"><button id="theme-toggle" type="button">Toggle light / dark</button></div></nav>
+<main id="content">
+<h1>Reports, exports, schedules, retention and the BI extract</h1>
+<p class="lede">Running each report against the reporting schema, exporting to CSV, XLSX or PDF, scheduling delivery, retention and anonymisation, and reading the warehouse from a BI tool.</p>
+<h2 id="how-reports-work">How reports work</h2>
+<p>Screen: Admin &gt; <strong>Reports</strong> (<code>/admin/reports/</code>). Permission: <strong><code>reports:run_export</code></strong>; exporting or scheduling <strong>also</strong> needs <strong><code>visitor_pii:view</code></strong> (both are held by System, Org and Team Admin; Team Admin cannot render the page in practice, see <a href="02-roles-and-permissions.html#direct-url-access-tests">Roles</a>).</p>
+<ul><li>Reports <strong>never run against the live queue</strong>. They read a separate <code>reporting</code> schema refreshed about every <strong>15 seconds</strong> and never more than <strong>60 seconds</strong> behind, so a Ticket that just completed appears after the next sweep and a heavy report cannot slow a counter.</li><li><strong>"Tickets issued" counts chain heads</strong>, not rows: a Ticket transferred twice is three rows in the detailed report (three waits, one per Service) but <strong>one</strong> issued Ticket (ADR-0006).</li><li>Percentiles come from raw Ticket rows, never averages of averages. Every report shows the period next to the <strong>previous equivalent period</strong> with absolute and percentage change.</li></ul>
+<div class="tablewrap"><table><thead><tr><th>Report key</th><th>What it is</th></tr></thead><tbody><tr><td><code>detailed-token</code></td><td>one row per Ticket with every timing, Counter, agent, outcome and transfers; filters by date range, Zone, group, Service, agent, class, channel, category; server-paged and sortable</td></tr><tr><td><code>visitor-flow</code></td><td>issued, served, cancelled, no-show by hour, day, month or year, peak waiting, abandonment, channel mix</td></tr><tr><td><code>counter</code></td><td>sessions, open hours, served, idle time, utilisation</td></tr><tr><td><code>agent</code></td><td>full agent KPI set incl. login adherence</td></tr><tr><td><code>service</code>, <code>department</code>, <code>site</code></td><td>volume, average and P90 wait, handling time, SLA attainment (each rolls up the one below)</td></tr><tr><td><code>break</code></td><td>breaks per agent and type, overruns</td></tr><tr><td><code>appointment</code>, <code>journey</code>, <code>feedback</code>, <code>notification</code>, <code>audit</code></td><td>domain reports</td></tr><tr><td><code>peak-hours</code>, <code>staffing-gap</code></td><td>planning views</td></tr></tbody></table></div>
+<p>An unknown key is <code>404 not_found</code>. From and To are required for period comparison.</p>
+<h2 id="running-reports">Running reports</h2>
+<article class="tc happy" id="TC-RPT-001">
+<header><span class="tcid"><a href="#TC-RPT-001">TC-RPT-001</a></span><h4>Run the detailed token report and sort it</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-RPT-001, FR-RPT-002</dd></div><div><dt>Role</dt><dd>org_admin</dd></div><div class="wide"><dt>Preconditions</dt><dd>Some completed Tickets in the last refresh window.</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Admin &gt; Reports &gt; choose the Site &gt; *Detailed token report*.</li><li>Pick From and To dates, press <strong>Run</strong>.</li><li>Click a column header to sort.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>One row per Ticket with timings, Counter, agent, outcome and transfers. Paging and sorting happen on the server.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /reports/detailed-token/run {site_id,from,to,...}</code></pre><p><strong>Automated:</strong> <code>ReportingIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-RPT-002">
+<header><span class="tcid"><a href="#TC-RPT-002">TC-RPT-002</a></span><h4>Filter the detailed report</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-RPT-002</dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Filter by Service, then by Priority class, then by channel <code>kiosk</code>, then by category.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>Each filter narrows the rows; combined filters intersect.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /reports/detailed-token/run {service_id,priority_class_id,channel,visitor_category}</code></pre><p><strong>Automated:</strong> <code>ReportingIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc edge" id="TC-RPT-003">
+<header><span class="tcid"><a href="#TC-RPT-003">TC-RPT-003</a></span><h4>A just-completed Ticket appears within the refresh window</h4><span class="badge edge">edge</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-RPT-020</dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Complete a Ticket and run the report immediately, then again after 60 seconds.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>It may be absent for a few seconds, and is present within 60 seconds. It never blocks a counter.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>qms.reporting.refresh-cron='*/15 * * * * *'</code></pre><p><strong>Automated:</strong> <code>ReportingIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc edge" id="TC-RPT-004">
+<header><span class="tcid"><a href="#TC-RPT-004">TC-RPT-004</a></span><h4>Transferred tickets are counted once as issued</h4><span class="badge edge">edge</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>ADR-0006, FR-RPT</dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Transfer a Ticket twice, complete the last.</li><li>Run the detailed report and the visitor-flow report.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>Detailed: three rows (each with its own Service wait and a <strong>transfers</strong> count 0, 1, 2). Visitor-flow: <strong>one</strong> ticket issued.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /reports/visitor-flow/run</code></pre><p><strong>Automated:</strong> <code>ReportingIT</code>, <code>ReportingIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-RPT-005">
+<header><span class="tcid"><a href="#TC-RPT-005">TC-RPT-005</a></span><h4>The six operational reports</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-RPT-010, §15.2, §15.3</dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Run <code>visitor-flow</code>, <code>counter</code>, <code>agent</code>, <code>service</code>, <code>department</code>, <code>site</code> for the same From and To.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>Each shows its figures and the immediately preceding period with change. Service/department/site roll up consistently.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /reports/{key}/run</code></pre><p><strong>Automated:</strong> <code>OperationalReportsIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-RPT-006">
+<header><span class="tcid"><a href="#TC-RPT-006">TC-RPT-006</a></span><h4>A range that runs backwards is refused before it is sent</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>ticket 66</dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Set From after To.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>An inline error (*validation.reports.range.invalid*); by API <code>400 validation_failed</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /reports/visitor-flow/run {from&gt;to} -&gt; 400</code></pre><p><strong>Automated:</strong> <code>validators.test.ts</code>, <code>OperationalReportsIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-RPT-007">
+<header><span class="tcid"><a href="#TC-RPT-007">TC-RPT-007</a></span><h4>Missing dates for a comparison report</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-RPT-010</dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Run <code>service</code> with no From or To.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>400 validation_failed</code> naming <code>from</code> / <code>to</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /reports/service/run {} -&gt; 400</code></pre><p><strong>Automated:</strong> <code>OperationalReportsIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-RPT-008">
+<header><span class="tcid"><a href="#TC-RPT-008">TC-RPT-008</a></span><h4>Unknown report key</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>§20.3</dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li><code>POST /reports/nonsense/run</code>.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>404 not_found</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /reports/nonsense/run -&gt; 404</code></pre><p><strong>Automated:</strong> <code>ReportingIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-RPT-009">
+<header><span class="tcid"><a href="#TC-RPT-009">TC-RPT-009</a></span><h4>Domain reports and planning views</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-RPT, ticket 51</dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Run <code>appointment</code>, <code>journey</code>, <code>feedback</code>, <code>notification</code>, <code>audit</code>, then <code>peak-hours</code> and <code>staffing-gap</code>.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>Each answers in the same shape. Appointment shows adherence and no-show rate per Service, agent and category; journey shows completion and per-stop wait.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /reports/appointment/run</code></pre><p><strong>Automated:</strong> <code>DomainReportsIT</code>, <code>PlanningViewsIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-RPT-010">
+<header><span class="tcid"><a href="#TC-RPT-010">TC-RPT-010</a></span><h4>Report permissions</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>§5.2</dd></div><div><dt>Role</dt><dd>agent, reception_operator</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Run a report as an Agent or Reception.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>403 forbidden</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /reports/service/run (agent) -&gt; 403</code></pre><p><strong>Automated:</strong> <code>PermissionMatrixTest</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-RPT-011">
+<header><span class="tcid"><a href="#TC-RPT-011">TC-RPT-011</a></span><h4>Scope narrows every report</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-CFG-106</dd></div><div><dt>Role</dt><dd>team_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Run a report as a Team Admin of Group A asking for Group B.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>Refused <code>403 forbidden</code> or empty; only Group A is reachable.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /reports/detailed-token/run {service_group_id:B} -&gt; 403</code></pre><p><strong>Automated:</strong> <code>ReportingIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-RPT-012">
+<header><span class="tcid"><a href="#TC-RPT-012">TC-RPT-012</a></span><h4>Reports reconcile with the live dashboard</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>UAT U11</dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Compare *Throughput today* on the dashboard with <code>visitor-flow</code> for today.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>Served, cancelled and no-show counts agree (after the refresh window).</p></div>
+<details class="dev"><summary>Dev / API</summary><p><strong>Automated:</strong> e2e U11 (<code>u11-report-export.spec.ts</code>)</p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<h2 id="export">Export</h2>
+<p><code>POST /reports/detailed-token/export</code> supports <strong><code>csv</code></strong>, <strong><code>xlsx</code></strong> and <strong><code>pdf</code></strong>. A small export answers <strong>inline</strong> (<code>ready</code>). A large one (over <code>qms.reporting.export.async-threshold-rows</code>, default <strong>50 000</strong> rows) becomes a <strong>background job</strong> you poll (<code>GET /reports/jobs/{id}</code>), with an <strong>expiring download link</strong> (<code>link-ttl-hours</code>, default <strong>24</strong>). Only <code>detailed-token</code> exports; any other key is <code>404</code>. CSV cells are protected against <strong>formula injection</strong>.</p>
+<article class="tc happy" id="TC-RPT-013">
+<header><span class="tcid"><a href="#TC-RPT-013">TC-RPT-013</a></span><h4>Export a report to CSV</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-RPT-004, UAT U11</dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Reports &gt; *Detailed token report* &gt; set a range &gt; <strong>Export</strong> &gt; CSV.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>A file downloads with the same rows as the screen, the columns in the same order, and formula-like values neutralised.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /reports/detailed-token/export {format:'csv',...} -&gt; 200 with the file and Content-Disposition (inline); above the async threshold 202 {job_id,status:'queued'}</code></pre><p><strong>Automated:</strong> <code>ReportExportIT</code>; e2e U11</p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-RPT-014">
+<header><span class="tcid"><a href="#TC-RPT-014">TC-RPT-014</a></span><h4>Export XLSX and PDF</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-RPT-004</dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Export the same range as XLSX, then as PDF.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>Both open correctly; the PDF and XLSX carry the same headline totals.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /reports/detailed-token/export {format:'xlsx'|'pdf'}</code></pre><p><strong>Automated:</strong> <code>ReportExportIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-RPT-015">
+<header><span class="tcid"><a href="#TC-RPT-015">TC-RPT-015</a></span><h4>A 12-month export is delivered asynchronously and reconciles</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>UAT U11, §27.2</dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Request a 12-month CSV (or lower the threshold with <code>QMS_REPORTING_EXPORT_ASYNC_THRESHOLD_ROWS=10</code>).</li><li>Watch the job status.</li><li>Download the file when ready.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>The export returns <code>202</code> with <code>{job_id, status:"queued"}</code>; the job then reaches <code>done</code>, with a download link; the total reconciles with the dashboard and the screen.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>GET /reports/jobs/{id} ; GET /reports/jobs/{id}/download</code></pre><p><strong>Automated:</strong> <code>ReportExportIT</code>; e2e U11 handles both paths</p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-RPT-016">
+<header><span class="tcid"><a href="#TC-RPT-016">TC-RPT-016</a></span><h4>An expired or unknown download link</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-RPT-004</dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Open a download link after its TTL (set <code>QMS_REPORTING_EXPORT_LINK_TTL_HOURS=0</code>), or a random job id.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>404 not_found</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>GET /reports/jobs/{id}/download -&gt; 404</code></pre><p><strong>Automated:</strong> <code>ReportExportIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-RPT-017">
+<header><span class="tcid"><a href="#TC-RPT-017">TC-RPT-017</a></span><h4>Export a report that cannot be exported</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-RPT-004</dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li><code>POST /reports/visitor-flow/export</code>.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>404 not_found</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /reports/visitor-flow/export -&gt; 404</code></pre><p><strong>Automated:</strong> <code>ReportExportIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-RPT-018">
+<header><span class="tcid"><a href="#TC-RPT-018">TC-RPT-018</a></span><h4>Export needs both permissions</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>§5.2</dd></div><div><dt>Role</dt><dd>custom (no role has only one)</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>As an Agent or Reception call the export endpoint.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>403 forbidden</code>; export requires <code>reports:run_export</code> <strong>and</strong> <code>visitor_pii:view</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /reports/detailed-token/export -&gt; 403</code></pre><p><strong>Automated:</strong> <code>ReportExportIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-RPT-019">
+<header><span class="tcid"><a href="#TC-RPT-019">TC-RPT-019</a></span><h4>Export format validation</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-RPT-004</dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Send format <code>docx</code>, or a backwards range (From after To). A missing range is not an error: it exports everything the filter reaches.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>400 validation_failed</code> naming the field; a backwards range gives <code>400 before_from</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /reports/detailed-token/export {format:'docx'} -&gt; 400</code></pre><p><strong>Automated:</strong> <code>ReportExportIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<h2 id="schedules">Schedules</h2>
+<p>A schedule (<code>POST /reports/schedules {report_key, cadence, format, recipients, filter}</code>) delivers a report by email on a <strong><code>daily</code></strong>, <strong><code>weekly</code></strong> or <strong><code>monthly</code></strong> cadence (<code>enabled</code> toggles it). The poll runs hourly (<code>qms.reporting.schedule.poll-cron</code>). Each delivery is recorded (<code>GET /reports/schedules/{id}/deliveries</code>).</p>
+<article class="tc happy" id="TC-RPT-020">
+<header><span class="tcid"><a href="#TC-RPT-020">TC-RPT-020</a></span><h4>Create, edit and delete a schedule</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-RPT-005</dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Admin &gt; Reports &gt; *Schedule*: report <code>detailed-token</code>, weekly, CSV, one recipient.</li><li>Edit the cadence; then delete it.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>The schedule is listed enabled; edits keep the report key (only cadence, format, recipients, filter, enabled change); delete removes it. Audit <code>report_schedule.created|updated|deleted</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /reports/schedules ; PUT /reports/schedules/{id} ; DELETE /reports/schedules/{id}</code></pre><p><strong>Automated:</strong> <code>ReportScheduleIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-RPT-021">
+<header><span class="tcid"><a href="#TC-RPT-021">TC-RPT-021</a></span><h4>Schedule validation</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-RPT-005</dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Unknown report key; cadence <code>hourly</code>; format <code>docx</code>; no recipients; a filter the caller cannot reach.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>404 not_found</code> for the key; <code>400 validation_failed</code> for the rest; <code>403 forbidden</code> for a filter outside the caller's scope.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /reports/schedules -&gt; 4xx</code></pre><p><strong>Automated:</strong> <code>ReportScheduleIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc edge" id="TC-RPT-022">
+<header><span class="tcid"><a href="#TC-RPT-022">TC-RPT-022</a></span><h4>A scheduled delivery is recorded</h4><span class="badge edge">edge</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-RPT-005</dd></div><div><dt>Role</dt><dd>integration only</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Run the schedule runner test (clock-driven).</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>A delivery row appears with status and time; an email carries the file when SMTP is configured.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>qms.reporting.schedule.poll-cron='0 0 * * * *'</code></pre><p><strong>Automated:</strong> <code>ReportScheduleIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-RPT-023">
+<header><span class="tcid"><a href="#TC-RPT-023">TC-RPT-023</a></span><h4>Only permitted roles manage schedules</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>§5.2</dd></div><div><dt>Role</dt><dd>agent</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li><code>POST /reports/schedules</code> as an Agent.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>403 forbidden</code> (needs <code>reports:run_export</code> <strong>and</strong> <code>visitor_pii:view</code>).</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /reports/schedules -&gt; 403</code></pre><p><strong>Automated:</strong> <code>ReportScheduleIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<h2 id="retention-and-bi">Retention and BI</h2>
+<p><strong>Retention policies</strong> (<code>/admin/privacy/</code> and <code>GET|PUT /retention/policies/{dataClass}</code>, <code>audit:read</code>) decide how long <strong>ticket detail</strong>, <strong>ticket aggregate</strong> and <strong>audit</strong> data are kept. A nightly purge (<code>qms.retention.purge-cron</code>, 02:30) <strong>anonymises</strong> old detail rows in the reporting schema and purges past retention, audited as <code>retention.purge_run</code>. The <strong>BI schema</strong> <code>bi.ticket_fact_v1</code> is a stable view over the fact table with no direct visitor identifiers (<code>docs/bi-access.md</code>); a nightly <strong>extract</strong> <code>ticket_fact-&lt;yyyymmdd&gt;.csv</code> is written to <code>qms.reporting.extract.location</code> (03:00).</p>
+<article class="tc happy" id="TC-RPT-024">
+<header><span class="tcid"><a href="#TC-RPT-024">TC-RPT-024</a></span><h4>Read and change a retention policy</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-RPT-022</dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Admin &gt; Privacy &gt; retention card: set ticket detail retention to 6 months.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>The value saves and the card shows it. Audit <code>retention.policy_changed</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>GET /retention/policies ; PUT /retention/policies/ticket_detail {retention_months}</code></pre><p><strong>Automated:</strong> <code>RetentionIT</code>, <code>RetentionPolicyCard.test.tsx</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-RPT-025">
+<header><span class="tcid"><a href="#TC-RPT-025">TC-RPT-025</a></span><h4>Retention validation and permission</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-RPT-022</dd></div><div><dt>Role</dt><dd>org_admin, team_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Set a negative or absurd value, an unknown data class, then try as a Team Admin.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>400 validation_failed</code> / <code>404 not_found</code>; the Team Admin gets <code>403 forbidden</code> (needs <code>audit:read</code>).</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>PUT /retention/policies/{dataClass} -&gt; 4xx</code></pre><p><strong>Automated:</strong> <code>RetentionIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc edge" id="TC-RPT-026">
+<header><span class="tcid"><a href="#TC-RPT-026">TC-RPT-026</a></span><h4>The purge anonymises old detail and keeps aggregates</h4><span class="badge edge">edge</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-RPT-022</dd></div><div><dt>Role</dt><dd>integration only</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Run <code>RetentionIT</code> (clock-driven).</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>Detail rows older than the policy are anonymised (<code>anonymized_at</code>) while aggregate counts stay; a run is audited with counts.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>qms.retention.purge-cron='0 30 2 * * *'</code></pre><p><strong>Automated:</strong> <code>RetentionIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-RPT-027">
+<header><span class="tcid"><a href="#TC-RPT-027">TC-RPT-027</a></span><h4>A BI tool reads the stable view</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-RPT-023, FR-INT-060</dd></div><div><dt>Role</dt><dd>operator</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Create a BI login: <code>CREATE ROLE bi_client LOGIN PASSWORD '...' IN ROLE qms_bi_reader;</code>.</li><li>Connect as <code>bi_client</code> and <code>SELECT * FROM bi.ticket_fact_v1 LIMIT 5;</code>.</li><li>Try <code>SELECT * FROM ticket;</code>.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>The view returns rows with no visitor id, code or name, over detailed and anonymised rows alike. The live <code>ticket</code> table is <strong>not</strong> readable by that role.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>docs/bi-access.md</code></pre><p><strong>Automated:</strong> <code>RetentionIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc edge" id="TC-RPT-028">
+<header><span class="tcid"><a href="#TC-RPT-028">TC-RPT-028</a></span><h4>Nightly extract file</h4><span class="badge edge">edge</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-INT-060</dd></div><div><dt>Role</dt><dd>operator</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Set <code>QMS_REPORTING_EXTRACT_LOCATION</code> to a folder and <code>extract.cron</code> to run soon.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>A file <code>ticket_fact-&lt;yyyymmdd&gt;.csv</code> is written from the same view, so the live and extract paths cannot drift. Audit <code>reporting.extract_generated</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>qms.reporting.extract.cron='0 0 3 * * *'</code></pre><p><strong>Automated:</strong> <code>RetentionIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article><section class="signoff"><h2 id="sign-off-sheet">Sign-off sheet</h2><p class="hint">Print this page range, one sheet per run. Tick Pass or Fail and note the build, date and tester at the top.</p><div class="tablewrap"><table><thead><tr><th>TC</th><th>Title</th><th>Type</th><th>Pass</th><th>Fail</th><th>Notes</th></tr></thead><tbody><tr><td><a href="#TC-RPT-001">TC-RPT-001</a></td><td>Run the detailed token report and sort it</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-RPT-002">TC-RPT-002</a></td><td>Filter the detailed report</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-RPT-003">TC-RPT-003</a></td><td>A just-completed Ticket appears within the refresh window</td><td><span class="badge edge">edge</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-RPT-004">TC-RPT-004</a></td><td>Transferred tickets are counted once as issued</td><td><span class="badge edge">edge</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-RPT-005">TC-RPT-005</a></td><td>The six operational reports</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-RPT-006">TC-RPT-006</a></td><td>A range that runs backwards is refused before it is sent</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-RPT-007">TC-RPT-007</a></td><td>Missing dates for a comparison report</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-RPT-008">TC-RPT-008</a></td><td>Unknown report key</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-RPT-009">TC-RPT-009</a></td><td>Domain reports and planning views</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-RPT-010">TC-RPT-010</a></td><td>Report permissions</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-RPT-011">TC-RPT-011</a></td><td>Scope narrows every report</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-RPT-012">TC-RPT-012</a></td><td>Reports reconcile with the live dashboard</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-RPT-013">TC-RPT-013</a></td><td>Export a report to CSV</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-RPT-014">TC-RPT-014</a></td><td>Export XLSX and PDF</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-RPT-015">TC-RPT-015</a></td><td>A 12-month export is delivered asynchronously and reconciles</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-RPT-016">TC-RPT-016</a></td><td>An expired or unknown download link</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-RPT-017">TC-RPT-017</a></td><td>Export a report that cannot be exported</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-RPT-018">TC-RPT-018</a></td><td>Export needs both permissions</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-RPT-019">TC-RPT-019</a></td><td>Export format validation</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-RPT-020">TC-RPT-020</a></td><td>Create, edit and delete a schedule</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-RPT-021">TC-RPT-021</a></td><td>Schedule validation</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-RPT-022">TC-RPT-022</a></td><td>A scheduled delivery is recorded</td><td><span class="badge edge">edge</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-RPT-023">TC-RPT-023</a></td><td>Only permitted roles manage schedules</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-RPT-024">TC-RPT-024</a></td><td>Read and change a retention policy</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-RPT-025">TC-RPT-025</a></td><td>Retention validation and permission</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-RPT-026">TC-RPT-026</a></td><td>The purge anonymises old detail and keeps aggregates</td><td><span class="badge edge">edge</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-RPT-027">TC-RPT-027</a></td><td>A BI tool reads the stable view</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-RPT-028">TC-RPT-028</a></td><td>Nightly extract file</td><td><span class="badge edge">edge</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr></tbody></table></div></section>
+<div class="pager"><a href="18-dashboard-and-alerts.html">← Dashboard and alerts</a><a href="20-integrations.html">Webhooks and service accounts →</a></div>
+</main>
+</div>
+</body>
+</html>

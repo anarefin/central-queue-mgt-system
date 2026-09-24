@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Getting started — cqms testing guide</title>
+<link rel="stylesheet" href="styles.css">
+<script>
+(function(){try{var t=localStorage.getItem('qms-guide-theme');if(t)document.documentElement.setAttribute('data-theme',t);}catch(e){}
+document.addEventListener('DOMContentLoaded',function(){var b=document.getElementById('theme-toggle');if(!b)return;
+b.addEventListener('click',function(){var cur=document.documentElement.getAttribute('data-theme');
+if(!cur){cur=window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';}
+var n=cur==='dark'?'light':'dark';document.documentElement.setAttribute('data-theme',n);try{localStorage.setItem('qms-guide-theme',n);}catch(e){}});});})();
+</script>
+</head>
+<body>
+<a class="skip" href="#content">Skip to content</a>
+<div class="layout">
+<nav class="side" aria-label="Guide navigation"><a class="brand" href="index.html">cqms testing guide</a><div class="sub">Queue Management System</div><h2>Start here</h2><ul><li><a href="01-getting-started.html" aria-current="page">Getting started</a></li><li><a href="02-roles-and-permissions.html">Roles and permissions</a></li><li><a href="03-industry-configuration.html">Industry configuration</a></li><li><a href="04-walkthroughs.html">Industry walkthroughs</a></li><li><a href="05-setup-wizard-and-config.html">Setup wizard and config bundle</a></li></ul><h2>Configuration</h2><ul><li><a href="06-auth-and-users.html">Auth, users and approvals</a></li><li><a href="07-organisation.html">Sites, zones, counters</a></li><li><a href="08-catalogue-numbering-priority.html">Catalogue, numbering, priority</a></li></ul><h2>Serving visitors</h2><ul><li><a href="09-issuance.html">Issuance</a></li><li><a href="10-visitors.html">Visitors</a></li><li><a href="11-queue-engine.html">Queue engine</a></li><li><a href="12-counter-sessions.html">Counter sessions</a></li><li><a href="13-journeys.html">Journeys</a></li><li><a href="14-appointments.html">Appointments</a></li><li><a href="15-mobile-visitor.html">Mobile visitor</a></li></ul><h2>Surfaces and comms</h2><ul><li><a href="16-displays-and-voice.html">Displays and voice</a></li><li><a href="17-notifications.html">Notifications</a></li><li><a href="18-dashboard-and-alerts.html">Dashboard and alerts</a></li></ul><h2>Data and platform</h2><ul><li><a href="19-reports-and-exports.html">Reports and exports</a></li><li><a href="20-integrations.html">Webhooks and service accounts</a></li><li><a href="21-devices-and-realtime.html">Devices and realtime</a></li><li><a href="22-audit-log.html">Audit log</a></li><li><a href="23-operations.html">Operations</a></li></ul><h2>Quality</h2><ul><li><a href="24-cross-cutting.html">Cross-cutting checks</a></li><li><a href="25-automated-suites.html">Automated suites</a></li><li><a href="26-appendices.html">Appendices</a></li></ul><div class="theme"><button id="theme-toggle" type="button">Toggle light / dark</button></div></nav>
+<main id="content">
+<h1>Getting started</h1>
+<p class="lede">Bring the stack up, create one test user per role, pair a kiosk and a display, and reset between runs.</p>
+<h2 id="how-to-use-this-guide">How to use this guide</h2>
+<p>This guide has two readers and every test case serves both.</p>
+<ul><li><strong>Business users (UAT).</strong> Follow the numbered <strong>Steps</strong> and compare what you see with <strong>Expected</strong>. Tick Pass or Fail on the card or on the sign-off sheet at the end of each page. You never need the *Dev / API* block.</li><li><strong>Developers and automation engineers.</strong> Open the *Dev / API* block on a card for the curl request, the HTTP status, the <code>details.reason</code>, the audit event and the automated test that already covers the case.</li></ul>
+<p>Words are used exactly as in <code>CONTEXT.md</code>: <strong>Site</strong>, <strong>Zone</strong>, <strong>Counter</strong>, <strong>Service group</strong>, <strong>Ticket</strong>, <strong>Token number</strong>, <strong>Re-announce</strong> (never "recall"), <strong>Miss</strong>, <strong>Head start</strong> (never "weight"), <strong>Transfer</strong> and <strong>Successor ticket</strong>. In a profile such as banking the screens may show other words, for example "Customer" for Visitor. That is the terminology feature and is itself tested; see <a href="03-industry-configuration.html">Industry configuration</a>.</p>
+<p>The UI is English only in this guide. Bangla packs ship, but no Bangla cases are written here, with one exception that matters everywhere: <strong>token numbers are always Western Arabic digits</strong> (0-9), even on a Bangla screen (ADR-0011).</p>
+<h2 id="1-prerequisites">1. Prerequisites</h2>
+<ul><li>Docker with Compose v2, and about 4 GB free RAM.</li><li>A browser. Use a private window per role so sessions do not bleed into each other.</li><li><code>curl</code> and <code>jq</code> for the Dev / API blocks.</li><li>Optional for some mobile cases: a mail catcher such as Mailpit, because the visitor OTP is sent by email (see <a href="15-mobile-visitor.html">Mobile visitor</a>).</li></ul>
+<h2 id="2-bring-up-the-stack">2. Bring up the stack</h2>
+<pre><code>export QMS_DB_PASSWORD='choose-one'
+export QMS_BOOTSTRAP_ADMIN_USERNAME='admin'
+export QMS_BOOTSTRAP_ADMIN_PASSWORD='Admin-Passw0rd-123'
+docker compose -f deploy/compose.yaml up -d --build --wait</code></pre>
+<ul><li>Open <code>http://localhost:8080/admin/</code>. All five apps and the API share one origin: <code>/admin/</code>, <code>/console/</code>, <code>/kiosk/</code>, <code>/display/</code>, <code>/visitor/</code> and <code>/api/v1</code>. The refresh cookie is <code>SameSite=Strict</code>, so do not put a second proxy on a different host name in front of it.</li><li>The <code>migrate</code> container runs first and exits; the <code>backend</code> only starts after it succeeds (FR-OPS-020).</li><li>On plain HTTP to a host other than <code>localhost</code>, set <code>QMS_REFRESH_COOKIE_SECURE=false</code>, otherwise sign-in appears to succeed and then drops you straight back to the login page.</li><li>The bootstrap variables create the first <strong>System Administrator</strong> only while there are no users. Once any user exists they are ignored.</li></ul>
+<h3 id="password-policy-used-by-every-test-user">Password policy (used by every test user)</h3>
+<div class="tablewrap"><table><thead><tr><th>Rule</th><th>Default</th><th>Setting</th></tr></thead><tbody><tr><td>Minimum length</td><td>12 characters</td><td><code>qms.security.password.min-length</code></td></tr><tr><td>Character classes</td><td>at least 3 of lower / upper / digit / other</td><td><code>qms.security.password.min-character-classes</code></td></tr><tr><td>Reuse history</td><td>last 5 passwords refused</td><td><code>qms.security.password.history-count</code></td></tr><tr><td>Maximum length</td><td>72 bytes (bcrypt limit)</td><td>fixed</td></tr><tr><td>Expiry</td><td>off</td><td><code>qms.security.password.max-age-days</code></td></tr></tbody></table></div>
+<p>A bad password is refused with <code>400 validation_failed</code> and <code>details.field</code> (for example <code>new_password</code> when changing a password) and <code>details.rules[]</code> carrying <code>too_short</code>, <code>too_long</code>, <code>too_few_character_classes</code> or <code>reused</code> (<code>reused</code> only triggers on <code>POST /auth/password</code>). If the bootstrap password breaks the policy the backend <strong>refuses to start</strong>; read <code>docker compose logs backend</code>.</p>
+<h3 id="overriding-a-setting-for-a-test-run">Overriding a setting for a test run</h3>
+<p>Compose passes only a fixed list of variables to the backend. To change a <code>qms.*</code> setting (for example <code>QMS_QUEUE_HOLD_LIMIT</code> or the SMTP host) create your own override file, keep it out of git, and add it with <code>-f</code>:</p>
+<pre><code># deploy/compose.test.yaml  (yours; not committed)
+services:
+  backend:
+    environment:
+      QMS_QUEUE_CALL_TIMEOUT_SECONDS: "20"
+      QMS_QUEUE_ANNOUNCE_REPEAT_LIMIT: "2"
+      QMS_NOTIFICATION_EMAIL_HOST: mailpit
+      QMS_NOTIFICATION_EMAIL_PORT: "1025"
+      QMS_NOTIFICATION_EMAIL_STARTTLS: "false"</code></pre>
+<pre><code>docker compose -f deploy/compose.yaml -f deploy/compose.test.yaml up -d --wait</code></pre>
+<p>Settings that change limits are marked in the cases that need them, and listed with bounds and defaults in <a href="26-appendices.html#c-configurable-settings">Appendix C</a>.</p>
+<h2 id="3-sign-in-as-the-bootstrap-administrator-and-set-up-a-session-for-the-api">3. Sign in as the bootstrap administrator and set up a session for the API</h2>
+<pre><code>export BASE=http://localhost:8080/api/v1
+export TOKEN=$(curl -s $BASE/auth/login -H 'Content-Type: application/json' \
+  -d '{"username":"admin","password":"Admin-Passw0rd-123"}' | jq -r .access_token)</code></pre>
+<p>Access tokens live 15 minutes (<code>API-013</code>). Re-run the line when a call answers <code>401 token_invalid</code>.</p>
+<h2 id="4-no-default-users-create-one-test-user-per-role">4. No default users: create one test user per role</h2>
+<p>Nine roles exist. Five are staff accounts you create; four are not users at all and are covered where they arise.</p>
+<div class="tablewrap"><table><thead><tr><th>Role</th><th>Created how</th><th>Test username (suggested)</th><th>Used in</th></tr></thead><tbody><tr><td><code>system_admin</code></td><td>bootstrap env vars</td><td><code>admin</code></td><td>everywhere</td></tr><tr><td><code>org_admin</code></td><td><code>POST /users</code></td><td><code>t-orgadmin</code></td><td>configuration pages</td></tr><tr><td><code>team_admin</code></td><td><code>POST /users</code></td><td><code>t-teamadmin</code></td><td>feedback, availability, notice board</td></tr><tr><td><code>agent</code></td><td><code>POST /users</code> + add to the group's team</td><td><code>t-agent1</code>, <code>t-agent2</code></td><td><a href="12-counter-sessions.html">Counter sessions</a></td></tr><tr><td><code>reception_operator</code></td><td><code>POST /users</code></td><td><code>t-reception</code></td><td><a href="09-issuance.html">Issuance</a></td></tr><tr><td><code>kiosk</code></td><td>device pairing code</td><td>label <code>T-Kiosk-1</code></td><td><a href="09-issuance.html">Issuance</a></td></tr><tr><td><code>display</code></td><td>device pairing code</td><td>label <code>T-Display-1</code></td><td><a href="16-displays-and-voice.html">Displays</a></td></tr><tr><td><code>visitor</code></td><td>email OTP or ticket secret</td><td>any email you can read</td><td><a href="15-mobile-visitor.html">Mobile visitor</a></td></tr><tr><td><code>host_system</code></td><td>service account</td><td><code>T-Host</code></td><td><a href="20-integrations.html">Integrations</a></td></tr></tbody></table></div>
+<p>Use one password shape for every test user: <code>Qms-Test-&lt;Role&gt;-9!</code>. It has 12+ characters and 4 classes.</p>
+<pre><code># a Site first (see Sites, zones and counters), then:
+curl -s $BASE/users -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' -d '{
+  "username":"t-reception","password":"Qms-Test-Reception-9!","display_name":"T Reception",
+  "preferred_language":"en",
+  "roles":[{"role":"reception_operator","site_ids":["&lt;SITE_ID&gt;"],"group_ids":[]}]}'</code></pre>
+<p><code>site_ids</code> and <code>group_ids</code> scope the role. An empty list means "everything the role may reach". Scope is carried as token claims (FR-CFG-106), and a user cannot grant more than they hold.</p>
+<p>An <strong>agent</strong> must also be a member of the Service group's Team, otherwise they cannot open a session on it: <code>POST /service-groups/{id}/team/members {"user_id":"&lt;id&gt;"}</code>.</p>
+<h2 id="5-pair-a-kiosk-and-a-display">5. Pair a kiosk and a display</h2>
+<ol><li>In Admin open <strong>Devices &amp; displays &gt; Device pairing and fleet</strong>.</li><li>Create a pairing code: kind <code>kiosk</code> (Site) or <code>display</code> (Site and Zone), and a label. The code is <strong>8 characters, valid 10 minutes, single use</strong>, shown exactly once.</li><li>On the device browser open <code>/kiosk/</code> or <code>/display/</code> and type the code.</li><li>The device now appears in the fleet list as <code>online</code> and heartbeats every 60 seconds.</li></ol>
+<pre><code>curl -s $BASE/devices/pairing-codes -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"kind":"kiosk","site_id":"&lt;SITE_ID&gt;","zone_id":null,"label":"T-Kiosk-1"}'</code></pre>
+<p>A fresh browser profile has empty storage, so nothing is paired until you pair it. Pairing survives a reload but not a cleared profile.</p>
+<h2 id="6-reset-between-test-runs">6. Reset between test runs</h2>
+<div class="tablewrap"><table><thead><tr><th>You want</th><th>Do this</th><th>Destroys</th></tr></thead><tbody><tr><td>Fresh data, keep users and config</td><td>Create a <strong>new Site</strong> per run (see conventions below). Nothing else to clear</td><td>nothing</td></tr><tr><td>Re-run the setup wizard</td><td><code>POST /setup/profile/reset</code> to switch profile (refused with <code>already_provisioned</code> on plain apply)</td><td>profile-set config only</td></tr><tr><td>Back to a factory install</td><td><code>docker compose -f deploy/compose.yaml down -v</code> then <code>up</code> again</td><td><strong>everything</strong>: database and signing keys</td></tr><tr><td>Restart without data loss</td><td><code>docker compose -f deploy/compose.yaml restart backend</code></td><td>nothing; waiting tickets and open sessions survive (see <a href="23-operations.html">Operations</a>)</td></tr></tbody></table></div>
+<p><code>down -v</code> also drops the <code>keys</code> volume, so every access token issued before it is dead. That is expected.</p>
+<h2 id="7-test-data-conventions">7. Test data conventions</h2>
+<ul><li><strong>One Site per run,</strong> named <code>T-&lt;yyyymmdd&gt;-&lt;initials&gt;</code>, code <code>T-&lt;yyyymmdd&gt;-&lt;n&gt;</code>. Site codes are globally unique and match <code>[A-Za-z0-9_-]+</code>. Creating a second Site needs the <code>multi_site</code> flag on, unless it is the very first Site.</li><li><strong>Prefix every fixture</strong> with <code>T-</code>: users, devices, counters, notices, webhooks. Filtering the audit log and fleet by <code>T-</code> then isolates your run.</li><li><strong>Service prefixes.</strong> A token prefix is at most 8 letters or digits. Two active Services at one Site cannot share a prefix.</li><li><strong>Passwords</strong> as above; <strong>emails</strong> on a domain you own or a mail catcher.</li><li><strong>Time.</strong> Business hours, cut-offs, appointments and reset times are Site-local. Create the Site with a timezone you are physically in (for example <code>Asia/Dhaka</code>) so "now" matches your wall clock.</li><li><strong>Clock-driven cases</strong> (arrival deadline, daily reset, no-show sweep) cannot be forced from a browser. Where a case says *integration only*, run the named test instead; see <a href="25-automated-suites.html">Automated suites</a>.</li><li><strong>Do not test on a live deployment.</strong> Some cases deliberately lock accounts, revoke devices and fill queues.</li></ul>
+<h2 id="8-environment-cases">8. Environment cases</h2>
+<article class="tc happy" id="TC-SET-001">
+<header><span class="tcid"><a href="#TC-SET-001">TC-SET-001</a></span><h4>Stack comes up healthy from a cold start</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-OPS-020, NFR-MNT-002</dd></div><div><dt>Role</dt><dd>Any</dd></div><div class="wide"><dt>Preconditions</dt><dd>No <code>qms_pgdata</code> / <code>qms_keys</code> volumes.</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Run the compose command in section 2 on a machine with no previous volumes.</li><li>Wait for it to return.</li><li>Open <code>http://localhost:8080/api/v1/health/ready</code> in a browser.</li><li>Open <code>/admin/</code>.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>migrate</code> exits with code 0, <code>backend</code> and <code>proxy</code> are healthy, the health endpoint answers <code>up</code>, and the Admin login page loads with a health panel.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>curl -fsS $BASE/health/live ; curl -fsS $BASE/health/ready ; curl -fsS $BASE/health/dependencies</code></pre><p><strong>Automated:</strong> <code>SkeletonIT</code>, <code>MigrationIT</code>; CI job <code>compose-smoke</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-SET-002">
+<header><span class="tcid"><a href="#TC-SET-002">TC-SET-002</a></span><h4>Backend refuses to start with a weak bootstrap password</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>NFR-SEC-001, NFR-SEC-013</dd></div><div><dt>Role</dt><dd>Operator</dd></div><div class="wide"><dt>Preconditions</dt><dd>Empty database.</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Set <code>QMS_BOOTSTRAP_ADMIN_PASSWORD=short1</code> on a fresh database.</li><li>Run <code>docker compose up</code>.</li><li>Run <code>docker compose logs backend</code>.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>The backend exits at start-up and the log names the password policy. No user is created.</p></div>
+<details class="dev"><summary>Dev / API</summary><p><strong>Automated:</strong> <code>BootstrapAdmin</code> policy check; <code>PasswordPolicy</code> unit coverage in <code>identity/</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc edge" id="TC-SET-003">
+<header><span class="tcid"><a href="#TC-SET-003">TC-SET-003</a></span><h4>Bootstrap variables are ignored once a user exists</h4><span class="badge edge">edge</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>NFR-SEC-013</dd></div><div><dt>Role</dt><dd>Operator</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>With the stack already running and <code>admin</code> present, restart with a different <code>QMS_BOOTSTRAP_ADMIN_USERNAME</code>.</li><li>Sign in with the old admin.</li><li>Try to sign in with the new username.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>The old admin still works. The new username does not exist; no second System Administrator is created.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST $BASE/auth/login {new username} -&gt; 401 invalid_credentials</code></pre></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-SET-004">
+<header><span class="tcid"><a href="#TC-SET-004">TC-SET-004</a></span><h4>Migrations run as a separate, forward-only step</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-OPS-020, FR-OPS-021</dd></div><div><dt>Role</dt><dd>Operator</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Run <code>docker compose -f deploy/compose.yaml up migrate</code> on its own against an empty database.</li><li>Run it a second time.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>The first run applies all migrations and exits 0. The second run applies nothing and also exits 0 (idempotent). The backend container is not started by this command.</p></div>
+<details class="dev"><summary>Dev / API</summary><p><strong>Automated:</strong> <code>MigrationIT</code>, <code>MigrateProfileIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc edge" id="TC-SET-005">
+<header><span class="tcid"><a href="#TC-SET-005">TC-SET-005</a></span><h4>Plain-HTTP sign-in on a non-localhost host needs the cookie override</h4><span class="badge edge">edge</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>API-017</dd></div><div><dt>Role</dt><dd>Operator</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Browse to <code>http://&lt;lan-ip&gt;:8080/admin/</code> with <code>QMS_REFRESH_COOKIE_SECURE</code> unset.</li><li>Sign in and wait for the first silent refresh, or reload.</li><li>Restart with <code>QMS_REFRESH_COOKIE_SECURE=false</code> and repeat.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>With the default the cookie is <code>Secure</code> and is not stored over HTTP, so you are returned to the login page after the first refresh. With <code>false</code> the session survives a reload. Use <code>true</code> with TLS in production.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>Inspect Set-Cookie on POST $BASE/auth/login: qms_refresh; HttpOnly; SameSite=Strict [; Secure]</code></pre></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-SET-006">
+<header><span class="tcid"><a href="#TC-SET-006">TC-SET-006</a></span><h4>A test user is created for every staff role</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-CFG-101, §5.1</dd></div><div><dt>Role</dt><dd>System Administrator</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Create a Site (see <a href="07-organisation.html">Sites, zones and counters</a>).</li><li>Create users <code>t-orgadmin</code>, <code>t-teamadmin</code>, <code>t-agent1</code>, <code>t-reception</code> with the roles in section 4.</li><li>Open <strong>Users</strong> in the API (<code>GET /users</code>) or sign in as each.</li><li>Sign in as each user in its own private window.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>Each user signs in. The user list shows the correct role and Site scope. Each sees only the sidebar areas its role allows (see <a href="02-roles-and-permissions.html">Roles and permissions</a>).</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST $BASE/users {...} -&gt; 201 ; audit: user.created, user.roles.changed</code></pre><p><strong>Automated:</strong> <code>AdminApiIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-SET-007">
+<header><span class="tcid"><a href="#TC-SET-007">TC-SET-007</a></span><h4>A pairing code works once and expires</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-OPS-011</dd></div><div><dt>Role</dt><dd>System Administrator</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Create a kiosk pairing code.</li><li>Enter it on <code>/kiosk/</code> in one browser: it pairs.</li><li>Enter the same code in a second browser.</li><li>Create another code and wait 10 minutes before using it.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>The reuse and the late use are both refused with an invalid-or-expired message; the second browser is not paired.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST $BASE/devices/pair {code} -&gt; 401 token_invalid on reuse/expiry</code></pre><p><strong>Automated:</strong> <code>DeviceFleetIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-SET-008">
+<header><span class="tcid"><a href="#TC-SET-008">TC-SET-008</a></span><h4>Wrong pairing code is refused</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-OPS-011</dd></div><div><dt>Role</dt><dd>Kiosk</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Open <code>/kiosk/</code> on an unpaired browser.</li><li>Type <code>ZZZZZZZZ</code>.</li><li>Submit.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>An error is shown and the device stays unpaired. Nothing in the fleet list changes.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST $BASE/devices/pair -&gt; 401 token_invalid</code></pre></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article><section class="signoff"><h2 id="sign-off-sheet">Sign-off sheet</h2><p class="hint">Print this page range, one sheet per run. Tick Pass or Fail and note the build, date and tester at the top.</p><div class="tablewrap"><table><thead><tr><th>TC</th><th>Title</th><th>Type</th><th>Pass</th><th>Fail</th><th>Notes</th></tr></thead><tbody><tr><td><a href="#TC-SET-001">TC-SET-001</a></td><td>Stack comes up healthy from a cold start</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-SET-002">TC-SET-002</a></td><td>Backend refuses to start with a weak bootstrap password</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-SET-003">TC-SET-003</a></td><td>Bootstrap variables are ignored once a user exists</td><td><span class="badge edge">edge</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-SET-004">TC-SET-004</a></td><td>Migrations run as a separate, forward-only step</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-SET-005">TC-SET-005</a></td><td>Plain-HTTP sign-in on a non-localhost host needs the cookie override</td><td><span class="badge edge">edge</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-SET-006">TC-SET-006</a></td><td>A test user is created for every staff role</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-SET-007">TC-SET-007</a></td><td>A pairing code works once and expires</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-SET-008">TC-SET-008</a></td><td>Wrong pairing code is refused</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr></tbody></table></div></section>
+<div class="pager"><a href="index.html">← Home</a><a href="02-roles-and-permissions.html">Roles and permissions →</a></div>
+</main>
+</div>
+</body>
+</html>

@@ -122,6 +122,20 @@ class CatalogueRepository {
         return jdbc.query(SERVICE + " WHERE v.id = ?", (rs, i) -> service(rs), id).stream().findFirst();
     }
 
+    /** True when another active Service at the Site already uses this token prefix (case-insensitive). */
+    boolean activePrefixTaken(UUID siteId, String prefix, UUID excludeServiceId) {
+        return Boolean.TRUE.equals(jdbc.queryForObject(
+                "SELECT EXISTS (SELECT 1 FROM service v JOIN service_group g ON g.id = v.service_group_id"
+                        + " WHERE g.site_id = ? AND v.active AND upper(v.token_prefix) = upper(?) AND v.id <> ?)",
+                Boolean.class, siteId, prefix, excludeServiceId == null ? new UUID(0, 0) : excludeServiceId));
+    }
+
+    boolean usedInJourneyTemplate(UUID serviceId) {
+        return Boolean.TRUE.equals(jdbc.queryForObject(
+                "SELECT to_regclass('journey_template_stop') IS NOT NULL AND EXISTS (SELECT 1 FROM journey_template_stop WHERE service_id = ?)",
+                Boolean.class, serviceId));
+    }
+
     void insert(ServiceEntry service) {
         jdbc.update(
                 "INSERT INTO service (id, service_group_id, name_i18n, token_prefix, expected_minutes, sla_wait_minutes, channels, icon, display_order,"

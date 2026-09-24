@@ -56,6 +56,7 @@ public class JourneyTemplateService {
     public JourneyTemplate create(UUID groupId, CreateJourneyTemplateRequest request) {
         JourneyTemplateRepository.GroupInfo group = requireGroup(groupId);
         scope.requireSite(group.siteId());
+        if (!group.active()) throw new ApiException(ErrorCode.CONFLICT, Map.of("reason", "parent_inactive"));
         if (request == null || request.nameI18n() == null || request.nameI18n().isEmpty()) throw invalid("name_i18n", "required");
         if (request.serviceIds() == null || request.serviceIds().size() < MIN_STOPS) throw invalid("service_ids", "min_two");
         if (!repository.allBelongToGroupAndActive(groupId, request.serviceIds())) throw invalid("service_ids", "invalid");

@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Audit log — cqms testing guide</title>
+<link rel="stylesheet" href="styles.css">
+<script>
+(function(){try{var t=localStorage.getItem('qms-guide-theme');if(t)document.documentElement.setAttribute('data-theme',t);}catch(e){}
+document.addEventListener('DOMContentLoaded',function(){var b=document.getElementById('theme-toggle');if(!b)return;
+b.addEventListener('click',function(){var cur=document.documentElement.getAttribute('data-theme');
+if(!cur){cur=window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';}
+var n=cur==='dark'?'light':'dark';document.documentElement.setAttribute('data-theme',n);try{localStorage.setItem('qms-guide-theme',n);}catch(e){}});});})();
+</script>
+</head>
+<body>
+<a class="skip" href="#content">Skip to content</a>
+<div class="layout">
+<nav class="side" aria-label="Guide navigation"><a class="brand" href="index.html">cqms testing guide</a><div class="sub">Queue Management System</div><h2>Start here</h2><ul><li><a href="01-getting-started.html">Getting started</a></li><li><a href="02-roles-and-permissions.html">Roles and permissions</a></li><li><a href="03-industry-configuration.html">Industry configuration</a></li><li><a href="04-walkthroughs.html">Industry walkthroughs</a></li><li><a href="05-setup-wizard-and-config.html">Setup wizard and config bundle</a></li></ul><h2>Configuration</h2><ul><li><a href="06-auth-and-users.html">Auth, users and approvals</a></li><li><a href="07-organisation.html">Sites, zones, counters</a></li><li><a href="08-catalogue-numbering-priority.html">Catalogue, numbering, priority</a></li></ul><h2>Serving visitors</h2><ul><li><a href="09-issuance.html">Issuance</a></li><li><a href="10-visitors.html">Visitors</a></li><li><a href="11-queue-engine.html">Queue engine</a></li><li><a href="12-counter-sessions.html">Counter sessions</a></li><li><a href="13-journeys.html">Journeys</a></li><li><a href="14-appointments.html">Appointments</a></li><li><a href="15-mobile-visitor.html">Mobile visitor</a></li></ul><h2>Surfaces and comms</h2><ul><li><a href="16-displays-and-voice.html">Displays and voice</a></li><li><a href="17-notifications.html">Notifications</a></li><li><a href="18-dashboard-and-alerts.html">Dashboard and alerts</a></li></ul><h2>Data and platform</h2><ul><li><a href="19-reports-and-exports.html">Reports and exports</a></li><li><a href="20-integrations.html">Webhooks and service accounts</a></li><li><a href="21-devices-and-realtime.html">Devices and realtime</a></li><li><a href="22-audit-log.html" aria-current="page">Audit log</a></li><li><a href="23-operations.html">Operations</a></li></ul><h2>Quality</h2><ul><li><a href="24-cross-cutting.html">Cross-cutting checks</a></li><li><a href="25-automated-suites.html">Automated suites</a></li><li><a href="26-appendices.html">Appendices</a></li></ul><div class="theme"><button id="theme-toggle" type="button">Toggle light / dark</button></div></nav>
+<main id="content">
+<h1>Audit log</h1>
+<p class="lede">What is recorded, how to search and export it, and the proof that nobody can edit or delete an entry.</p>
+<h2 id="what-the-audit-log-is">What the audit log is</h2>
+<p>Every privileged action and every security outcome writes one <strong>append-only</strong> entry: <strong>who</strong> (actor and role), <strong>source address and device</strong>, <strong>when</strong>, the <strong>entity</strong> changed, <strong>before</strong> and <strong>after</strong> values and the <strong>reason</strong>. The application has no path that edits or deletes an entry, and the database refuses it. Passwords, tokens and OTPs are never stored.</p>
+<p>Read it at <code>GET /audit</code> (JSON) or <code>GET /audit?format=csv</code>. There is no Admin screen; the *Reports &gt; audit* domain report and the API are the readers. Permission: <strong><code>audit:read</code></strong>, System and Org Admin only.</p>
+<div class="tablewrap"><table><thead><tr><th>Parameter</th><th>Meaning</th></tr></thead><tbody><tr><td><code>actor_id</code></td><td>entries by one user</td></tr><tr><td><code>action</code></td><td>exact (<code>user.created</code>) or a prefix ending in <code>*</code> (<code>auth.*</code>)</td></tr><tr><td><code>entity</code>, <code>entity_id</code></td><td>the record acted on</td></tr><tr><td><code>from</code>, <code>to</code></td><td>ISO date-time range</td></tr><tr><td><code>limit</code></td><td>50 to 200 rows a page (<code>next_cursor</code> returned)</td></tr><tr><td><code>cursor</code></td><td>the cursor from the last page</td></tr><tr><td><code>format=csv</code></td><td>export; <strong>itself audited</strong> as <code>audit.exported</code></td></tr></tbody></table></div>
+<p>The catalogue of action names is in <a href="26-appendices.html#f-audit-events">Appendix F</a>. A few you will look for while testing: <code>auth.login.succeeded</code>, <code>auth.login.failed</code>, <code>auth.lockout</code>, <code>auth.refresh.reuse_detected</code>, <code>user.created</code>, <code>user.disabled</code>, <code>session.force_closed</code>, <code>ticket.transferred</code>, <code>ticket.priority_changed</code>, <code>feature_flag.updated</code>, <code>label.updated</code>, <code>profile.applied</code>, <code>report.exported</code>, <code>webhook_endpoint.created</code>.</p>
+<h2 id="cases">Cases</h2>
+<article class="tc happy" id="TC-AUD-001">
+<header><span class="tcid"><a href="#TC-AUD-001">TC-AUD-001</a></span><h4>A configuration change is recorded with before and after</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-SEC-040, FR-SEC-041</dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Change a Priority class head start from 10 to 20.</li><li><code>GET /audit?entity=priority_class&amp;entity_id=&lt;id&gt;</code>.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>One entry <code>priority_class.updated</code> with actor, role, source address, time, <code>before: 10</code>, <code>after: 20</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>GET /audit?entity=priority_class&amp;entity_id=&lt;id&gt;</code></pre><p><strong>Automated:</strong> <code>AuditLogIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-AUD-002">
+<header><span class="tcid"><a href="#TC-AUD-002">TC-AUD-002</a></span><h4>Sign-in outcomes are audited</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-SEC-040</dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Sign in wrongly, then rightly, then lock an account, then sign out.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>Entries <code>auth.login.failed</code> (the failure reason is stored in the audit <code>after.reason</code>), <code>auth.login.succeeded</code>, <code>auth.lockout</code>, <code>auth.logout</code>. Filter with <code>action=auth.*</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>GET /audit?action=auth.*</code></pre><p><strong>Automated:</strong> <code>AuditLogIT</code>, <code>AuthFlowIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-AUD-003">
+<header><span class="tcid"><a href="#TC-AUD-003">TC-AUD-003</a></span><h4>Search by action prefix, actor and time range</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-SEC-042</dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Search <code>action=user.*</code>; then by <code>actor_id</code>; then with <code>from</code> and <code>to</code> around a change.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>Each filter narrows the list; combined filters intersect. Results are newest first.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>GET /audit?action=user.*&amp;actor_id=&amp;from=&amp;to=</code></pre><p><strong>Automated:</strong> <code>AuditLogIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc edge" id="TC-AUD-004">
+<header><span class="tcid"><a href="#TC-AUD-004">TC-AUD-004</a></span><h4>Cursor paging</h4><span class="badge edge">edge</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-SEC-042</dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Create over 60 audit entries (for example 60 label edits).</li><li><code>GET /audit?limit=50</code>, then use <code>next_cursor</code>.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>The first page has 50 rows and a <code>next_cursor</code>; the second continues without gaps or duplicates. <code>limit</code> accepts 1 to 200 (default 50); a value above 200 is clamped to 200.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>GET /audit?limit=50 ; GET /audit?cursor=&lt;next_cursor&gt;</code></pre><p><strong>Automated:</strong> <code>AuditLogIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-AUD-005">
+<header><span class="tcid"><a href="#TC-AUD-005">TC-AUD-005</a></span><h4>CSV export is audited and safe</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-SEC-042</dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Make a request (for example a failed sign-in) with a <code>User-Agent</code> starting with <code>=</code>, such as <code>=HYPERLINK("http://x")</code>.</li><li><code>GET /audit?format=csv</code>.</li><li>Read the audit log again.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>A CSV downloads. A cell that a spreadsheet could run as a formula is <strong>neutralised</strong> (for example prefixed with <code>'</code>). A new <code>audit.exported</code> entry records the export.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>GET /audit?format=csv</code></pre><p><strong>Automated:</strong> <code>AuditLogIT</code>, <code>AuditCsvTest</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-AUD-006">
+<header><span class="tcid"><a href="#TC-AUD-006">TC-AUD-006</a></span><h4>The log cannot be edited or deleted</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-SEC-041</dd></div><div><dt>Role</dt><dd>developer</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Try <code>UPDATE audit_log SET action='x'</code> and <code>DELETE FROM audit_log</code> through psql as the application role.</li><li>Look for any API to change an entry.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>The database refuses both. No endpoint exists to update or delete an entry.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>docker compose exec postgres psql -U qms -d qms -c "DELETE FROM audit_log" -&gt; ERROR</code></pre><p><strong>Automated:</strong> <code>AuditLogIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-AUD-007">
+<header><span class="tcid"><a href="#TC-AUD-007">TC-AUD-007</a></span><h4>Secrets are never in the log</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-SEC-040, API-018</dd></div><div><dt>Role</dt><dd>developer</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Sign in, change a password, request a visitor OTP, create a webhook with a secret.</li><li>Search the log and application log for the password, the OTP, the access token and the secret.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>None appears in any audit field, and none appears in the JSON application logs (<code>Authorization</code>, <code>X-Ticket-Secret</code>, tokens and OTPs are redacted).</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>docker compose logs backend | grep -i bearer</code></pre><p><strong>Automated:</strong> <code>LogRedactionTest</code>, <code>AuditRedactionTest</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-AUD-008">
+<header><span class="tcid"><a href="#TC-AUD-008">TC-AUD-008</a></span><h4>Only administrators read the audit log</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>§5.2</dd></div><div><dt>Role</dt><dd>team_admin, agent, reception_operator</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Call <code>GET /audit</code> as a Team Admin, an Agent and Reception.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>403 forbidden</code> for each.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>GET /audit (team_admin) -&gt; 403</code></pre><p><strong>Automated:</strong> <code>PermissionMatrixTest</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-AUD-009">
+<header><span class="tcid"><a href="#TC-AUD-009">TC-AUD-009</a></span><h4>Bad search parameters</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>§20.3</dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li><code>GET /audit?actor_id=notauuid</code>, <code>?from=yesterday</code>, <code>?limit=abc</code>.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>400 validation_failed</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>GET /audit?actor_id=x -&gt; 400</code></pre><p><strong>Automated:</strong> <code>AuditLogIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc edge" id="TC-AUD-010">
+<header><span class="tcid"><a href="#TC-AUD-010">TC-AUD-010</a></span><h4>A refusal is not an audit entry, but a denial is logged</h4><span class="badge edge">edge</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>API-018</dd></div><div><dt>Role</dt><dd>developer</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Attempt a forbidden action as an Agent.</li><li>Read the application log.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>The application log records the authorisation denial with the trace id (<code>trace_id</code> = the <code>X-Trace-Id</code> response header). Business state is unchanged.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>docker compose logs backend | grep trace_id</code></pre><p><strong>Automated:</strong> <code>OwaspTop10IT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc edge" id="TC-AUD-011">
+<header><span class="tcid"><a href="#TC-AUD-011">TC-AUD-011</a></span><h4>Every refusal carries a trace id</h4><span class="badge edge">edge</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>NFR-MNT-001</dd></div><div><dt>Role</dt><dd>developer</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Trigger any error and read <code>error.trace_id</code> and the <code>X-Trace-Id</code> header.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>They are equal, and, for 403, 405 and 500 responses, the same id appears in the JSON log lines for that request.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>curl -si $BASE/users | grep -i x-trace-id</code></pre><p><strong>Automated:</strong> <code>ErrorEnvelopeTest</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article><section class="signoff"><h2 id="sign-off-sheet">Sign-off sheet</h2><p class="hint">Print this page range, one sheet per run. Tick Pass or Fail and note the build, date and tester at the top.</p><div class="tablewrap"><table><thead><tr><th>TC</th><th>Title</th><th>Type</th><th>Pass</th><th>Fail</th><th>Notes</th></tr></thead><tbody><tr><td><a href="#TC-AUD-001">TC-AUD-001</a></td><td>A configuration change is recorded with before and after</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-AUD-002">TC-AUD-002</a></td><td>Sign-in outcomes are audited</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-AUD-003">TC-AUD-003</a></td><td>Search by action prefix, actor and time range</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-AUD-004">TC-AUD-004</a></td><td>Cursor paging</td><td><span class="badge edge">edge</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-AUD-005">TC-AUD-005</a></td><td>CSV export is audited and safe</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-AUD-006">TC-AUD-006</a></td><td>The log cannot be edited or deleted</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-AUD-007">TC-AUD-007</a></td><td>Secrets are never in the log</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-AUD-008">TC-AUD-008</a></td><td>Only administrators read the audit log</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-AUD-009">TC-AUD-009</a></td><td>Bad search parameters</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-AUD-010">TC-AUD-010</a></td><td>A refusal is not an audit entry, but a denial is logged</td><td><span class="badge edge">edge</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-AUD-011">TC-AUD-011</a></td><td>Every refusal carries a trace id</td><td><span class="badge edge">edge</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr></tbody></table></div></section>
+<div class="pager"><a href="21-devices-and-realtime.html">← Devices and realtime</a><a href="23-operations.html">Operations →</a></div>
+</main>
+</div>
+</body>
+</html>

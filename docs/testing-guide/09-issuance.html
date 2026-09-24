@@ -1,0 +1,393 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Issuance: reception, kiosk, host API and the issuance gate — cqms testing guide</title>
+<link rel="stylesheet" href="styles.css">
+<script>
+(function(){try{var t=localStorage.getItem('qms-guide-theme');if(t)document.documentElement.setAttribute('data-theme',t);}catch(e){}
+document.addEventListener('DOMContentLoaded',function(){var b=document.getElementById('theme-toggle');if(!b)return;
+b.addEventListener('click',function(){var cur=document.documentElement.getAttribute('data-theme');
+if(!cur){cur=window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';}
+var n=cur==='dark'?'light':'dark';document.documentElement.setAttribute('data-theme',n);try{localStorage.setItem('qms-guide-theme',n);}catch(e){}});});})();
+</script>
+</head>
+<body>
+<a class="skip" href="#content">Skip to content</a>
+<div class="layout">
+<nav class="side" aria-label="Guide navigation"><a class="brand" href="index.html">cqms testing guide</a><div class="sub">Queue Management System</div><h2>Start here</h2><ul><li><a href="01-getting-started.html">Getting started</a></li><li><a href="02-roles-and-permissions.html">Roles and permissions</a></li><li><a href="03-industry-configuration.html">Industry configuration</a></li><li><a href="04-walkthroughs.html">Industry walkthroughs</a></li><li><a href="05-setup-wizard-and-config.html">Setup wizard and config bundle</a></li></ul><h2>Configuration</h2><ul><li><a href="06-auth-and-users.html">Auth, users and approvals</a></li><li><a href="07-organisation.html">Sites, zones, counters</a></li><li><a href="08-catalogue-numbering-priority.html">Catalogue, numbering, priority</a></li></ul><h2>Serving visitors</h2><ul><li><a href="09-issuance.html" aria-current="page">Issuance</a></li><li><a href="10-visitors.html">Visitors</a></li><li><a href="11-queue-engine.html">Queue engine</a></li><li><a href="12-counter-sessions.html">Counter sessions</a></li><li><a href="13-journeys.html">Journeys</a></li><li><a href="14-appointments.html">Appointments</a></li><li><a href="15-mobile-visitor.html">Mobile visitor</a></li></ul><h2>Surfaces and comms</h2><ul><li><a href="16-displays-and-voice.html">Displays and voice</a></li><li><a href="17-notifications.html">Notifications</a></li><li><a href="18-dashboard-and-alerts.html">Dashboard and alerts</a></li></ul><h2>Data and platform</h2><ul><li><a href="19-reports-and-exports.html">Reports and exports</a></li><li><a href="20-integrations.html">Webhooks and service accounts</a></li><li><a href="21-devices-and-realtime.html">Devices and realtime</a></li><li><a href="22-audit-log.html">Audit log</a></li><li><a href="23-operations.html">Operations</a></li></ul><h2>Quality</h2><ul><li><a href="24-cross-cutting.html">Cross-cutting checks</a></li><li><a href="25-automated-suites.html">Automated suites</a></li><li><a href="26-appendices.html">Appendices</a></li></ul><div class="theme"><button id="theme-toggle" type="button">Toggle light / dark</button></div></nav>
+<main id="content">
+<h1>Issuance: reception, kiosk, host API and the issuance gate</h1>
+<p class="lede">Every way a Ticket is created, every reason the gate can refuse it, idempotency, duplicate policy and rate limits.</p>
+<h2 id="channels">Channels</h2>
+<div class="tablewrap"><table><thead><tr><th>Channel</th><th>Who</th><th>Entry point</th><th>Ticket <code>origin_channel</code></th></tr></thead><tbody><tr><td>Reception</td><td><code>reception_operator</code></td><td>Admin &gt; <strong>Reception desk</strong></td><td><code>reception</code></td></tr><tr><td>Kiosk</td><td>public, paired device</td><td><code>/kiosk/</code></td><td><code>kiosk</code></td></tr><tr><td>Appointment check-in</td><td>reception or kiosk device</td><td><strong>API only in this build</strong> (no screen)</td><td><code>appointment_checkin</code></td></tr><tr><td>Mobile (remote join)</td><td>registered visitor</td><td><code>/visitor/join/?service=&lt;id&gt;</code></td><td><code>mobile</code></td></tr><tr><td>Host API</td><td>a host application (<code>host_system</code>)</td><td><code>POST /host/tickets</code></td><td><code>mobile</code> (there is no <code>host</code> channel)</td></tr></tbody></table></div>
+<p>All of them pass through <strong>one gate</strong> (<code>IssuanceGate</code>) so the rules are identical. A refusal is <code>409</code> with a <code>code</code> and a <code>details.reason</code>, <code>429</code>, or <code>503</code>. <strong>The ticket is always created by the API before it is printed</strong> (FR-ISS-016), so a printer failure never loses a Ticket.</p>
+<h2 id="the-issuance-gate-in-order">The issuance gate, in order</h2>
+<ol><li><strong>Maintenance mode</strong> (503 <code>unavailable</code>, <code>maintenance</code>) - queued tickets keep being served.</li><li><strong>Rate limit</strong> (429, <code>rate_limited</code>) - a device 30 per minute, a visitor 5 per hour by default; <strong>staff and system actors are not limited</strong>.</li><li><strong>Service state</strong> (<code>service_inactive</code>), <strong>channel</strong> (<code>channel_not_allowed</code>), <strong>appointment-only</strong> (<code>appointment_only</code>).</li><li><strong>Opening hours</strong> (<code>outside_hours</code>), <strong>holiday</strong> (<code>holiday</code>), <strong>channel cut-off</strong> (<code>past_cutoff</code>), <strong>daily cap</strong> (<code>cap_reached</code>) - all <code>409 service_closed</code>.</li><li><strong>Agent rostered</strong> (<code>no_agent_rostered</code>) when the Service demands one.</li><li><strong>Duplicate policy</strong> (<code>duplicate_ticket</code>).</li><li>Remote-only checks: see <a href="15-mobile-visitor.html">Mobile visitor</a>.</li></ol>
+<p><strong>These rules have no Admin screen in this build.</strong> Set them with the endpoints below (curl) and read them back with <code>GET</code>. The Reception desk and kiosk simply obey them.</p>
+<div class="tablewrap"><table><thead><tr><th>Setting</th><th>Endpoint</th><th>Bounds</th></tr></thead><tbody><tr><td>Site or Service weekly hours</td><td><code>PUT /sites/{id}/hours</code>, <code>PUT /services/{id}/hours</code></td><td>weekday 1-7, open before close, no repeats</td></tr><tr><td>Holidays (full or half day)</td><td><code>POST /sites/{id}/holidays</code></td><td>name at most 100, half day needs <code>close_time</code></td></tr><tr><td>Channel cut-offs</td><td><code>PUT /sites/{id}/issuance-cutoffs</code></td><td>0-1440 minutes before close, known channel</td></tr><tr><td>Daily cap, duplicate policy, require agent</td><td><code>PUT /services/{id}/issuance-rule</code></td><td>cap 1-1,000,000; policy <code>allow</code>, <code>warn</code>, <code>block</code></td></tr><tr><td>Maintenance, limits</td><td><code>PUT /issuance-settings</code></td><td>limits 1-100,000; messages at most 500 characters, installed language</td></tr></tbody></table></div>
+<h2 id="reception-desk-cases">Reception desk cases</h2>
+<article class="tc happy" id="TC-ISS-001">
+<header><span class="tcid"><a href="#TC-ISS-001">TC-ISS-001</a></span><h4>Reception issues a walk-in Ticket</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-ISS-020, FR-ISS-021</dd></div><div><dt>Role</dt><dd>reception_operator</dd></div><div class="wide"><dt>Preconditions</dt><dd>A Service with a linked Counter and open hours.</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Sign in as Reception. Admin &gt; <strong>Reception desk</strong>.</li><li>Pick the Service from *Choose a service* (each shows how many are waiting). Choose a *Priority class* if needed.</li><li>Click <strong>Issue Token</strong>.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>A Ticket appears with its number (for example <code>A-001</code>). State <code>waiting</code>. It shows in the Service's queue. Audit <code>ticket.issued</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /tickets {service_id,purpose_note} (Idempotency-Key: &lt;uuid&gt;) -&gt; 201 {id,token_number,state:'waiting'}</code></pre><p><strong>Automated:</strong> <code>IssuanceIT</code>; e2e U1</p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-ISS-002">
+<header><span class="tcid"><a href="#TC-ISS-002">TC-ISS-002</a></span><h4>Reception assigns a Priority class at issue</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-QUE-011</dd></div><div><dt>Role</dt><dd>reception_operator</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Issue a Ticket and choose class *Senior citizen*.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>The Ticket carries that class; it will be ordered with its head start. See <a href="11-queue-engine.html">Queue engine</a>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /tickets {service_id,priority_class_id}</code></pre><p><strong>Automated:</strong> <code>IssuanceIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc edge" id="TC-ISS-003">
+<header><span class="tcid"><a href="#TC-ISS-003">TC-ISS-003</a></span><h4>Purpose note is visible only to the serving agent</h4><span class="badge edge">edge</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-ISS-020, NFR-SEC-011</dd></div><div><dt>Role</dt><dd>reception_operator, agent</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Issue a Ticket with the note *Lost card*.</li><li>Agent calls it: the Console shows the note.</li><li>Open the Ticket on the public display or visitor page.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>Only the serving agent sees the note. It is encrypted at rest at the application layer.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>purpose_note appears in the serving session's called-ticket payload (e.g. the response of POST /sessions/{id}/call), not in GET /tickets/{id}</code></pre><p><strong>Automated:</strong> <code>ConsoleContextIT</code>, <code>PiiCipherTest</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-ISS-004">
+<header><span class="tcid"><a href="#TC-ISS-004">TC-ISS-004</a></span><h4>Idempotency-Key is required</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>API-090, §20.5</dd></div><div><dt>Role</dt><dd>reception_operator</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Send <code>POST /tickets</code> with no <code>Idempotency-Key</code> header.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>400 validation_failed</code> naming the <code>Idempotency-Key</code> header.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /tickets (no header) -&gt; 400</code></pre><p><strong>Automated:</strong> <code>IssuanceIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-ISS-005">
+<header><span class="tcid"><a href="#TC-ISS-005">TC-ISS-005</a></span><h4>Retrying with the same key returns the same Ticket</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>API-090, §20.5</dd></div><div><dt>Role</dt><dd>reception_operator</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Send the same <code>POST /tickets</code> with the same <code>Idempotency-Key</code> twice.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>Both calls return the <strong>same</strong> Ticket id and number. Only one Ticket exists.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /tickets (same key, same body) x2 -&gt; same id</code></pre><p><strong>Automated:</strong> <code>IssuanceIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-ISS-006">
+<header><span class="tcid"><a href="#TC-ISS-006">TC-ISS-006</a></span><h4>Same key with a different request is refused</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>API-090</dd></div><div><dt>Role</dt><dd>reception_operator</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Reuse an <code>Idempotency-Key</code> but change the <code>service_id</code>.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>409 conflict</code>, <code>details.reason = idempotency_key_reused</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /tickets -&gt; 409 {reason:'idempotency_key_reused'}</code></pre><p><strong>Automated:</strong> <code>IssuanceIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-ISS-007">
+<header><span class="tcid"><a href="#TC-ISS-007">TC-ISS-007</a></span><h4>Same key while the first request is still running</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>API-090</dd></div><div><dt>Role</dt><dd>reception_operator</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Fire two identical requests concurrently with the same key (for example <code>xargs -P2</code>).</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>One succeeds; the other is refused <code>409 conflict</code>, <code>details.reason = idempotency_key_in_use</code>, or receives the stored result once finished. Never two Tickets.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>parallel POST /tickets -&gt; 409 {reason:'idempotency_key_in_use'} for the loser</code></pre><p><strong>Automated:</strong> <code>IssuanceIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-ISS-008">
+<header><span class="tcid"><a href="#TC-ISS-008">TC-ISS-008</a></span><h4>Unknown visitor id</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-ISS-021</dd></div><div><dt>Role</dt><dd>reception_operator</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Issue with a <code>visitor_id</code> that does not exist.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>400 validation_failed</code> naming <code>visitor_id</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /tickets {visitor_id:&lt;random&gt;} -&gt; 400</code></pre><p><strong>Automated:</strong> <code>IssuanceIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-ISS-009">
+<header><span class="tcid"><a href="#TC-ISS-009">TC-ISS-009</a></span><h4>Only Reception may issue</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>§5.2</dd></div><div><dt>Role</dt><dd>org_admin, agent</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>As Org Admin or Agent call <code>POST /tickets</code>.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>403 forbidden</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /tickets -&gt; 403</code></pre><p><strong>Automated:</strong> <code>PermissionMatrixTest</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<h3 id="gate-refusals">Gate refusals</h3>
+<p>Configure each rule as shown, then attempt to issue at Reception (or by API). <strong>After each case restore the setting.</strong></p>
+<article class="tc unhappy" id="TC-ISS-010">
+<header><span class="tcid"><a href="#TC-ISS-010">TC-ISS-010</a></span><h4>Outside opening hours</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-CFG-020</dd></div><div><dt>Role</dt><dd>reception_operator, kiosk</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Set the Service's hours so today's window has already closed.</li><li>Try to issue.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>409 service_closed</code>, <code>details.reason = outside_hours</code>. *This service is not taking tickets at this time. Please come back during opening hours.* The kiosk shows the same and issues nothing.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>PUT /services/{id}/hours ; POST /tickets -&gt; 409 {code:'service_closed',reason:'outside_hours'}</code></pre><p><strong>Automated:</strong> <code>OpeningHoursTest</code>, <code>IssuanceRulesIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-ISS-011">
+<header><span class="tcid"><a href="#TC-ISS-011">TC-ISS-011</a></span><h4>Holiday</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-CFG-021</dd></div><div><dt>Role</dt><dd>reception_operator, kiosk</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Add today as a full-day holiday named *T-Holiday* on the Site.</li><li>Try to issue.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>409 service_closed</code>, <code>reason = holiday</code>, <code>details.holiday = T-Holiday</code>. *This service is closed today for a holiday.*</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /sites/{id}/holidays {date,name} ; POST /tickets -&gt; 409</code></pre><p><strong>Automated:</strong> <code>OpeningHoursTest</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc edge" id="TC-ISS-012">
+<header><span class="tcid"><a href="#TC-ISS-012">TC-ISS-012</a></span><h4>Half-day holiday closes early</h4><span class="badge edge">edge</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-CFG-021</dd></div><div><dt>Role</dt><dd>reception_operator</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Add today as a half day with a <code>close_time</code> 10 minutes ago.</li><li>Try to issue.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>Refused as <code>holiday</code> or <code>outside_hours</code> after that time; allowed before it.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /sites/{id}/holidays {half_day:true,close_time:'HH:mm'}</code></pre><p><strong>Automated:</strong> <code>OpeningHoursTest</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-ISS-013">
+<header><span class="tcid"><a href="#TC-ISS-013">TC-ISS-013</a></span><h4>Past the channel cut-off</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-CFG-022</dd></div><div><dt>Role</dt><dd>kiosk</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Set kiosk cut-off to 60 minutes before close with close time 30 minutes from now.</li><li>Issue at the kiosk.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>409 service_closed</code>, <code>reason = past_cutoff</code>, <code>details.cutoff_at</code>. Reception (cut-off 0) can still issue.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>PUT /sites/{id}/issuance-cutoffs {minutes_before_close:{kiosk:60}}</code></pre><p><strong>Automated:</strong> <code>OpeningHoursTest</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-ISS-014">
+<header><span class="tcid"><a href="#TC-ISS-014">TC-ISS-014</a></span><h4>Daily cap reached</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-CFG-023</dd></div><div><dt>Role</dt><dd>reception_operator, kiosk</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Set the Service daily cap to 2 and add a Bangla and English cap message.</li><li>Issue 2 Tickets, then a third.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>Third is <code>409 service_closed</code>, <code>reason = cap_reached</code>, <code>details.daily_cap = 2</code>, showing the administrator's own message instead of the built-in text.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>PUT /services/{id}/issuance-rule {daily_cap:2,cap_message_i18n:{en:'...'}}</code></pre><p><strong>Automated:</strong> <code>IssuanceRulesIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-ISS-015">
+<header><span class="tcid"><a href="#TC-ISS-015">TC-ISS-015</a></span><h4>Maintenance mode pauses issuing but not serving</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-OPS-043</dd></div><div><dt>Role</dt><dd>reception_operator, agent</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Turn maintenance on with a message.</li><li>Try to issue.</li><li>As an agent, call an already-waiting Ticket.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>Issue is <code>503 unavailable</code>, <code>reason = maintenance</code>, with the administrator's message. Serving already-issued Tickets still works.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>PUT /issuance-settings {maintenance_enabled:true,maintenance_message_i18n:{en:'...'}}</code></pre><p><strong>Automated:</strong> <code>IssuanceRulesIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-ISS-016">
+<header><span class="tcid"><a href="#TC-ISS-016">TC-ISS-016</a></span><h4>Kiosk rate limit per device</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>API-090</dd></div><div><dt>Role</dt><dd>kiosk</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Set device limit to 3 per minute.</li><li>Issue 4 Tickets at the kiosk within a minute.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>The fourth is <code>429 rate_limited</code> with <code>Retry-After</code>, <code>details.limit</code>, <code>details.window_seconds</code>. The kiosk shows *Too many tickets have been requested. Please wait a moment and try again.* Staff are never limited.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>PUT /issuance-settings {device_limit_per_minute:3} ; POST /kiosk/tickets x4</code></pre><p><strong>Automated:</strong> <code>IssuanceRulesIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-ISS-017">
+<header><span class="tcid"><a href="#TC-ISS-017">TC-ISS-017</a></span><h4>Visitor issue rate limit</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>API-090</dd></div><div><dt>Role</dt><dd>visitor</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Set the visitor limit to 2 per hour.</li><li>As a signed-in visitor remote-join three different Services.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>The third is <code>429 rate_limited</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>PUT /issuance-settings {visitor_limit_per_hour:2}</code></pre><p><strong>Automated:</strong> <code>IssuanceRulesIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-ISS-018">
+<header><span class="tcid"><a href="#TC-ISS-018">TC-ISS-018</a></span><h4>Duplicate policy block</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-ISS-004</dd></div><div><dt>Role</dt><dd>reception_operator</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Set the Service duplicate policy to <code>block</code>.</li><li>Issue a Ticket for a registered visitor.</li><li>Issue another Ticket for the same visitor and Service.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>409 conflict</code>, <code>reason = duplicate_ticket</code>, <code>details.policy = block</code>. *This visitor already has an active ticket for this service.*</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>PUT /services/{id}/issuance-rule {duplicate_policy:'block'}</code></pre><p><strong>Automated:</strong> <code>IssuanceRulesIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc edge" id="TC-ISS-019">
+<header><span class="tcid"><a href="#TC-ISS-019">TC-ISS-019</a></span><h4>Duplicate policy warn then confirm</h4><span class="badge edge">edge</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-ISS-004</dd></div><div><dt>Role</dt><dd>reception_operator</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Set policy <code>warn</code>.</li><li>Repeat the duplicate issue: a warning appears.</li><li>Confirm to continue.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>First attempt is refused with <code>duplicate_ticket</code> and <code>policy = warn</code>. Resubmitting with <code>confirm_duplicate: true</code> issues the Ticket.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /tickets {confirm_duplicate:true}</code></pre><p><strong>Automated:</strong> <code>IssuanceRulesIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-ISS-020">
+<header><span class="tcid"><a href="#TC-ISS-020">TC-ISS-020</a></span><h4>Duplicate policy allow</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-ISS-004</dd></div><div><dt>Role</dt><dd>reception_operator</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Set policy <code>allow</code> and issue two Tickets for the same visitor and Service.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>Both issue with no warning.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>PUT /services/{id}/issuance-rule {duplicate_policy:'allow'}</code></pre><p><strong>Automated:</strong> <code>IssuanceRulesIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-ISS-021">
+<header><span class="tcid"><a href="#TC-ISS-021">TC-ISS-021</a></span><h4>Channel not offered by the Service</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-CFG-011</dd></div><div><dt>Role</dt><dd>kiosk, reception_operator</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Edit the Service so channels = <code>kiosk</code> only.</li><li>Try to issue at Reception.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>409 conflict</code>, <code>reason = channel_not_allowed</code>. *This service does not issue tickets through this channel.* The kiosk still offers it.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /tickets -&gt; 409 {reason:'channel_not_allowed'}</code></pre><p><strong>Automated:</strong> <code>IssuanceIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-ISS-022">
+<header><span class="tcid"><a href="#TC-ISS-022">TC-ISS-022</a></span><h4>Appointment-only Service refuses a walk-in</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-APT</dd></div><div><dt>Role</dt><dd>reception_operator</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Set the Service booking mode to <code>appointment_only</code>.</li><li>Try to issue a walk-in Ticket.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>409 conflict</code>, <code>reason = appointment_only</code>. *This service takes appointments only.* Appointment check-in still issues normally.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /tickets -&gt; 409 {reason:'appointment_only'}</code></pre><p><strong>Automated:</strong> <code>IssuanceIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-ISS-023">
+<header><span class="tcid"><a href="#TC-ISS-023">TC-ISS-023</a></span><h4>Service that requires a rostered agent has none</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-CFG-023</dd></div><div><dt>Role</dt><dd>reception_operator</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Set <code>require_agent</code> on a Service.</li><li>Make sure the group's Team has no active member ('rostered' means the Team has an active member) and no agent has an open session.</li><li>Try to issue.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>409 conflict</code>, <code>reason = no_agent_rostered</code>. *No agent is assigned to this service...*</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>PUT /services/{id}/issuance-rule {require_agent:true}</code></pre><p><strong>Automated:</strong> <code>IssuanceRulesIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-ISS-024">
+<header><span class="tcid"><a href="#TC-ISS-024">TC-ISS-024</a></span><h4>Holiday cannot be added twice for one date</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-CFG-021</dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Add a holiday on a date that already has one.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>409 conflict</code>, <code>reason = holiday_exists</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /sites/{id}/holidays -&gt; 409 {reason:'holiday_exists'}</code></pre><p><strong>Automated:</strong> <code>IssuanceRulesIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-ISS-025">
+<header><span class="tcid"><a href="#TC-ISS-025">TC-ISS-025</a></span><h4>Issuance rule field validation</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd><code>IssuanceRulesService</code></dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Daily cap 0 and 1,000,001; duplicate policy <code>maybe</code>; a cut-off of 1441 or for channel <code>sms</code>; limits 0; maintenance message of 501 characters or in a language that is not installed; open time not before close time; a repeated weekday.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>Each is <code>400 validation_failed</code> naming the field.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>PUT /services/{id}/issuance-rule -&gt; 400 fields:[...]</code></pre><p><strong>Automated:</strong> <code>IssuanceRulesIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-ISS-026">
+<header><span class="tcid"><a href="#TC-ISS-026">TC-ISS-026</a></span><h4>Issuance rule permissions</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>§5.2</dd></div><div><dt>Role</dt><dd>team_admin, agent</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Call <code>PUT /sites/{id}/hours</code> and <code>PUT /issuance-settings</code> as a Team Admin; call the deployment-wide settings as a Site-scoped Org Admin.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>403 forbidden</code>. Deployment-wide settings need an organisation-wide caller with no site restriction.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>PUT /issuance-settings (scoped) -&gt; 403</code></pre><p><strong>Automated:</strong> <code>IssuanceRulesIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<h2 id="kiosk-kiosk">Kiosk (<code>/kiosk/</code>)</h2>
+<p>Public, unauthenticated <strong>device</strong>, paired with a code. Flow: idle &gt; language &gt; Service group (skipped if only one) &gt; Service &gt; *Identify yourself* (per the Service's <code>visitor_identifier</code>) &gt; optional named agent &gt; optional custom fifth level &gt; <strong>Confirm</strong> &gt; <strong>printing</strong> &gt; result with the token, and a <strong>QR fallback</strong> when printing fails. Any inactivity returns to idle and <strong>discards the partial selection</strong>. High-contrast and large-text toggles persist in the browser.</p>
+<article class="tc happy" id="TC-ISS-027">
+<header><span class="tcid"><a href="#TC-ISS-027">TC-ISS-027</a></span><h4>Kiosk issues and prints a Ticket</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-ISS-010, FR-ISS-016, UAT U1</dd></div><div><dt>Role</dt><dd>kiosk visitor</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>On a paired kiosk tap <strong>Tap to begin</strong> (or your language).</li><li>Choose a Service.</li><li>Confirm with <strong>Get my Token</strong>.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>The result screen shows the Token number and a printed slip. The Ticket is <code>waiting</code>. Audit <code>ticket.issued</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /kiosk/tickets {service_id,...} (Idempotency-Key)</code></pre><p><strong>Automated:</strong> <code>KioskTicketIT</code>; e2e U1 (<code>u01-walk-in-kiosk.spec.ts</code>)</p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc edge" id="TC-ISS-028">
+<header><span class="tcid"><a href="#TC-ISS-028">TC-ISS-028</a></span><h4>Group step is skipped when there is only one group</h4><span class="badge edge">edge</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-ISS-010</dd></div><div><dt>Role</dt><dd>kiosk visitor</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>With one Service group open the kiosk.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>After the language step the visitor sees Services directly.</p></div>
+<details class="dev"><summary>Dev / API</summary><p><strong>Automated:</strong> <code>KioskFlow.test.tsx</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc edge" id="TC-ISS-029">
+<header><span class="tcid"><a href="#TC-ISS-029">TC-ISS-029</a></span><h4>Kiosk with nothing to offer</h4><span class="badge edge">edge</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-ISS-010</dd></div><div><dt>Role</dt><dd>kiosk visitor</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Deactivate every Service at the Site and open the kiosk.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>The *empty* screen explains nothing is offered right now. No Ticket can be created.</p></div>
+<details class="dev"><summary>Dev / API</summary><p><strong>Automated:</strong> <code>KioskFlow.test.tsx</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-ISS-030">
+<header><span class="tcid"><a href="#TC-ISS-030">TC-ISS-030</a></span><h4>Mandatory identification blocks continuing without it</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-ISS-011</dd></div><div><dt>Role</dt><dd>kiosk visitor</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Set the Service <code>visitor_identifier</code> to <code>mandatory</code>.</li><li>At the kiosk try to continue without identifying.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>The *Continue without identification* option is not offered. A valid code or phone is required.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>GET /kiosk/visitors/identify?q=...</code></pre><p><strong>Automated:</strong> <code>KioskFlow.test.tsx</code>, <code>KioskTicketIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-ISS-031">
+<header><span class="tcid"><a href="#TC-ISS-031">TC-ISS-031</a></span><h4>Optional identification can be skipped</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-ISS-011</dd></div><div><dt>Role</dt><dd>kiosk visitor</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Set <code>visitor_identifier</code> to <code>optional</code>.</li><li>Choose *Continue without identification*.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>A Ticket is issued for an anonymous walk-in.</p></div>
+<details class="dev"><summary>Dev / API</summary><p><strong>Automated:</strong> <code>KioskFlow.test.tsx</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-ISS-032">
+<header><span class="tcid"><a href="#TC-ISS-032">TC-ISS-032</a></span><h4>Identify by phone number</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-ISS-011</dd></div><div><dt>Role</dt><dd>kiosk visitor</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>*Identify yourself* &gt; Enter &gt; a registered phone number.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>The visitor is found; the Ticket is linked to them. Phone lookup works even when <code>visitor_code_lookup</code> is off.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>GET /kiosk/visitors/identify?q=&lt;phone&gt;</code></pre><p><strong>Automated:</strong> <code>KioskTicketIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-ISS-033">
+<header><span class="tcid"><a href="#TC-ISS-033">TC-ISS-033</a></span><h4>Identify by code needs the code-lookup flag</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>ticket 68</dd></div><div><dt>Role</dt><dd>kiosk visitor</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Turn <code>visitor_code_lookup</code> off and reload the kiosk (or wait for the <code>config.changed</code> push).</li><li>Open *Identify yourself*.</li><li>Call <code>GET /kiosk/visitors/identify?q=&lt;pass code&gt;</code> by API.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>The code and QR-scan tiles are <strong>hidden</strong> in the kiosk; phone-number entry remains. The API refuses a code query with <code>409 conflict</code>, <code>feature_disabled</code>, feature <code>visitor_code_lookup</code>; a phone-shaped query is never gated.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>GET /kiosk/visitors/identify?q=&lt;code&gt; -&gt; 409 ; ?q=&lt;phone&gt; -&gt; 200</code></pre><p><strong>Automated:</strong> <code>FeatureFlagsEnforcedIT</code>, <code>KioskFlow.test.tsx</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc edge" id="TC-ISS-034">
+<header><span class="tcid"><a href="#TC-ISS-034">TC-ISS-034</a></span><h4>The kiosk has no appointment check-in step</h4><span class="badge edge">edge</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-APT-030 (partial)</dd></div><div><dt>Role</dt><dd>kiosk visitor</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Open the kiosk and look for an *I have an appointment* entry.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>There is none. Only the backend endpoint <code>POST /kiosk/appointments/check-in</code> exists (gated by the <code>appointment</code> flag). Appointment check-in is done at <strong>Reception</strong> in this build. Recorded in <a href="26-appendices.html#e-known-limitations">Appendix E</a>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /kiosk/appointments/check-in (kiosk token) works by API only</code></pre><p><strong>Automated:</strong> <code>AppointmentCheckInIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-ISS-035">
+<header><span class="tcid"><a href="#TC-ISS-035">TC-ISS-035</a></span><h4>Choose a named agent when the group allows it</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-ISS-012</dd></div><div><dt>Role</dt><dd>kiosk visitor</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Enable *team selectable* and *individual selectable* on the group.</li><li>At the kiosk pick a named agent.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>The Ticket is directed to that agent's queue.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>GET /kiosk/groups/{id}/agents ; POST /kiosk/tickets {agent_id}</code></pre><p><strong>Automated:</strong> <code>KioskTicketIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-ISS-036">
+<header><span class="tcid"><a href="#TC-ISS-036">TC-ISS-036</a></span><h4>Named agent on a group that forbids it</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-ISS-012</dd></div><div><dt>Role</dt><dd>kiosk</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Call <code>POST /kiosk/tickets</code> with an <code>agent_id</code> for a group that has individual selection off.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>409 conflict</code>, <code>reason = individual_not_selectable</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /kiosk/tickets -&gt; 409 {reason:'individual_not_selectable'}</code></pre><p><strong>Automated:</strong> <code>KioskTicketIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-ISS-037">
+<header><span class="tcid"><a href="#TC-ISS-037">TC-ISS-037</a></span><h4>Named agent who is not on duty</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-ISS-012</dd></div><div><dt>Role</dt><dd>kiosk</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Pick an agent with no open session.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>409 conflict</code>, <code>reason = agent_not_on_duty</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /kiosk/tickets -&gt; 409 {reason:'agent_not_on_duty'}</code></pre><p><strong>Automated:</strong> <code>KioskTicketIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc edge" id="TC-ISS-038">
+<header><span class="tcid"><a href="#TC-ISS-038">TC-ISS-038</a></span><h4>Idle kiosk resets and discards the choice</h4><span class="badge edge">edge</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-ISS-015</dd></div><div><dt>Role</dt><dd>kiosk visitor</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Start a selection and stop touching the screen until the inactivity timeout.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>The kiosk returns to the welcome screen and the partial selection is gone. No Ticket was created.</p></div>
+<details class="dev"><summary>Dev / API</summary><p><strong>Automated:</strong> <code>KioskFlow.test.tsx</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-ISS-039">
+<header><span class="tcid"><a href="#TC-ISS-039">TC-ISS-039</a></span><h4>Printer fails: the Ticket is still created and a QR is shown</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-ISS-016, UAT U8</dd></div><div><dt>Role</dt><dd>kiosk visitor</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Make the print step fail (in a test browser inject <code>window.print = () =&gt; { throw new Error() }</code> before load, or disconnect the printer).</li><li>Issue a Ticket.</li><li>Scan or follow the QR.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>The screen says *your token is saved*, shows the Token number and a QR. The QR opens the visitor ticket page for that Ticket. The secret is in the URL fragment (<code>#s=</code>), never a query string.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>QR value: &lt;origin&gt;/visitor/?t=&lt;id&gt;#s=&lt;secret&gt;</code></pre><p><strong>Automated:</strong> e2e U8 (<code>u08-printer-failure-qr.spec.ts</code>)</p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc edge" id="TC-ISS-040">
+<header><span class="tcid"><a href="#TC-ISS-040">TC-ISS-040</a></span><h4>A failed issue can be retried without a duplicate</h4><span class="badge edge">edge</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>API-090</dd></div><div><dt>Role</dt><dd>kiosk visitor</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Drop the network right after tapping Confirm, restore it and press Retry.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>The retry reuses the same idempotency key: at most one Ticket exists.</p></div>
+<details class="dev"><summary>Dev / API</summary><p><strong>Automated:</strong> <code>KioskFlow.test.tsx</code>; <code>IssuanceIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-ISS-041">
+<header><span class="tcid"><a href="#TC-ISS-041">TC-ISS-041</a></span><h4>Kiosk accessibility toggles</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>NFR-USA, ticket 65</dd></div><div><dt>Role</dt><dd>kiosk visitor</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Turn on <strong>High contrast</strong> and <strong>Large text</strong>.</li><li>Reload.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>Both remain on after reload (stored under <code>qms-kiosk-accessibility</code>) and every screen stays readable. See <a href="24-cross-cutting.html">Cross-cutting</a>.</p></div>
+<details class="dev"><summary>Dev / API</summary><p><strong>Automated:</strong> <code>KioskFlow.test.tsx</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<h2 id="host-api-post-host-tickets">Host API (<code>POST /host/tickets</code>)</h2>
+<p>A host application (a bank core, a hospital system) authenticates as a <strong>service account</strong> and issues Tickets. The account is created by an administrator with <code>user:manage</code>; see <a href="20-integrations.html">Webhooks and service accounts</a>.</p>
+<article class="tc happy" id="TC-ISS-042">
+<header><span class="tcid"><a href="#TC-ISS-042">TC-ISS-042</a></span><h4>A host system issues a Ticket</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-INT-040, API-032</dd></div><div><dt>Role</dt><dd>host_system</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Make sure the Service's channels include <code>mobile</code> (Host API tickets are issued with origin_channel <code>mobile</code>).</li><li>Create a service account, get a token with its client id and secret.</li><li>Call <code>POST /host/tickets</code> with a <code>service_id</code>.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>201</code> with the Ticket. The Ticket appears in the queue like any other.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /auth/service-accounts/token {client_id,client_secret} ; POST /host/tickets {service_id} (Idempotency-Key)</code></pre><p><strong>Automated:</strong> <code>ServiceAccountIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-ISS-043">
+<header><span class="tcid"><a href="#TC-ISS-043">TC-ISS-043</a></span><h4>A staff token cannot use the host endpoint</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>§5.1</dd></div><div><dt>Role</dt><dd>reception_operator</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Call <code>POST /host/tickets</code> with a Reception token.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>403 forbidden</code> (<code>hasRole('HOST_SYSTEM')</code> only).</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /host/tickets (staff) -&gt; 403</code></pre><p><strong>Automated:</strong> <code>ServiceAccountIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-ISS-044">
+<header><span class="tcid"><a href="#TC-ISS-044">TC-ISS-044</a></span><h4>A host request is subject to the same gate</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>API-090</dd></div><div><dt>Role</dt><dd>host_system</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Make sure the Service's channels include <code>mobile</code>, then with the Service closed call <code>POST /host/tickets</code>.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>The same <code>409 service_closed</code> / <code>conflict</code> reasons apply as at Reception.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /host/tickets -&gt; 409 {reason:'outside_hours'}</code></pre><p><strong>Automated:</strong> <code>ServiceAccountIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article><section class="signoff"><h2 id="sign-off-sheet">Sign-off sheet</h2><p class="hint">Print this page range, one sheet per run. Tick Pass or Fail and note the build, date and tester at the top.</p><div class="tablewrap"><table><thead><tr><th>TC</th><th>Title</th><th>Type</th><th>Pass</th><th>Fail</th><th>Notes</th></tr></thead><tbody><tr><td><a href="#TC-ISS-001">TC-ISS-001</a></td><td>Reception issues a walk-in Ticket</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-ISS-002">TC-ISS-002</a></td><td>Reception assigns a Priority class at issue</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-ISS-003">TC-ISS-003</a></td><td>Purpose note is visible only to the serving agent</td><td><span class="badge edge">edge</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-ISS-004">TC-ISS-004</a></td><td>Idempotency-Key is required</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-ISS-005">TC-ISS-005</a></td><td>Retrying with the same key returns the same Ticket</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-ISS-006">TC-ISS-006</a></td><td>Same key with a different request is refused</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-ISS-007">TC-ISS-007</a></td><td>Same key while the first request is still running</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-ISS-008">TC-ISS-008</a></td><td>Unknown visitor id</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-ISS-009">TC-ISS-009</a></td><td>Only Reception may issue</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-ISS-010">TC-ISS-010</a></td><td>Outside opening hours</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-ISS-011">TC-ISS-011</a></td><td>Holiday</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-ISS-012">TC-ISS-012</a></td><td>Half-day holiday closes early</td><td><span class="badge edge">edge</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-ISS-013">TC-ISS-013</a></td><td>Past the channel cut-off</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-ISS-014">TC-ISS-014</a></td><td>Daily cap reached</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-ISS-015">TC-ISS-015</a></td><td>Maintenance mode pauses issuing but not serving</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-ISS-016">TC-ISS-016</a></td><td>Kiosk rate limit per device</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-ISS-017">TC-ISS-017</a></td><td>Visitor issue rate limit</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-ISS-018">TC-ISS-018</a></td><td>Duplicate policy block</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-ISS-019">TC-ISS-019</a></td><td>Duplicate policy warn then confirm</td><td><span class="badge edge">edge</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-ISS-020">TC-ISS-020</a></td><td>Duplicate policy allow</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-ISS-021">TC-ISS-021</a></td><td>Channel not offered by the Service</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-ISS-022">TC-ISS-022</a></td><td>Appointment-only Service refuses a walk-in</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-ISS-023">TC-ISS-023</a></td><td>Service that requires a rostered agent has none</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-ISS-024">TC-ISS-024</a></td><td>Holiday cannot be added twice for one date</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-ISS-025">TC-ISS-025</a></td><td>Issuance rule field validation</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-ISS-026">TC-ISS-026</a></td><td>Issuance rule permissions</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-ISS-027">TC-ISS-027</a></td><td>Kiosk issues and prints a Ticket</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-ISS-028">TC-ISS-028</a></td><td>Group step is skipped when there is only one group</td><td><span class="badge edge">edge</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-ISS-029">TC-ISS-029</a></td><td>Kiosk with nothing to offer</td><td><span class="badge edge">edge</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-ISS-030">TC-ISS-030</a></td><td>Mandatory identification blocks continuing without it</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-ISS-031">TC-ISS-031</a></td><td>Optional identification can be skipped</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-ISS-032">TC-ISS-032</a></td><td>Identify by phone number</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-ISS-033">TC-ISS-033</a></td><td>Identify by code needs the code-lookup flag</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-ISS-034">TC-ISS-034</a></td><td>The kiosk has no appointment check-in step</td><td><span class="badge edge">edge</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-ISS-035">TC-ISS-035</a></td><td>Choose a named agent when the group allows it</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-ISS-036">TC-ISS-036</a></td><td>Named agent on a group that forbids it</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-ISS-037">TC-ISS-037</a></td><td>Named agent who is not on duty</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-ISS-038">TC-ISS-038</a></td><td>Idle kiosk resets and discards the choice</td><td><span class="badge edge">edge</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-ISS-039">TC-ISS-039</a></td><td>Printer fails: the Ticket is still created and a QR is shown</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-ISS-040">TC-ISS-040</a></td><td>A failed issue can be retried without a duplicate</td><td><span class="badge edge">edge</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-ISS-041">TC-ISS-041</a></td><td>Kiosk accessibility toggles</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-ISS-042">TC-ISS-042</a></td><td>A host system issues a Ticket</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-ISS-043">TC-ISS-043</a></td><td>A staff token cannot use the host endpoint</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-ISS-044">TC-ISS-044</a></td><td>A host request is subject to the same gate</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr></tbody></table></div></section>
+<div class="pager"><a href="08-catalogue-numbering-priority.html">← Catalogue, numbering, priority</a><a href="10-visitors.html">Visitors →</a></div>
+</main>
+</div>
+</body>
+</html>

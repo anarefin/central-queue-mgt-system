@@ -62,6 +62,12 @@ class AlertRepository {
         return jdbc.query("SELECT * FROM alert WHERE id = ?", this::map, id).stream().findFirst();
     }
 
+    /** The Service group a Service belongs to, or null when the id is null or unknown. */
+    UUID groupOfService(UUID serviceId) {
+        if (serviceId == null) return null;
+        return jdbc.query("SELECT service_group_id FROM service WHERE id = ?", rs -> rs.next() ? rs.getObject(1, UUID.class) : null, serviceId);
+    }
+
     List<Alert> forSite(UUID siteId, String state) {
         return state == null
                 ? jdbc.query("SELECT * FROM alert WHERE site_id = ? ORDER BY created_at DESC", this::map, siteId)

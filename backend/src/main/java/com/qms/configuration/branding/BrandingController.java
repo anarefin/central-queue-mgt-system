@@ -47,7 +47,7 @@ public class BrandingController {
     public BrandingTheme theme(HttpServletRequest request) {
         String key = "branding-theme:" + request.getRemoteAddr();
         if (!rateLimiter.allow(key, THEME_RATE_LIMIT, THEME_RATE_WINDOW_SECONDS)) {
-            throw new ApiException(ErrorCode.RATE_LIMITED);
+            throw new ApiException(ErrorCode.RATE_LIMITED, java.util.Map.of("retry_after_seconds", 60, "limit", 30, "window_seconds", 60));
         }
         return branding.theme();
     }

@@ -76,7 +76,7 @@ public class LabelController {
     public Map<String, String> publicLabels(@RequestParam(defaultValue = "en") String lang, HttpServletRequest request) {
         String key = "labels-public:" + request.getRemoteAddr();
         if (!rateLimiter.allow(key, PUBLIC_RATE_LIMIT, PUBLIC_RATE_WINDOW_SECONDS)) {
-            throw new ApiException(ErrorCode.RATE_LIMITED);
+            throw new ApiException(ErrorCode.RATE_LIMITED, Map.of("retry_after_seconds", 60, "limit", 30, "window_seconds", 60));
         }
         return labels.publicLabelsForLanguage(lang);
     }

@@ -43,7 +43,12 @@ public class ThresholdAlertScheduler {
     public void tick() {
         Instant now = clock.instant();
         for (UUID serviceId : thresholds.configuredServiceIds()) {
-            thresholds.find(serviceId).ifPresent(threshold -> evaluate(serviceId, threshold, now));
+            try {
+                thresholds.find(serviceId).ifPresent(threshold -> evaluate(serviceId, threshold, now));
+            } catch (RuntimeException e) {
+                // one Service's failure must not stop the sweep for the rest
+                org.slf4j.LoggerFactory.getLogger(ThresholdAlertScheduler.class).error("threshold evaluation failed for service {}", serviceId, e);
+            }
         }
     }
 

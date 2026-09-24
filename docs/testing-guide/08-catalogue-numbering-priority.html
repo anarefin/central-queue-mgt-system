@@ -1,0 +1,302 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Service catalogue, token numbering, priority and routing — cqms testing guide</title>
+<link rel="stylesheet" href="styles.css">
+<script>
+(function(){try{var t=localStorage.getItem('qms-guide-theme');if(t)document.documentElement.setAttribute('data-theme',t);}catch(e){}
+document.addEventListener('DOMContentLoaded',function(){var b=document.getElementById('theme-toggle');if(!b)return;
+b.addEventListener('click',function(){var cur=document.documentElement.getAttribute('data-theme');
+if(!cur){cur=window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';}
+var n=cur==='dark'?'light':'dark';document.documentElement.setAttribute('data-theme',n);try{localStorage.setItem('qms-guide-theme',n);}catch(e){}});});})();
+</script>
+</head>
+<body>
+<a class="skip" href="#content">Skip to content</a>
+<div class="layout">
+<nav class="side" aria-label="Guide navigation"><a class="brand" href="index.html">cqms testing guide</a><div class="sub">Queue Management System</div><h2>Start here</h2><ul><li><a href="01-getting-started.html">Getting started</a></li><li><a href="02-roles-and-permissions.html">Roles and permissions</a></li><li><a href="03-industry-configuration.html">Industry configuration</a></li><li><a href="04-walkthroughs.html">Industry walkthroughs</a></li><li><a href="05-setup-wizard-and-config.html">Setup wizard and config bundle</a></li></ul><h2>Configuration</h2><ul><li><a href="06-auth-and-users.html">Auth, users and approvals</a></li><li><a href="07-organisation.html">Sites, zones, counters</a></li><li><a href="08-catalogue-numbering-priority.html" aria-current="page">Catalogue, numbering, priority</a></li></ul><h2>Serving visitors</h2><ul><li><a href="09-issuance.html">Issuance</a></li><li><a href="10-visitors.html">Visitors</a></li><li><a href="11-queue-engine.html">Queue engine</a></li><li><a href="12-counter-sessions.html">Counter sessions</a></li><li><a href="13-journeys.html">Journeys</a></li><li><a href="14-appointments.html">Appointments</a></li><li><a href="15-mobile-visitor.html">Mobile visitor</a></li></ul><h2>Surfaces and comms</h2><ul><li><a href="16-displays-and-voice.html">Displays and voice</a></li><li><a href="17-notifications.html">Notifications</a></li><li><a href="18-dashboard-and-alerts.html">Dashboard and alerts</a></li></ul><h2>Data and platform</h2><ul><li><a href="19-reports-and-exports.html">Reports and exports</a></li><li><a href="20-integrations.html">Webhooks and service accounts</a></li><li><a href="21-devices-and-realtime.html">Devices and realtime</a></li><li><a href="22-audit-log.html">Audit log</a></li><li><a href="23-operations.html">Operations</a></li></ul><h2>Quality</h2><ul><li><a href="24-cross-cutting.html">Cross-cutting checks</a></li><li><a href="25-automated-suites.html">Automated suites</a></li><li><a href="26-appendices.html">Appendices</a></li></ul><div class="theme"><button id="theme-toggle" type="button">Toggle light / dark</button></div></nav>
+<main id="content">
+<h1>Service catalogue, token numbering, priority and routing</h1>
+<p class="lede">Service groups and Services, outcome codes and Teams; how token numbers are built and reset; Priority classes, defaults by channel or Service, and the routing strategy.</p>
+<h2 id="service-catalogue-admin-catalogue-config-service-catalogue">Service catalogue (<code>/admin/catalogue/</code>, <code>config:service_catalogue</code>)</h2>
+<p><code>Site &gt; Service group &gt; Service</code>. A Service group is a department or clinic and owns <strong>exactly one Team</strong> of Agents. A Service is the thing a visitor queues for.</p>
+<div class="tablewrap"><table><thead><tr><th>Service field</th><th>Rule</th></tr></thead><tbody><tr><td><code>name_i18n</code></td><td>per language, at most 200 characters, the default language is required</td></tr><tr><td><code>token_prefix</code></td><td>at most 8, <code>[A-Za-z0-9]+</code>, unique among active Services at the Site</td></tr><tr><td><code>expected_minutes</code></td><td>1-1440</td></tr><tr><td><code>sla_wait_minutes</code></td><td>1-1440</td></tr><tr><td><code>channels</code></td><td>any of <code>kiosk</code>, <code>reception</code>, <code>mobile</code>, <code>appointment_checkin</code>; no duplicates</td></tr><tr><td><code>booking_mode</code></td><td><code>appointment_only</code>, <code>walk_in_only</code>, <code>both</code></td></tr><tr><td><code>visitor_identifier</code></td><td><code>not_required</code>, <code>optional</code>, <code>mandatory</code></td></tr><tr><td>parallel serving</td><td><code>parallel_limit</code> 1-20, and at least 2 when parallel serving is on</td></tr><tr><td>Counter link preference weight</td><td>1-99, default 1</td></tr><tr><td>Outcome code</td><td>at most 50 characters, <code>[a-z0-9_]+</code></td></tr></tbody></table></div>
+<p>Deactivating a parent (Site or Service group) deactivates its active children. Nothing with tickets is deleted.</p>
+<h2 id="token-numbering-admin-numbering">Token numbering (<code>/admin/numbering/</code>)</h2>
+<p>A Ticket number is <code>{prefix}{separator}{sequence, zero padded}</code>, for example <code>B-004</code>. One rule can be set <strong>per Service or per Service group</strong> (the Service rule wins). Digits are always Western Arabic.</p>
+<div class="tablewrap"><table><thead><tr><th>Setting</th><th>Rule</th><th>Default</th></tr></thead><tbody><tr><td><code>prefix_source</code></td><td><code>service</code>, <code>service_group</code>, <code>priority_class</code>, <code>fixed</code></td><td><code>service</code></td></tr><tr><td><code>fixed_prefix</code></td><td>required when source is <code>fixed</code>, at most 8, <code>[A-Za-z0-9]+</code></td><td>none</td></tr><tr><td><code>separator</code></td><td>at most 8 characters, no control characters</td><td><code>-</code></td></tr><tr><td><code>padding</code></td><td>0-6 digits</td><td>3</td></tr><tr><td><code>sequence_start</code></td><td>0-999,999,999</td><td>1</td></tr><tr><td><code>reset_boundary</code></td><td><code>daily</code>, <code>weekly</code> (Monday), <code>monthly</code> (the 1st), <code>never</code></td><td><code>daily</code></td></tr><tr><td><code>reset_time</code></td><td><code>HH:mm</code>, <strong>Site-local</strong></td><td><code>00:00</code></td></tr></tbody></table></div>
+<p><strong>Preview</strong> shows the next number without issuing one. The reset period is a pure function of the Site clock and timezone, so a sequence restarts at the reset time even if nothing was running then.</p>
+<h2 id="priority-and-routing-admin-priority-config-priority-routing">Priority and routing (<code>/admin/priority/</code>, <code>config:priority_routing</code>)</h2>
+<p>A <strong>Priority class</strong> carries a <strong>head start</strong> (minutes of virtual waiting on arrival, 0-1440), an optional <strong>maximum wait</strong> (1-1440) and an optional token prefix override. The seeded <strong>Normal</strong> class has head start 0 and is the default; it can never be deactivated. Defaults can be set <strong>by channel</strong> and <strong>by Service</strong>. The class on a Ticket is chosen by precedence: manual, appointment, visitor category, channel, Service (FR-QUE-011). The <strong>routing strategy</strong> is per Service group: <code>weighted_wait</code> (default), <code>strict_priority</code> or <code>fifo</code>; see <a href="11-queue-engine.html">Queue engine</a>.</p>
+<h2 id="cases">Cases</h2>
+<article class="tc happy" id="TC-CAT-001">
+<header><span class="tcid"><a href="#TC-CAT-001">TC-CAT-001</a></span><h4>Create a Service group</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-CFG-010</dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Admin &gt; Service catalogue &gt; <strong>New service group</strong> for the Site.</li><li>Names in English and Bangla, prefix <code>C</code>.</li><li>Save.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>The group is listed. It has an empty Team. Audit <code>service_group.created</code>, <code>team.created</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /sites/{id}/service-groups {name_i18n,token_prefix}</code></pre><p><strong>Automated:</strong> <code>CatalogueAdminIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-CAT-002">
+<header><span class="tcid"><a href="#TC-CAT-002">TC-CAT-002</a></span><h4>Create a Service</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-CFG-011</dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Open the group &gt; <strong>New service</strong>.</li><li>Name *Bill payment*, prefix <code>B</code>, 4 expected minutes, SLA 15, channels kiosk and reception, booking mode walk-in only.</li><li>Save.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>The Service is listed under the group. Audit <code>service.created</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /service-groups/{id}/services {...} -&gt; 201</code></pre><p><strong>Automated:</strong> <code>CatalogueAdminIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-CAT-003">
+<header><span class="tcid"><a href="#TC-CAT-003">TC-CAT-003</a></span><h4>Service field validation</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd><code>CatalogueRules</code>, ticket 66</dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Try a 9-character prefix, a prefix with a symbol, 0 expected minutes, 1441 SLA minutes, channel <code>sms</code>, booking mode <code>sometimes</code>.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>Each is an inline error and, via API, <code>400 validation_failed</code> naming the field (<code>Size</code>, <code>Pattern</code>, <code>Range</code>, <code>unknown_channel</code>, <code>Pattern</code>).</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /service-groups/{id}/services -&gt; 400 fields:[...]</code></pre><p><strong>Automated:</strong> <code>CatalogueRulesTest</code>, <code>validators.test.ts</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-CAT-004">
+<header><span class="tcid"><a href="#TC-CAT-004">TC-CAT-004</a></span><h4>The default language name is required</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd><code>CatalogueRules</code></dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Create a Service with only a Bangla name.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>400</code>, <code>default_language_required</code> on <code>name_i18n</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /service-groups/{id}/services -&gt; 400</code></pre><p><strong>Automated:</strong> <code>CatalogueRulesTest</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-CAT-005">
+<header><span class="tcid"><a href="#TC-CAT-005">TC-CAT-005</a></span><h4>Duplicate prefix at a Site</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-CFG-011</dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Create a second active Service with prefix <code>B</code> at the same Site.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>409 conflict</code> with <code>details.field = token_prefix</code>. Choose another prefix.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /service-groups/{id}/services -&gt; 409</code></pre><p><strong>Automated:</strong> <code>CatalogueAdminIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-CAT-006">
+<header><span class="tcid"><a href="#TC-CAT-006">TC-CAT-006</a></span><h4>Link a Counter to a Service with a preference weight</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-CFG-012, FR-QUE-013</dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Service &gt; Counters &gt; link *Counter 1*, weight 1.</li><li>Link *Counter 2* with weight 5.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>Both listed. The Service can now be called from either Counter, and a higher weight makes a Counter more preferred by assignment. Audit <code>service.counter_linked</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>PUT /services/{id}/counters/{counterId} {preference_weight} ; DELETE to unlink</code></pre><p><strong>Automated:</strong> <code>CatalogueAdminIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-CAT-007">
+<header><span class="tcid"><a href="#TC-CAT-007">TC-CAT-007</a></span><h4>Preference weight out of range</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd><code>CatalogueRules</code></dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Set weight 0, then 100.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>400 validation_failed</code> <code>Range</code> (1-99).</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>PUT /services/{id}/counters/{counterId} -&gt; 400</code></pre><p><strong>Automated:</strong> <code>CatalogueRulesTest</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-CAT-008">
+<header><span class="tcid"><a href="#TC-CAT-008">TC-CAT-008</a></span><h4>Parallel serving needs a limit of at least 2</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-AGT-013</dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Edit a Service: turn parallel serving on with limit 1; then limit 21.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>400 validation_failed</code> <code>Range</code>. Limit 2 to 20 is accepted.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>PATCH /services/{id} {parallel_serving:true,parallel_limit:1} -&gt; 400</code></pre><p><strong>Automated:</strong> <code>CatalogueRulesTest</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-CAT-009">
+<header><span class="tcid"><a href="#TC-CAT-009">TC-CAT-009</a></span><h4>Deactivate and reactivate a Service</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-CFG-011</dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Deactivate a Service.</li><li>Try to issue a Ticket for it.</li><li>Reactivate.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>While inactive the kiosk hides it and issuance is refused <code>409 conflict</code> <code>service_inactive</code>. Reactivated, it works.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /services/{id}/deactivate|activate ; POST /tickets -&gt; 409 {reason:'service_inactive'}</code></pre><p><strong>Automated:</strong> <code>CatalogueAdminIT</code>, <code>IssuanceIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-CAT-010">
+<header><span class="tcid"><a href="#TC-CAT-010">TC-CAT-010</a></span><h4>Activating a Service under an inactive group is refused</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-CFG-011</dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Deactivate the Service group.</li><li>Activate one of its Services.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>409 conflict</code>, <code>details.reason = parent_inactive</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /services/{id}/activate -&gt; 409 {reason:'parent_inactive'}</code></pre><p><strong>Automated:</strong> <code>CatalogueAdminIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-CAT-011">
+<header><span class="tcid"><a href="#TC-CAT-011">TC-CAT-011</a></span><h4>A Service with tickets cannot be deleted</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-CFG-011</dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Issue a Ticket for a Service.</li><li>Call <code>DELETE /services/{id}</code>.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>409 conflict</code>, <code>details.reason = service_has_tickets</code>. Deactivate it instead. A Service that never had a Ticket deletes cleanly (audit <code>service.deleted</code>).</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>DELETE /services/{id} -&gt; 409 {reason:'service_has_tickets'}</code></pre><p><strong>Automated:</strong> <code>CatalogueAdminIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-CAT-012">
+<header><span class="tcid"><a href="#TC-CAT-012">TC-CAT-012</a></span><h4>Outcome codes</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-AGT-032</dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Service &gt; Outcome codes &gt; add <code>resolved</code> (label English *Resolved*).</li><li>Deactivate it, then activate it.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>The code appears in the Console's outcome list on completion when active. Audit <code>outcome_code.created</code>, <code>outcome_code.activated</code>, <code>outcome_code.deactivated</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /services/{id}/outcome-codes {code,label_i18n}</code></pre><p><strong>Automated:</strong> <code>CatalogueAdminIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-CAT-013">
+<header><span class="tcid"><a href="#TC-CAT-013">TC-CAT-013</a></span><h4>Outcome code format</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd><code>CatalogueRules</code></dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Create code <code>Resolved!</code> and a 51-character code.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>400 validation_failed</code> <code>Pattern</code> / <code>Size</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /services/{id}/outcome-codes -&gt; 400</code></pre><p><strong>Automated:</strong> <code>CatalogueRulesTest</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-CAT-014">
+<header><span class="tcid"><a href="#TC-CAT-014">TC-CAT-014</a></span><h4>A Team member is added and removed</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-CFG-107</dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Service group &gt; Team &gt; add an agent, then remove them.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>Added agent can open a session on the group. Removed agent can no longer. Audit <code>team.member_added|member_removed</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /service-groups/{id}/team/members ; DELETE .../{userId}</code></pre><p><strong>Automated:</strong> <code>CatalogueAdminIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-CAT-015">
+<header><span class="tcid"><a href="#TC-CAT-015">TC-CAT-015</a></span><h4>Spoken form of a token prefix</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-DSP-024</dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>There is no Admin screen. Call <code>PUT /token-prefixes/B/spoken-forms/en {"spoken_text":"bee"}</code>.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>Saved (<code>200</code>); the announcement says *bee* for <code>B</code>. Audit <code>token_prefix.spoken_form_set</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>PUT /token-prefixes/B/spoken-forms/en {spoken_text:'bee'}</code></pre><p><strong>Automated:</strong> <code>CatalogueAdminIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-CAT-016">
+<header><span class="tcid"><a href="#TC-CAT-016">TC-CAT-016</a></span><h4>Numbering preview</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-CFG-018</dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Admin &gt; Ticket numbering &gt; choose a Service &gt; set prefix source <code>service</code>, padding 3, start 1, reset daily.</li><li>Read the preview.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>Preview shows <code>B-001</code>. No Ticket is consumed by previewing.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>GET /services/{id}/numbering-preview</code></pre><p><strong>Automated:</strong> <code>NumberingIT</code>, <code>TokenNumberingTest</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-CAT-017">
+<header><span class="tcid"><a href="#TC-CAT-017">TC-CAT-017</a></span><h4>Number format follows the rule</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-CFG-018, §4.4</dd></div><div><dt>Role</dt><dd>reception_operator</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Set padding 4, separator <code>.</code>, start 100 for a Service.</li><li>Issue two Tickets.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>Numbers are <code>B.0100</code> and <code>B.0101</code>. Digits are Western Arabic even with the Bangla UI.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>PUT /services/{id}/numbering-rule {prefix_source,separator,padding,sequence_start,reset_boundary,reset_time}</code></pre><p><strong>Automated:</strong> <code>TokenNumberingTest</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-CAT-018">
+<header><span class="tcid"><a href="#TC-CAT-018">TC-CAT-018</a></span><h4>Prefix from fixed text or priority class</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-CFG-018</dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Set source <code>fixed</code> with <code>fixed_prefix</code> <code>Q</code>.</li><li>Then source <code>priority_class</code> with a class that has a prefix override <code>P</code>.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>Tickets are <code>Q-001</code>; a Ticket in the overridden class is numbered with <code>P</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>PUT /services/{id}/numbering-rule</code></pre><p><strong>Automated:</strong> <code>NumberingIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-CAT-019">
+<header><span class="tcid"><a href="#TC-CAT-019">TC-CAT-019</a></span><h4>Numbering rule validation</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd><code>NumberingRules</code>, ticket 66</dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Source <code>fixed</code> without a fixed prefix.</li><li>Padding 7.</li><li>Start 1,000,000,000.</li><li>Reset boundary <code>hourly</code>.</li><li>Reset time <code>25:00</code>.</li><li>Separator of 9 characters.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>Each is refused <code>400 validation_failed</code> (<code>NotBlank</code>, <code>Range</code>, <code>Range</code>, <code>Pattern</code>, <code>Pattern</code>, <code>Size</code>).</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>PUT /services/{id}/numbering-rule -&gt; 400 fields:[...]</code></pre><p><strong>Automated:</strong> <code>NumberingRulesTest</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-CAT-020">
+<header><span class="tcid"><a href="#TC-CAT-020">TC-CAT-020</a></span><h4>Delete a Service's own rule to fall back to the group rule</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-CFG-018</dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Set a rule on the group and a different one on a Service.</li><li>Delete the Service rule.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>Tickets for that Service now follow the group rule. Audit <code>numbering_rule.deleted</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>DELETE /services/{id}/numbering-rule</code></pre><p><strong>Automated:</strong> <code>NumberingIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc edge" id="TC-CAT-021">
+<header><span class="tcid"><a href="#TC-CAT-021">TC-CAT-021</a></span><h4>Sequence restarts at the Site-local reset time</h4><span class="badge edge">edge</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-CFG-019, UAT U10</dd></div><div><dt>Role</dt><dd>integration only</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Cannot be forced from a browser (needs the wall clock to cross the reset time). Run the integration test.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>The sequence restarts at the configured Site-local time and prior-day data remains intact in reports.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>./gradlew integrationTest --tests '*NumberingResetIT'</code></pre><p><strong>Automated:</strong> <code>NumberingIT#theSequenceRestartsAtTheSiteLocalResetTimeAndPriorDaysStayIntact</code>; e2e U10 is <code>test.fixme</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc edge" id="TC-CAT-022">
+<header><span class="tcid"><a href="#TC-CAT-022">TC-CAT-022</a></span><h4>Weekly and monthly resets</h4><span class="badge edge">edge</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-CFG-018</dd></div><div><dt>Role</dt><dd>integration only</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Run the numbering unit tests.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>Weekly resets on Monday, monthly on the 1st, <code>never</code> never resets.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>./gradlew test --tests '*TokenNumberingTest'</code></pre><p><strong>Automated:</strong> <code>TokenNumberingTest</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-CAT-023">
+<header><span class="tcid"><a href="#TC-CAT-023">TC-CAT-023</a></span><h4>Numbering history and revert</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-CFG-040</dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Change padding, open *Version history*, revert.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>Padding returns; a new version row is added. See <a href="05-setup-wizard-and-config.html">Setup wizard and config</a>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>GET|POST /services/{id}/numbering-rule/versions[/{id}/revert]</code></pre><p><strong>Automated:</strong> <code>ConfigVersioningIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-CAT-024">
+<header><span class="tcid"><a href="#TC-CAT-024">TC-CAT-024</a></span><h4>Create a Priority class</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-QUE-010, ADR-0003</dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Admin &gt; Priority and queue ordering &gt; <strong>New class</strong>.</li><li>Name *Enterprise account*, head start 15, max wait 20.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>Listed with its head start. It can now be chosen at Reception. Audit <code>priority_class.created</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /priority-classes {name_i18n,headstart_minutes,max_wait_minutes}</code></pre><p><strong>Automated:</strong> <code>PriorityIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-CAT-025">
+<header><span class="tcid"><a href="#TC-CAT-025">TC-CAT-025</a></span><h4>Priority class validation</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd><code>PriorityRules</code>, ticket 66</dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Head start -1 and 1441; max wait 0 and 1441; a 9-character prefix override; blank default-language name.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>Inline errors and <code>400 validation_failed</code> (<code>Range</code>, <code>Range</code>, <code>Size</code>, <code>default_language_required</code>).</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /priority-classes -&gt; 400 fields:[...]</code></pre><p><strong>Automated:</strong> <code>PriorityIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-CAT-026">
+<header><span class="tcid"><a href="#TC-CAT-026">TC-CAT-026</a></span><h4>The default class cannot be deactivated</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>ADR-0003</dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Try to deactivate <strong>Normal</strong>.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>409 conflict</code>, <code>details.reason = default_priority_class</code>. The button is disabled in the UI.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /priority-classes/{normal}/deactivate -&gt; 409 {reason:'default_priority_class'}</code></pre><p><strong>Automated:</strong> <code>PriorityIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-CAT-027">
+<header><span class="tcid"><a href="#TC-CAT-027">TC-CAT-027</a></span><h4>The seeded default class cannot be fabricated by a bundle import</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>CFG-004</dd></div><div><dt>Role</dt><dd>system_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Import a bundle whose default class id is unknown to the target.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>409 conflict</code>, <code>details.reason = default_priority_class_missing</code>; nothing is applied.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /config/bundle/import -&gt; 409 {reason:'default_priority_class_missing'}</code></pre><p><strong>Automated:</strong> <code>ConfigVersioningIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-CAT-028">
+<header><span class="tcid"><a href="#TC-CAT-028">TC-CAT-028</a></span><h4>Deactivate an unused class</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-QUE-010</dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Deactivate *Enterprise account*, then activate it.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>It disappears from Reception's picker while inactive. A waiting Ticket already in that class keeps it.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /priority-classes/{id}/deactivate|activate</code></pre><p><strong>Automated:</strong> <code>PriorityIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-CAT-029">
+<header><span class="tcid"><a href="#TC-CAT-029">TC-CAT-029</a></span><h4>Priority defaults by channel and by Service</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-QUE-011</dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Priority defaults card: channel <code>kiosk</code> -&gt; class *Senior citizen*.</li><li>For a Service set default *Enterprise account*.</li><li>Issue a kiosk Ticket for that Service.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>Class precedence is manual, then appointment, then visitor category, then channel, then Service. A manual choice at Reception always wins. Audit <code>priority_default.channel_updated|service_updated</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>PUT /priority-defaults/channels/{channel} ; PUT /priority-defaults/services/{serviceId}</code></pre><p><strong>Automated:</strong> <code>PriorityIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-CAT-030">
+<header><span class="tcid"><a href="#TC-CAT-030">TC-CAT-030</a></span><h4>Default for an unknown channel, Service or class</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd><code>PriorityRules</code></dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Set a default for channel <code>sms</code>.</li><li>For a Service id that does not exist.</li><li>For a deactivated class.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>404 not_found</code> for the unknown channel or Service; <code>400 validation_failed</code> naming <code>priority_class_id</code> for the deactivated class.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>PUT /priority-defaults/channels/sms -&gt; 404</code></pre><p><strong>Automated:</strong> <code>PriorityIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc edge" id="TC-CAT-031">
+<header><span class="tcid"><a href="#TC-CAT-031">TC-CAT-031</a></span><h4>Only reception can read classes without configuring them</h4><span class="badge edge">edge</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>§5.2</dd></div><div><dt>Role</dt><dd>reception_operator</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>As Reception open the class picker at the Reception desk.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>The picker lists active classes (<code>ticket:issue</code> may read). Reception cannot create or edit a class.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>GET /priority-classes (reception) -&gt; 200 (returns inactive classes too; filter client-side) ; POST /priority-classes -&gt; 403</code></pre><p><strong>Automated:</strong> <code>PriorityIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-CAT-032">
+<header><span class="tcid"><a href="#TC-CAT-032">TC-CAT-032</a></span><h4>Choose the routing strategy for a Service group</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-QUE-020, ADR-0003</dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Priority screen &gt; *Routing strategy* &gt; group &gt; pick <code>strict_priority</code>, save.</li><li>Read the impact preview first.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>Saved. Audit <code>routing_strategy.updated</code>. See <a href="11-queue-engine.html">Queue engine</a> for the ordering effect.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>PUT /service-groups/{id}/routing-strategy {strategy:'strict_priority'}</code></pre><p><strong>Automated:</strong> <code>PriorityIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-CAT-033">
+<header><span class="tcid"><a href="#TC-CAT-033">TC-CAT-033</a></span><h4>Unknown routing strategy is refused</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd><code>PriorityRules</code></dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Send strategy <code>lifo</code>.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>400 validation_failed</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>PUT /service-groups/{id}/routing-strategy {strategy:'lifo'} -&gt; 400</code></pre><p><strong>Automated:</strong> <code>PriorityIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article><section class="signoff"><h2 id="sign-off-sheet">Sign-off sheet</h2><p class="hint">Print this page range, one sheet per run. Tick Pass or Fail and note the build, date and tester at the top.</p><div class="tablewrap"><table><thead><tr><th>TC</th><th>Title</th><th>Type</th><th>Pass</th><th>Fail</th><th>Notes</th></tr></thead><tbody><tr><td><a href="#TC-CAT-001">TC-CAT-001</a></td><td>Create a Service group</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-CAT-002">TC-CAT-002</a></td><td>Create a Service</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-CAT-003">TC-CAT-003</a></td><td>Service field validation</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-CAT-004">TC-CAT-004</a></td><td>The default language name is required</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-CAT-005">TC-CAT-005</a></td><td>Duplicate prefix at a Site</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-CAT-006">TC-CAT-006</a></td><td>Link a Counter to a Service with a preference weight</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-CAT-007">TC-CAT-007</a></td><td>Preference weight out of range</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-CAT-008">TC-CAT-008</a></td><td>Parallel serving needs a limit of at least 2</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-CAT-009">TC-CAT-009</a></td><td>Deactivate and reactivate a Service</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-CAT-010">TC-CAT-010</a></td><td>Activating a Service under an inactive group is refused</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-CAT-011">TC-CAT-011</a></td><td>A Service with tickets cannot be deleted</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-CAT-012">TC-CAT-012</a></td><td>Outcome codes</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-CAT-013">TC-CAT-013</a></td><td>Outcome code format</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-CAT-014">TC-CAT-014</a></td><td>A Team member is added and removed</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-CAT-015">TC-CAT-015</a></td><td>Spoken form of a token prefix</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-CAT-016">TC-CAT-016</a></td><td>Numbering preview</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-CAT-017">TC-CAT-017</a></td><td>Number format follows the rule</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-CAT-018">TC-CAT-018</a></td><td>Prefix from fixed text or priority class</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-CAT-019">TC-CAT-019</a></td><td>Numbering rule validation</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-CAT-020">TC-CAT-020</a></td><td>Delete a Service's own rule to fall back to the group rule</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-CAT-021">TC-CAT-021</a></td><td>Sequence restarts at the Site-local reset time</td><td><span class="badge edge">edge</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-CAT-022">TC-CAT-022</a></td><td>Weekly and monthly resets</td><td><span class="badge edge">edge</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-CAT-023">TC-CAT-023</a></td><td>Numbering history and revert</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-CAT-024">TC-CAT-024</a></td><td>Create a Priority class</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-CAT-025">TC-CAT-025</a></td><td>Priority class validation</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-CAT-026">TC-CAT-026</a></td><td>The default class cannot be deactivated</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-CAT-027">TC-CAT-027</a></td><td>The seeded default class cannot be fabricated by a bundle import</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-CAT-028">TC-CAT-028</a></td><td>Deactivate an unused class</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-CAT-029">TC-CAT-029</a></td><td>Priority defaults by channel and by Service</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-CAT-030">TC-CAT-030</a></td><td>Default for an unknown channel, Service or class</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-CAT-031">TC-CAT-031</a></td><td>Only reception can read classes without configuring them</td><td><span class="badge edge">edge</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-CAT-032">TC-CAT-032</a></td><td>Choose the routing strategy for a Service group</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-CAT-033">TC-CAT-033</a></td><td>Unknown routing strategy is refused</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr></tbody></table></div></section>
+<div class="pager"><a href="07-organisation.html">← Sites, zones, counters</a><a href="09-issuance.html">Issuance →</a></div>
+</main>
+</div>
+</body>
+</html>

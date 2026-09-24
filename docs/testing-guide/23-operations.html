@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Operations: preflight, install, upgrade, backup and restore, diagnostics, health — cqms testing guide</title>
+<link rel="stylesheet" href="styles.css">
+<script>
+(function(){try{var t=localStorage.getItem('qms-guide-theme');if(t)document.documentElement.setAttribute('data-theme',t);}catch(e){}
+document.addEventListener('DOMContentLoaded',function(){var b=document.getElementById('theme-toggle');if(!b)return;
+b.addEventListener('click',function(){var cur=document.documentElement.getAttribute('data-theme');
+if(!cur){cur=window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';}
+var n=cur==='dark'?'light':'dark';document.documentElement.setAttribute('data-theme',n);try{localStorage.setItem('qms-guide-theme',n);}catch(e){}});});})();
+</script>
+</head>
+<body>
+<a class="skip" href="#content">Skip to content</a>
+<div class="layout">
+<nav class="side" aria-label="Guide navigation"><a class="brand" href="index.html">cqms testing guide</a><div class="sub">Queue Management System</div><h2>Start here</h2><ul><li><a href="01-getting-started.html">Getting started</a></li><li><a href="02-roles-and-permissions.html">Roles and permissions</a></li><li><a href="03-industry-configuration.html">Industry configuration</a></li><li><a href="04-walkthroughs.html">Industry walkthroughs</a></li><li><a href="05-setup-wizard-and-config.html">Setup wizard and config bundle</a></li></ul><h2>Configuration</h2><ul><li><a href="06-auth-and-users.html">Auth, users and approvals</a></li><li><a href="07-organisation.html">Sites, zones, counters</a></li><li><a href="08-catalogue-numbering-priority.html">Catalogue, numbering, priority</a></li></ul><h2>Serving visitors</h2><ul><li><a href="09-issuance.html">Issuance</a></li><li><a href="10-visitors.html">Visitors</a></li><li><a href="11-queue-engine.html">Queue engine</a></li><li><a href="12-counter-sessions.html">Counter sessions</a></li><li><a href="13-journeys.html">Journeys</a></li><li><a href="14-appointments.html">Appointments</a></li><li><a href="15-mobile-visitor.html">Mobile visitor</a></li></ul><h2>Surfaces and comms</h2><ul><li><a href="16-displays-and-voice.html">Displays and voice</a></li><li><a href="17-notifications.html">Notifications</a></li><li><a href="18-dashboard-and-alerts.html">Dashboard and alerts</a></li></ul><h2>Data and platform</h2><ul><li><a href="19-reports-and-exports.html">Reports and exports</a></li><li><a href="20-integrations.html">Webhooks and service accounts</a></li><li><a href="21-devices-and-realtime.html">Devices and realtime</a></li><li><a href="22-audit-log.html">Audit log</a></li><li><a href="23-operations.html" aria-current="page">Operations</a></li></ul><h2>Quality</h2><ul><li><a href="24-cross-cutting.html">Cross-cutting checks</a></li><li><a href="25-automated-suites.html">Automated suites</a></li><li><a href="26-appendices.html">Appendices</a></li></ul><div class="theme"><button id="theme-toggle" type="button">Toggle light / dark</button></div></nav>
+<main id="content">
+<h1>Operations: preflight, install, upgrade, backup and restore, diagnostics, health</h1>
+<p class="lede">Proving the installer refuses to half-install, an upgrade keeps every waiting ticket, a restore works and needs its key, and the support bundle is safe.</p>
+<h2 id="where-the-procedures-live">Where the procedures live</h2>
+<p>The full procedures are in <code>docs/ops/</code> (<code>installer.md</code>, <code>backup-restore.md</code>, <code>rollback-and-release-notes.md</code>, <code>tls-and-kiosk-display-shell.md</code>, <code>site-survey-checklist.md</code>). This page gives the <strong>test cases</strong> for them. Several cases need a scratch machine: do <strong>not</strong> run backup, restore or upgrade drills on a live deployment.</p>
+<div class="tablewrap"><table><thead><tr><th>Area</th><th>Script or endpoint</th><th>Requirement</th></tr></thead><tbody><tr><td>Prerequisites</td><td><code>deploy/preflight.sh</code> (<code>--skip-db</code> on a first install)</td><td>FR-OPS-001, FR-OPS-002</td></tr><tr><td>Offline bundle</td><td><code>deploy/bundle.sh [file]</code> then <code>deploy/install.sh --bundle &lt;file&gt;</code> (Windows: <code>deploy/windows/install.ps1 -Bundle</code>)</td><td>NFR-POR-004</td></tr><tr><td>Migrations</td><td><code>docker compose -f deploy/compose.yaml run --rm migrate</code></td><td>FR-OPS-020</td></tr><tr><td>Backup</td><td><code>deploy/backup.sh --mode full</code> and <code>--mode wal-archive</code> (<code>QMS_BACKUP_KEY</code> mandatory)</td><td>FR-OPS-030</td></tr><tr><td>Restore</td><td><code>deploy/restore.sh --from &lt;dir&gt; --db-url ... --db-user ... --db-password ...</code></td><td>FR-OPS-031</td></tr><tr><td>Diagnostics</td><td><code>GET /ops/diagnostics</code> (<code>ops:diagnostics_export</code>, <strong>System Administrator only</strong>)</td><td>FR-OPS-040</td></tr><tr><td>Health</td><td><code>GET /health/live</code>, <code>/health/ready</code>, <code>/health/dependencies</code></td><td>NFR-MNT-002</td></tr><tr><td>Key rotation</td><td><code>--spring.profiles.active=rotate-keys</code></td><td>API-015</td></tr><tr><td>Kiosk lockdown</td><td><code>deploy/kiosk/launch-chromium-kiosk.sh</code></td><td>NFR-SEC-052</td></tr></tbody></table></div>
+<p><strong>Targets:</strong> RPO at most 5 minutes (WAL archive with <code>archive_timeout = 300</code>), RTO at most 60 minutes.</p>
+<h2 id="cases">Cases</h2>
+<article class="tc happy" id="TC-OPS-001">
+<header><span class="tcid"><a href="#TC-OPS-001">TC-OPS-001</a></span><h4>Preflight passes on a suitable host</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-OPS-001, FR-OPS-002</dd></div><div><dt>Role</dt><dd>operator</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Run <code>deploy/preflight.sh --skip-db</code> on a Linux host with Docker, 10 GB free and NTP synchronised.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>Every check reports OK and the script exits 0.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>deploy/preflight.sh --skip-db ; echo $?</code></pre><p><strong>Automated:</strong> manual (see <code>docs/ops/installer.md</code>)</p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-OPS-002">
+<header><span class="tcid"><a href="#TC-OPS-002">TC-OPS-002</a></span><h4>Preflight reports every failure together and refuses</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-OPS-001</dd></div><div><dt>Role</dt><dd>operator</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Run it on a host with no time-sync service and low disk (or stop <code>chronyd</code>/<code>timesyncd</code>).</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>All failures are listed in one message, the exit code is non-zero and <strong>nothing is installed or changed</strong>. Clock synchronisation is mandatory because ordering and SLA measurement depend on it.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>deploy/preflight.sh ; echo $?</code></pre><p><strong>Automated:</strong> manual</p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-OPS-003">
+<header><span class="tcid"><a href="#TC-OPS-003">TC-OPS-003</a></span><h4>Offline bundle installs without a registry</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>NFR-POR-004</dd></div><div><dt>Role</dt><dd>operator</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>On a connected host run <code>deploy/bundle.sh</code>.</li><li>Move the tarball to a host with no registry access.</li><li><code>QMS_DB_PASSWORD=... deploy/install.sh --bundle &lt;file&gt;</code>.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>The install only calls <code>docker load</code> (never <code>docker pull</code>), migrates as a separate step, starts the stack and prints the health URL.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>deploy/install.sh --bundle qms-offline-bundle-&lt;ver&gt;.tar.gz</code></pre><p><strong>Automated:</strong> manual</p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-OPS-004">
+<header><span class="tcid"><a href="#TC-OPS-004">TC-OPS-004</a></span><h4>Migrations are a separate, idempotent step</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-OPS-020</dd></div><div><dt>Role</dt><dd>operator</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Run the <code>migrate</code> service twice.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>First run applies migrations; second applies none. The backend does not start from that command.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>docker compose -f deploy/compose.yaml run --rm migrate</code></pre><p><strong>Automated:</strong> <code>MigrationIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-OPS-005">
+<header><span class="tcid"><a href="#TC-OPS-005">TC-OPS-005</a></span><h4>An upgrade never loses a waiting ticket or an open session</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-OPS-021, NFR-AVL-002, UAT</dd></div><div><dt>Role</dt><dd>operator, agent</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Have a waiting Ticket and an open session with a called Ticket.</li><li>Follow the upgrade procedure: backup, load images, run <code>migrate</code>, restart <code>backend</code>.</li><li>Reload the Console.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>The session is still open, the called Ticket is unchanged, and <code>F2</code> reaches the Ticket that was waiting before. Confirm <code>GET /health/dependencies</code> is <code>up</code> afterwards.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>docker compose restart backend</code></pre><p><strong>Automated:</strong> <code>UpgradeRestartIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc edge" id="TC-OPS-006">
+<header><span class="tcid"><a href="#TC-OPS-006">TC-OPS-006</a></span><h4>Rolling restart on a multi-node install</h4><span class="badge edge">edge</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>NFR-SCL-001, ADR-0010</dd></div><div><dt>Role</dt><dd>operator</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Run two <code>backend</code> nodes against one database behind a load balancer with no sticky sessions.</li><li>Restart one at a time while an agent works.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>There is no visible outage; sockets on the restarted node reconnect. Cluster-wide jobs run once (ShedLock).</p></div>
+<details class="dev"><summary>Dev / API</summary><p><strong>Automated:</strong> <code>TwoNodeRealtimeIT</code>, <code>JobLockIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc edge" id="TC-OPS-007">
+<header><span class="tcid"><a href="#TC-OPS-007">TC-OPS-007</a></span><h4>Rollback means restoring the pre-upgrade backup</h4><span class="badge edge">edge</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-OPS-022</dd></div><div><dt>Role</dt><dd>operator</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Read the release notes template and confirm each release answers: is the migration reversible, what data is lost, what is the rollback procedure.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>Migrations are forward-only, so rollback is *restore the pre-upgrade backup*. Notes list every changed configuration default (or say *no defaults changed*).</p></div>
+<details class="dev"><summary>Dev / API</summary><p><strong>Automated:</strong> <code>docs/ops/rollback-and-release-notes.md</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-OPS-008">
+<header><span class="tcid"><a href="#TC-OPS-008">TC-OPS-008</a></span><h4>A full backup is encrypted and needs its key</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-OPS-030, NFR-SEC-012</dd></div><div><dt>Role</dt><dd>operator</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li><code>QMS_BACKUP_KEY=... deploy/backup.sh --mode full --out ./backups</code>.</li><li>Inspect the output files.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>Database dump, config bundle and media are each AES-256 encrypted; old backups beyond <code>--retention-days</code> (default 30) are pruned.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>deploy/backup.sh --mode full</code></pre><p><strong>Automated:</strong> manual (encryption round trip verified in <code>docs/ops/backup-restore.md</code>)</p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-OPS-009">
+<header><span class="tcid"><a href="#TC-OPS-009">TC-OPS-009</a></span><h4>Backup refuses to run with no key</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>NFR-SEC-012</dd></div><div><dt>Role</dt><dd>operator</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Run <code>deploy/backup.sh --mode full</code> with <code>QMS_BACKUP_KEY</code> unset.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>It exits non-zero with a clear message and writes no unencrypted backup.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>deploy/backup.sh --mode full ; echo $?</code></pre><p><strong>Automated:</strong> manual</p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-OPS-010">
+<header><span class="tcid"><a href="#TC-OPS-010">TC-OPS-010</a></span><h4>Restore into a fresh database (the acceptance drill)</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-OPS-031, NFR-AVL-003</dd></div><div><dt>Role</dt><dd>operator</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Take a full backup of a populated environment.</li><li>Provision an empty database and migrate it.</li><li><code>time deploy/restore.sh --from &lt;backup&gt; --db-url ... --db-user ... --db-password ...</code>.</li><li>Compare row counts of <code>site</code>, <code>ticket</code>, <code>users</code>.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>Elapsed time (RTO) is at most 60 minutes and printed by the script; the row counts match the source.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>deploy/restore.sh --from ./backups/full-&lt;ts&gt;</code></pre><p><strong>Automated:</strong> manual. <strong>Note:</strong> a full <code>pg_dump</code>/<code>pg_restore</code> round trip was not run by the authors; run this drill before relying on it.</p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-OPS-011">
+<header><span class="tcid"><a href="#TC-OPS-011">TC-OPS-011</a></span><h4>Restore with the wrong key fails</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>NFR-SEC-012</dd></div><div><dt>Role</dt><dd>operator</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Restore with a different <code>QMS_BACKUP_KEY</code>.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>Decryption fails; nothing is restored and no garbage data is produced.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>deploy/restore.sh (wrong key) ; echo $?</code></pre><p><strong>Automated:</strong> manual</p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-OPS-012">
+<header><span class="tcid"><a href="#TC-OPS-012">TC-OPS-012</a></span><h4>Restore into a non-empty or missing database is refused</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-OPS-031</dd></div><div><dt>Role</dt><dd>operator</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Restore into a database that has data, or into one that does not exist.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>The script refuses or fails clearly; the existing data is not silently overwritten.</p></div>
+<details class="dev"><summary>Dev / API</summary><p><strong>Automated:</strong> manual</p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc edge" id="TC-OPS-013">
+<header><span class="tcid"><a href="#TC-OPS-013">TC-OPS-013</a></span><h4>WAL archiving bounds data loss to five minutes</h4><span class="badge edge">edge</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>NFR-AVL-003</dd></div><div><dt>Role</dt><dd>operator</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Set PostgreSQL <code>archive_command</code> to <code>deploy/backup.sh --mode wal-archive %p %f</code> and <code>archive_timeout = 300</code>.</li><li>Note the newest archived segment time.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>A segment is archived at least every 5 minutes, so RPO is at most 5 minutes. Point-in-time recovery is the client's DBA drill.</p></div>
+<details class="dev"><summary>Dev / API</summary><p><strong>Automated:</strong> manual</p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-OPS-014">
+<header><span class="tcid"><a href="#TC-OPS-014">TC-OPS-014</a></span><h4>Diagnostics bundle contents and audit</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-OPS-040</dd></div><div><dt>Role</dt><dd>system_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Admin &gt; <strong>Operations and diagnostics</strong> &gt; <strong>Download diagnostics bundle</strong>.</li><li>Unzip it.</li><li>Read the audit log.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>The zip has <code>versions.txt</code>, <code>config.txt</code> (a fixed allow-list of non-secret values) and <code>recent-events.txt</code> (last 200 audit entries). No password, secret or key appears anywhere. Audit <code>ops.diagnostics_exported</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>GET /ops/diagnostics -&gt; application/zip</code></pre><p><strong>Automated:</strong> <code>DiagnosticsIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc edge" id="TC-OPS-015">
+<header><span class="tcid"><a href="#TC-OPS-015">TC-OPS-015</a></span><h4>The bundle has no application log lines</h4><span class="badge edge">edge</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-OPS-040 (partial)</dd></div><div><dt>Role</dt><dd>system_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Look for a <code>logs.txt</code> in the bundle.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>There is none: the backend logs to stdout with no in-process log buffer, so use <code>docker compose logs backend</code> separately. Recorded in <a href="26-appendices.html#e-known-limitations">Appendix E</a>.</p></div>
+<details class="dev"><summary>Dev / API</summary><p><strong>Automated:</strong> <code>DiagnosticsIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-OPS-016">
+<header><span class="tcid"><a href="#TC-OPS-016">TC-OPS-016</a></span><h4>Diagnostics is System Administrator only</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>§5.2</dd></div><div><dt>Role</dt><dd>org_admin, team_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Open <code>/admin/ops/</code> and call <code>GET /ops/diagnostics</code> as an Org Admin.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>403 forbidden</code>: <code>ops:diagnostics_export</code> is held by System Administrator alone.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>GET /ops/diagnostics (org_admin) -&gt; 403</code></pre><p><strong>Automated:</strong> <code>DiagnosticsIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-OPS-017">
+<header><span class="tcid"><a href="#TC-OPS-017">TC-OPS-017</a></span><h4>Health endpoints tell live, ready and dependencies apart</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>NFR-MNT-002</dd></div><div><dt>Role</dt><dd>operator</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li><code>curl $BASE/health/live</code>, <code>/health/ready</code>, <code>/health/dependencies</code>.</li><li>Stop PostgreSQL and repeat.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>With the database up all report <code>up</code> (lowercase). With it stopped, <code>live</code> stays <code>up</code> while <code>ready</code> and <code>dependencies</code> report the database down (<code>503 unavailable</code>, <code>details.dependency</code>).</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>GET /health/dependencies -&gt; 503 {code:'unavailable',details:{dependency:'database'}}</code></pre><p><strong>Automated:</strong> <code>HealthControllerTest</code>, <code>SkeletonIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc edge" id="TC-OPS-018">
+<header><span class="tcid"><a href="#TC-OPS-018">TC-OPS-018</a></span><h4>Health endpoints need no token</h4><span class="badge edge">edge</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>NFR-MNT-002</dd></div><div><dt>Role</dt><dd>operator</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Call the three health endpoints with no Authorization header.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>All answer (they are <code>@PublicEndpoint</code>).</p></div>
+<details class="dev"><summary>Dev / API</summary><p><strong>Automated:</strong> <code>ControllerSecurityTest</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc edge" id="TC-OPS-019">
+<header><span class="tcid"><a href="#TC-OPS-019">TC-OPS-019</a></span><h4>Logs are structured and correlated</h4><span class="badge edge">edge</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>NFR-MNT-001</dd></div><div><dt>Role</dt><dd>operator</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Make any failing request and read <code>docker compose logs backend</code>.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>Each line is JSON and carries the same <code>trace_id</code> as the response's <code>X-Trace-Id</code> (trace ids appear in log lines for 403, 405 and 500 responses only).</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>docker compose logs backend | jq .</code></pre><p><strong>Automated:</strong> <code>ErrorEnvelopeTest</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-OPS-020">
+<header><span class="tcid"><a href="#TC-OPS-020">TC-OPS-020</a></span><h4>Production TLS</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>NFR-SEC-010</dd></div><div><dt>Role</dt><dd>operator</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Follow <code>docs/ops/tls-and-kiosk-display-shell.md</code>: mount <code>deploy/proxy/nginx.tls.conf.example</code>.</li><li>Browse <code>http://</code> and <code>https://</code>.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>https://</code> works with TLS 1.2 or 1.3 only; <code>http://</code> answers 301 to https and HSTS is sent. <strong>The default <code>nginx.conf</code> is plain HTTP and must not be used in production.</strong></p></div>
+<details class="dev"><summary>Dev / API</summary><p><strong>Automated:</strong> manual</p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-OPS-021">
+<header><span class="tcid"><a href="#TC-OPS-021">TC-OPS-021</a></span><h4>Kiosk shell lockdown</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>NFR-SEC-052</dd></div><div><dt>Role</dt><dd>operator</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Launch <code>deploy/kiosk/launch-chromium-kiosk.sh</code> with <code>QMS_KIOSK_URL=http://localhost:8080/kiosk/</code>.</li><li>Try Alt+F4, F12 and a new tab.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>The shell shows only the app: no browser chrome, no devtools, no exit without an administrator action (enforced at the OS session boundary).</p></div>
+<details class="dev"><summary>Dev / API</summary><p><strong>Automated:</strong> manual</p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc edge" id="TC-OPS-022">
+<header><span class="tcid"><a href="#TC-OPS-022">TC-OPS-022</a></span><h4>Site survey checklist is complete before install</h4><span class="badge edge">edge</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>NFR-ENV-001..003</dd></div><div><dt>Role</dt><dd>operator</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Fill in <code>docs/ops/site-survey-checklist.md</code> for a site: zones, counters, network drops, power, displays, speakers, lighting.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>Every row is answered; kiosk environment is within 10 to 40 degrees C and 80% non-condensing humidity; server tier chosen from the sizing table.</p></div>
+<details class="dev"><summary>Dev / API</summary><p><strong>Automated:</strong> manual</p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article><section class="signoff"><h2 id="sign-off-sheet">Sign-off sheet</h2><p class="hint">Print this page range, one sheet per run. Tick Pass or Fail and note the build, date and tester at the top.</p><div class="tablewrap"><table><thead><tr><th>TC</th><th>Title</th><th>Type</th><th>Pass</th><th>Fail</th><th>Notes</th></tr></thead><tbody><tr><td><a href="#TC-OPS-001">TC-OPS-001</a></td><td>Preflight passes on a suitable host</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-OPS-002">TC-OPS-002</a></td><td>Preflight reports every failure together and refuses</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-OPS-003">TC-OPS-003</a></td><td>Offline bundle installs without a registry</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-OPS-004">TC-OPS-004</a></td><td>Migrations are a separate, idempotent step</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-OPS-005">TC-OPS-005</a></td><td>An upgrade never loses a waiting ticket or an open session</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-OPS-006">TC-OPS-006</a></td><td>Rolling restart on a multi-node install</td><td><span class="badge edge">edge</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-OPS-007">TC-OPS-007</a></td><td>Rollback means restoring the pre-upgrade backup</td><td><span class="badge edge">edge</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-OPS-008">TC-OPS-008</a></td><td>A full backup is encrypted and needs its key</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-OPS-009">TC-OPS-009</a></td><td>Backup refuses to run with no key</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-OPS-010">TC-OPS-010</a></td><td>Restore into a fresh database (the acceptance drill)</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-OPS-011">TC-OPS-011</a></td><td>Restore with the wrong key fails</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-OPS-012">TC-OPS-012</a></td><td>Restore into a non-empty or missing database is refused</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-OPS-013">TC-OPS-013</a></td><td>WAL archiving bounds data loss to five minutes</td><td><span class="badge edge">edge</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-OPS-014">TC-OPS-014</a></td><td>Diagnostics bundle contents and audit</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-OPS-015">TC-OPS-015</a></td><td>The bundle has no application log lines</td><td><span class="badge edge">edge</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-OPS-016">TC-OPS-016</a></td><td>Diagnostics is System Administrator only</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-OPS-017">TC-OPS-017</a></td><td>Health endpoints tell live, ready and dependencies apart</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-OPS-018">TC-OPS-018</a></td><td>Health endpoints need no token</td><td><span class="badge edge">edge</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-OPS-019">TC-OPS-019</a></td><td>Logs are structured and correlated</td><td><span class="badge edge">edge</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-OPS-020">TC-OPS-020</a></td><td>Production TLS</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-OPS-021">TC-OPS-021</a></td><td>Kiosk shell lockdown</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-OPS-022">TC-OPS-022</a></td><td>Site survey checklist is complete before install</td><td><span class="badge edge">edge</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr></tbody></table></div></section>
+<div class="pager"><a href="22-audit-log.html">← Audit log</a><a href="24-cross-cutting.html">Cross-cutting checks →</a></div>
+</main>
+</div>
+</body>
+</html>

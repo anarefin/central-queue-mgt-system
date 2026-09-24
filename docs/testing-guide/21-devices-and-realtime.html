@@ -1,0 +1,305 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Devices fleet and the realtime channel — cqms testing guide</title>
+<link rel="stylesheet" href="styles.css">
+<script>
+(function(){try{var t=localStorage.getItem('qms-guide-theme');if(t)document.documentElement.setAttribute('data-theme',t);}catch(e){}
+document.addEventListener('DOMContentLoaded',function(){var b=document.getElementById('theme-toggle');if(!b)return;
+b.addEventListener('click',function(){var cur=document.documentElement.getAttribute('data-theme');
+if(!cur){cur=window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';}
+var n=cur==='dark'?'light':'dark';document.documentElement.setAttribute('data-theme',n);try{localStorage.setItem('qms-guide-theme',n);}catch(e){}});});})();
+</script>
+</head>
+<body>
+<a class="skip" href="#content">Skip to content</a>
+<div class="layout">
+<nav class="side" aria-label="Guide navigation"><a class="brand" href="index.html">cqms testing guide</a><div class="sub">Queue Management System</div><h2>Start here</h2><ul><li><a href="01-getting-started.html">Getting started</a></li><li><a href="02-roles-and-permissions.html">Roles and permissions</a></li><li><a href="03-industry-configuration.html">Industry configuration</a></li><li><a href="04-walkthroughs.html">Industry walkthroughs</a></li><li><a href="05-setup-wizard-and-config.html">Setup wizard and config bundle</a></li></ul><h2>Configuration</h2><ul><li><a href="06-auth-and-users.html">Auth, users and approvals</a></li><li><a href="07-organisation.html">Sites, zones, counters</a></li><li><a href="08-catalogue-numbering-priority.html">Catalogue, numbering, priority</a></li></ul><h2>Serving visitors</h2><ul><li><a href="09-issuance.html">Issuance</a></li><li><a href="10-visitors.html">Visitors</a></li><li><a href="11-queue-engine.html">Queue engine</a></li><li><a href="12-counter-sessions.html">Counter sessions</a></li><li><a href="13-journeys.html">Journeys</a></li><li><a href="14-appointments.html">Appointments</a></li><li><a href="15-mobile-visitor.html">Mobile visitor</a></li></ul><h2>Surfaces and comms</h2><ul><li><a href="16-displays-and-voice.html">Displays and voice</a></li><li><a href="17-notifications.html">Notifications</a></li><li><a href="18-dashboard-and-alerts.html">Dashboard and alerts</a></li></ul><h2>Data and platform</h2><ul><li><a href="19-reports-and-exports.html">Reports and exports</a></li><li><a href="20-integrations.html">Webhooks and service accounts</a></li><li><a href="21-devices-and-realtime.html" aria-current="page">Devices and realtime</a></li><li><a href="22-audit-log.html">Audit log</a></li><li><a href="23-operations.html">Operations</a></li></ul><h2>Quality</h2><ul><li><a href="24-cross-cutting.html">Cross-cutting checks</a></li><li><a href="25-automated-suites.html">Automated suites</a></li><li><a href="26-appendices.html">Appendices</a></li></ul><div class="theme"><button id="theme-toggle" type="button">Toggle light / dark</button></div></nav>
+<main id="content">
+<h1>Devices fleet and the realtime channel</h1>
+<p class="lede">Pairing, fleet health, pushing commands and revoking a device; then the WebSocket hub: subscribe, heartbeat, reauth, replay after a gap and the close codes.</p>
+<h2 id="devices-fleet-admin-devices-config-org-sites-zones">Devices fleet (<code>/admin/devices/</code>, <code>config:org_sites_zones</code>)</h2>
+<p><strong>Pairing</strong> is a two-step handoff, never a shared secret typed into the device. The admin creates a code for a <strong>kiosk</strong> (scoped to a Site) or a <strong>display</strong> (scoped to a Zone): <strong>8 characters</strong> from <code>ABCDEFGHJKMNPQRSTUVWXYZ23456789</code> (no <code>0/O</code>, <code>1/I/L</code>), valid <strong>10 minutes</strong>, redeemable <strong>once</strong>. The device exchanges it for <strong>its own credential</strong>: a short-lived access token (memory only) and a refresh token stored in the device (<code>90 days</code>), <strong>rotated on every refresh</strong>, hashed at rest, revocable on its own.</p>
+<p>The <strong>fleet list</strong> shows each device with its Site or Zone, last seen, app version and a computed <strong>connectivity</strong>:</p>
+<div class="tablewrap"><table><thead><tr><th>Status</th><th>Rule</th></tr></thead><tbody><tr><td><code>online</code></td><td>heartbeat within the last 2.5 minutes</td></tr><tr><td><code>stale</code></td><td>between 2.5 and 10 minutes</td></tr><tr><td><code>offline</code></td><td>beyond 10 minutes, or never seen</td></tr></tbody></table></div>
+<p>Devices heartbeat every <strong>60 seconds</strong>. <strong>Revoke</strong> ends the credential at once and drops the socket. <strong>Push reload</strong> and <strong>push config update</strong> send a live command over the device's own <code>device:{id}</code> topic. Printer paper status is <strong>Phase 2</strong> and not tracked (the dashboard says so).</p>
+<h2 id="device-cases">Device cases</h2>
+<article class="tc happy" id="TC-DEV-001">
+<header><span class="tcid"><a href="#TC-DEV-001">TC-DEV-001</a></span><h4>Create a pairing code and pair a kiosk</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-OPS-011</dd></div><div><dt>Role</dt><dd>org_admin, kiosk</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Admin &gt; Device pairing and fleet &gt; <strong>New pairing code</strong>: kind Kiosk, Site, label *T-Kiosk-1*.</li><li>Copy the 8-character code and type it on <code>/kiosk/</code>.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>The kiosk pairs and shows its welcome screen. The fleet lists <code>T-Kiosk-1</code> as <code>offline</code> until its first heartbeat, then <code>online</code>. Audit <code>device.pairing_code.created</code>, <code>device.paired</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /devices/pairing-codes {kind,site_id,zone_id,label} ; POST /devices/pair {code}</code></pre><p><strong>Automated:</strong> <code>DeviceFleetIT</code>; e2e <code>pairDevice()</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-DEV-002">
+<header><span class="tcid"><a href="#TC-DEV-002">TC-DEV-002</a></span><h4>A display needs a Zone, a kiosk must not have one</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd><code>DeviceRules</code></dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Create a display code with no Zone; a kiosk code with a Zone; kind <code>printer</code>.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>400 validation_failed</code>: <code>zone_id</code> <code>NotNull</code>, <code>zone_id</code> <code>must_be_null_for_kiosk</code>, <code>kind</code> <code>unknown_kind</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /devices/pairing-codes -&gt; 400</code></pre><p><strong>Automated:</strong> <code>DeviceRulesTest</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc edge" id="TC-DEV-003">
+<header><span class="tcid"><a href="#TC-DEV-003">TC-DEV-003</a></span><h4>Pairing code alphabet and format</h4><span class="badge edge">edge</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-OPS-011</dd></div><div><dt>Role</dt><dd>developer</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Create ten codes and inspect them.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>Each is exactly 8 characters from the safe alphabet (no <code>0 O 1 I L</code>).</p></div>
+<details class="dev"><summary>Dev / API</summary><p><strong>Automated:</strong> <code>DeviceRulesTest#randomPairingCode</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-DEV-004">
+<header><span class="tcid"><a href="#TC-DEV-004">TC-DEV-004</a></span><h4>Fleet connectivity status</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-OPS-041</dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Keep a paired kiosk open and note *online*.</li><li>Close its browser and wait 3 minutes, then 11 minutes.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>online</code>, then <code>stale</code> after about 2.5 minutes, then <code>offline</code> after 10. A never-seen device is <code>offline</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>GET /devices ; POST /devices/{id}/heartbeat {app_version}</code></pre><p><strong>Automated:</strong> <code>DeviceFleetIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-DEV-005">
+<header><span class="tcid"><a href="#TC-DEV-005">TC-DEV-005</a></span><h4>Heartbeat reports version and reachability</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-OPS-041</dd></div><div><dt>Role</dt><dd>kiosk</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Open a paired kiosk with <code>NEXT_PUBLIC_APP_VERSION</code> set.</li><li>Read its row in the fleet list.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>*Last seen* updates about every 60 seconds and the app version matches.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /devices/{id}/heartbeat</code></pre><p><strong>Automated:</strong> <code>DevicePairing.test.tsx</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-DEV-006">
+<header><span class="tcid"><a href="#TC-DEV-006">TC-DEV-006</a></span><h4>Push a reload</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-OPS-042</dd></div><div><dt>Role</dt><dd>org_admin, kiosk</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Select an <code>online</code> device and press <strong>Reload</strong>.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>The device reloads by itself within seconds with no physical access. Audit <code>device.command_pushed</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /devices/{id}/commands {command:'reload'}</code></pre><p><strong>Automated:</strong> <code>DeviceRealtimeIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-DEV-007">
+<header><span class="tcid"><a href="#TC-DEV-007">TC-DEV-007</a></span><h4>Push a config update</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-OPS-042</dd></div><div><dt>Role</dt><dd>org_admin, display</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Change a display's layout, then press <strong>Push config update</strong> (or change a label).</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>The device refetches <code>GET /config/bootstrap</code> and shows the new layout or wording without a reload.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /devices/{id}/commands {command:'config_changed'}</code></pre><p><strong>Automated:</strong> <code>DeviceRealtimeIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-DEV-008">
+<header><span class="tcid"><a href="#TC-DEV-008">TC-DEV-008</a></span><h4>Unknown command</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd><code>DeviceRules</code></dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Send command <code>reboot</code>.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>400 validation_failed</code> <code>unknown_command</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /devices/{id}/commands {command:'reboot'} -&gt; 400</code></pre><p><strong>Automated:</strong> <code>DeviceRulesTest</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-DEV-009">
+<header><span class="tcid"><a href="#TC-DEV-009">TC-DEV-009</a></span><h4>Revoke a device</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-DSP-013, ADR-0009</dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Press <strong>Revoke</strong> on a paired display.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>Its socket is dropped <strong>at once</strong> (close 4403) and its next request or refresh is refused. It must be paired again with a new code. Audit <code>device.revoked</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /devices/{id}/revoke</code></pre><p><strong>Automated:</strong> <code>DeviceFleetIT</code>, <code>RealtimeRevocationIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-DEV-010">
+<header><span class="tcid"><a href="#TC-DEV-010">TC-DEV-010</a></span><h4>A command to a revoked device is refused</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-OPS-042</dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Revoke a device.</li><li>Push a reload to it.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>409 conflict</code>, <code>details.reason = device_inactive</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /devices/{id}/commands -&gt; 409 {reason:'device_inactive'}</code></pre><p><strong>Automated:</strong> <code>DeviceFleetIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-DEV-011">
+<header><span class="tcid"><a href="#TC-DEV-011">TC-DEV-011</a></span><h4>A revoked device's heartbeat and refresh are refused</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-DSP-013</dd></div><div><dt>Role</dt><dd>kiosk</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>After revoking, let the device heartbeat or refresh.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>401 token_invalid</code> (or <code>403</code>); it returns to the pairing screen.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /devices/refresh -&gt; 401</code></pre><p><strong>Automated:</strong> <code>DeviceFleetIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-DEV-012">
+<header><span class="tcid"><a href="#TC-DEV-012">TC-DEV-012</a></span><h4>A device refresh token is single use</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>NFR-SEC-005</dd></div><div><dt>Role</dt><dd>kiosk</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Replay an old device refresh token.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>401 token_invalid</code> and the family is revoked. Audit <code>device.refresh.reuse_detected</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /devices/refresh (old token) -&gt; 401</code></pre><p><strong>Automated:</strong> <code>DeviceFleetIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc edge" id="TC-DEV-013">
+<header><span class="tcid"><a href="#TC-DEV-013">TC-DEV-013</a></span><h4>Device bootstrap contains only what the device needs</h4><span class="badge edge">edge</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>ADR-0012</dd></div><div><dt>Role</dt><dd>kiosk, display</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Read <code>GET /config/bootstrap</code> with a kiosk token.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>Branding, enabled languages, labels, feature flags, the active service tree (kiosk) or its Zone's layout and Counters (display). No staff data, users or secrets.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>GET /config/bootstrap</code></pre><p><strong>Automated:</strong> <code>DeviceFleetIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-DEV-014">
+<header><span class="tcid"><a href="#TC-DEV-014">TC-DEV-014</a></span><h4>Fleet management is administrator-only</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>§5.2</dd></div><div><dt>Role</dt><dd>team_admin, agent</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Call <code>POST /devices/pairing-codes</code>, <code>GET /devices</code>, <code>POST /devices/{id}/revoke</code> as a Team Admin.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>403 forbidden</code> for each.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>GET /devices (team_admin) -&gt; 403</code></pre><p><strong>Automated:</strong> <code>DeviceFleetIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-DEV-015">
+<header><span class="tcid"><a href="#TC-DEV-015">TC-DEV-015</a></span><h4>Unknown device</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>§20.3</dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Revoke or command a device id that does not exist.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>404 not_found</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /devices/{random}/revoke -&gt; 404</code></pre><p><strong>Automated:</strong> <code>DeviceFleetIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-DEV-016">
+<header><span class="tcid"><a href="#TC-DEV-016">TC-DEV-016</a></span><h4>A device is limited to its own Site and Zone</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>§5.1</dd></div><div><dt>Role</dt><dd>kiosk</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>With a kiosk token for Site A request Services of Site B (API).</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>Refused <code>403 forbidden</code>; it sees only its Site's tree.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /kiosk/tickets {service_id of Site B} -&gt; 403</code></pre><p><strong>Automated:</strong> <code>KioskTicketIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<h2 id="realtime-channel">Realtime channel</h2>
+<p>Displays, consoles, dashboards and the visitor page subscribe to <strong>topics</strong> over WebSocket at <code>wss://&lt;host&gt;/api/v1/stream</code>, authenticated with the same bearer token as REST. Polling is only a fallback (5 s for displays, 15 s for mobile).</p>
+<div class="tablewrap"><table><thead><tr><th>Topic</th><th>Subscriber</th></tr></thead><tbody><tr><td><code>queue:{service_id}</code></td><td>Console, dashboard</td></tr><tr><td><code>zone:{zone_id}</code></td><td>Display</td></tr><tr><td><code>counter:{counter_id}</code></td><td>Console</td></tr><tr><td><code>ticket:{ticket_id}</code></td><td>visitor page, kiosk confirmation</td></tr><tr><td><code>site:{site_id}:dashboard</code></td><td>Dashboard</td></tr><tr><td><code>site:{site_id}:alerts</code></td><td>Team and org admin</td></tr><tr><td><code>device:{device_id}</code></td><td>Any device</td></tr></tbody></table></div>
+<p><strong>Frames</strong> the client sends: <code>subscribe {topics}</code>, <code>unsubscribe {topics}</code>, <code>heartbeat</code>, <code>reauth {token}</code>. The server replies with one <strong>snapshot</strong> per topic, then <strong>event</strong> frames, each with a monotonic per-topic <code>seq</code>. Errors are <code>{"frame":"error","code":"invalid_frame"|"unauthorized"}</code>; a refused topic gets a <code>denied</code> frame.</p>
+<div class="tablewrap"><table><thead><tr><th>Rule</th><th>Value</th></tr></thead><tbody><tr><td>Heartbeat</td><td>every 20 s each way; the server closes after <strong>3</strong> missed intervals (60 s)</td></tr><tr><td>Token expiry</td><td>send <code>reauth</code> with a fresh token <strong>before <code>exp</code></strong>; otherwise the server closes</td></tr><tr><td>Replay buffer</td><td>at least 5 minutes or 1 000 events per topic; beyond it a fresh snapshot with <code>"resync": true</code></td></tr><tr><td>Idempotency</td><td>applying the same <code>seq</code> twice is a no-op; an announcement is de-duplicated by <code>ticket_id</code> + <code>announce_count</code></td></tr><tr><td>Authorisation</td><td>checked per topic at subscribe and again on <code>reauth</code></td></tr></tbody></table></div>
+<p><strong>Close codes:</strong> <code>4401</code> token expired without a successful reauth, <code>4403</code> principal changed (user disabled, roles or scopes changed, device revoked), <code>4408</code> heartbeat timeout, <code>1001</code> server going away.</p>
+<p>Testers cannot easily speak WebSocket by hand. Use <code>websocat</code> or the browser DevTools *Network &gt; WS* panel, and lean on the named integration tests for the exact frame checks.</p>
+<h2 id="realtime-cases">Realtime cases</h2>
+<article class="tc happy" id="TC-RTM-001">
+<header><span class="tcid"><a href="#TC-RTM-001">TC-RTM-001</a></span><h4>Subscribe and receive a snapshot then events</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>§21.1</dd></div><div><dt>Role</dt><dd>developer</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Connect with <code>websocat -H 'Authorization: Bearer $TOKEN' ws://localhost:8080/api/v1/stream</code>.</li><li>Send <code>{"frame":"subscribe","topics":["queue:&lt;serviceId&gt;"]}</code>.</li><li>Issue a Ticket.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>A snapshot frame arrives first, then an <code>event</code> frame with the next <code>seq</code> when the Ticket is issued.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>wss /api/v1/stream</code></pre><p><strong>Automated:</strong> <code>RealtimeIT</code>, <code>RealtimeHubTest</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-RTM-002">
+<header><span class="tcid"><a href="#TC-RTM-002">TC-RTM-002</a></span><h4>Subscribing to a topic you may not read is denied</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-QUE-080</dd></div><div><dt>Role</dt><dd>agent</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>As an Agent subscribe to <code>site:&lt;id&gt;:alerts</code>, or to another Site's <code>queue:</code> topic.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>A per-topic <code>denied</code> frame; no data for that topic is ever sent. An unknown topic is <code>unknown_topic</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>{frame:'denied',topic,code}</code></pre><p><strong>Automated:</strong> <code>RealtimeHubTest</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-RTM-003">
+<header><span class="tcid"><a href="#TC-RTM-003">TC-RTM-003</a></span><h4>Malformed or unknown frames</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>§21.1</dd></div><div><dt>Role</dt><dd>developer</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Send <code>not json</code>, then <code>{"frame":"dance"}</code>.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>{"frame":"error","code":"invalid_frame"}</code> for both; the connection stays open.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>ws frame</code></pre><p><strong>Automated:</strong> <code>RealtimeHubTest</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-RTM-004">
+<header><span class="tcid"><a href="#TC-RTM-004">TC-RTM-004</a></span><h4>Connect with no token or a bad token</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>API-010</dd></div><div><dt>Role</dt><dd>developer</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Open the socket with no Authorization header, then with garbage.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>The handshake is refused (<code>401</code>). No socket is created.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>GET /api/v1/stream -&gt; 401</code></pre><p><strong>Automated:</strong> <code>RealtimeEndpointTest</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc edge" id="TC-RTM-005">
+<header><span class="tcid"><a href="#TC-RTM-005">TC-RTM-005</a></span><h4>Heartbeat keeps the connection; missing three closes it</h4><span class="badge edge">edge</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>§21.1</dd></div><div><dt>Role</dt><dd>developer</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Connect and send nothing for over 60 seconds (a raw client that never heartbeats).</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>The server closes with <strong>4408</strong> *heartbeat timeout*. A real client heartbeats every 20 s and stays connected.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>qms.realtime.heartbeat-interval=20s, missed-heartbeats=3</code></pre><p><strong>Automated:</strong> <code>RealtimeHubTest</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-RTM-006">
+<header><span class="tcid"><a href="#TC-RTM-006">TC-RTM-006</a></span><h4>Reauth extends a connection past its token expiry</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>ADR-0009</dd></div><div><dt>Role</dt><dd>developer</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Connect with a token that expires in 1 minute (shorten <code>access-token-ttl</code>).</li><li>Before it expires send <code>{"frame":"reauth","token":"&lt;fresh&gt;"}</code>.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>The server answers <code>{"frame":"reauth","expires_at":...}</code> and the connection lives on. Topics the new claims no longer allow are dropped with a denial frame.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>ws reauth</code></pre><p><strong>Automated:</strong> <code>RealtimeReauthTest</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-RTM-007">
+<header><span class="tcid"><a href="#TC-RTM-007">TC-RTM-007</a></span><h4>No reauth closes at expiry</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>ADR-0009</dd></div><div><dt>Role</dt><dd>developer</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Connect and never reauth.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>The server closes with <strong>4401</strong> *token expired* at the token's <code>exp</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>close 4401</code></pre><p><strong>Automated:</strong> <code>RealtimeExpiryIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-RTM-008">
+<header><span class="tcid"><a href="#TC-RTM-008">TC-RTM-008</a></span><h4>Reauth with another user's or an old token is refused</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>ADR-0009</dd></div><div><dt>Role</dt><dd>developer</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Send a <code>reauth</code> with a different subject's token, or one issued before the subject last changed.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>{"frame":"error","code":"unauthorized"}</code>; the socket keeps its old token and closes at its old expiry.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>ws reauth</code></pre><p><strong>Automated:</strong> <code>RealtimeReauthTest</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-RTM-009">
+<header><span class="tcid"><a href="#TC-RTM-009">TC-RTM-009</a></span><h4>Disabling a user drops their sockets immediately</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-QUE-080, ADR-0009</dd></div><div><dt>Role</dt><dd>org_admin, agent</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>An agent's console is open (socket connected).</li><li>Disable the agent.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>The agent's socket is closed at once with <strong>4403</strong> *principal changed*, not at the next token expiry. It is also dropped within 30 seconds on a second backend node.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>principal.changed</code></pre><p><strong>Automated:</strong> <code>RealtimeRevocationIT</code>, <code>TwoNodeRealtimeIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc edge" id="TC-RTM-010">
+<header><span class="tcid"><a href="#TC-RTM-010">TC-RTM-010</a></span><h4>Changing roles or revoking a device has the same effect</h4><span class="badge edge">edge</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>ADR-0009</dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Change an agent's roles; revoke a display.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>Both sockets close with 4403; the clients must sign in or pair again.</p></div>
+<details class="dev"><summary>Dev / API</summary><p><strong>Automated:</strong> <code>RealtimeRevocationIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-RTM-011">
+<header><span class="tcid"><a href="#TC-RTM-011">TC-RTM-011</a></span><h4>Reconnect and replay after a short gap</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-QUE-081, FR-QUE-083</dd></div><div><dt>Role</dt><dd>display</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Open a display with an announced call visible.</li><li>Drop its network for 30 seconds while two more calls happen, then restore.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>It reconnects on its own, replays the missed events in order, and <strong>does not re-announce</strong> the call it had already announced.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>subscribe {topics, last_seq, epoch}</code></pre><p><strong>Automated:</strong> <code>RealtimeIT</code>, <code>announcementQueue.test.ts</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc edge" id="TC-RTM-012">
+<header><span class="tcid"><a href="#TC-RTM-012">TC-RTM-012</a></span><h4>A large gap gets a fresh snapshot with resync</h4><span class="badge edge">edge</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-QUE-081</dd></div><div><dt>Role</dt><dd>developer</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Reconnect with a <code>seq</code> older than the replay buffer (5 minutes / 1 000 events).</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>The server sends a snapshot with <code>"resync": true</code>; the client replaces its state rather than applying events.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>qms.realtime.replay-window=5m, replay-events=1000</code></pre><p><strong>Automated:</strong> <code>RealtimeIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc edge" id="TC-RTM-013">
+<header><span class="tcid"><a href="#TC-RTM-013">TC-RTM-013</a></span><h4>Applying an event twice is harmless</h4><span class="badge edge">edge</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-QUE-082</dd></div><div><dt>Role</dt><dd>developer</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Replay the same <code>seq</code> to a client.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>The client state is unchanged.</p></div>
+<details class="dev"><summary>Dev / API</summary><p><strong>Automated:</strong> <code>RealtimeIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc edge" id="TC-RTM-014">
+<header><span class="tcid"><a href="#TC-RTM-014">TC-RTM-014</a></span><h4>Fall back to polling when WebSocket is blocked</h4><span class="badge edge">edge</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-QUE-084</dd></div><div><dt>Role</dt><dd>display, visitor</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Block WebSockets in the network (or the proxy) and open a display and a visitor ticket page.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>Both keep updating by polling (about 5 s and 15 s) and stay correct. Diagnostics note degraded mode; the visitor is not alarmed.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>GET /stream/snapshot (authenticated)</code></pre><p><strong>Automated:</strong> <code>RealtimeIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc edge" id="TC-RTM-015">
+<header><span class="tcid"><a href="#TC-RTM-015">TC-RTM-015</a></span><h4>The proxy forwards the WebSocket upgrade</h4><span class="badge edge">edge</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>§21.1 (configured, not exercised)</dd></div><div><dt>Role</dt><dd>operator</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Connect through <code>http://localhost:8080</code> (the nginx proxy) and hold the socket for over a minute.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>It stays open (nginx <code>proxy_read_timeout 75s</code>, heartbeats every 20 s). This was written from the nginx rules and is recorded as *configured*, not yet exercised through the proxy in CI.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>deploy/proxy/nginx.conf location = /api/v1/stream</code></pre><p><strong>Automated:</strong> none in CI; manual</p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc edge" id="TC-RTM-016">
+<header><span class="tcid"><a href="#TC-RTM-016">TC-RTM-016</a></span><h4>Two backend nodes deliver the same event to a socket on either</h4><span class="badge edge">edge</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>ADR-0010</dd></div><div><dt>Role</dt><dd>integration only</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Run <code>TwoNodeRealtimeIT</code>.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>An event raised on node A reaches a subscriber on node B through PostgreSQL <code>LISTEN/NOTIFY</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><p><strong>Automated:</strong> <code>TwoNodeRealtimeIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc edge" id="TC-RTM-017">
+<header><span class="tcid"><a href="#TC-RTM-017">TC-RTM-017</a></span><h4>Capacity of the hub</h4><span class="badge edge">edge</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>NFR-CAP</dd></div><div><dt>Role</dt><dd>integration only</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Run <code>RealtimeCapacityIT</code>.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>The hub holds the target number of connections and delivers within the latency budget.</p></div>
+<details class="dev"><summary>Dev / API</summary><p><strong>Automated:</strong> <code>RealtimeCapacityIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article><section class="signoff"><h2 id="sign-off-sheet">Sign-off sheet</h2><p class="hint">Print this page range, one sheet per run. Tick Pass or Fail and note the build, date and tester at the top.</p><div class="tablewrap"><table><thead><tr><th>TC</th><th>Title</th><th>Type</th><th>Pass</th><th>Fail</th><th>Notes</th></tr></thead><tbody><tr><td><a href="#TC-DEV-001">TC-DEV-001</a></td><td>Create a pairing code and pair a kiosk</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-DEV-002">TC-DEV-002</a></td><td>A display needs a Zone, a kiosk must not have one</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-DEV-003">TC-DEV-003</a></td><td>Pairing code alphabet and format</td><td><span class="badge edge">edge</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-DEV-004">TC-DEV-004</a></td><td>Fleet connectivity status</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-DEV-005">TC-DEV-005</a></td><td>Heartbeat reports version and reachability</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-DEV-006">TC-DEV-006</a></td><td>Push a reload</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-DEV-007">TC-DEV-007</a></td><td>Push a config update</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-DEV-008">TC-DEV-008</a></td><td>Unknown command</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-DEV-009">TC-DEV-009</a></td><td>Revoke a device</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-DEV-010">TC-DEV-010</a></td><td>A command to a revoked device is refused</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-DEV-011">TC-DEV-011</a></td><td>A revoked device's heartbeat and refresh are refused</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-DEV-012">TC-DEV-012</a></td><td>A device refresh token is single use</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-DEV-013">TC-DEV-013</a></td><td>Device bootstrap contains only what the device needs</td><td><span class="badge edge">edge</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-DEV-014">TC-DEV-014</a></td><td>Fleet management is administrator-only</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-DEV-015">TC-DEV-015</a></td><td>Unknown device</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-DEV-016">TC-DEV-016</a></td><td>A device is limited to its own Site and Zone</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-RTM-001">TC-RTM-001</a></td><td>Subscribe and receive a snapshot then events</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-RTM-002">TC-RTM-002</a></td><td>Subscribing to a topic you may not read is denied</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-RTM-003">TC-RTM-003</a></td><td>Malformed or unknown frames</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-RTM-004">TC-RTM-004</a></td><td>Connect with no token or a bad token</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-RTM-005">TC-RTM-005</a></td><td>Heartbeat keeps the connection; missing three closes it</td><td><span class="badge edge">edge</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-RTM-006">TC-RTM-006</a></td><td>Reauth extends a connection past its token expiry</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-RTM-007">TC-RTM-007</a></td><td>No reauth closes at expiry</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-RTM-008">TC-RTM-008</a></td><td>Reauth with another user's or an old token is refused</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-RTM-009">TC-RTM-009</a></td><td>Disabling a user drops their sockets immediately</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-RTM-010">TC-RTM-010</a></td><td>Changing roles or revoking a device has the same effect</td><td><span class="badge edge">edge</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-RTM-011">TC-RTM-011</a></td><td>Reconnect and replay after a short gap</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-RTM-012">TC-RTM-012</a></td><td>A large gap gets a fresh snapshot with resync</td><td><span class="badge edge">edge</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-RTM-013">TC-RTM-013</a></td><td>Applying an event twice is harmless</td><td><span class="badge edge">edge</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-RTM-014">TC-RTM-014</a></td><td>Fall back to polling when WebSocket is blocked</td><td><span class="badge edge">edge</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-RTM-015">TC-RTM-015</a></td><td>The proxy forwards the WebSocket upgrade</td><td><span class="badge edge">edge</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-RTM-016">TC-RTM-016</a></td><td>Two backend nodes deliver the same event to a socket on either</td><td><span class="badge edge">edge</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-RTM-017">TC-RTM-017</a></td><td>Capacity of the hub</td><td><span class="badge edge">edge</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr></tbody></table></div></section>
+<div class="pager"><a href="20-integrations.html">← Webhooks and service accounts</a><a href="22-audit-log.html">Audit log →</a></div>
+</main>
+</div>
+</body>
+</html>

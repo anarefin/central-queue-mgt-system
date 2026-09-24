@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Notifications: triggers, templates, channels, quiet hours, throttle and retry — cqms testing guide</title>
+<link rel="stylesheet" href="styles.css">
+<script>
+(function(){try{var t=localStorage.getItem('qms-guide-theme');if(t)document.documentElement.setAttribute('data-theme',t);}catch(e){}
+document.addEventListener('DOMContentLoaded',function(){var b=document.getElementById('theme-toggle');if(!b)return;
+b.addEventListener('click',function(){var cur=document.documentElement.getAttribute('data-theme');
+if(!cur){cur=window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';}
+var n=cur==='dark'?'light':'dark';document.documentElement.setAttribute('data-theme',n);try{localStorage.setItem('qms-guide-theme',n);}catch(e){}});});})();
+</script>
+</head>
+<body>
+<a class="skip" href="#content">Skip to content</a>
+<div class="layout">
+<nav class="side" aria-label="Guide navigation"><a class="brand" href="index.html">cqms testing guide</a><div class="sub">Queue Management System</div><h2>Start here</h2><ul><li><a href="01-getting-started.html">Getting started</a></li><li><a href="02-roles-and-permissions.html">Roles and permissions</a></li><li><a href="03-industry-configuration.html">Industry configuration</a></li><li><a href="04-walkthroughs.html">Industry walkthroughs</a></li><li><a href="05-setup-wizard-and-config.html">Setup wizard and config bundle</a></li></ul><h2>Configuration</h2><ul><li><a href="06-auth-and-users.html">Auth, users and approvals</a></li><li><a href="07-organisation.html">Sites, zones, counters</a></li><li><a href="08-catalogue-numbering-priority.html">Catalogue, numbering, priority</a></li></ul><h2>Serving visitors</h2><ul><li><a href="09-issuance.html">Issuance</a></li><li><a href="10-visitors.html">Visitors</a></li><li><a href="11-queue-engine.html">Queue engine</a></li><li><a href="12-counter-sessions.html">Counter sessions</a></li><li><a href="13-journeys.html">Journeys</a></li><li><a href="14-appointments.html">Appointments</a></li><li><a href="15-mobile-visitor.html">Mobile visitor</a></li></ul><h2>Surfaces and comms</h2><ul><li><a href="16-displays-and-voice.html">Displays and voice</a></li><li><a href="17-notifications.html" aria-current="page">Notifications</a></li><li><a href="18-dashboard-and-alerts.html">Dashboard and alerts</a></li></ul><h2>Data and platform</h2><ul><li><a href="19-reports-and-exports.html">Reports and exports</a></li><li><a href="20-integrations.html">Webhooks and service accounts</a></li><li><a href="21-devices-and-realtime.html">Devices and realtime</a></li><li><a href="22-audit-log.html">Audit log</a></li><li><a href="23-operations.html">Operations</a></li></ul><h2>Quality</h2><ul><li><a href="24-cross-cutting.html">Cross-cutting checks</a></li><li><a href="25-automated-suites.html">Automated suites</a></li><li><a href="26-appendices.html">Appendices</a></li></ul><div class="theme"><button id="theme-toggle" type="button">Toggle light / dark</button></div></nav>
+<main id="content">
+<h1>Notifications: triggers, templates, channels, quiet hours, throttle and retry</h1>
+<p class="lede">How messages are generated from a trigger catalogue, rendered from templates, sent over web push, in-app or email, suppressed, throttled and retried.</p>
+<h2 id="model">Model</h2>
+<p><strong>Prerequisite:</strong> no notification templates are seeded. Author a template (trigger x channel x language) first, or every message is suppressed with reason <code>no_template</code>.</p>
+<p>Notifications are generated <strong>asynchronously</strong> by a job worker from a <strong>trigger catalogue</strong> (FR-NTF-003: sending never blocks or delays a queue operation). Screen: Admin &gt; <strong>Notifications</strong> (<code>/admin/notifications/</code>, <code>config:service_catalogue</code>, pick a Site).</p>
+<div class="tablewrap"><table><thead><tr><th>Trigger key</th><th>Default channels</th><th>On by default</th><th>Essential</th></tr></thead><tbody><tr><td><code>ticket_issued</code></td><td>web_push, in_app</td><td>yes</td><td>no</td></tr><tr><td><code>approaching_turn</code></td><td>web_push, in_app</td><td>yes</td><td>no</td></tr><tr><td><code>your_turn</code></td><td>web_push, in_app</td><td>yes</td><td><strong>yes</strong></td></tr><tr><td><code>missed_back_in_queue</code></td><td>web_push, in_app</td><td>yes</td><td><strong>yes</strong></td></tr><tr><td><code>marked_no_show</code></td><td>web_push, in_app</td><td>yes</td><td>no</td></tr><tr><td><code>ticket_transferred</code></td><td>web_push, in_app</td><td>yes</td><td>no</td></tr><tr><td><code>ticket_forfeited</code></td><td>web_push, in_app</td><td>yes</td><td>no</td></tr><tr><td><code>appointment_confirmed</code></td><td>email, web_push</td><td>yes</td><td>no</td></tr><tr><td><code>appointment_reminder</code></td><td>email, web_push</td><td>yes</td><td>no</td></tr><tr><td><code>appointment_rescheduled_or_cancelled</code></td><td>email, web_push</td><td>yes</td><td>no</td></tr><tr><td><code>waitlist_slot_offered</code></td><td>web_push, email</td><td>yes</td><td><strong>yes</strong></td></tr><tr><td><code>service_completed_feedback</code></td><td>web_push, in_app</td><td><strong>no</strong></td><td>no</td></tr><tr><td><code>queue_sla_breach</code></td><td>staff_alert</td><td>yes</td><td><strong>yes</strong></td></tr><tr><td><code>agent_break_overrun</code></td><td>staff_alert</td><td>yes</td><td><strong>yes</strong></td></tr><tr><td><code>counter_unattended</code></td><td>staff_alert</td><td>yes</td><td><strong>yes</strong></td></tr><tr><td><code>kiosk_display_offline</code></td><td>staff_alert</td><td>yes</td><td><strong>yes</strong></td></tr></tbody></table></div>
+<ul><li><strong>Channels</strong> (Phase 1): <code>web_push</code>, <code>in_app</code>, <code>email</code>, and internal <code>staff_alert</code>. <strong>No SMS and no native push</strong> (ADR-0011). A channel with no adapter is skipped in favour of the next in the order.</li><li><strong>Overrides:</strong> a trigger can be enabled and re-ordered <strong>per Site</strong> and <strong>per Service</strong> (a Service row overrides its Site row, which overrides the catalogue).</li><li><strong>Templates:</strong> one per trigger x channel x language, using <code>{{variable}}</code> from a <strong>fixed set</strong> per trigger. Ticket triggers: <code>token_number</code>, <code>service_group_name</code>, <code>service_name</code>, <code>site_name</code>; <code>your_turn</code> adds <code>counter_label</code>; appointment triggers: <code>token_number</code>, <code>service_name</code>, <code>site_name</code>, <code>date</code>, <code>time</code>; staff alerts: <code>service_group_name</code>, <code>counter_label</code>, <code>site_name</code>. An <strong>unknown variable is rejected at save</strong>. Content never contains clinical details or account numbers (FR-NTF-034).</li><li><strong>Language:</strong> the visitor's preferred language, falling back to the Site default.</li><li><strong>Throttle:</strong> at most <strong>4 messages per Ticket</strong> and <strong>10 per visitor per day</strong> (<code>qms.notification.max-per-ticket</code>, <code>max-per-day</code>).</li><li><strong>Quiet hours</strong> suppress every <strong>non-essential</strong> trigger between a Site's <code>quiet_hours_start</code> and <code>_end</code> (Site timezone); they are recorded with status <code>quiet_hours</code> and <strong>never sent later as a batch</strong>. <strong>Known gap:</strong> the two Site columns have <strong>no admin screen or API</strong>; set them in SQL (see the case below).</li><li><strong>Opt-out:</strong> a visitor can silence <strong>non-essential</strong> triggers from their ticket page; essential ones cannot be silenced (FR-NTF-035).</li><li><strong>Retry:</strong> a failed send retries with exponential backoff (<code>backoff-base-seconds</code> 30) up to <code>max-attempts-per-channel</code> (3), then falls to the next channel.</li><li><strong>Delivery log:</strong> <code>GET /notification-messages?ticket_id=&amp;visitor_id=&amp;status=</code> (<code>audit:read</code>) lists every message and its attempts (<code>sent</code> / <code>failed</code>).</li></ul>
+<h2 id="trigger-and-template-administration">Trigger and template administration</h2>
+<article class="tc happy" id="TC-NTF-001">
+<header><span class="tcid"><a href="#TC-NTF-001">TC-NTF-001</a></span><h4>Read the trigger catalogue</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-NTF-010</dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Admin &gt; Notifications &gt; choose the Site.</li><li>Read the trigger list.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>Every trigger is listed with its default channel order and whether it is essential. The table above matches what you see, except that <code>ticket_issued</code> is on by default only for mobile-origin tickets.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>GET /notification-triggers/catalogue ; GET /notification-triggers?site_id=&amp;service_id=</code></pre><p><strong>Automated:</strong> <code>NotificationAdminIT</code>, <code>NotificationTriggerKeyTest</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-NTF-002">
+<header><span class="tcid"><a href="#TC-NTF-002">TC-NTF-002</a></span><h4>Turn a trigger off for one Service only</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-NTF-010</dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Switch <code>ticket_issued</code> off for Service *Cash deposit* only.</li><li>Issue a remote Ticket for it and for another Service.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>The other Service still notifies; the switched-off Service does not. The Site-level row is unchanged.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>PUT /notification-triggers/ticket_issued?site_id=&amp;service_id= {enabled:false,channel_order:[...]}</code></pre><p><strong>Automated:</strong> <code>NotificationAdminIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-NTF-003">
+<header><span class="tcid"><a href="#TC-NTF-003">TC-NTF-003</a></span><h4>Re-order the channels for a trigger</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-NTF-001</dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Set <code>appointment_reminder</code> order to <code>web_push</code>, <code>email</code>.</li><li>Send a reminder to a visitor with no push subscription.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>Web push is skipped (no subscription) and the reminder goes by email; the log shows the fallback.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>PUT /notification-triggers/appointment_reminder {channel_order:['web_push','email']}</code></pre><p><strong>Automated:</strong> <code>NotificationDispatchIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-NTF-004">
+<header><span class="tcid"><a href="#TC-NTF-004">TC-NTF-004</a></span><h4>Unknown trigger key or channel</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd><code>NotificationTriggerKey</code></dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li><code>PUT /notification-triggers/not_a_trigger</code>; a channel order containing <code>sms</code>.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>404 not_found</code> for the trigger; <code>400 validation_failed</code> for the unknown channel (an unregistered channel is skipped at send time, but a name outside the closed set is refused at save).</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>PUT /notification-triggers/not_a_trigger -&gt; 404</code></pre><p><strong>Automated:</strong> <code>NotificationAdminIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-NTF-005">
+<header><span class="tcid"><a href="#TC-NTF-005">TC-NTF-005</a></span><h4>Edit a template with a live preview</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-NTF-020</dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Choose <code>your_turn</code>, channel <code>in_app</code>, language English.</li><li>Set the body to <code>{{token_number}}, please go to {{counter_label}}.</code></li><li>Press <strong>Preview</strong>, then <strong>Save</strong>.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>The preview renders with sample data (for example *A-004, please go to Counter 3.*) and nothing is sent. Saved.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>PUT /notification-templates/your_turn/in_app/en {subject,body} ; GET .../preview</code></pre><p><strong>Automated:</strong> <code>NotificationRendererTest</code>, <code>NotificationAdminIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-NTF-006">
+<header><span class="tcid"><a href="#TC-NTF-006">TC-NTF-006</a></span><h4>A template with an unknown variable is rejected</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-NTF-021</dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Save a template body containing <code>{{account_number}}</code>.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>400 validation_failed</code> naming the variable; the previous template stays. Variables are restricted to the trigger's own fixed set.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>PUT /notification-templates/... -&gt; 400</code></pre><p><strong>Automated:</strong> <code>NotificationRendererTest</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc edge" id="TC-NTF-007">
+<header><span class="tcid"><a href="#TC-NTF-007">TC-NTF-007</a></span><h4>Missing translation falls back to the Site default</h4><span class="badge edge">edge</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-NTF-022</dd></div><div><dt>Role</dt><dd>visitor</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Give a visitor preferred language <code>bn</code> (not settable via API in this build; set it in the database) and remove the Bangla template for <code>your_turn</code> (no endpoint deletes templates; use SQL or a Site that never had one).</li><li>Call their Ticket.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>The message is sent using the Site default language's template, never blank or a raw key.</p></div>
+<details class="dev"><summary>Dev / API</summary><p><strong>Automated:</strong> <code>NotificationDispatchIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-NTF-008">
+<header><span class="tcid"><a href="#TC-NTF-008">TC-NTF-008</a></span><h4>Notification permissions</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>§5.2</dd></div><div><dt>Role</dt><dd>team_admin, agent</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Open <code>/admin/notifications/</code> as a Team Admin and call <code>PUT /notification-triggers/...</code>.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>403 forbidden</code>. Reading the delivery log needs <code>audit:read</code> (System and Org Admin only).</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>PUT /notification-triggers/... -&gt; 403 ; GET /notification-messages (team_admin) -&gt; 403</code></pre><p><strong>Automated:</strong> <code>NotificationAdminIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<h2 id="delivery-cases">Delivery cases</h2>
+<p>Use a visitor who has a remote Ticket with web push (see <a href="15-mobile-visitor.html">Mobile visitor</a>) or email. Read results in the delivery log.</p>
+<article class="tc happy" id="TC-NTF-009">
+<header><span class="tcid"><a href="#TC-NTF-009">TC-NTF-009</a></span><h4>Your turn is delivered over the first available channel</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-NTF-001, §14.2</dd></div><div><dt>Role</dt><dd>visitor</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>A visitor with a <code>remote</code>/<code>waiting</code> Ticket has web push on.</li><li>Call the Ticket (F2).</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>A <code>your_turn</code> message is sent by web push in the visitor's language; if no subscription, by in-app. The log shows the message with an attempt <code>sent</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>GET /notification-messages?ticket_id=</code></pre><p><strong>Automated:</strong> <code>NotificationDispatchIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc edge" id="TC-NTF-010">
+<header><span class="tcid"><a href="#TC-NTF-010">TC-NTF-010</a></span><h4>Sending is asynchronous</h4><span class="badge edge">edge</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-NTF-003</dd></div><div><dt>Role</dt><dd>agent</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Point SMTP at a host that hangs (or a dead port).</li><li>Complete a Ticket that triggers an email.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>The agent's action completes at once; the failure shows only in the delivery log later.</p></div>
+<details class="dev"><summary>Dev / API</summary><p><strong>Automated:</strong> <code>NotificationSendWorkerIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-NTF-011">
+<header><span class="tcid"><a href="#TC-NTF-011">TC-NTF-011</a></span><h4>Every non-essential trigger can be opted out; essential cannot</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-NTF-035</dd></div><div><dt>Role</dt><dd>visitor</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>A visitor opts out of notifications on their Ticket page.</li><li>Trigger <code>ticket_transferred</code> (non-essential), then call their Ticket (<code>your_turn</code>, essential).</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>The transfer message is <strong>not sent</strong> (recorded as opted out); the *your turn* message <strong>is</strong> sent. The opt-out persists across visits.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /tickets/{id}/visitor/notification-opt-out</code></pre><p><strong>Automated:</strong> <code>NotificationDispatchIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-NTF-012">
+<header><span class="tcid"><a href="#TC-NTF-012">TC-NTF-012</a></span><h4>Quiet hours suppress non-essential messages and are not sent later</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-NTF-031</dd></div><div><dt>Role</dt><dd>visitor</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Set the Site quiet hours to cover now (the API does not show the <code>suppressed_reason</code> column; check the database): <code>docker compose -f deploy/compose.yaml exec postgres psql -U qms -d qms -c "UPDATE site SET quiet_hours_start='00:00', quiet_hours_end='23:59' WHERE id='&lt;site&gt;'"</code>.</li><li>Trigger <code>ticket_issued</code> (non-essential) and <code>your_turn</code> (essential).</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>ticket_issued</code> is recorded with status <code>quiet_hours</code> and is <strong>never</strong> delivered afterwards, even when quiet hours end. <code>your_turn</code> is delivered. Reset the columns to NULL after the test.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>site.quiet_hours_start / quiet_hours_end (SQL only; no admin path)</code></pre><p><strong>Automated:</strong> <code>NotificationDispatchIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-NTF-013">
+<header><span class="tcid"><a href="#TC-NTF-013">TC-NTF-013</a></span><h4>Per-Ticket and per-day throttle</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-NTF-030</dd></div><div><dt>Role</dt><dd>visitor</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Set <code>QMS_NOTIFICATION_MAX_PER_TICKET=2</code>.</li><li>Cause 3 non-essential triggers for one Ticket.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>Only two are sent; the third is suppressed by the throttle. The daily cap (10) works the same way across Tickets of one visitor.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>qms.notification.max-per-ticket=4, max-per-day=10</code></pre><p><strong>Automated:</strong> <code>NotificationDispatchIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-NTF-014">
+<header><span class="tcid"><a href="#TC-NTF-014">TC-NTF-014</a></span><h4>A failed send retries, then falls back to the next channel</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-NTF-033</dd></div><div><dt>Role</dt><dd>visitor</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Configure an email-first trigger and break SMTP.</li><li>Trigger it and watch the log for a few minutes.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>Attempts are recorded <code>failed</code> at increasing intervals (base 30 s, doubling) up to <code>max-attempts-per-channel</code> (3), then the message goes to the next channel (web push).</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>qms.notification.backoff-base-seconds=30, max-attempts-per-channel=3</code></pre><p><strong>Automated:</strong> <code>NotificationSendWorkerIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-NTF-015">
+<header><span class="tcid"><a href="#TC-NTF-015">TC-NTF-015</a></span><h4>Delivery log filters</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-NTF-032</dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Open the delivery card (or call the API) filtered by Ticket, then by visitor, then by status <code>failed</code>.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>Each filter narrows the list; every row has its attempts and the provider response.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>GET /notification-messages?ticket_id=&amp;visitor_id=&amp;status=&amp;limit=</code></pre><p><strong>Automated:</strong> <code>NotificationAdminIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-NTF-016">
+<header><span class="tcid"><a href="#TC-NTF-016">TC-NTF-016</a></span><h4>Content never includes sensitive details</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-NTF-034</dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Read a rendered <code>your_turn</code> for a healthcare Ticket.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>Only the Token number, service group name, counter and time appear; the Service name can be suppressed per Service; no clinical or account details.</p></div>
+<details class="dev"><summary>Dev / API</summary><p><strong>Automated:</strong> <code>NotificationRendererTest</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc edge" id="TC-NTF-017">
+<header><span class="tcid"><a href="#TC-NTF-017">TC-NTF-017</a></span><h4>Consent text is versioned</h4><span class="badge edge">edge</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-NTF-035</dd></div><div><dt>Role</dt><dd>visitor</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Grant notification consent on a Ticket page.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>A consent record with <code>consent-text-version</code> <code>v1</code> is stored. Audit <code>notification.consent</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>qms.notification.consent-text-version=v1</code></pre><p><strong>Automated:</strong> <code>NotificationDispatchIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<h2 id="email-channel">Email channel</h2>
+<p>Email is used for appointment messages, the visitor OTP and scheduled report delivery. Settings (all <code>qms.notification.email.*</code>): <code>host</code>, <code>port</code> (587), <code>username</code>, <code>password</code>, <code>starttls</code> (true), <code>from</code> (<code>noreply@qms.local</code>), <code>connection-timeout-millis</code> (5000). With no host the email adapter is unavailable and messages fall to the next channel.</p>
+<article class="tc happy" id="TC-NTF-018">
+<header><span class="tcid"><a href="#TC-NTF-018">TC-NTF-018</a></span><h4>Appointment email is sent</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-NTF, FR-APT-050</dd></div><div><dt>Role</dt><dd>visitor</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Start Mailpit and configure SMTP.</li><li>Book an appointment for a visitor with an email.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>An <code>appointment_confirmed</code> email arrives in the visitor's language.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>QMS_NOTIFICATION_EMAIL_HOST=mailpit</code></pre><p><strong>Automated:</strong> <code>EmailChannelIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-NTF-019">
+<header><span class="tcid"><a href="#TC-NTF-019">TC-NTF-019</a></span><h4>No SMTP configured</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-NTF-033</dd></div><div><dt>Role</dt><dd>visitor</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Leave <code>QMS_NOTIFICATION_EMAIL_HOST</code> unset.</li><li>Book an appointment.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>The email attempt is skipped or fails; the message falls back to web push if the visitor has a subscription; nothing crashes.</p></div>
+<details class="dev"><summary>Dev / API</summary><p><strong>Automated:</strong> <code>EmailChannelTest</code>, <code>EmailChannelIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-NTF-020">
+<header><span class="tcid"><a href="#TC-NTF-020">TC-NTF-020</a></span><h4>Staff alerts reach team and org admins</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-MON-020</dd></div><div><dt>Role</dt><dd>team_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Trigger an SLA breach (see <a href="18-dashboard-and-alerts.html">Dashboard and alerts</a>).</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>A <code>queue_sla_breach</code> staff alert is delivered in-app to the admins responsible, and by email when configured.</p></div>
+<details class="dev"><summary>Dev / API</summary><p><strong>Automated:</strong> <code>ThresholdAlertIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article><section class="signoff"><h2 id="sign-off-sheet">Sign-off sheet</h2><p class="hint">Print this page range, one sheet per run. Tick Pass or Fail and note the build, date and tester at the top.</p><div class="tablewrap"><table><thead><tr><th>TC</th><th>Title</th><th>Type</th><th>Pass</th><th>Fail</th><th>Notes</th></tr></thead><tbody><tr><td><a href="#TC-NTF-001">TC-NTF-001</a></td><td>Read the trigger catalogue</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-NTF-002">TC-NTF-002</a></td><td>Turn a trigger off for one Service only</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-NTF-003">TC-NTF-003</a></td><td>Re-order the channels for a trigger</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-NTF-004">TC-NTF-004</a></td><td>Unknown trigger key or channel</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-NTF-005">TC-NTF-005</a></td><td>Edit a template with a live preview</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-NTF-006">TC-NTF-006</a></td><td>A template with an unknown variable is rejected</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-NTF-007">TC-NTF-007</a></td><td>Missing translation falls back to the Site default</td><td><span class="badge edge">edge</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-NTF-008">TC-NTF-008</a></td><td>Notification permissions</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-NTF-009">TC-NTF-009</a></td><td>Your turn is delivered over the first available channel</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-NTF-010">TC-NTF-010</a></td><td>Sending is asynchronous</td><td><span class="badge edge">edge</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-NTF-011">TC-NTF-011</a></td><td>Every non-essential trigger can be opted out; essential cannot</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-NTF-012">TC-NTF-012</a></td><td>Quiet hours suppress non-essential messages and are not sent later</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-NTF-013">TC-NTF-013</a></td><td>Per-Ticket and per-day throttle</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-NTF-014">TC-NTF-014</a></td><td>A failed send retries, then falls back to the next channel</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-NTF-015">TC-NTF-015</a></td><td>Delivery log filters</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-NTF-016">TC-NTF-016</a></td><td>Content never includes sensitive details</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-NTF-017">TC-NTF-017</a></td><td>Consent text is versioned</td><td><span class="badge edge">edge</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-NTF-018">TC-NTF-018</a></td><td>Appointment email is sent</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-NTF-019">TC-NTF-019</a></td><td>No SMTP configured</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-NTF-020">TC-NTF-020</a></td><td>Staff alerts reach team and org admins</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr></tbody></table></div></section>
+<div class="pager"><a href="16-displays-and-voice.html">← Displays and voice</a><a href="18-dashboard-and-alerts.html">Dashboard and alerts →</a></div>
+</main>
+</div>
+</body>
+</html>

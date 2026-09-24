@@ -1,0 +1,249 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Visitors: directory, registration, CSV import and privacy — cqms testing guide</title>
+<link rel="stylesheet" href="styles.css">
+<script>
+(function(){try{var t=localStorage.getItem('qms-guide-theme');if(t)document.documentElement.setAttribute('data-theme',t);}catch(e){}
+document.addEventListener('DOMContentLoaded',function(){var b=document.getElementById('theme-toggle');if(!b)return;
+b.addEventListener('click',function(){var cur=document.documentElement.getAttribute('data-theme');
+if(!cur){cur=window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';}
+var n=cur==='dark'?'light':'dark';document.documentElement.setAttribute('data-theme',n);try{localStorage.setItem('qms-guide-theme',n);}catch(e){}});});})();
+</script>
+</head>
+<body>
+<a class="skip" href="#content">Skip to content</a>
+<div class="layout">
+<nav class="side" aria-label="Guide navigation"><a class="brand" href="index.html">cqms testing guide</a><div class="sub">Queue Management System</div><h2>Start here</h2><ul><li><a href="01-getting-started.html">Getting started</a></li><li><a href="02-roles-and-permissions.html">Roles and permissions</a></li><li><a href="03-industry-configuration.html">Industry configuration</a></li><li><a href="04-walkthroughs.html">Industry walkthroughs</a></li><li><a href="05-setup-wizard-and-config.html">Setup wizard and config bundle</a></li></ul><h2>Configuration</h2><ul><li><a href="06-auth-and-users.html">Auth, users and approvals</a></li><li><a href="07-organisation.html">Sites, zones, counters</a></li><li><a href="08-catalogue-numbering-priority.html">Catalogue, numbering, priority</a></li></ul><h2>Serving visitors</h2><ul><li><a href="09-issuance.html">Issuance</a></li><li><a href="10-visitors.html" aria-current="page">Visitors</a></li><li><a href="11-queue-engine.html">Queue engine</a></li><li><a href="12-counter-sessions.html">Counter sessions</a></li><li><a href="13-journeys.html">Journeys</a></li><li><a href="14-appointments.html">Appointments</a></li><li><a href="15-mobile-visitor.html">Mobile visitor</a></li></ul><h2>Surfaces and comms</h2><ul><li><a href="16-displays-and-voice.html">Displays and voice</a></li><li><a href="17-notifications.html">Notifications</a></li><li><a href="18-dashboard-and-alerts.html">Dashboard and alerts</a></li></ul><h2>Data and platform</h2><ul><li><a href="19-reports-and-exports.html">Reports and exports</a></li><li><a href="20-integrations.html">Webhooks and service accounts</a></li><li><a href="21-devices-and-realtime.html">Devices and realtime</a></li><li><a href="22-audit-log.html">Audit log</a></li><li><a href="23-operations.html">Operations</a></li></ul><h2>Quality</h2><ul><li><a href="24-cross-cutting.html">Cross-cutting checks</a></li><li><a href="25-automated-suites.html">Automated suites</a></li><li><a href="26-appendices.html">Appendices</a></li></ul><div class="theme"><button id="theme-toggle" type="button">Toggle light / dark</button></div></nav>
+<main id="content">
+<h1>Visitors: directory, registration, CSV import and privacy</h1>
+<p class="lede">Finding a known visitor, registering a walk-in, importing visitor master data, and the privacy controls that decide what is captured and shown.</p>
+<h2 id="directory-and-registration-reception-desk">Directory and registration (Reception desk)</h2>
+<p>Reception can <strong>find</strong> a known visitor (<code>GET /visitors/lookup</code>, <code>visitor_pii:view</code>) by pass code, phone number or a scanned QR value, then issue a Ticket for them. An unknown walk-in is <strong>registered</strong> (<code>POST /visitors</code>, <code>ticket:issue</code>): name and phone are required; email, category and purpose are optional and controlled by <code>qms.visitor.registration-fields</code> and the privacy <code>capture</code> surface. The response carries a <strong>pass reference</strong> <code>V-</code> plus 8 letters or digits (for example <code>V-7K3M9PQR</code>) that becomes their code next time.</p>
+<p>The directory is a seam (<code>VisitorDirectory</code>); this release ships the local table. A directory that is slow (over <code>qms.visitor.directory-timeout</code>, default 1.5 s) or fails is abandoned and the next one tried; <strong>issuing a Ticket never calls the directory</strong>, it only takes a <code>visitor_id</code> Reception already resolved.</p>
+<h2 id="cases">Cases</h2>
+<article class="tc happy" id="TC-VIS-001">
+<header><span class="tcid"><a href="#TC-VIS-001">TC-VIS-001</a></span><h4>Register a walk-in</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-ISS-021</dd></div><div><dt>Role</dt><dd>reception_operator</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Admin &gt; Reception desk &gt; <strong>Register visitor</strong>.</li><li>Enter name *Aminul Islam* and phone <code>01700000001</code>. Optionally email, category, purpose.</li><li>Save.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>A pass reference like <code>V-7K3M9PQR</code> is shown. The visitor is selectable for the next Ticket. Audit <code>visitor.registered</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /visitors {name,phone,email?,category?,purpose?} -&gt; 201 {pass_reference:'V-....'} (lookup returns it as external_code)</code></pre><p><strong>Automated:</strong> <code>VisitorDirectoryIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-VIS-002">
+<header><span class="tcid"><a href="#TC-VIS-002">TC-VIS-002</a></span><h4>Name and phone are mandatory</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-ISS-021, ticket 66</dd></div><div><dt>Role</dt><dd>reception_operator</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Register with no phone; then with no name.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>Inline required-field errors; API <code>400 validation_failed</code> naming the field.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /visitors {name:'X'} -&gt; 400 fields:[{field:'phone'}]</code></pre><p><strong>Automated:</strong> <code>VisitorDirectoryIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-VIS-003">
+<header><span class="tcid"><a href="#TC-VIS-003">TC-VIS-003</a></span><h4>Look up by code, phone and QR value</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-ISS-020</dd></div><div><dt>Role</dt><dd>reception_operator</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Reception desk &gt; *Find visitor*. Search the pass reference, then the phone, then paste a QR-scan value.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>The same visitor record appears each time (code, name, category, phone). <strong>Use this visitor</strong> carries it onto the next Ticket.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>GET /visitors/lookup?q=&lt;code|phone&gt;   (code search requires feature flag visitor_code_lookup = on)</code></pre><p><strong>Automated:</strong> <code>VisitorDirectoryIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-VIS-004">
+<header><span class="tcid"><a href="#TC-VIS-004">TC-VIS-004</a></span><h4>Lookup by code is refused when the flag is off, by phone is not</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>ticket 68</dd></div><div><dt>Role</dt><dd>reception_operator</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Turn <code>visitor_code_lookup</code> off.</li><li>Search by pass code, then by phone.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>Code search: <code>409 conflict</code>, <code>feature_disabled</code>, feature <code>visitor_code_lookup</code>, and the code box is hidden. Phone search still works.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>GET /visitors/lookup?q=&lt;code&gt; -&gt; 409 ; ?q=&lt;phone&gt; -&gt; 200</code></pre><p><strong>Automated:</strong> <code>FeatureFlagsEnforcedIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc edge" id="TC-VIS-005">
+<header><span class="tcid"><a href="#TC-VIS-005">TC-VIS-005</a></span><h4>Lookup with no match</h4><span class="badge edge">edge</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-ISS-020</dd></div><div><dt>Role</dt><dd>reception_operator</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Search a code that does not exist.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>*Not found* with an offer to register; no error page.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>GET /visitors/lookup?q=nope -&gt; 404 not_found</code></pre><p><strong>Automated:</strong> <code>VisitorDirectoryIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-VIS-006">
+<header><span class="tcid"><a href="#TC-VIS-006">TC-VIS-006</a></span><h4>Only permitted fields are captured</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-SEC-023</dd></div><div><dt>Role</dt><dd>reception_operator</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Set <code>qms.visitor.registration-fields=category</code> (or use Admin &gt; Privacy &gt; *capture*: switch <strong>email</strong> and <strong>purpose</strong> off).</li><li>Register a visitor sending email and purpose anyway (API).</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>The response and the stored record contain no email or purpose. The fields are not read from the request at all, not merely hidden on screen.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /visitors {name,phone,email,purpose} -&gt; record without email/purpose</code></pre><p><strong>Automated:</strong> <code>VisitorPrivacyIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc edge" id="TC-VIS-007">
+<header><span class="tcid"><a href="#TC-VIS-007">TC-VIS-007</a></span><h4>The pass reference is reused on return</h4><span class="badge edge">edge</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-ISS-021</dd></div><div><dt>Role</dt><dd>reception_operator</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Register a visitor. Next day, look them up by the pass reference and issue a Ticket.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>They are a known visitor; no second record.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>GET /visitors/lookup?q=V-...</code></pre><p><strong>Automated:</strong> <code>VisitorDirectoryIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc edge" id="TC-VIS-008">
+<header><span class="tcid"><a href="#TC-VIS-008">TC-VIS-008</a></span><h4>A slow directory does not delay issuing</h4><span class="badge edge">edge</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-INT-012, FR-INT-013</dd></div><div><dt>Role</dt><dd>integration only</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Run the directory timeout test.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>A directory slower than 1.5 s is abandoned and the local table answers; <code>POST /tickets</code> is not affected because it never calls a directory.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>./gradlew integrationTest --tests '*VisitorDirectoryGatewayIT'</code></pre><p><strong>Automated:</strong> <code>VisitorDirectoryGatewayTest</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<h2 id="csv-import-admin-visitor-import">CSV import (<code>/admin/visitor-import/</code>)</h2>
+<p>A single admin-set <strong>column mapping</strong> maps CSV headers to visitor fields; <code>external_code</code> and <code>name</code> are mandatory, <code>phone</code>, <code>email</code>, <code>category</code> optional. Default mapping: <code>external_code, name, phone, email, category</code>. <strong>Manual upload</strong> runs at once and returns a report (rows seen, created, updated, and every skipped row by line number). Re-importing the same <code>external_code</code> <strong>updates</strong> in place, never duplicates. <strong>Scheduled pickup</strong> takes any <code>*.csv</code> from <code>qms.visitor.import.pickup-dir</code> on <code>qms.visitor.import.pickup-cron</code> (off by default) and moves it into <code>processed/</code> or <code>failed/</code>. Every run stays on record.</p>
+<p>A sample file for testing:</p>
+<pre><code>external_code,name,phone,email,category
+T-0001,Aminul Islam,01700000001,aminul@example.com,Retail
+T-0002,Rina Akter,01700000002,rina@example.com,Priority
+T-0003,,01700000003,,Retail
+,No Code,01700000004,,Retail</code></pre>
+<article class="tc happy" id="TC-VIS-009">
+<header><span class="tcid"><a href="#TC-VIS-009">TC-VIS-009</a></span><h4>Upload a valid CSV</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-INT-011</dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Admin &gt; <strong>Visitor CSV import</strong> &gt; choose the sample file (keep the two good rows) &gt; <strong>Upload</strong>.</li><li>Read the report.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>Report: <code>total_rows</code> 2, <code>inserted_count</code> 2, <code>updated_count</code> 0, <code>failed_count</code> 0, empty <code>errors</code>. Both visitors are now found by <code>GET /visitors/lookup</code>. Audit <code>visitor.import.completed</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /visitors/import {filename,content} -&gt; {total_rows,inserted_count,updated_count,failed_count,errors:[{line,field,code}]}</code></pre><p><strong>Automated:</strong> <code>VisitorCsvImportIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc edge" id="TC-VIS-010">
+<header><span class="tcid"><a href="#TC-VIS-010">TC-VIS-010</a></span><h4>Re-upload updates instead of duplicating</h4><span class="badge edge">edge</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-INT-011</dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Change one phone number in the file and upload again.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>Report shows <code>inserted_count</code> 0, <code>updated_count</code> 2. Still one record per <code>external_code</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /visitors/import (2nd)</code></pre><p><strong>Automated:</strong> <code>VisitorCsvImportIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-VIS-011">
+<header><span class="tcid"><a href="#TC-VIS-011">TC-VIS-011</a></span><h4>Rows missing the key or name are skipped with line numbers</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-INT-011</dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Upload the full sample (all four data rows).</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>File lines 4 and 5 (the header is line 1) are listed in <code>errors</code> as failed: missing <code>name</code>, missing <code>external_code</code>. The good rows still import.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /visitors/import {filename,content} -&gt; failed_count:2, errors:[{line:4,field:'name',code},{line:5,field:'external_code',code}]</code></pre><p><strong>Automated:</strong> <code>VisitorCsvImportIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-VIS-012">
+<header><span class="tcid"><a href="#TC-VIS-012">TC-VIS-012</a></span><h4>Change the column mapping</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-INT-011</dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Set the mapping so <code>customer_no</code> maps to <code>external_code</code> and <code>full_name</code> to <code>name</code>.</li><li>Upload a file with those headers.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>Import succeeds. The mapping is used by every later manual upload and scheduled pickup. Audit <code>visitor.import.mapping_updated</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>PUT /visitors/import/mapping</code></pre><p><strong>Automated:</strong> <code>VisitorCsvImportIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-VIS-013">
+<header><span class="tcid"><a href="#TC-VIS-013">TC-VIS-013</a></span><h4>Mapping must keep the mandatory fields</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-INT-011</dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Save a mapping with <code>external_code</code> or <code>name</code> blank.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>400 validation_failed</code>; the previous mapping stays.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>PUT /visitors/import/mapping -&gt; 400</code></pre><p><strong>Automated:</strong> <code>VisitorCsvImportIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-VIS-014">
+<header><span class="tcid"><a href="#TC-VIS-014">TC-VIS-014</a></span><h4>Run history is kept</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-INT-011</dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Open the run history after two uploads.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>Most recent first; each run opens to its full report.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>GET /visitors/import/runs ; GET /visitors/import/runs/{id}</code></pre><p><strong>Automated:</strong> <code>VisitorCsvImportIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc edge" id="TC-VIS-015">
+<header><span class="tcid"><a href="#TC-VIS-015">TC-VIS-015</a></span><h4>Scheduled pickup moves the file aside</h4><span class="badge edge">edge</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-INT-011</dd></div><div><dt>Role</dt><dd>operator</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Set <code>qms.visitor.import.pickup-dir=/var/qms/visitor-imports</code> and <code>qms.visitor.import.pickup-cron=0 */1 * * * *</code>.</li><li>Drop a CSV into the folder and wait a minute.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>The visitors appear and the file is moved to <code>processed/</code> (or <code>failed/</code> on error), so it is never imported twice. The run shows <code>source = scheduled</code> with no actor.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>cron default '-' = off</code></pre><p><strong>Automated:</strong> <code>VisitorCsvImportIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-VIS-016">
+<header><span class="tcid"><a href="#TC-VIS-016">TC-VIS-016</a></span><h4>CSV import needs the visitor-PII permission</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>§5.2</dd></div><div><dt>Role</dt><dd>agent (write), kiosk</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>As a Kiosk token or an Agent, <code>POST /visitors/import</code>.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>403 forbidden</code> (agent <code>S</code> only, never bulk). Reception, Team Admin and admins hold the permission.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /visitors/import (kiosk token) -&gt; 403</code></pre><p><strong>Automated:</strong> <code>VisitorCsvImportIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<h2 id="privacy-controls-admin-privacy">Privacy controls (<code>/admin/privacy/</code>)</h2>
+<p>Two runtime-toggleable <strong>closed, server-enforced</strong> field sets: <code>capture</code> (which of <code>email</code>, <code>category</code>, <code>purpose</code> a walk-in registration keeps) and <code>kiosk_confirmation</code> (whether the kiosk confirmation screen shows <code>name</code> and/or <code>category</code>). A field left off is not read from the request nor stored. A per-Site <strong>clinical sensitivity</strong> flag makes displays and announcements show a neutral label instead of the visitor's details. <strong>Export</strong> and <strong>anonymise</strong> are an Org Admin's own data-subject actions on one visitor; anonymise is irreversible.</p>
+<article class="tc happy" id="TC-VIS-017">
+<header><span class="tcid"><a href="#TC-VIS-017">TC-VIS-017</a></span><h4>Turn a capture field off</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-SEC-023, ticket 54</dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Admin &gt; <strong>Privacy controls</strong> &gt; *capture* &gt; switch <strong>email</strong> off.</li><li>Register a visitor with an email.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>The email is not stored. Audit <code>privacy.field_config_changed</code> with before and after.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>PUT /privacy/field-config/capture/email {visible:false}</code></pre><p><strong>Automated:</strong> <code>VisitorPrivacyIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-VIS-018">
+<header><span class="tcid"><a href="#TC-VIS-018">TC-VIS-018</a></span><h4>Unknown privacy surface or field</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>ticket 54</dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li><code>GET /privacy/field-config/nonsense</code>; <code>PUT /privacy/field-config/capture/name</code>.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>404 not_found</code> or <code>400 validation_failed</code>. <code>name</code> and <code>phone</code> are never toggleable.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>PUT /privacy/field-config/capture/name -&gt; 4xx</code></pre><p><strong>Automated:</strong> <code>VisitorPrivacyIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-VIS-019">
+<header><span class="tcid"><a href="#TC-VIS-019">TC-VIS-019</a></span><h4>Kiosk confirmation hides name and category</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-SEC-021</dd></div><div><dt>Role</dt><dd>org_admin, kiosk visitor</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Switch <code>kiosk_confirmation</code> name and category off.</li><li>Issue a Ticket at the kiosk for an identified visitor.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>The confirmation screen and printed slip omit those fields.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>PUT /privacy/field-config/kiosk_confirmation/name</code></pre><p><strong>Automated:</strong> <code>VisitorPrivacyIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc edge" id="TC-VIS-020">
+<header><span class="tcid"><a href="#TC-VIS-020">TC-VIS-020</a></span><h4>Clinical-sensitivity Site shows a neutral label</h4><span class="badge edge">edge</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-SEC-022</dd></div><div><dt>Role</dt><dd>org_admin, display</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Set <code>clinical_sensitivity</code> on the Site.</li><li>Call a named visitor's Ticket.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>The display and announcement show a neutral label, not the visitor's details.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>PATCH /sites/{id} {clinical_sensitivity:true}</code></pre><p><strong>Automated:</strong> <code>DeviceFleetIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-VIS-021">
+<header><span class="tcid"><a href="#TC-VIS-021">TC-VIS-021</a></span><h4>Export one visitor's data</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-SEC-031</dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li><code>GET /visitors/{id}/export</code> for a visitor with a Ticket and a consent.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>The response has the visitor's fields, every Ticket, and notification and retention consent. Audit <code>visitor.exported</code> (never the values).</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>GET /visitors/{id}/export</code></pre><p><strong>Automated:</strong> <code>VisitorPrivacyIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-VIS-022">
+<header><span class="tcid"><a href="#TC-VIS-022">TC-VIS-022</a></span><h4>Anonymise one visitor</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-SEC-031</dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li><code>POST /visitors/{id}/anonymize</code>.</li><li>Look the visitor up by phone.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>Response gives the number of Tickets scrubbed. The visitor's PII fields and their Tickets' PII are irreversibly blanked; lookup no longer finds them. Audit <code>visitor.anonymized</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /visitors/{id}/anonymize</code></pre><p><strong>Automated:</strong> <code>VisitorPrivacyIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-VIS-023">
+<header><span class="tcid"><a href="#TC-VIS-023">TC-VIS-023</a></span><h4>Export and anonymise are administrator-only</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>§5.2</dd></div><div><dt>Role</dt><dd>reception_operator, team_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Call both endpoints as Reception or Team Admin.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>403 forbidden</code> (<code>config:org_sites_zones</code>).</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /visitors/{id}/anonymize -&gt; 403</code></pre><p><strong>Automated:</strong> <code>VisitorPrivacyIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-VIS-024">
+<header><span class="tcid"><a href="#TC-VIS-024">TC-VIS-024</a></span><h4>A visitor opts out of notifications</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-NTF-023</dd></div><div><dt>Role</dt><dd>visitor</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>On the visitor ticket page turn notifications off (*opt out*).</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>No further non-essential notifications for that Ticket. Essential ones (your turn) remain; see <a href="17-notifications.html">Notifications</a>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /tickets/{id}/visitor/notification-opt-out (X-Ticket-Secret)</code></pre><p><strong>Automated:</strong> <code>VisitorTicketIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-VIS-025">
+<header><span class="tcid"><a href="#TC-VIS-025">TC-VIS-025</a></span><h4>Opt-out or consent needs a visitor record</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-SEC-030</dd></div><div><dt>Role</dt><dd>visitor (anonymous walk-in)</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>For an anonymous walk-in Ticket (no visitor record) try to opt out or grant retention consent.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>409 conflict</code>, <code>details.reason = no_visitor_record</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /tickets/{id}/visitor/notification-opt-out -&gt; 409 {reason:'no_visitor_record'}</code></pre><p><strong>Automated:</strong> <code>VisitorTicketIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-VIS-026">
+<header><span class="tcid"><a href="#TC-VIS-026">TC-VIS-026</a></span><h4>Retention consent</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-SEC-030</dd></div><div><dt>Role</dt><dd>visitor</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>A registered visitor grants retention consent from their ticket page.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>Consent is stored and shown in the visitor export. Audit <code>retention.consent</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /tickets/{id}/visitor/retention-consent</code></pre><p><strong>Automated:</strong> <code>VisitorTicketIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article><section class="signoff"><h2 id="sign-off-sheet">Sign-off sheet</h2><p class="hint">Print this page range, one sheet per run. Tick Pass or Fail and note the build, date and tester at the top.</p><div class="tablewrap"><table><thead><tr><th>TC</th><th>Title</th><th>Type</th><th>Pass</th><th>Fail</th><th>Notes</th></tr></thead><tbody><tr><td><a href="#TC-VIS-001">TC-VIS-001</a></td><td>Register a walk-in</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-VIS-002">TC-VIS-002</a></td><td>Name and phone are mandatory</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-VIS-003">TC-VIS-003</a></td><td>Look up by code, phone and QR value</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-VIS-004">TC-VIS-004</a></td><td>Lookup by code is refused when the flag is off, by phone is not</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-VIS-005">TC-VIS-005</a></td><td>Lookup with no match</td><td><span class="badge edge">edge</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-VIS-006">TC-VIS-006</a></td><td>Only permitted fields are captured</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-VIS-007">TC-VIS-007</a></td><td>The pass reference is reused on return</td><td><span class="badge edge">edge</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-VIS-008">TC-VIS-008</a></td><td>A slow directory does not delay issuing</td><td><span class="badge edge">edge</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-VIS-009">TC-VIS-009</a></td><td>Upload a valid CSV</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-VIS-010">TC-VIS-010</a></td><td>Re-upload updates instead of duplicating</td><td><span class="badge edge">edge</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-VIS-011">TC-VIS-011</a></td><td>Rows missing the key or name are skipped with line numbers</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-VIS-012">TC-VIS-012</a></td><td>Change the column mapping</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-VIS-013">TC-VIS-013</a></td><td>Mapping must keep the mandatory fields</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-VIS-014">TC-VIS-014</a></td><td>Run history is kept</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-VIS-015">TC-VIS-015</a></td><td>Scheduled pickup moves the file aside</td><td><span class="badge edge">edge</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-VIS-016">TC-VIS-016</a></td><td>CSV import needs the visitor-PII permission</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-VIS-017">TC-VIS-017</a></td><td>Turn a capture field off</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-VIS-018">TC-VIS-018</a></td><td>Unknown privacy surface or field</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-VIS-019">TC-VIS-019</a></td><td>Kiosk confirmation hides name and category</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-VIS-020">TC-VIS-020</a></td><td>Clinical-sensitivity Site shows a neutral label</td><td><span class="badge edge">edge</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-VIS-021">TC-VIS-021</a></td><td>Export one visitor's data</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-VIS-022">TC-VIS-022</a></td><td>Anonymise one visitor</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-VIS-023">TC-VIS-023</a></td><td>Export and anonymise are administrator-only</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-VIS-024">TC-VIS-024</a></td><td>A visitor opts out of notifications</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-VIS-025">TC-VIS-025</a></td><td>Opt-out or consent needs a visitor record</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-VIS-026">TC-VIS-026</a></td><td>Retention consent</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr></tbody></table></div></section>
+<div class="pager"><a href="09-issuance.html">← Issuance</a><a href="11-queue-engine.html">Queue engine →</a></div>
+</main>
+</div>
+</body>
+</html>

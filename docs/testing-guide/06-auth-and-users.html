@@ -1,0 +1,329 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Auth, users, roles and approvals — cqms testing guide</title>
+<link rel="stylesheet" href="styles.css">
+<script>
+(function(){try{var t=localStorage.getItem('qms-guide-theme');if(t)document.documentElement.setAttribute('data-theme',t);}catch(e){}
+document.addEventListener('DOMContentLoaded',function(){var b=document.getElementById('theme-toggle');if(!b)return;
+b.addEventListener('click',function(){var cur=document.documentElement.getAttribute('data-theme');
+if(!cur){cur=window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';}
+var n=cur==='dark'?'light':'dark';document.documentElement.setAttribute('data-theme',n);try{localStorage.setItem('qms-guide-theme',n);}catch(e){}});});})();
+</script>
+</head>
+<body>
+<a class="skip" href="#content">Skip to content</a>
+<div class="layout">
+<nav class="side" aria-label="Guide navigation"><a class="brand" href="index.html">cqms testing guide</a><div class="sub">Queue Management System</div><h2>Start here</h2><ul><li><a href="01-getting-started.html">Getting started</a></li><li><a href="02-roles-and-permissions.html">Roles and permissions</a></li><li><a href="03-industry-configuration.html">Industry configuration</a></li><li><a href="04-walkthroughs.html">Industry walkthroughs</a></li><li><a href="05-setup-wizard-and-config.html">Setup wizard and config bundle</a></li></ul><h2>Configuration</h2><ul><li><a href="06-auth-and-users.html" aria-current="page">Auth, users and approvals</a></li><li><a href="07-organisation.html">Sites, zones, counters</a></li><li><a href="08-catalogue-numbering-priority.html">Catalogue, numbering, priority</a></li></ul><h2>Serving visitors</h2><ul><li><a href="09-issuance.html">Issuance</a></li><li><a href="10-visitors.html">Visitors</a></li><li><a href="11-queue-engine.html">Queue engine</a></li><li><a href="12-counter-sessions.html">Counter sessions</a></li><li><a href="13-journeys.html">Journeys</a></li><li><a href="14-appointments.html">Appointments</a></li><li><a href="15-mobile-visitor.html">Mobile visitor</a></li></ul><h2>Surfaces and comms</h2><ul><li><a href="16-displays-and-voice.html">Displays and voice</a></li><li><a href="17-notifications.html">Notifications</a></li><li><a href="18-dashboard-and-alerts.html">Dashboard and alerts</a></li></ul><h2>Data and platform</h2><ul><li><a href="19-reports-and-exports.html">Reports and exports</a></li><li><a href="20-integrations.html">Webhooks and service accounts</a></li><li><a href="21-devices-and-realtime.html">Devices and realtime</a></li><li><a href="22-audit-log.html">Audit log</a></li><li><a href="23-operations.html">Operations</a></li></ul><h2>Quality</h2><ul><li><a href="24-cross-cutting.html">Cross-cutting checks</a></li><li><a href="25-automated-suites.html">Automated suites</a></li><li><a href="26-appendices.html">Appendices</a></li></ul><div class="theme"><button id="theme-toggle" type="button">Toggle light / dark</button></div></nav>
+<main id="content">
+<h1>Auth, users, roles and approvals</h1>
+<p class="lede">Sign-in, lockout, password policy, token refresh and revocation, idle timeout, user administration and maker-checker approvals.</p>
+<h2 id="how-sign-in-works">How sign-in works</h2>
+<ul><li>Staff sign in at <code>/admin/login/</code> (administrators) or <code>/console/login/</code> (agents). The <strong>access token</strong> (15 minutes, signed ES256) is kept <strong>in memory only</strong>. The <strong>refresh token</strong> is an opaque, hashed, single-use rotating value in an <code>HttpOnly</code>, <code>SameSite=Strict</code> cookie named <code>qms_refresh</code> (<code>Secure</code> unless you set <code>QMS_REFRESH_COOKIE_SECURE=false</code>).</li><li>The app refreshes silently. <strong>Idle timeout</strong> is refresh-token inactivity: <strong>30 minutes</strong> for administrators, <strong>12 hours</strong> for agents and reception.</li><li><strong>Lockout:</strong> 5 failed attempts lock the account for 15 minutes (<code>qms.security.lockout.*</code>).</li><li>A wrong username and a wrong password give the <strong>same</strong> answer, so a username cannot be probed.</li></ul>
+<p>Settings that change these are in <a href="26-appendices.html#c-configurable-settings">Appendix C</a>.</p>
+<h2 id="authentication-cases">Authentication cases</h2>
+<article class="tc happy" id="TC-AUT-001">
+<header><span class="tcid"><a href="#TC-AUT-001">TC-AUT-001</a></span><h4>Successful sign-in</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>API-010, API-013, NFR-SEC-001</dd></div><div><dt>Role</dt><dd>any staff role</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Open <code>/admin/login/</code>.</li><li>Enter a valid username and password.</li><li>Submit.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>You land on the Admin home. The sidebar shows only the areas your role allows. *Signed in as &lt;name&gt;* appears in the top bar. Audit <code>auth.login.succeeded</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /auth/login {username,password} -&gt; 200 {access_token, expires_in}; Set-Cookie: qms_refresh=...; HttpOnly; SameSite=Strict</code></pre><p><strong>Automated:</strong> <code>AuthFlowIT</code>, <code>LoginForm.test.tsx</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-AUT-002">
+<header><span class="tcid"><a href="#TC-AUT-002">TC-AUT-002</a></span><h4>Wrong password</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>NFR-SEC-002</dd></div><div><dt>Role</dt><dd>any</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Open the login page.</li><li>Enter a real username and a wrong password.</li><li>Submit.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>*The username or password is incorrect.* The page stays on login. Audit <code>auth.login.failed</code> with reason <code>bad_password</code> (visible to admins only).</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /auth/login -&gt; 401 invalid_credentials</code></pre><p><strong>Automated:</strong> <code>AuthFlowIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-AUT-003">
+<header><span class="tcid"><a href="#TC-AUT-003">TC-AUT-003</a></span><h4>Unknown username gives the identical answer</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>NFR-SEC-002</dd></div><div><dt>Role</dt><dd>any</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Enter a username that does not exist and any password.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>The <strong>same</strong> message and status as a wrong password. The audit reason is <code>unknown_user</code>; the response never says so.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /auth/login -&gt; 401 invalid_credentials (same body)</code></pre><p><strong>Automated:</strong> <code>AuthFlowIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-AUT-004">
+<header><span class="tcid"><a href="#TC-AUT-004">TC-AUT-004</a></span><h4>A disabled user cannot sign in</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-CFG-104</dd></div><div><dt>Role</dt><dd>any</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Disable a test user (see Users below).</li><li>Try to sign in as them with the right password.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>Refused with the same generic message. Audit reason <code>disabled</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /auth/login -&gt; 401 invalid_credentials</code></pre><p><strong>Automated:</strong> <code>AdminApiIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-AUT-005">
+<header><span class="tcid"><a href="#TC-AUT-005">TC-AUT-005</a></span><h4>Lockout after repeated failures</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>NFR-SEC-002</dd></div><div><dt>Role</dt><dd>any</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Enter a wrong password for the same user until the 5th wrong attempt.</li><li>On the fifth wrong attempt the account locks; then enter the <strong>correct</strong> password.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>The account is locked: <code>423 account_locked</code> on the 5th wrong attempt with <code>details.retry_after_seconds</code> (900); message *This account is temporarily locked after repeated failed sign-in attempts. Try again later.* The correct password is refused while locked. Audit <code>auth.lockout</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /auth/login -&gt; 423 {code:'account_locked', details:{retry_after_seconds:900}}</code></pre><p><strong>Automated:</strong> <code>LockoutConfigIT</code>, <code>AuthFlowIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc edge" id="TC-AUT-006">
+<header><span class="tcid"><a href="#TC-AUT-006">TC-AUT-006</a></span><h4>Lockout ends after the configured duration</h4><span class="badge edge">edge</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>NFR-SEC-002</dd></div><div><dt>Role</dt><dd>any</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>With <code>qms.security.lockout.duration=PT1M</code> in your override file, lock an account.</li><li>Wait 60 seconds and sign in correctly.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>Sign-in succeeds after the window. Failed-attempt count resets.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>qms.security.lockout.max-attempts=5, duration=PT15M (defaults)</code></pre><p><strong>Automated:</strong> <code>LockoutConfigIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-AUT-007">
+<header><span class="tcid"><a href="#TC-AUT-007">TC-AUT-007</a></span><h4>Login validation</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>§20.3</dd></div><div><dt>Role</dt><dd>any</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Submit the login form with an empty username, then with an empty password.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>Field errors next to each box (<code>validation.required</code>). API <code>400 validation_failed</code> with <code>details.fields[]</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /auth/login {} -&gt; 400 validation_failed</code></pre><p><strong>Automated:</strong> <code>LoginForm.test.tsx</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-AUT-008">
+<header><span class="tcid"><a href="#TC-AUT-008">TC-AUT-008</a></span><h4>Silent refresh keeps a working session alive</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>API-014</dd></div><div><dt>Role</dt><dd>any</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Sign in and work for more than 15 minutes, or reduce <code>qms.security.access-token-ttl</code> to <code>PT1M</code> in your override.</li><li>Keep using the app.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>No sign-in prompt appears; requests keep succeeding because the app rotates the refresh token in the background.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /auth/refresh (cookie) -&gt; 200 new access_token + new qms_refresh</code></pre><p><strong>Automated:</strong> <code>session.test.ts</code>, <code>AuthFlowIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-AUT-009">
+<header><span class="tcid"><a href="#TC-AUT-009">TC-AUT-009</a></span><h4>A refresh token is single use: reuse revokes the family</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>API-014</dd></div><div><dt>Role</dt><dd>any</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Sign in. Copy the <code>qms_refresh</code> cookie value from DevTools.</li><li>Let the app refresh once (or call refresh).</li><li>Replay the <strong>old</strong> cookie value against <code>POST /auth/refresh</code>.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>401 token_invalid</code>. The whole token family is revoked, so the legitimate session's next refresh also fails and it is returned to login. Audit <code>auth.refresh.reuse_detected</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /auth/refresh (old cookie) -&gt; 401 token_invalid</code></pre><p><strong>Automated:</strong> <code>AuthFlowIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-AUT-010">
+<header><span class="tcid"><a href="#TC-AUT-010">TC-AUT-010</a></span><h4>An expired or malformed access token is refused</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>API-012</dd></div><div><dt>Role</dt><dd>any</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Send <code>GET /auth/me</code> with <code>Authorization: Bearer garbage</code>.</li><li>Send it with a token whose <code>alg</code> header is <code>none</code>.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>401 token_invalid</code> for both. <code>alg: none</code> is rejected outright; algorithm, issuer, audience and expiry are all verified.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>GET /auth/me -&gt; 401 token_invalid</code></pre><p><strong>Automated:</strong> <code>JwtValidationTest</code> (<code>alg:none</code> test), <code>OwaspTop10IT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-AUT-011">
+<header><span class="tcid"><a href="#TC-AUT-011">TC-AUT-011</a></span><h4>A protected call with no token</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>API-010</dd></div><div><dt>Role</dt><dd>Anonymous</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Call <code>GET /users</code> with no Authorization header.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>401 unauthenticated</code> (*Please sign in to continue.*).</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>GET /users -&gt; 401 unauthenticated</code></pre><p><strong>Automated:</strong> <code>SkeletonIT</code>, <code>ControllerSecurityTest</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-AUT-012">
+<header><span class="tcid"><a href="#TC-AUT-012">TC-AUT-012</a></span><h4>Sign out ends the session</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>API-014</dd></div><div><dt>Role</dt><dd>any</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Click <strong>Sign out</strong>.</li><li>Press the browser Back button.</li><li>Replay the old refresh cookie.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>You reach *Signed out*; Back shows no data (in-memory token gone); the old cookie is rejected. Audit <code>auth.logout</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /auth/logout -&gt; 204; POST /auth/refresh -&gt; 401</code></pre><p><strong>Automated:</strong> <code>AuthFlowIT</code>, <code>AuthFlow.test.tsx</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc edge" id="TC-AUT-013">
+<header><span class="tcid"><a href="#TC-AUT-013">TC-AUT-013</a></span><h4>Idle timeout for an administrator</h4><span class="badge edge">edge</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>NFR-SEC-004</dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Set <code>qms.security.idle.admin=PT2M</code> in your override.</li><li>Sign in and leave the tab idle for 3 minutes.</li><li>Act again.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>The first action after idling fails to refresh and you are sent to login. An agent is not affected by the admin value (12 h default).</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>qms.security.idle.admin=PT30M ; qms.security.idle.agent=PT12H (defaults)</code></pre><p><strong>Automated:</strong> <code>AuthFlowIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-AUT-014">
+<header><span class="tcid"><a href="#TC-AUT-014">TC-AUT-014</a></span><h4>Change your password</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>NFR-SEC-001</dd></div><div><dt>Role</dt><dd>any staff</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Call <code>POST /auth/password</code> with the current and a new policy-compliant password (or use the account screen if present).</li><li>Try to reuse an old refresh cookie.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>Succeeds; <strong>every</strong> session for that user is ended. Sign in again with the new password. Audit <code>auth.password.changed</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /auth/password {current_password,new_password} -&gt; 204</code></pre><p><strong>Automated:</strong> <code>AuthFlowIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-AUT-015">
+<header><span class="tcid"><a href="#TC-AUT-015">TC-AUT-015</a></span><h4>Change password with the wrong current password</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>NFR-SEC-001</dd></div><div><dt>Role</dt><dd>any staff</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Send a wrong <code>current_password</code>.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>Refused (<code>401 invalid_credentials</code> shape); audit <code>auth.password.change_failed</code> with reason <code>bad_current_password</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /auth/password -&gt; 401</code></pre><p><strong>Automated:</strong> <code>AuthFlowIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-AUT-016">
+<header><span class="tcid"><a href="#TC-AUT-016">TC-AUT-016</a></span><h4>Password policy violation: too_short</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>NFR-SEC-001</dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Create a user (or change a password) with <code>Short1!</code>.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>400 validation_failed</code> and <code>details.field</code> is <code>password</code> (<code>new_password</code> when changing a password) and <code>details.rules[]</code> contains <code>too_short</code>. No account is created or changed.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /users {password:'...'} -&gt; 400</code></pre><p><strong>Automated:</strong> <code>PasswordPolicyTest</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-AUT-017">
+<header><span class="tcid"><a href="#TC-AUT-017">TC-AUT-017</a></span><h4>Password policy violation: too_few_character_classes</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>NFR-SEC-001</dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Create a user (or change a password) with <code>alllowercaseletters</code>.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>400 validation_failed</code> and <code>details.field</code> is <code>password</code> (<code>new_password</code> when changing a password) and <code>details.rules[]</code> contains <code>too_few_character_classes</code>. No account is created or changed.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /users {password:'...'} -&gt; 400</code></pre><p><strong>Automated:</strong> <code>PasswordPolicyTest</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-AUT-018">
+<header><span class="tcid"><a href="#TC-AUT-018">TC-AUT-018</a></span><h4>Password policy violation: reused</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>NFR-SEC-001</dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Change a password with <code>your previous password</code> (<code>POST /auth/password</code>; 'reused' is not triggered on user create).</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>400 validation_failed</code> and <code>details.field</code> is <code>password</code> (<code>new_password</code> when changing a password) and <code>details.rules[]</code> contains <code>reused</code>. No account is created or changed.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /users {password:'...'} -&gt; 400</code></pre><p><strong>Automated:</strong> <code>PasswordPolicyTest</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-AUT-019">
+<header><span class="tcid"><a href="#TC-AUT-019">TC-AUT-019</a></span><h4>Password policy violation: too_long</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>NFR-SEC-001</dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Create a user (or change a password) with <code>a 73-byte password</code>.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>400 validation_failed</code> and <code>details.field</code> is <code>password</code> (<code>new_password</code> when changing a password) and <code>details.rules[]</code> contains <code>too_long</code>. No account is created or changed.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /users {password:'...'} -&gt; 400</code></pre><p><strong>Automated:</strong> <code>PasswordPolicyTest</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc edge" id="TC-AUT-020">
+<header><span class="tcid"><a href="#TC-AUT-020">TC-AUT-020</a></span><h4>Password expiry only flags, and there is no forced-change screen</h4><span class="badge edge">edge</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>NFR-SEC-001 (partial)</dd></div><div><dt>Role</dt><dd>any staff</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>With <code>qms.security.password.max-age-days=1</code>, sign in as a user whose password is older than a day.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>Sign-in flags <code>password_expired</code> but the UI has <strong>no forced-change screen</strong>. This is a documented gap; see <a href="26-appendices.html#e-known-limitations">Appendix E</a>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>qms.security.password.max-age-days=0 (off by default)</code></pre><p><strong>Automated:</strong> <code>PasswordPolicyTest</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-AUT-021">
+<header><span class="tcid"><a href="#TC-AUT-021">TC-AUT-021</a></span><h4>Signing keys can be rotated with an overlap</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>API-015, NFR-SEC-013</dd></div><div><dt>Role</dt><dd>Operator</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Sign in and note the session works.</li><li>Run the backend once with <code>--spring.profiles.active=rotate-keys</code>.</li><li>Continue using the existing session; then sign in again.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>The old key stays valid for <code>qms.security.key-rotation-overlap</code> (1 day); running backends pick up the new key within 30 s. New tokens use the new key.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>docker compose run --rm backend --spring.profiles.active=rotate-keys</code></pre><p><strong>Automated:</strong> <code>RotateKeysIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc edge" id="TC-AUT-022">
+<header><span class="tcid"><a href="#TC-AUT-022">TC-AUT-022</a></span><h4>Access token claims are exactly the documented set</h4><span class="badge edge">edge</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>API-011</dd></div><div><dt>Role</dt><dd>developer</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Decode a fresh access token (jwt.io offline or <code>jq</code>).</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>Claims are <code>sub, jti, iss, aud, iat, exp, roles</code> (+ <code>sites</code> / <code>groups</code> when scoped). Nothing sensitive. <code>exp - iat</code> is at most 900 s.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>cut -d. -f2 &lt;&lt;&lt; $TOKEN | base64 -d | jq</code></pre><p><strong>Automated:</strong> <code>JwtValidationTest</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<h2 id="users-roles-and-approvals">Users, roles and approvals</h2>
+<p>Users are created and edited through the API (there is no Users screen yet). A user holds one or more <strong>role assignments</strong>, each optionally scoped to <code>site_ids</code> and <code>group_ids</code>. Scope travels as token claims. <strong>Disabling</strong> a user closes their open session, returns their bound tickets to <code>waiting</code> at the queue front, invalidates their refresh tokens and drops their sockets (<code>principal.changed</code>); REST read access can linger at most until the 15-minute access token expires (API-013).</p>
+<article class="tc happy" id="TC-USR-001">
+<header><span class="tcid"><a href="#TC-USR-001">TC-USR-001</a></span><h4>Create a user</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-CFG-101, §5</dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Call <code>POST /users</code> with a username, a policy-compliant password, a display name and a role with scope.</li><li>Sign in as that user.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>201</code> with the user id. The user signs in and sees only what the role allows. Audit <code>user.created</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /users {username,password,display_name,preferred_language,roles:[{role,site_ids,group_ids}]} -&gt; 201</code></pre><p><strong>Automated:</strong> <code>AdminApiIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-USR-002">
+<header><span class="tcid"><a href="#TC-USR-002">TC-USR-002</a></span><h4>Duplicate username</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>§20.3</dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Create a user whose username already exists.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>409 conflict</code>. No second account.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /users -&gt; 409 conflict</code></pre><p><strong>Automated:</strong> <code>AdminApiIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-USR-003">
+<header><span class="tcid"><a href="#TC-USR-003">TC-USR-003</a></span><h4>User field validation</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>§20.3</dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Create a user with a 2-character username, then with a username containing a space, then a <code>preferred_language</code> of <code>english</code>.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>400 validation_failed</code> naming each field (<code>username</code> size / pattern <code>[A-Za-z0-9._@-]+</code>, <code>preferred_language</code> pattern <code>[a-z]{2,3}</code>).</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /users -&gt; 400 fields:[...]</code></pre><p><strong>Automated:</strong> <code>AdminApiIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-USR-004">
+<header><span class="tcid"><a href="#TC-USR-004">TC-USR-004</a></span><h4>Edit and list users</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-CFG-101</dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li><code>GET /users</code> (paged).</li><li><code>PATCH /users/{id}</code> to change the display name.</li><li><code>GET /users/{id}</code>.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>List is paged by cursor; the display name changes; audit <code>user.updated</code> has before and after.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>GET /users ; PATCH /users/{id}</code></pre><p><strong>Automated:</strong> <code>AdminApiIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-USR-005">
+<header><span class="tcid"><a href="#TC-USR-005">TC-USR-005</a></span><h4>Replace a user's roles</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>role:assign</dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li><code>PUT /users/{id}/roles</code> with a new set of assignments.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>The new roles apply from the user's next token; existing sockets are dropped. Audit <code>user.roles.changed</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>PUT /users/{id}/roles</code></pre><p><strong>Automated:</strong> <code>AdminApiIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-USR-006">
+<header><span class="tcid"><a href="#TC-USR-006">TC-USR-006</a></span><h4>A user cannot disable themselves</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-CFG-104</dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>As an admin call <code>POST /users/{own id}/disable</code>.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>409 conflict</code>, <code>details.reason = cannot_disable_self</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /users/{self}/disable -&gt; 409 {reason:'cannot_disable_self'}</code></pre><p><strong>Automated:</strong> <code>AdminApiIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-USR-007">
+<header><span class="tcid"><a href="#TC-USR-007">TC-USR-007</a></span><h4>Disabling a user with an open session returns their tickets</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-CFG-104, ADR-0008, ADR-0009</dd></div><div><dt>Role</dt><dd>org_admin, agent</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Agent opens a session and calls a Ticket (state <code>called</code>).</li><li>Org Admin disables the agent.</li><li>Watch the queue and the agent's browser.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>The agent's session closes, their socket drops, and the Ticket returns to <code>waiting</code> <strong>at the front</strong> with its original queue time. Refresh with the agent's refresh token is refused; the already-issued access token stays valid for up to 15 minutes. Audit <code>user.disabled</code>, <code>session.force_closed</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /users/{id}/disable ; realtime principal.changed</code></pre><p><strong>Automated:</strong> <code>RealtimeRevocationIT</code>, <code>RealtimeRevocationIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-USR-008">
+<header><span class="tcid"><a href="#TC-USR-008">TC-USR-008</a></span><h4>Re-enable a user</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-CFG-104</dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li><code>POST /users/{id}/enable</code>.</li><li>Sign in as them.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>Sign-in works again. Audit <code>user.enabled</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /users/{id}/enable</code></pre><p><strong>Automated:</strong> <code>AdminApiIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc edge" id="TC-USR-009">
+<header><span class="tcid"><a href="#TC-USR-009">TC-USR-009</a></span><h4>Only the bootstrap admin exists at first, then more</h4><span class="badge edge">edge</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>NFR-SEC-013</dd></div><div><dt>Role</dt><dd>system_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Note <code>user.bootstrap_created</code> in the audit log.</li><li>Create a second admin.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>The audit log shows the bootstrap creation once. Bootstrap variables no longer create users.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>GET /audit?action=user.bootstrap_created</code></pre><p><strong>Automated:</strong> <code>AdminApiIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-USR-010">
+<header><span class="tcid"><a href="#TC-USR-010">TC-USR-010</a></span><h4>A Team Admin requests, an Org Admin approves</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-CFG-102, FR-CFG-107</dd></div><div><dt>Role</dt><dd>team_admin, org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>As Team Admin <code>POST /approvals</code> to add a member to a Team.</li><li><code>GET /approvals/mine</code>: it is pending.</li><li>As Org Admin <code>GET /approvals</code> then <code>POST /approvals/{id}/approve</code>.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>The Team gains the member. The Team Admin never held extra permission. Audit <code>approval.requested</code>, <code>approval.approved</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /approvals ; GET /approvals and /approvals/mine return bare arrays ; POST /approvals/{id}/approve</code></pre><p><strong>Automated:</strong> <code>AdminApiIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-USR-011">
+<header><span class="tcid"><a href="#TC-USR-011">TC-USR-011</a></span><h4>Reject an approval</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-CFG-102</dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Reject a pending request.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>The request becomes <code>rejected</code>; nothing else changes. Audit <code>approval.rejected</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /approvals/{id}/reject</code></pre><p><strong>Automated:</strong> <code>AdminApiIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-USR-012">
+<header><span class="tcid"><a href="#TC-USR-012">TC-USR-012</a></span><h4>An approval already decided cannot be decided again</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>§20.3</dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Approve a request, then approve or reject it again.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>409 conflict</code>. The first decision stands.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /approvals/{id}/approve (2nd) -&gt; 409</code></pre><p><strong>Automated:</strong> <code>AdminApiIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-USR-013">
+<header><span class="tcid"><a href="#TC-USR-013">TC-USR-013</a></span><h4>An agent cannot request or approve</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>§5.2</dd></div><div><dt>Role</dt><dd>agent</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>As an Agent call <code>POST /approvals</code>.</li><li>As a Team Admin call <code>POST /approvals/{id}/approve</code>.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>Both <code>403 forbidden</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /approvals (agent) -&gt; 403</code></pre><p><strong>Automated:</strong> <code>AdminApiIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-USR-014">
+<header><span class="tcid"><a href="#TC-USR-014">TC-USR-014</a></span><h4>Team membership adds the agent to a Service group</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-CFG-107</dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li><code>POST /service-groups/{id}/team/members {"user_id":...}</code>.</li><li>As that agent, open a session on the group's Counter.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>Allowed. Before being added the agent could not open a session on that group.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /service-groups/{id}/team/members -&gt; 200 ; DELETE .../members/{userId}</code></pre><p><strong>Automated:</strong> <code>CatalogueAdminIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc edge" id="TC-USR-015">
+<header><span class="tcid"><a href="#TC-USR-015">TC-USR-015</a></span><h4>Role assignment is shaped for external group mapping</h4><span class="badge edge">edge</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-INT-002, ticket 04</dd></div><div><dt>Role</dt><dd>developer</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Read <code>RoleMapper</code> and <code>IdentityProvider</code>.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>Roles are assigned through one seam so an external directory group can later map to them. No case is possible in the UI; this is a design check.</p></div>
+<details class="dev"><summary>Dev / API</summary><p><strong>Automated:</strong> <code>IdentityProvider</code> interface; no UI</p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article><section class="signoff"><h2 id="sign-off-sheet">Sign-off sheet</h2><p class="hint">Print this page range, one sheet per run. Tick Pass or Fail and note the build, date and tester at the top.</p><div class="tablewrap"><table><thead><tr><th>TC</th><th>Title</th><th>Type</th><th>Pass</th><th>Fail</th><th>Notes</th></tr></thead><tbody><tr><td><a href="#TC-AUT-001">TC-AUT-001</a></td><td>Successful sign-in</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-AUT-002">TC-AUT-002</a></td><td>Wrong password</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-AUT-003">TC-AUT-003</a></td><td>Unknown username gives the identical answer</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-AUT-004">TC-AUT-004</a></td><td>A disabled user cannot sign in</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-AUT-005">TC-AUT-005</a></td><td>Lockout after repeated failures</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-AUT-006">TC-AUT-006</a></td><td>Lockout ends after the configured duration</td><td><span class="badge edge">edge</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-AUT-007">TC-AUT-007</a></td><td>Login validation</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-AUT-008">TC-AUT-008</a></td><td>Silent refresh keeps a working session alive</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-AUT-009">TC-AUT-009</a></td><td>A refresh token is single use: reuse revokes the family</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-AUT-010">TC-AUT-010</a></td><td>An expired or malformed access token is refused</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-AUT-011">TC-AUT-011</a></td><td>A protected call with no token</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-AUT-012">TC-AUT-012</a></td><td>Sign out ends the session</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-AUT-013">TC-AUT-013</a></td><td>Idle timeout for an administrator</td><td><span class="badge edge">edge</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-AUT-014">TC-AUT-014</a></td><td>Change your password</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-AUT-015">TC-AUT-015</a></td><td>Change password with the wrong current password</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-AUT-016">TC-AUT-016</a></td><td>Password policy violation: too_short</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-AUT-017">TC-AUT-017</a></td><td>Password policy violation: too_few_character_classes</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-AUT-018">TC-AUT-018</a></td><td>Password policy violation: reused</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-AUT-019">TC-AUT-019</a></td><td>Password policy violation: too_long</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-AUT-020">TC-AUT-020</a></td><td>Password expiry only flags, and there is no forced-change screen</td><td><span class="badge edge">edge</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-AUT-021">TC-AUT-021</a></td><td>Signing keys can be rotated with an overlap</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-AUT-022">TC-AUT-022</a></td><td>Access token claims are exactly the documented set</td><td><span class="badge edge">edge</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-USR-001">TC-USR-001</a></td><td>Create a user</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-USR-002">TC-USR-002</a></td><td>Duplicate username</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-USR-003">TC-USR-003</a></td><td>User field validation</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-USR-004">TC-USR-004</a></td><td>Edit and list users</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-USR-005">TC-USR-005</a></td><td>Replace a user's roles</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-USR-006">TC-USR-006</a></td><td>A user cannot disable themselves</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-USR-007">TC-USR-007</a></td><td>Disabling a user with an open session returns their tickets</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-USR-008">TC-USR-008</a></td><td>Re-enable a user</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-USR-009">TC-USR-009</a></td><td>Only the bootstrap admin exists at first, then more</td><td><span class="badge edge">edge</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-USR-010">TC-USR-010</a></td><td>A Team Admin requests, an Org Admin approves</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-USR-011">TC-USR-011</a></td><td>Reject an approval</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-USR-012">TC-USR-012</a></td><td>An approval already decided cannot be decided again</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-USR-013">TC-USR-013</a></td><td>An agent cannot request or approve</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-USR-014">TC-USR-014</a></td><td>Team membership adds the agent to a Service group</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-USR-015">TC-USR-015</a></td><td>Role assignment is shaped for external group mapping</td><td><span class="badge edge">edge</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr></tbody></table></div></section>
+<div class="pager"><a href="05-setup-wizard-and-config.html">← Setup wizard and config bundle</a><a href="07-organisation.html">Sites, zones, counters →</a></div>
+</main>
+</div>
+</body>
+</html>

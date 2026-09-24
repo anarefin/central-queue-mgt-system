@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Setup wizard, go-live, config bundle and versioning — cqms testing guide</title>
+<link rel="stylesheet" href="styles.css">
+<script>
+(function(){try{var t=localStorage.getItem('qms-guide-theme');if(t)document.documentElement.setAttribute('data-theme',t);}catch(e){}
+document.addEventListener('DOMContentLoaded',function(){var b=document.getElementById('theme-toggle');if(!b)return;
+b.addEventListener('click',function(){var cur=document.documentElement.getAttribute('data-theme');
+if(!cur){cur=window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';}
+var n=cur==='dark'?'light':'dark';document.documentElement.setAttribute('data-theme',n);try{localStorage.setItem('qms-guide-theme',n);}catch(e){}});});})();
+</script>
+</head>
+<body>
+<a class="skip" href="#content">Skip to content</a>
+<div class="layout">
+<nav class="side" aria-label="Guide navigation"><a class="brand" href="index.html">cqms testing guide</a><div class="sub">Queue Management System</div><h2>Start here</h2><ul><li><a href="01-getting-started.html">Getting started</a></li><li><a href="02-roles-and-permissions.html">Roles and permissions</a></li><li><a href="03-industry-configuration.html">Industry configuration</a></li><li><a href="04-walkthroughs.html">Industry walkthroughs</a></li><li><a href="05-setup-wizard-and-config.html" aria-current="page">Setup wizard and config bundle</a></li></ul><h2>Configuration</h2><ul><li><a href="06-auth-and-users.html">Auth, users and approvals</a></li><li><a href="07-organisation.html">Sites, zones, counters</a></li><li><a href="08-catalogue-numbering-priority.html">Catalogue, numbering, priority</a></li></ul><h2>Serving visitors</h2><ul><li><a href="09-issuance.html">Issuance</a></li><li><a href="10-visitors.html">Visitors</a></li><li><a href="11-queue-engine.html">Queue engine</a></li><li><a href="12-counter-sessions.html">Counter sessions</a></li><li><a href="13-journeys.html">Journeys</a></li><li><a href="14-appointments.html">Appointments</a></li><li><a href="15-mobile-visitor.html">Mobile visitor</a></li></ul><h2>Surfaces and comms</h2><ul><li><a href="16-displays-and-voice.html">Displays and voice</a></li><li><a href="17-notifications.html">Notifications</a></li><li><a href="18-dashboard-and-alerts.html">Dashboard and alerts</a></li></ul><h2>Data and platform</h2><ul><li><a href="19-reports-and-exports.html">Reports and exports</a></li><li><a href="20-integrations.html">Webhooks and service accounts</a></li><li><a href="21-devices-and-realtime.html">Devices and realtime</a></li><li><a href="22-audit-log.html">Audit log</a></li><li><a href="23-operations.html">Operations</a></li></ul><h2>Quality</h2><ul><li><a href="24-cross-cutting.html">Cross-cutting checks</a></li><li><a href="25-automated-suites.html">Automated suites</a></li><li><a href="26-appendices.html">Appendices</a></li></ul><div class="theme"><button id="theme-toggle" type="button">Toggle light / dark</button></div></nav>
+<main id="content">
+<h1>Setup wizard, go-live, config bundle and versioning</h1>
+<p class="lede">The first-run wizard with its real test token, the go-live gate and its ten-item missing list, the signed configuration bundle, and per-area version history and revert.</p>
+<h2 id="setup-wizard-admin-setup">Setup wizard (<code>/admin/setup/</code>)</h2>
+<p>Role: <code>system_admin</code> or <code>org_admin</code>. Eight steps, each a status of <strong>Done</strong> or <strong>Not done yet</strong>, read live off the real Site, Zone, Counter, Service, user and device tables so it can never drift from what exists.</p>
+<div class="tablewrap"><table><thead><tr><th>Step</th><th>Done when</th></tr></thead><tbody><tr><td>Vertical profile</td><td>a profile is active (<code>profile_applied</code>)</td></tr><tr><td>Organisation and sites</td><td>at least one active Site (<code>org_and_sites</code>)</td></tr><tr><td>Zones and Counters</td><td>a Zone and a Counter exist (<code>zones_and_counters</code>)</td></tr><tr><td>Services and numbering</td><td>a Service exists and numbering is in place (<code>services_and_numbering</code>)</td></tr><tr><td>Users and roles</td><td>more than the bootstrap admin exists (<code>users_and_roles</code>)</td></tr><tr><td>Register devices</td><td>at least one device is paired (<code>devices_registered</code>)</td></tr><tr><td>Test print and announce</td><td>test token issued, printed, called and announced</td></tr><tr><td>Go live</td><td>all of the above; records a go-live timestamp</td></tr></tbody></table></div>
+<p><strong>The test token</strong> is a real Ticket through the normal pipeline: issue it, confirm it printed, have an Agent call it from an open session in the Console, then confirm the Zone announced it. Printing and announcing are <strong>explicit human confirmations</strong>; a chime having played is never inferred from the ticket reaching <code>called</code>.</p>
+<article class="tc happy" id="TC-WIZ-001">
+<header><span class="tcid"><a href="#TC-WIZ-001">TC-WIZ-001</a></span><h4>A fresh installation shows every step Not done yet and Go live blocked</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-OPS-010, §26.2</dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Reset to a factory install and sign in as admin.</li><li>Open Admin &gt; Setup wizard.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>Every step shows *Not done yet*. The Go live button is blocked with *Complete every step above before going live.*</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>GET /setup/state -&gt; steps all false, go_live:null</code></pre><p><strong>Automated:</strong> <code>SetupWizardIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-WIZ-002">
+<header><span class="tcid"><a href="#TC-WIZ-002">TC-WIZ-002</a></span><h4>Working through the steps turns each one Done</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-OPS-010</dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Apply a profile, create a Site, a Zone and a Counter.</li><li>Seed the starter catalogue.</li><li>Create one more user (any role).</li><li>Pair a kiosk.</li><li>After each action click <strong>Refresh status</strong>.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>Steps flip to *Done* in that order. Each step links to the ordinary admin screen that satisfies it (*Open sites, zones and Counters →*, *Open service catalogue →* ...).</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>GET /setup/state after each POST</code></pre><p><strong>Automated:</strong> <code>SetupWizardIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-WIZ-003">
+<header><span class="tcid"><a href="#TC-WIZ-003">TC-WIZ-003</a></span><h4>Issue the test token</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-OPS-010, §26.2</dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Test print and announce &gt; choose a Service &gt; <strong>Issue test Token</strong>.</li><li>Read *Test Token A-001 issued.*</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>A real Ticket is issued (state <code>waiting</code>). Status *Issued* is ticked; *Printed*, *Called* and *Announced* are not. The card says *Now call this Token from an open Counter session (Console)*.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /setup/test-token {service_id} ; audit setup.test_token.issued</code></pre><p><strong>Automated:</strong> <code>SetupWizardIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-WIZ-004">
+<header><span class="tcid"><a href="#TC-WIZ-004">TC-WIZ-004</a></span><h4>Confirm the printed slip</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-OPS-010</dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>After issuing, print or preview the slip, then click <strong>Confirm it printed</strong>.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>*Printed* is ticked. Audit <code>setup.test_token.printed</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /setup/test-token/{ticketId}/confirm-print</code></pre><p><strong>Automated:</strong> <code>SetupWizardIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-WIZ-005">
+<header><span class="tcid"><a href="#TC-WIZ-005">TC-WIZ-005</a></span><h4>Confirm the announcement before the token has been called is refused</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-OPS-010</dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Issue the test token.</li><li>Without calling it, click <strong>Confirm it announced</strong>.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>409 conflict</code>, <code>details.reason = test_token_not_called_yet</code>, message *The test token has not been called yet, so its announcement cannot be confirmed.* *Announced* stays unticked.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /setup/test-token/{id}/confirm-announce -&gt; 409 {reason:'test_token_not_called_yet'}</code></pre><p><strong>Automated:</strong> <code>SetupWizardIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-WIZ-006">
+<header><span class="tcid"><a href="#TC-WIZ-006">TC-WIZ-006</a></span><h4>Call the test token and confirm the announcement</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-OPS-010</dd></div><div><dt>Role</dt><dd>agent, org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>In the Console, open a session on a Counter that serves the test Service and press <strong>F2</strong>.</li><li>On the display listen for or read the announcement.</li><li>Back in the wizard click <strong>Refresh status</strong>, then <strong>Confirm it announced</strong>.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>*Called* ticks itself after F2. *Announced* ticks only after your confirmation. Audit <code>setup.test_token.announced</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /sessions/{id}/next ; POST /setup/test-token/{id}/confirm-announce</code></pre><p><strong>Automated:</strong> <code>SetupWizardIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-WIZ-007">
+<header><span class="tcid"><a href="#TC-WIZ-007">TC-WIZ-007</a></span><h4>Go live is refused until every step is true and lists what is missing</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-OPS-010</dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Complete every step except one (for example do not pair a device).</li><li>Call Go live from the API or click the button.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>409 conflict</code>, <code>details.reason = setup_incomplete</code> and <code>details.missing = ["devices_registered"]</code>. The UI keeps the button blocked. Possible entries in <code>missing</code>: <code>profile_applied</code>, <code>org_and_sites</code>, <code>zones_and_counters</code>, <code>services_and_numbering</code>, <code>users_and_roles</code>, <code>devices_registered</code>, <code>test_token_issued</code>, <code>test_token_printed</code>, <code>test_token_called</code>, <code>test_token_announced</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /setup/go-live -&gt; 409 {reason:'setup_incomplete', missing:[...]}</code></pre><p><strong>Automated:</strong> <code>SetupWizardIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc edge" id="TC-WIZ-008">
+<header><span class="tcid"><a href="#TC-WIZ-008">TC-WIZ-008</a></span><h4>Users and roles needs more than the bootstrap admin</h4><span class="badge edge">edge</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-OPS-010</dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>With only <code>admin</code> existing, complete every other step.</li><li>Check <code>missing</code>.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>users_and_roles</code> is still missing. Creating any second user clears it.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>GET /setup/state</code></pre><p><strong>Automated:</strong> <code>SetupWizardIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-WIZ-009">
+<header><span class="tcid"><a href="#TC-WIZ-009">TC-WIZ-009</a></span><h4>Go live succeeds and is idempotent</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-OPS-010</dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Complete every step.</li><li>Click <strong>Go live</strong>.</li><li>Click it (or call the API) a second time.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>The card shows *Live since &lt;timestamp&gt;*. The second call returns the same timestamp and does not recheck or refuse. Audit <code>setup.go_live</code> is written once.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /setup/go-live -&gt; 200 {go_live_at} (repeat returns identical value)</code></pre><p><strong>Automated:</strong> <code>SetupWizardIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-WIZ-010">
+<header><span class="tcid"><a href="#TC-WIZ-010">TC-WIZ-010</a></span><h4>The wizard is for administrators only</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>§5.2</dd></div><div><dt>Role</dt><dd>agent, reception_operator, team_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Sign in as a Team Admin and open <code>/admin/setup/</code> directly.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>Every wizard request is refused <code>403 forbidden</code>. Nothing loads.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>GET /setup/state -&gt; 403</code></pre><p><strong>Automated:</strong> <code>ControllerSecurityTest</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc edge" id="TC-WIZ-011">
+<header><span class="tcid"><a href="#TC-WIZ-011">TC-WIZ-011</a></span><h4>A profile chosen in the wizard can be changed before go-live</h4><span class="badge edge">edge</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>CFG-002</dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Apply Banking.</li><li>Click *Reset to a different profile* and choose Healthcare.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>Labels, flags and classes switch to Healthcare. Audit <code>profile.reset</code>. Anything already created (Sites, Services) is untouched.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /setup/profile/reset</code></pre><p><strong>Automated:</strong> <code>SetupWizardIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<h2 id="config-bundle-api-only">Config bundle (API only)</h2>
+<p>A signed JSON bundle clones <strong>priority classes and channel/Service defaults, routing strategies, numbering rules and business-hours weeks</strong> between environments of the same version (production to staging or training). The Site, Service group and Service ids it keys by must already exist on the target. It needs an <strong>organisation-wide caller</strong> (no <code>site_ids</code> claim), and both installations must carry the same secret:</p>
+<pre><code>QMS_CONFIG_BUNDLE_SECRET=&lt;shared secret&gt;     # qms.config.bundle.secret; blank = export and import both refused</code></pre>
+<p>Import applies <strong>all or nothing</strong> in one transaction, and answers <code>applied_counts</code> per kind of row.</p>
+<article class="tc happy" id="TC-WIZ-012">
+<header><span class="tcid"><a href="#TC-WIZ-012">TC-WIZ-012</a></span><h4>Export a bundle</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>CFG-004, FR-CFG-040</dd></div><div><dt>Role</dt><dd>system_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Set <code>QMS_CONFIG_BUNDLE_SECRET</code> on the source stack.</li><li>Call export.</li><li>Save the JSON.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>200</code> with a JSON bundle carrying a signature. Audit <code>config_bundle.exported</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>curl -s $BASE/config/bundle -H "Authorization: Bearer $TOKEN" &gt; bundle.json</code></pre><p><strong>Automated:</strong> <code>ConfigVersioningIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-WIZ-013">
+<header><span class="tcid"><a href="#TC-WIZ-013">TC-WIZ-013</a></span><h4>Import a bundle into a clone</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>CFG-004</dd></div><div><dt>Role</dt><dd>system_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Start a second stack with the same secret and the same Site, Service group and Service ids (restore a backup).</li><li>Post the bundle.</li><li>Compare priority classes, numbering rules and hours.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>200</code> with <code>applied_counts</code>; the clone's configuration now matches. Audit <code>config_bundle.imported</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>curl -s -X POST $BASE/config/bundle/import -H 'Content-Type: application/json' -H "Authorization: Bearer $TOKEN" -d @bundle.json</code></pre><p><strong>Automated:</strong> <code>ConfigVersioningIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-WIZ-014">
+<header><span class="tcid"><a href="#TC-WIZ-014">TC-WIZ-014</a></span><h4>Export or import with no secret configured is refused</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>CFG-004</dd></div><div><dt>Role</dt><dd>system_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Start a stack with <code>QMS_CONFIG_BUNDLE_SECRET</code> unset.</li><li>Call export, then import.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>503 unavailable</code>, <code>details.reason = bundle_secret_not_configured</code>. Nothing is exported or applied.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>GET /config/bundle -&gt; 503 {reason:'bundle_secret_not_configured'}</code></pre><p><strong>Automated:</strong> <code>ConfigVersioningIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-WIZ-015">
+<header><span class="tcid"><a href="#TC-WIZ-015">TC-WIZ-015</a></span><h4>A tampered bundle is refused</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>CFG-004</dd></div><div><dt>Role</dt><dd>system_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Export a bundle.</li><li>Edit one head-start value in the JSON without re-signing.</li><li>Import it.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>400 validation_failed</code>, <code>details.reason = invalid_signature</code>. Nothing is applied.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /config/bundle/import -&gt; 400 {reason:'invalid_signature'}</code></pre><p><strong>Automated:</strong> <code>ConfigVersioningIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-WIZ-016">
+<header><span class="tcid"><a href="#TC-WIZ-016">TC-WIZ-016</a></span><h4>An import that references a missing Site aborts everything</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>CFG-004</dd></div><div><dt>Role</dt><dd>system_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Import a bundle into an installation that lacks one of the referenced Service groups.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>404 not_found</code> for that reference and <strong>no</strong> part of the bundle is applied (single transaction).</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /config/bundle/import -&gt; 404 not_found; applied_counts absent</code></pre><p><strong>Automated:</strong> <code>ConfigVersioningIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-WIZ-017">
+<header><span class="tcid"><a href="#TC-WIZ-017">TC-WIZ-017</a></span><h4>A site-restricted caller cannot use the bundle</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-CFG-106</dd></div><div><dt>Role</dt><dd>org_admin (site-scoped)</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Sign in as an Org Admin restricted to one Site.</li><li>Export a bundle.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>403 forbidden</code>: the bundle is organisation-wide only.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>GET /config/bundle (site-scoped token) -&gt; 403</code></pre><p><strong>Automated:</strong> <code>ConfigVersioningIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<h2 id="version-history-and-revert">Version history and revert</h2>
+<p>Four areas keep an append-only history, one row per change with author and time: <strong>priority classes</strong>, <strong>routing strategy</strong> (per Service group), <strong>numbering rules</strong> (per Service or group) and <strong>business-hours weeks</strong> (per Site or Service). A revert re-applies the earlier state through the same validation and audit path as a normal edit, so <strong>a revert is itself one more version</strong>. <code>GET .../impact</code> previews what a change would affect.</p>
+<p>The Admin screens for priority classes, routing strategy and numbering show a <strong>Version history</strong> panel with a revert action. <strong>Business hours has no admin page yet</strong>, so its history and revert are API only (see <a href="26-appendices.html#e-known-limitations">Appendix E</a>).</p>
+<article class="tc happy" id="TC-WIZ-018">
+<header><span class="tcid"><a href="#TC-WIZ-018">TC-WIZ-018</a></span><h4>A change appears in the version history</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-CFG-040</dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Admin &gt; Priority and queue ordering &gt; edit *Senior citizen* head start from 10 to 20, save.</li><li>Open its *Version history*.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>A new top row shows the author, time and the new value; the previous row shows 10.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>GET /priority-classes/{id}/versions</code></pre><p><strong>Automated:</strong> <code>ConfigVersioningIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-WIZ-019">
+<header><span class="tcid"><a href="#TC-WIZ-019">TC-WIZ-019</a></span><h4>Revert to a prior version</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-CFG-040</dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>In the history click <strong>Revert</strong> on the row with 10.</li><li>Confirm.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>The class shows 10 again, and the history gains a <strong>third</strong> row (the revert), not a deletion. Audit <code>priority_class.updated</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /priority-classes/{id}/versions/{versionId}/revert</code></pre><p><strong>Automated:</strong> <code>ConfigVersioningIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-WIZ-020">
+<header><span class="tcid"><a href="#TC-WIZ-020">TC-WIZ-020</a></span><h4>Revert numbering and routing strategy</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-CFG-040</dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Change a numbering padding from 3 to 4 and a routing strategy from <code>weighted_wait</code> to <code>fifo</code>.</li><li>Revert each from its history panel.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>Both return to the earlier value; each gains a new version row.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /services/{id}/numbering-rule/versions/{vid}/revert ; POST /service-groups/{id}/routing-strategy/versions/{vid}/revert</code></pre><p><strong>Automated:</strong> <code>ConfigVersioningIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc edge" id="TC-WIZ-021">
+<header><span class="tcid"><a href="#TC-WIZ-021">TC-WIZ-021</a></span><h4>Revert business hours (API only)</h4><span class="badge edge">edge</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-CFG-040</dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Change a Site's Monday hours through <code>PUT /sites/{id}/hours</code>.</li><li>List <code>GET /sites/{id}/hours/versions</code>.</li><li>Revert to the earlier version.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>Hours return to the earlier week; a new version row appears. There is no admin page for this today.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /sites/{siteId}/hours/versions/{versionId}/revert</code></pre><p><strong>Automated:</strong> <code>ConfigVersioningIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-WIZ-022">
+<header><span class="tcid"><a href="#TC-WIZ-022">TC-WIZ-022</a></span><h4>Reverting to a version that is not this item's is refused</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-CFG-040</dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Take a version id from Priority class A and use it to revert Priority class B.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>404 not_found</code>. Nothing changes.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /priority-classes/{B}/versions/{A's version}/revert -&gt; 404</code></pre><p><strong>Automated:</strong> <code>ConfigVersioningIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc edge" id="TC-WIZ-023">
+<header><span class="tcid"><a href="#TC-WIZ-023">TC-WIZ-023</a></span><h4>Impact preview before a change</h4><span class="badge edge">edge</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-CFG-040</dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Call the impact preview for a routing-strategy change while tickets are waiting.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>The response describes what would change (for example how many waiting Tickets would be reordered) without changing anything.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>GET /service-groups/{id}/routing-strategy/impact ; GET /priority-classes/{id}/impact ; GET /sites/{id}/hours/impact</code></pre><p><strong>Automated:</strong> <code>ConfigVersioningIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article><section class="signoff"><h2 id="sign-off-sheet">Sign-off sheet</h2><p class="hint">Print this page range, one sheet per run. Tick Pass or Fail and note the build, date and tester at the top.</p><div class="tablewrap"><table><thead><tr><th>TC</th><th>Title</th><th>Type</th><th>Pass</th><th>Fail</th><th>Notes</th></tr></thead><tbody><tr><td><a href="#TC-WIZ-001">TC-WIZ-001</a></td><td>A fresh installation shows every step Not done yet and Go live blocked</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-WIZ-002">TC-WIZ-002</a></td><td>Working through the steps turns each one Done</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-WIZ-003">TC-WIZ-003</a></td><td>Issue the test token</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-WIZ-004">TC-WIZ-004</a></td><td>Confirm the printed slip</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-WIZ-005">TC-WIZ-005</a></td><td>Confirm the announcement before the token has been called is refused</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-WIZ-006">TC-WIZ-006</a></td><td>Call the test token and confirm the announcement</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-WIZ-007">TC-WIZ-007</a></td><td>Go live is refused until every step is true and lists what is missing</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-WIZ-008">TC-WIZ-008</a></td><td>Users and roles needs more than the bootstrap admin</td><td><span class="badge edge">edge</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-WIZ-009">TC-WIZ-009</a></td><td>Go live succeeds and is idempotent</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-WIZ-010">TC-WIZ-010</a></td><td>The wizard is for administrators only</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-WIZ-011">TC-WIZ-011</a></td><td>A profile chosen in the wizard can be changed before go-live</td><td><span class="badge edge">edge</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-WIZ-012">TC-WIZ-012</a></td><td>Export a bundle</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-WIZ-013">TC-WIZ-013</a></td><td>Import a bundle into a clone</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-WIZ-014">TC-WIZ-014</a></td><td>Export or import with no secret configured is refused</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-WIZ-015">TC-WIZ-015</a></td><td>A tampered bundle is refused</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-WIZ-016">TC-WIZ-016</a></td><td>An import that references a missing Site aborts everything</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-WIZ-017">TC-WIZ-017</a></td><td>A site-restricted caller cannot use the bundle</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-WIZ-018">TC-WIZ-018</a></td><td>A change appears in the version history</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-WIZ-019">TC-WIZ-019</a></td><td>Revert to a prior version</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-WIZ-020">TC-WIZ-020</a></td><td>Revert numbering and routing strategy</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-WIZ-021">TC-WIZ-021</a></td><td>Revert business hours (API only)</td><td><span class="badge edge">edge</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-WIZ-022">TC-WIZ-022</a></td><td>Reverting to a version that is not this item's is refused</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-WIZ-023">TC-WIZ-023</a></td><td>Impact preview before a change</td><td><span class="badge edge">edge</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr></tbody></table></div></section>
+<div class="pager"><a href="04-walkthroughs.html">← Industry walkthroughs</a><a href="06-auth-and-users.html">Auth, users and approvals →</a></div>
+</main>
+</div>
+</body>
+</html>

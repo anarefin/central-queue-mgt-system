@@ -221,7 +221,8 @@ class DomainReportReads {
 
     List<Map<String, Object>> journeyPage(DetailedTokenReportFilter filter, Set<UUID> allowedSites, int limit, int offset) {
         StringBuilder sql = new StringBuilder(
-                "SELECT vi.id AS visit_id, vi.site_id, st.name AS site_name, vi.started_at, vi.ended_at,"
+                "SELECT vi.id AS visit_id, vi.site_id, st.name AS site_name, vi.started_at,"
+                        + " COALESCE(vi.ended_at, CASE WHEN count(js.id) > 0 AND count(js.id) = count(js.id) FILTER (WHERE tf.state = 'completed') THEN max(tf.closed_at) END) AS ended_at,"
                         + " count(js.id) AS stops_planned,"
                         + " count(js.id) FILTER (WHERE tf.state = 'completed') AS stops_completed"
                         + JOURNEY_FROM);

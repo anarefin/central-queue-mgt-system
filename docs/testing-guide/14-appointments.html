@@ -1,0 +1,358 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Appointments: templates, booking, rescheduling, waitlist, check-in and no-show — cqms testing guide</title>
+<link rel="stylesheet" href="styles.css">
+<script>
+(function(){try{var t=localStorage.getItem('qms-guide-theme');if(t)document.documentElement.setAttribute('data-theme',t);}catch(e){}
+document.addEventListener('DOMContentLoaded',function(){var b=document.getElementById('theme-toggle');if(!b)return;
+b.addEventListener('click',function(){var cur=document.documentElement.getAttribute('data-theme');
+if(!cur){cur=window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';}
+var n=cur==='dark'?'light':'dark';document.documentElement.setAttribute('data-theme',n);try{localStorage.setItem('qms-guide-theme',n);}catch(e){}});});})();
+</script>
+</head>
+<body>
+<a class="skip" href="#content">Skip to content</a>
+<div class="layout">
+<nav class="side" aria-label="Guide navigation"><a class="brand" href="index.html">cqms testing guide</a><div class="sub">Queue Management System</div><h2>Start here</h2><ul><li><a href="01-getting-started.html">Getting started</a></li><li><a href="02-roles-and-permissions.html">Roles and permissions</a></li><li><a href="03-industry-configuration.html">Industry configuration</a></li><li><a href="04-walkthroughs.html">Industry walkthroughs</a></li><li><a href="05-setup-wizard-and-config.html">Setup wizard and config bundle</a></li></ul><h2>Configuration</h2><ul><li><a href="06-auth-and-users.html">Auth, users and approvals</a></li><li><a href="07-organisation.html">Sites, zones, counters</a></li><li><a href="08-catalogue-numbering-priority.html">Catalogue, numbering, priority</a></li></ul><h2>Serving visitors</h2><ul><li><a href="09-issuance.html">Issuance</a></li><li><a href="10-visitors.html">Visitors</a></li><li><a href="11-queue-engine.html">Queue engine</a></li><li><a href="12-counter-sessions.html">Counter sessions</a></li><li><a href="13-journeys.html">Journeys</a></li><li><a href="14-appointments.html" aria-current="page">Appointments</a></li><li><a href="15-mobile-visitor.html">Mobile visitor</a></li></ul><h2>Surfaces and comms</h2><ul><li><a href="16-displays-and-voice.html">Displays and voice</a></li><li><a href="17-notifications.html">Notifications</a></li><li><a href="18-dashboard-and-alerts.html">Dashboard and alerts</a></li></ul><h2>Data and platform</h2><ul><li><a href="19-reports-and-exports.html">Reports and exports</a></li><li><a href="20-integrations.html">Webhooks and service accounts</a></li><li><a href="21-devices-and-realtime.html">Devices and realtime</a></li><li><a href="22-audit-log.html">Audit log</a></li><li><a href="23-operations.html">Operations</a></li></ul><h2>Quality</h2><ul><li><a href="24-cross-cutting.html">Cross-cutting checks</a></li><li><a href="25-automated-suites.html">Automated suites</a></li><li><a href="26-appendices.html">Appendices</a></li></ul><div class="theme"><button id="theme-toggle" type="button">Toggle light / dark</button></div></nav>
+<main id="content">
+<h1>Appointments: templates, booking, rescheduling, waitlist, check-in and no-show</h1>
+<p class="lede">Availability templates and exceptions, transactional booking, self-service changes, the check-in window, and automatic no-shows.</p>
+<h2 id="model">Model</h2>
+<p>Appointments reserve capacity and <strong>convert into a Ticket at check-in</strong>. The whole feature sits behind the org-wide <strong><code>appointment</code> flag</strong> (Banking, Healthcare and Government ship it on; Producer services and Generic off).</p>
+<ul><li><strong>Availability</strong> is defined at three levels, most specific wins: <strong>service</strong>, <strong>team</strong>, <strong>individual agent</strong> (<code>GET|PUT /appointment-templates/{level}/{targetId}</code>). A slot template carries weekday (1-7), start, end, slot minutes, capacity (concurrent per slot) and a validity date range. <strong>Exceptions</strong> block a date, add extra availability, or reduce capacity (<code>/appointment-exceptions/...</code>).</li><li>Business hours and holidays <strong>suppress</strong> slots automatically. Per-Service settings: booking horizon (default 30 days), minimum lead time (default 2 hours), waitlist on or off (<code>/services/{id}/appointment-settings</code>).</li><li><strong>Booking</strong> is transactional against remaining capacity: two simultaneous bookings for the last seat give exactly one success. A slot is <strong>held</strong> for 5 minutes while details are completed (<code>qms.appointment.hold-minutes</code>).</li><li>A visitor may book, reschedule or cancel until <strong>2 hours</strong> before the slot (<code>visitor-cutoff-minutes</code>). Staff may act any time <strong>with a reason</strong> inside the cut-off.</li><li>A visitor may hold at most <strong>3</strong> active appointments (<code>max-active-per-visitor</code>).</li><li>Check-in is allowed from <strong>30 minutes before</strong> to <strong>15 minutes after</strong> the slot (<code>checkin-window-before-minutes</code>, <code>checkin-grace-minutes</code>). Earlier: offered a <strong>walk-in Ticket</strong> without cancelling the appointment. Later: the appointment is marked <strong><code>no_show</code></strong>.</li><li>An appointment Ticket gets the <strong>appointment class</strong> and a bonus of 15 minutes, and <strong>can never displace a Ticket already being served</strong>.</li><li><strong>No-show policy</strong> (off by default): after 3 no-shows in 90 days online booking is blocked, walk-ins never.</li><li>Reminders at 24 hours and 1 hour before, in the visitor's language.</li><li>Every appointment gets a unique <strong>reference code</strong> and QR usable for check-in.</li></ul>
+<p>Sources (<code>source</code>): <code>phone</code>, <code>walk_in</code>, <code>staff</code> (staff-chosen) and <code>visitor</code> (set by the server for a visitor's own booking, never client-chosen).</p>
+<h2 id="availability-administration">Availability administration</h2>
+<article class="tc happy" id="TC-APT-001">
+<header><span class="tcid"><a href="#TC-APT-001">TC-APT-001</a></span><h4>Define a weekly slot template for a Service</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-APT-001, FR-APT-002</dd></div><div><dt>Role</dt><dd>org_admin</dd></div><div class="wide"><dt>Preconditions</dt><dd><code>appointment</code> flag on; a Service with booking mode <code>both</code> or <code>appointment_only</code>.</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Call <code>PUT /appointment-templates/service/{serviceId}</code> with weekday 1 to 5, 09:00-13:00, 15-minute slots, capacity 2, valid from today.</li><li>Read the availability for a future weekday.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>Slots of 15 minutes from 09:00 to 13:00 appear, each showing capacity 2. Audit <code>appointment_slot_template.updated</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>PUT /appointment-templates/service/{id} {"items":[{weekday,start,end,slot_minutes,capacity,valid_from,valid_to}]} ; GET /services/{id}/appointments/availability?date=</code></pre><p><strong>Automated:</strong> <code>AppointmentAvailabilityIT</code>, <code>SlotGeneratorTest</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-APT-002">
+<header><span class="tcid"><a href="#TC-APT-002">TC-APT-002</a></span><h4>Template validation</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-APT-002</dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Send weekday 0 or 8; <code>slot_minutes</code> 0 or too large; capacity 0; <code>valid_to</code> before <code>valid_from</code>; start not before end.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>400 validation_failed</code>: <code>invalid_weekday</code>, <code>Range</code>, <code>Range</code>, <code>valid_from_must_precede_valid_to</code>, <code>start_must_precede_end</code>. The old template stays.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>PUT /appointment-templates/... {"items":[...]} -&gt; 400</code></pre><p><strong>Automated:</strong> <code>AppointmentAvailabilityIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc edge" id="TC-APT-003">
+<header><span class="tcid"><a href="#TC-APT-003">TC-APT-003</a></span><h4>More specific level wins</h4><span class="badge edge">edge</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-APT-001</dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Define a service-level template with capacity 5.</li><li>Define an agent-level template for the same Service with capacity 1.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>Intended precedence is agent, then team, then service. <strong>Known limitation:</strong> agent-level templates are stored (the PUT succeeds and reads back) but are not yet applied in the availability search, so availability still shows the team or service capacity.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>PUT /appointment-templates/agent/{id}</code></pre><p><strong>Automated:</strong> <code>AppointmentAvailabilityResolverTest</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-APT-004">
+<header><span class="tcid"><a href="#TC-APT-004">TC-APT-004</a></span><h4>Block a date with an exception</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-APT-003</dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li><code>POST /appointment-exceptions/service/{id}</code> type blocked for next Tuesday.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>Next Tuesday shows no slots. Audit <code>appointment_exception.created</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /appointment-exceptions/service/{id} {date,type:'blocked',note_i18n}</code></pre><p><strong>Automated:</strong> <code>AppointmentAvailabilityIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-APT-005">
+<header><span class="tcid"><a href="#TC-APT-005">TC-APT-005</a></span><h4>Extra availability and reduced capacity</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-APT-003</dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Add a one-off extra window on a Sunday; add a reduced-capacity exception (capacity 1) on a Monday.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>The Sunday shows the extra slots; the Monday's slots each show capacity 1 (0 allowed to close a slot).</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /appointment-exceptions/... {type,start,end,slot_minutes,capacity}</code></pre><p><strong>Automated:</strong> <code>AppointmentAvailabilityIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-APT-006">
+<header><span class="tcid"><a href="#TC-APT-006">TC-APT-006</a></span><h4>Second exception on the same date</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-APT-003</dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Create an exception on a date that already has one for that target.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>409 conflict</code>, <code>details.reason = exception_exists</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /appointment-exceptions/... -&gt; 409 {reason:'exception_exists'}</code></pre><p><strong>Automated:</strong> <code>AppointmentAvailabilityIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-APT-007">
+<header><span class="tcid"><a href="#TC-APT-007">TC-APT-007</a></span><h4>Delete an exception</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-APT-003</dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li><code>DELETE /appointment-exceptions/service/{id}/{exceptionId}</code>.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>The date returns to its normal template. Audit <code>appointment_exception.deleted</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>DELETE /appointment-exceptions/{level}/{targetId}/{id}</code></pre><p><strong>Automated:</strong> <code>AppointmentAvailabilityIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc edge" id="TC-APT-008">
+<header><span class="tcid"><a href="#TC-APT-008">TC-APT-008</a></span><h4>Business hours and holidays suppress slots</h4><span class="badge edge">edge</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-APT-004</dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Make a date a Site holiday.</li><li>Read availability for it.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>No slots that day even though the template covers it.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /sites/{id}/holidays</code></pre><p><strong>Automated:</strong> <code>BusinessWindowTest</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc edge" id="TC-APT-009">
+<header><span class="tcid"><a href="#TC-APT-009">TC-APT-009</a></span><h4>Booking horizon and lead time</h4><span class="badge edge">edge</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-APT-005</dd></div><div><dt>Role</dt><dd>org_admin, visitor</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Set horizon 7 days and lead time 120 minutes.</li><li>Look for slots 10 days out and one starting in 30 minutes.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>Neither is offered or bookable.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>PUT /services/{id}/appointment-settings {booking_horizon_days,min_lead_time_minutes,waitlist_enabled}</code></pre><p><strong>Automated:</strong> <code>AppointmentAvailabilityIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-APT-010">
+<header><span class="tcid"><a href="#TC-APT-010">TC-APT-010</a></span><h4>Appointment settings validation</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-APT-005</dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Horizon 0 or above the maximum; lead time negative or above the maximum.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>400 validation_failed</code> <code>Range</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>PUT /services/{id}/appointment-settings -&gt; 400</code></pre><p><strong>Automated:</strong> <code>AppointmentAvailabilityIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-APT-011">
+<header><span class="tcid"><a href="#TC-APT-011">TC-APT-011</a></span><h4>Unknown level or target</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-APT-001</dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Call the templates endpoint with level <code>region</code>, or a target id that does not exist.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>404 not_found</code> (or <code>400</code>).</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>GET /appointment-templates/region/{id} -&gt; 404</code></pre><p><strong>Automated:</strong> <code>AppointmentAvailabilityIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-APT-012">
+<header><span class="tcid"><a href="#TC-APT-012">TC-APT-012</a></span><h4>Appointments switched off</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>ticket 68</dd></div><div><dt>Role</dt><dd>reception_operator, visitor</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Turn the <code>appointment</code> flag off.</li><li>Try to book, check in, or read availability.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>409 conflict</code>, <code>feature_disabled</code>, feature <code>appointment</code>. Reception hides its appointment section. <strong>Appointment-only Services still issue normally.</strong> Existing appointments are untouched.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /appointments -&gt; 409 {reason:'feature_disabled',feature:'appointment'}</code></pre><p><strong>Automated:</strong> <code>FeatureFlagsEnforcedIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<h2 id="booking">Booking</h2>
+<article class="tc happy" id="TC-APT-013">
+<header><span class="tcid"><a href="#TC-APT-013">TC-APT-013</a></span><h4>Staff book an appointment by phone</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-APT-013, FR-APT-014, FR-APT-015</dd></div><div><dt>Role</dt><dd>reception_operator</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Admin &gt; Reception desk &gt; find or register the visitor first (see <a href="10-visitors.html">Visitors</a>); the form refuses *Choose or register a Customer first* otherwise.</li><li>Press <strong>Book an appointment</strong>. Choose the *Service* and *Date*, press <strong>Search availability</strong>, then pick a slot from *Available slots* (each shows how many are left).</li><li>Set *Booking source* (Phone call, Walk-in or Staff), an optional *Purpose note* and *Preferred language*, then <strong>Book appointment</strong>.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>*Appointment booked* shows the *Reference code* and a QR for it. The appointment is <code>booked</code>; that slot shows one fewer seat. Audit <code>appointment.booked</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /appointments {service_id,date,start,end,source:'phone',contact_name,contact_phone,purpose_note,language}</code></pre><p><strong>Automated:</strong> <code>AppointmentBookingIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-APT-014">
+<header><span class="tcid"><a href="#TC-APT-014">TC-APT-014</a></span><h4>Booking field validation</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-APT-015</dd></div><div><dt>Role</dt><dd>reception_operator</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>In the Reception form press *Book appointment* with no slot (*Choose a slot first.*) or no visitor. By API send: no service; no date, start or end; end not after start; source <code>visitor</code>; source <code>email</code>; missing contact name and phone for an anonymous booking; a purpose note over the limit; a language that is not installed.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>400 validation_failed</code> naming the field (<code>NotNull</code>, <code>start_must_precede_end</code>, <code>Pattern</code>, <code>required</code>, <code>Size</code>, <code>unknown_language</code>). A client cannot choose source <code>visitor</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /appointments -&gt; 400</code></pre><p><strong>Automated:</strong> <code>AppointmentBookingIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc edge" id="TC-APT-015">
+<header><span class="tcid"><a href="#TC-APT-015">TC-APT-015</a></span><h4>The last seat goes to exactly one booker</h4><span class="badge edge">edge</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-APT-011</dd></div><div><dt>Role</dt><dd>reception_operator</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Set capacity 1 for a slot.</li><li>Fire two identical bookings at the same time.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>One <code>201</code>; the other <code>409 conflict</code> with <code>slot_full</code> (or <code>slot_not_available</code>). Never two.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>two concurrent POST /appointments</code></pre><p><strong>Automated:</strong> <code>AppointmentBookingIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-APT-016">
+<header><span class="tcid"><a href="#TC-APT-016">TC-APT-016</a></span><h4>Slot is full</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-APT-011</dd></div><div><dt>Role</dt><dd>reception_operator</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Fill a slot to capacity, then book one more.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>409 conflict</code>, <code>details.reason = slot_full</code>. *This slot has no remaining capacity.*</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /appointments -&gt; 409 {reason:'slot_full'}</code></pre><p><strong>Automated:</strong> <code>AppointmentBookingIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-APT-017">
+<header><span class="tcid"><a href="#TC-APT-017">TC-APT-017</a></span><h4>Slot does not exist or is not offered</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-APT-010</dd></div><div><dt>Role</dt><dd>reception_operator</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Book a time that is not on any template, a blocked date, or outside the horizon or lead time.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>409 conflict</code>, <code>details.reason = slot_not_available</code>. *This slot is no longer available for booking.*</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /appointments -&gt; 409 {reason:'slot_not_available'}</code></pre><p><strong>Automated:</strong> <code>AppointmentBookingIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-APT-018">
+<header><span class="tcid"><a href="#TC-APT-018">TC-APT-018</a></span><h4>Visitor already has the maximum number of active appointments</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-APT-016</dd></div><div><dt>Role</dt><dd>reception_operator, visitor</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Book 3 appointments for one visitor.</li><li>Book a 4th.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>409 conflict</code>, <code>details.reason = max_active_appointments</code>, <code>details.limit = 3</code>. *This visitor already has the maximum number of active appointments.*</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /appointments -&gt; 409 {reason:'max_active_appointments',limit:3}</code></pre><p><strong>Automated:</strong> <code>AppointmentBookingIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc edge" id="TC-APT-019">
+<header><span class="tcid"><a href="#TC-APT-019">TC-APT-019</a></span><h4>The slot hold expires</h4><span class="badge edge">edge</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-APT-012</dd></div><div><dt>Role</dt><dd>integration only</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Run the hold-expiry test (it drives the clock).</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>A slot held for <code>qms.appointment.hold-minutes</code> (5) and not completed is released and audited as <code>appointment.hold_expired</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>./gradlew integrationTest --tests '*AppointmentBookingIT'</code></pre><p><strong>Automated:</strong> <code>AppointmentBookingIT</code>, <code>AppointmentHoldExpiryScheduler</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-APT-020">
+<header><span class="tcid"><a href="#TC-APT-020">TC-APT-020</a></span><h4>Book on a visitor's behalf with a registered visitor</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-APT-013</dd></div><div><dt>Role</dt><dd>reception_operator</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Look up a registered visitor, then book with source *staff*.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>The appointment is linked to the visitor and appears in their own list on the visitor app.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /appointments {visitor_id,...}</code></pre><p><strong>Automated:</strong> <code>AppointmentBookingIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-APT-021">
+<header><span class="tcid"><a href="#TC-APT-021">TC-APT-021</a></span><h4>Permission to book</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>§5.2</dd></div><div><dt>Role</dt><dd>agent</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>As an Agent call <code>POST /appointments</code>.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>403 forbidden</code>. Reception, Team Admin and admins may; a signed-in visitor may only book for themselves; <code>host_system</code> may also book.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /appointments (agent) -&gt; 403</code></pre><p><strong>Automated:</strong> <code>PermissionMatrixTest</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<h2 id="reschedule-cancel-and-waitlist">Reschedule, cancel and waitlist</h2>
+<article class="tc happy" id="TC-APT-022">
+<header><span class="tcid"><a href="#TC-APT-022">TC-APT-022</a></span><h4>Reschedule keeps the reference code</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-APT-020, FR-APT-021</dd></div><div><dt>Role</dt><dd>reception_operator</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>A signed-in visitor opens <code>/visitor/account/</code>, picks the appointment and chooses a new slot (staff have no screen: they call the API).</li><li>Save.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>State moves <code>booked</code> to <code>rescheduled</code> to <code>booked</code>; the <strong>reference code is unchanged</strong> and the change history records old and new times. Old capacity returns. Audit <code>appointment.rescheduled</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>PATCH /appointments/{id} {date,start,end,reason}   (staff: API only, no Reception screen)</code></pre><p><strong>Automated:</strong> <code>AppointmentRescheduleCancelIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-APT-023">
+<header><span class="tcid"><a href="#TC-APT-023">TC-APT-023</a></span><h4>Cancel returns capacity at once</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-APT-022</dd></div><div><dt>Role</dt><dd>visitor, reception_operator</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>A visitor cancels from <code>/visitor/account/</code>, or staff call <code>DELETE /appointments/{id}</code> (no Reception screen).</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>State <code>cancelled</code>; the slot shows the seat free immediately. Audit <code>appointment.cancelled</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>DELETE /appointments/{id}</code></pre><p><strong>Automated:</strong> <code>AppointmentRescheduleCancelIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-APT-024">
+<header><span class="tcid"><a href="#TC-APT-024">TC-APT-024</a></span><h4>Change or cancel an appointment that is not booked</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-APT-020</dd></div><div><dt>Role</dt><dd>reception_operator</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Cancel an appointment that is already cancelled, checked in, or a no-show; reschedule the same.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>409 conflict</code>, <code>details.reason = not_booked</code>. *This appointment can no longer be rescheduled or cancelled.*</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>DELETE /appointments/{id} -&gt; 409 {reason:'not_booked'}</code></pre><p><strong>Automated:</strong> <code>AppointmentRescheduleCancelIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-APT-025">
+<header><span class="tcid"><a href="#TC-APT-025">TC-APT-025</a></span><h4>A visitor changes an appointment inside the cut-off</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-APT-020</dd></div><div><dt>Role</dt><dd>visitor</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>As a visitor (see <a href="15-mobile-visitor.html">Mobile visitor</a>) reschedule an appointment starting in 90 minutes.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>409 conflict</code>, <code>details.reason = visitor_cutoff_passed</code>. *This is too close to the appointment to change online. Please contact the site directly.*</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>PATCH /appointments/{id} (visitor token) -&gt; 409 {reason:'visitor_cutoff_passed'}</code></pre><p><strong>Automated:</strong> <code>VisitorAppointmentSelfServiceIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-APT-026">
+<header><span class="tcid"><a href="#TC-APT-026">TC-APT-026</a></span><h4>Staff inside the cut-off must give a reason</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-APT-020</dd></div><div><dt>Role</dt><dd>reception_operator</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>As staff cancel the same appointment with no reason.</li><li>Repeat with a reason.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>Without a reason: <code>409 conflict</code>, <code>details.reason = cutoff_passed</code> and <code>details.field = reason</code>. *This is too close to the appointment; a staff member must give a reason to proceed.* With a reason it succeeds.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>DELETE /appointments/{id} -&gt; 409 {reason:'cutoff_passed',field:'reason'}</code></pre><p><strong>Automated:</strong> <code>VisitorAppointmentSelfServiceIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-APT-027">
+<header><span class="tcid"><a href="#TC-APT-027">TC-APT-027</a></span><h4>Waitlist offers a freed slot</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-APT-023</dd></div><div><dt>Role</dt><dd>visitor, reception_operator</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Enable *waitlist* on the Service.</li><li>Fill a slot. A second visitor joins the waitlist.</li><li>Cancel the first booking.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>The first waitlisted visitor is offered the slot for <code>waitlist-hold-minutes</code> (30). Notification <code>waitlist_slot_offered</code>. Audit <code>appointment.waitlisted</code>, <code>appointment.waitlist_offered</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>PUT /services/{id}/appointment-settings {waitlist_enabled:true}</code></pre><p><strong>Automated:</strong> <code>AppointmentRescheduleCancelIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc edge" id="TC-APT-028">
+<header><span class="tcid"><a href="#TC-APT-028">TC-APT-028</a></span><h4>Waitlist off means a full slot just refuses</h4><span class="badge edge">edge</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-APT-023</dd></div><div><dt>Role</dt><dd>visitor</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>With waitlist disabled try to book a full slot.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>slot_full</code>; no waitlist entry is created.</p></div>
+<details class="dev"><summary>Dev / API</summary><p><strong>Automated:</strong> <code>AppointmentBookingIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<h2 id="check-in-and-conversion-api-only-in-this-build">Check-in and conversion (API only in this build)</h2>
+<p>Check-in takes the <strong>reference code</strong> (typed or from the QR). <strong>There is no check-in screen anywhere in this build</strong>: the kiosk has no appointment step and the Reception desk has no check-in button. The endpoints exist and are what an integration or a future screen calls: <code>POST /appointments/check-in</code> (staff, <code>appointment:checkin</code>) and <code>POST /kiosk/appointments/check-in</code> (a kiosk device). Run these cases with curl. This is recorded in <a href="26-appendices.html#e-known-limitations">Appendix E</a>. A mobile geofence check-in belongs to remote tickets, not appointments.</p>
+<article class="tc happy" id="TC-APT-029">
+<header><span class="tcid"><a href="#TC-APT-029">TC-APT-029</a></span><h4>Check in on time converts to a Ticket</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-ISS-030, FR-ISS-031, FR-APT-030, UAT U2</dd></div><div><dt>Role</dt><dd>reception_operator</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Book an appointment for 10 minutes from now (Reception desk) and note its *Reference code*.</li><li>Call <code>POST /appointments/check-in {"reference_code":"&lt;code&gt;"}</code> as Reception (no screen exists).</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>Response outcome <code>converted</code>; a Ticket appears with the <strong>appointment priority class</strong> and the slot-vs-arrival difference recorded. Appointment state <code>checked_in</code> then <code>converted</code>. Audit <code>appointment.checked_in</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /appointments/check-in {reference_code} -&gt; {outcome,appointment_state,ticket}</code></pre><p><strong>Automated:</strong> <code>AppointmentCheckInIT</code>; e2e U2 is <code>test.fixme</code> (needs the wall clock)</p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-APT-030">
+<header><span class="tcid"><a href="#TC-APT-030">TC-APT-030</a></span><h4>On-time appointment is ordered ahead of later walk-ins but not ahead of a Ticket in service</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-APT-031, FR-APT-032, UAT U2</dd></div><div><dt>Role</dt><dd>reception_operator, agent</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>A walk-in Ticket W1 is <code>serving</code> at Counter 1.</li><li>An appointment holder checks in; later a walk-in W2 arrives.</li><li>Free Counter 2 and press F2.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>The appointment Ticket is called before W2 (bonus 15 minutes) but it <strong>never displaces W1</strong>, which stays <code>serving</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>qms.queue.appointment-bonus-minutes=15</code></pre><p><strong>Automated:</strong> <code>AppointmentCheckInIT</code>, <code>QueueEngineTest</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc edge" id="TC-APT-031">
+<header><span class="tcid"><a href="#TC-APT-031">TC-APT-031</a></span><h4>Early check-in offers a walk-in Ticket without cancelling</h4><span class="badge edge">edge</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-ISS-032</dd></div><div><dt>Role</dt><dd>reception_operator</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Book an appointment 3 hours from now.</li><li>Check in now.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>The desk is offered a <strong>walk-in Ticket</strong> (outcome <code>walk_in</code>); the appointment stays <code>booked</code>. Audit <code>appointment.checkin_early_walk_in</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /appointments/check-in -&gt; {outcome:'walk_in'}</code></pre><p><strong>Automated:</strong> <code>AppointmentCheckInIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-APT-032">
+<header><span class="tcid"><a href="#TC-APT-032">TC-APT-032</a></span><h4>Late check-in past the grace period is a no-show</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-ISS-033, FR-APT-040</dd></div><div><dt>Role</dt><dd>reception_operator</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Check in more than 15 minutes after the slot (create the appointment for a time already past the grace by API with staff reason, or wait).</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>409 conflict</code>, <code>details.reason = not_booked</code>: the background sweep (about 5 seconds) has already marked the appointment <code>no_show</code>, so it is no longer booked. The <code>no_show</code> state is committed.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /appointments/check-in -&gt; 409 {reason:'not_booked'}</code></pre><p><strong>Automated:</strong> <code>AppointmentCheckInIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-APT-033">
+<header><span class="tcid"><a href="#TC-APT-033">TC-APT-033</a></span><h4>Check in an appointment that is not booked</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-ISS-030</dd></div><div><dt>Role</dt><dd>reception_operator</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Check in a cancelled or already-converted appointment, or an unknown code.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>409 conflict</code>, <code>details.reason = not_booked</code> (or <code>404 not_found</code> for an unknown code).</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /appointments/check-in -&gt; 409</code></pre><p><strong>Automated:</strong> <code>AppointmentCheckInIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-APT-034">
+<header><span class="tcid"><a href="#TC-APT-034">TC-APT-034</a></span><h4>Only staff with the check-in permission may check in</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>§5.2</dd></div><div><dt>Role</dt><dd>agent</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>As an Agent call the check-in endpoint.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>403 forbidden</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /appointments/check-in (agent) -&gt; 403</code></pre><p><strong>Automated:</strong> <code>PermissionMatrixTest</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc edge" id="TC-APT-035">
+<header><span class="tcid"><a href="#TC-APT-035">TC-APT-035</a></span><h4>Kiosk appointment check-in is API-only</h4><span class="badge edge">edge</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-ISS-030 (partial)</dd></div><div><dt>Role</dt><dd>kiosk</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>With a kiosk device token call <code>POST /kiosk/appointments/check-in {reference_code}</code>.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>It works by API and honours the <code>appointment</code> flag; there is no kiosk screen for it yet.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /kiosk/appointments/check-in</code></pre><p><strong>Automated:</strong> <code>AppointmentCheckInIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<h2 id="no-show-no-show-policy-and-reminders">No-show, no-show policy and reminders</h2>
+<p>These are driven by scheduled jobs and the wall clock, so a browser cannot force them. Run the named integration tests, or wait in real time on a stack with shortened settings.</p>
+<article class="tc happy" id="TC-APT-036">
+<header><span class="tcid"><a href="#TC-APT-036">TC-APT-036</a></span><h4>An appointment past its grace is marked no_show automatically and frees capacity</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-APT-040, FR-APT-041, UAT U2</dd></div><div><dt>Role</dt><dd>integration only</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Run <code>./gradlew integrationTest --tests '*AppointmentNoShowIT'</code>.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>The appointment moves to <code>no_show</code> and the seat is free immediately. Audit <code>appointment.no_show</code>. The sweep runs every 5 seconds by default (<code>no-show-check-cron</code>).</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>qms.appointment.no-show-check-cron='*/5 * * * * *'</code></pre><p><strong>Automated:</strong> <code>AppointmentNoShowIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-APT-037">
+<header><span class="tcid"><a href="#TC-APT-037">TC-APT-037</a></span><h4>No-show policy blocks online booking, not walk-ins</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-APT-042</dd></div><div><dt>Role</dt><dd>visitor, reception_operator</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Set <code>QMS_APPOINTMENT_NO_SHOW_POLICY_ENABLED=true</code> (threshold 3, window 90 days).</li><li>Give a visitor 3 no-shows.</li><li>Try to book online, then walk in.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>Booking is refused <code>409 conflict</code>, <code>details.reason = no_show_policy</code> with <code>threshold</code> and <code>window_days</code>. *...a walk-in is still welcome.* A walk-in Ticket still issues.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /appointments -&gt; 409 {reason:'no_show_policy',threshold:3,window_days:90}</code></pre><p><strong>Automated:</strong> <code>AppointmentNoShowPolicyIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc edge" id="TC-APT-038">
+<header><span class="tcid"><a href="#TC-APT-038">TC-APT-038</a></span><h4>No-show rate is reportable</h4><span class="badge edge">edge</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-APT-043</dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Run the <code>appointment</code> domain report (no-show rate per Service, per agent and per category).</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>The report returns one row per appointment with a <code>no_show</code> flag (not pre-aggregated rates); the flags agree with the appointments marked <code>no_show</code>. <code>from</code> and <code>to</code> must be ISO instants (e.g. <code>2026-01-01T00:00:00Z</code>).</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /reports/appointment/run {from,to (ISO instants)}</code></pre><p><strong>Automated:</strong> <code>DomainReportsIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-APT-039">
+<header><span class="tcid"><a href="#TC-APT-039">TC-APT-039</a></span><h4>Reminders go out at the configured offsets</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-APT-050</dd></div><div><dt>Role</dt><dd>integration only</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Run the reminder test.</li><li>Or set <code>QMS_APPOINTMENT_REMINDER_OFFSETS_MINUTES=[2]</code> and book for 3 minutes ahead.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>A reminder is sent per channel in the visitor's preferred language at 24 hours and 1 hour before (defaults <code>[1440, 60]</code>). Trigger <code>appointment_reminder</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>qms.appointment.reminder-offsets-minutes=[1440,60]</code></pre><p><strong>Automated:</strong> <code>AppointmentReminderIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-APT-040">
+<header><span class="tcid"><a href="#TC-APT-040">TC-APT-040</a></span><h4>Confirmation and change notifications</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-NTF-010</dd></div><div><dt>Role</dt><dd>visitor</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Book, reschedule and cancel an appointment for a visitor with an email.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>Notifications <code>appointment_confirmed</code> and <code>appointment_rescheduled_or_cancelled</code> are queued. See <a href="17-notifications.html">Notifications</a>.</p></div>
+<details class="dev"><summary>Dev / API</summary><p><strong>Automated:</strong> <code>AppointmentNotificationIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article><section class="signoff"><h2 id="sign-off-sheet">Sign-off sheet</h2><p class="hint">Print this page range, one sheet per run. Tick Pass or Fail and note the build, date and tester at the top.</p><div class="tablewrap"><table><thead><tr><th>TC</th><th>Title</th><th>Type</th><th>Pass</th><th>Fail</th><th>Notes</th></tr></thead><tbody><tr><td><a href="#TC-APT-001">TC-APT-001</a></td><td>Define a weekly slot template for a Service</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-APT-002">TC-APT-002</a></td><td>Template validation</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-APT-003">TC-APT-003</a></td><td>More specific level wins</td><td><span class="badge edge">edge</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-APT-004">TC-APT-004</a></td><td>Block a date with an exception</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-APT-005">TC-APT-005</a></td><td>Extra availability and reduced capacity</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-APT-006">TC-APT-006</a></td><td>Second exception on the same date</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-APT-007">TC-APT-007</a></td><td>Delete an exception</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-APT-008">TC-APT-008</a></td><td>Business hours and holidays suppress slots</td><td><span class="badge edge">edge</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-APT-009">TC-APT-009</a></td><td>Booking horizon and lead time</td><td><span class="badge edge">edge</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-APT-010">TC-APT-010</a></td><td>Appointment settings validation</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-APT-011">TC-APT-011</a></td><td>Unknown level or target</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-APT-012">TC-APT-012</a></td><td>Appointments switched off</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-APT-013">TC-APT-013</a></td><td>Staff book an appointment by phone</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-APT-014">TC-APT-014</a></td><td>Booking field validation</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-APT-015">TC-APT-015</a></td><td>The last seat goes to exactly one booker</td><td><span class="badge edge">edge</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-APT-016">TC-APT-016</a></td><td>Slot is full</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-APT-017">TC-APT-017</a></td><td>Slot does not exist or is not offered</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-APT-018">TC-APT-018</a></td><td>Visitor already has the maximum number of active appointments</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-APT-019">TC-APT-019</a></td><td>The slot hold expires</td><td><span class="badge edge">edge</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-APT-020">TC-APT-020</a></td><td>Book on a visitor's behalf with a registered visitor</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-APT-021">TC-APT-021</a></td><td>Permission to book</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-APT-022">TC-APT-022</a></td><td>Reschedule keeps the reference code</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-APT-023">TC-APT-023</a></td><td>Cancel returns capacity at once</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-APT-024">TC-APT-024</a></td><td>Change or cancel an appointment that is not booked</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-APT-025">TC-APT-025</a></td><td>A visitor changes an appointment inside the cut-off</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-APT-026">TC-APT-026</a></td><td>Staff inside the cut-off must give a reason</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-APT-027">TC-APT-027</a></td><td>Waitlist offers a freed slot</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-APT-028">TC-APT-028</a></td><td>Waitlist off means a full slot just refuses</td><td><span class="badge edge">edge</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-APT-029">TC-APT-029</a></td><td>Check in on time converts to a Ticket</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-APT-030">TC-APT-030</a></td><td>On-time appointment is ordered ahead of later walk-ins but not ahead of a Ticket in service</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-APT-031">TC-APT-031</a></td><td>Early check-in offers a walk-in Ticket without cancelling</td><td><span class="badge edge">edge</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-APT-032">TC-APT-032</a></td><td>Late check-in past the grace period is a no-show</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-APT-033">TC-APT-033</a></td><td>Check in an appointment that is not booked</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-APT-034">TC-APT-034</a></td><td>Only staff with the check-in permission may check in</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-APT-035">TC-APT-035</a></td><td>Kiosk appointment check-in is API-only</td><td><span class="badge edge">edge</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-APT-036">TC-APT-036</a></td><td>An appointment past its grace is marked no_show automatically and frees capacity</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-APT-037">TC-APT-037</a></td><td>No-show policy blocks online booking, not walk-ins</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-APT-038">TC-APT-038</a></td><td>No-show rate is reportable</td><td><span class="badge edge">edge</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-APT-039">TC-APT-039</a></td><td>Reminders go out at the configured offsets</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-APT-040">TC-APT-040</a></td><td>Confirmation and change notifications</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr></tbody></table></div></section>
+<div class="pager"><a href="13-journeys.html">← Journeys</a><a href="15-mobile-visitor.html">Mobile visitor →</a></div>
+</main>
+</div>
+</body>
+</html>

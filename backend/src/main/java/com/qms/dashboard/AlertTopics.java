@@ -45,7 +45,7 @@ class AlertTopics implements TopicSource {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
         if (authentication == null || !authentication.isAuthenticated()) throw new ApiException(ErrorCode.UNAUTHENTICATED);
         List<String> granted = authentication.getAuthorities().stream().map(GrantedAuthority::getAuthority).toList();
-        boolean allowed = VIEWERS.stream().anyMatch(p -> granted.contains(p.authority()) || granted.contains(p.ownAuthority()));
+        boolean allowed = VIEWERS.stream().anyMatch(p -> granted.contains(p.authority()));
         if (!allowed) throw new ApiException(ErrorCode.FORBIDDEN);
         scope.requireSite(siteId);
     }

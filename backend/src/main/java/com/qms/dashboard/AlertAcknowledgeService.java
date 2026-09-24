@@ -49,6 +49,8 @@ public class AlertAcknowledgeService {
     public Alert acknowledge(UUID id, String note) {
         Alert alert = repository.find(id).orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND));
         scope.requireSite(alert.siteId());
+        UUID alertGroup = repository.groupOfService(alert.serviceId());
+        if (alertGroup != null) scope.requireGroup(alertGroup);
         if (Alert.ACKNOWLEDGED.equals(alert.state())) return alert;
         String trimmed = note == null ? null : note.strip();
         if (trimmed != null && trimmed.isEmpty()) trimmed = null;

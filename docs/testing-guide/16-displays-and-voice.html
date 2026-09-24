@@ -1,0 +1,292 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Displays and voice announcements — cqms testing guide</title>
+<link rel="stylesheet" href="styles.css">
+<script>
+(function(){try{var t=localStorage.getItem('qms-guide-theme');if(t)document.documentElement.setAttribute('data-theme',t);}catch(e){}
+document.addEventListener('DOMContentLoaded',function(){var b=document.getElementById('theme-toggle');if(!b)return;
+b.addEventListener('click',function(){var cur=document.documentElement.getAttribute('data-theme');
+if(!cur){cur=window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';}
+var n=cur==='dark'?'light':'dark';document.documentElement.setAttribute('data-theme',n);try{localStorage.setItem('qms-guide-theme',n);}catch(e){}});});})();
+</script>
+</head>
+<body>
+<a class="skip" href="#content">Skip to content</a>
+<div class="layout">
+<nav class="side" aria-label="Guide navigation"><a class="brand" href="index.html">cqms testing guide</a><div class="sub">Queue Management System</div><h2>Start here</h2><ul><li><a href="01-getting-started.html">Getting started</a></li><li><a href="02-roles-and-permissions.html">Roles and permissions</a></li><li><a href="03-industry-configuration.html">Industry configuration</a></li><li><a href="04-walkthroughs.html">Industry walkthroughs</a></li><li><a href="05-setup-wizard-and-config.html">Setup wizard and config bundle</a></li></ul><h2>Configuration</h2><ul><li><a href="06-auth-and-users.html">Auth, users and approvals</a></li><li><a href="07-organisation.html">Sites, zones, counters</a></li><li><a href="08-catalogue-numbering-priority.html">Catalogue, numbering, priority</a></li></ul><h2>Serving visitors</h2><ul><li><a href="09-issuance.html">Issuance</a></li><li><a href="10-visitors.html">Visitors</a></li><li><a href="11-queue-engine.html">Queue engine</a></li><li><a href="12-counter-sessions.html">Counter sessions</a></li><li><a href="13-journeys.html">Journeys</a></li><li><a href="14-appointments.html">Appointments</a></li><li><a href="15-mobile-visitor.html">Mobile visitor</a></li></ul><h2>Surfaces and comms</h2><ul><li><a href="16-displays-and-voice.html" aria-current="page">Displays and voice</a></li><li><a href="17-notifications.html">Notifications</a></li><li><a href="18-dashboard-and-alerts.html">Dashboard and alerts</a></li></ul><h2>Data and platform</h2><ul><li><a href="19-reports-and-exports.html">Reports and exports</a></li><li><a href="20-integrations.html">Webhooks and service accounts</a></li><li><a href="21-devices-and-realtime.html">Devices and realtime</a></li><li><a href="22-audit-log.html">Audit log</a></li><li><a href="23-operations.html">Operations</a></li></ul><h2>Quality</h2><ul><li><a href="24-cross-cutting.html">Cross-cutting checks</a></li><li><a href="25-automated-suites.html">Automated suites</a></li><li><a href="26-appendices.html">Appendices</a></li></ul><div class="theme"><button id="theme-toggle" type="button">Toggle light / dark</button></div></nav>
+<main id="content">
+<h1>Displays and voice announcements</h1>
+<p class="lede">The four layouts, columns and assignments, the stale banner, the notice board, announcements in each language, chime, quiet hours, queueing and the fallback when speech is unavailable.</p>
+<h2 id="a-display-is-a-dumb-resilient-client">A display is a dumb, resilient client</h2>
+<p>A paired display (<code>/display/</code>) subscribes to <strong>its Zone</strong>, renders what it is told and recovers by itself. It resumes its assigned Zone and layout <strong>after power loss with no login</strong> (its device credential is stored), and it can be <strong>revoked individually</strong>.</p>
+<div class="tablewrap"><table><thead><tr><th>Layout</th><th>What it shows</th><th>Configurable</th></tr></thead><tbody><tr><td><code>now_serving_table</code> (default)</td><td>table of serving Token / Counter / Service (or staff), plus a <strong>next strip</strong> per queue</td><td>columns (<code>token</code> and <code>counter</code> mandatory; <code>service</code>, <code>staff</code> optional); next N (default 4, max 20); highlight seconds (default 10, max 300)</td></tr><tr><td><code>split_media</code></td><td>now-serving table beside a <strong>notice panel</strong></td><td><code>layout_config.split_percent</code> 10 to 90 (default 60)</td></tr><tr><td><code>single_counter</code></td><td>one huge Token for one Counter or room</td><td><code>layout_config.counter_id</code> (falls back to the Zone's first Counter)</td></tr><tr><td><code>summary_board</code></td><td>per-Service waiting counts and estimated wait for a lobby</td><td>none</td></tr></tbody></table></div>
+<p>Edit a display at Admin &gt; <strong>Device pairing and fleet</strong> &gt; the display &gt; *Display config* (<code>PUT /devices/{id}/display-config</code>): <code>layout</code>, <code>layout_config</code>, <code>language_cycle</code> (subset of the Site's languages) and <code>language_cycle_seconds</code> (0 to 300, default 10), <code>columns</code>, <code>next_n</code>, <code>highlight_seconds</code>, and <code>assignment</code> = a whole <code>zone</code>, specific <code>counters</code>, or specific <code>queues</code>.</p>
+<p>Behaviour to test: an update within <strong>2 seconds</strong> of a call; a <strong>discreet stale indicator after 30 seconds</strong> without an update (*Update delayed - information may be out of date*), a full refetch every 20 seconds, and automatic reconnect. A newly called Token is highlighted for the highlight period.</p>
+<h2 id="voice-per-zone">Voice (per Zone)</h2>
+<p>On a call, the display's Zone plays a <strong>chime</strong> then an <strong>announcement</strong> in each configured language, in order, built from a template:</p>
+<p>&gt; *Attention please. Token A-004, Cash deposit, please proceed to Counter 3, Ground floor.*</p>
+<ul><li><strong>Name announcements</strong> are a per-Service flag (default off, because they are inappropriate in medical settings) <strong>and</strong> the org flag <code>announce_visitor_name</code>; both must be on.</li><li>Audio is <strong>TTS</strong> in the browser, with a <strong>fallback to pre-recorded clip assembly</strong> if the browser has no speech or no voice for that language. The chime still plays. Prefix pronunciation is a per-language <strong>spoken form</strong> (Catalogue &gt; token prefix).</li><li>Announcements <strong>queue, never overlap</strong>; beyond the Zone's maximum queue depth (1 to 20, default 5) only the most recent call per Counter is announced.</li><li><strong>Quiet period</strong> (<code>HH:mm</code> start and end): audio is suppressed but the display still updates.</li><li><strong>Re-announce (F3)</strong> repeats the announcement, up to the announce limit (default 3).</li><li>Token digits are <strong>always Western Arabic</strong>, in Bangla too.</li></ul>
+<p><strong>Zone voice settings and spoken forms are API only in this build</strong> (<code>PATCH /zones/{id}</code>, <code>PUT /token-prefixes/{prefix}/spoken-forms/{language}</code>); there is no Admin form for them.</p>
+<h2 id="layout-and-configuration-cases">Layout and configuration cases</h2>
+<article class="tc happy" id="TC-DSP-001">
+<header><span class="tcid"><a href="#TC-DSP-001">TC-DSP-001</a></span><h4>Now-serving table updates within 2 seconds</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-DSP-010, NFR-PERF-002, UAT U1</dd></div><div><dt>Role</dt><dd>display, agent</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Pair a display to the Zone and open it.</li><li>As an agent call a Ticket (F2).</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>The Token, Counter and Service appear on the display within about 2 seconds, highlighted for the highlight period, with no reload.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>GET /devices/{id}/display-state ; topic zone:{zoneId} -&gt; ticket.called</code></pre><p><strong>Automated:</strong> <code>DeviceFleetIT</code>, <code>NowServingBoard.test.tsx</code>; e2e U1</p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-DSP-002">
+<header><span class="tcid"><a href="#TC-DSP-002">TC-DSP-002</a></span><h4>Next-token strip shows the next N per queue</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-DSP-005</dd></div><div><dt>Role</dt><dd>display</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Keep 6 Tickets waiting for a Service.</li><li>Set <code>next_n</code> to 3, then to 4.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>The strip shows exactly the next N Tokens for that queue.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>PUT /devices/{id}/display-config {next_n:3}</code></pre><p><strong>Automated:</strong> <code>DeviceFleetIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-DSP-003">
+<header><span class="tcid"><a href="#TC-DSP-003">TC-DSP-003</a></span><h4>Configure the column set</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-DSP-004, ticket 28</dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Set columns to <code>token</code>, <code>counter</code> (hide <code>service</code>), then add <code>staff</code>.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>Hiding <code>service</code> removes both the value <strong>and the column header</strong>; adding <code>staff</code> shows the agent's name. The Healthcare profile hides service names on the public display this way.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>PUT /devices/{id}/display-config {columns:['token','counter']}</code></pre><p><strong>Automated:</strong> e2e healthcare scenario (<code>vertical-specific.spec.ts</code>)</p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-DSP-004">
+<header><span class="tcid"><a href="#TC-DSP-004">TC-DSP-004</a></span><h4>Column set must keep token and counter</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-DSP-004, <code>DeviceRules</code></dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Send columns <code>service</code>, <code>staff</code> only; a duplicate; an unknown column <code>age</code>.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>400 validation_failed</code> on <code>columns</code>: <code>must_include_token_and_counter</code>, <code>duplicate_column</code>, <code>unknown_column</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>PUT /devices/{id}/display-config -&gt; 400</code></pre><p><strong>Automated:</strong> <code>DeviceRulesTest</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-DSP-005">
+<header><span class="tcid"><a href="#TC-DSP-005">TC-DSP-005</a></span><h4>Split media layout</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-DSP-003, FR-DSP-006</dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Set layout <code>split_media</code>, split 70.</li><li>Create a notice for the Zone (see below).</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>The table takes 70% and the notice panel the rest, rotating items about every 12 seconds.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>PUT /devices/{id}/display-config {layout:'split_media',layout_config:{split_percent:70}}</code></pre><p><strong>Automated:</strong> <code>DisplayBoard.test.tsx</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-DSP-006">
+<header><span class="tcid"><a href="#TC-DSP-006">TC-DSP-006</a></span><h4>Layout settings out of range</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd><code>DeviceRules</code></dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Split percent 9 and 91; layout <code>carousel</code>; <code>counter_id</code> that is not a UUID; language cycle seconds 301; a language not enabled at the Site; a duplicate language.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>400 validation_failed</code>: <code>out_of_range</code>, <code>unknown_layout</code>, <code>invalid_uuid</code>, <code>out_of_range</code>, <code>unknown_language</code>, <code>duplicate_language</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>PUT /devices/{id}/display-config -&gt; 400</code></pre><p><strong>Automated:</strong> <code>DeviceRulesTest</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-DSP-007">
+<header><span class="tcid"><a href="#TC-DSP-007">TC-DSP-007</a></span><h4>Single-counter layout</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-DSP-003</dd></div><div><dt>Role</dt><dd>org_admin, display</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Set layout <code>single_counter</code> with <code>counter_id</code> of Counter 1.</li><li>Call a Ticket at Counter 1 and at Counter 2.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>Only Counter 1's Token appears, very large. With no Counter set it shows *No Counter is configured for this display yet*, or falls back to the Zone's first.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>PUT /devices/{id}/display-config {layout:'single_counter',layout_config:{counter_id}}</code></pre><p><strong>Automated:</strong> <code>DisplayBoard.test.tsx</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-DSP-008">
+<header><span class="tcid"><a href="#TC-DSP-008">TC-DSP-008</a></span><h4>Summary board for a lobby</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-DSP-003, FR-QUE-042</dd></div><div><dt>Role</dt><dd>display</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Set layout <code>summary_board</code>.</li><li>Keep Tickets waiting in several Services.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>One row per Service with *Waiting* and *Estimated wait* as a range (*About 15-20 min*). With no Services: *No services to show yet.*</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>PUT /devices/{id}/display-config {layout:'summary_board'}</code></pre><p><strong>Automated:</strong> <code>DisplayBoard.test.tsx</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-DSP-009">
+<header><span class="tcid"><a href="#TC-DSP-009">TC-DSP-009</a></span><h4>Assign a display to counters, queues or a whole zone</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-DSP-002</dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Assign display A to Counter 1 only and display B to the whole Zone.</li><li>Call Tickets at Counters 1 and 2.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>A shows only Counter 1's calls; B shows both.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>PUT /devices/{id}/display-config {assignment:{scope:'counters',ids:[...]}}</code></pre><p><strong>Automated:</strong> <code>DeviceFleetIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-DSP-010">
+<header><span class="tcid"><a href="#TC-DSP-010">TC-DSP-010</a></span><h4>Assignment validation</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd><code>DeviceRules</code></dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Scope <code>building</code>; scope <code>zone</code> with ids; scope <code>counters</code> with no ids; a repeated id.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>400</code>: <code>unknown_scope</code>, <code>must_be_empty_for_zone</code>, <code>NotEmpty</code>, <code>duplicate_id</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>PUT /devices/{id}/display-config -&gt; 400</code></pre><p><strong>Automated:</strong> <code>DeviceRulesTest</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-DSP-011">
+<header><span class="tcid"><a href="#TC-DSP-011">TC-DSP-011</a></span><h4>Only displays have display config</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd><code>DeviceService</code></dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Send display-config for a <strong>kiosk</strong> device, or read display-state with a kiosk token.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>display-config: <code>409 conflict</code>, <code>details.reason = not_a_display</code>. display-state with a kiosk token: <code>403 forbidden</code> (the 409 applies to display-config only).</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>PUT /devices/{kioskId}/display-config -&gt; 409 {reason:'not_a_display'}
+GET display-state (kiosk token) -&gt; 403 forbidden</code></pre><p><strong>Automated:</strong> <code>DeviceFleetIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<h2 id="resilience-cases">Resilience cases</h2>
+<article class="tc unhappy" id="TC-DSP-012">
+<header><span class="tcid"><a href="#TC-DSP-012">TC-DSP-012</a></span><h4>Stale-data indicator after 30 seconds</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-DSP-011</dd></div><div><dt>Role</dt><dd>display</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Open a display.</li><li>Block its network (DevTools offline, or stop the backend) for 40 seconds.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>After about 30 seconds a discreet banner reads *Update delayed - information may be out of date*; the old data is still shown, not blanked. On reconnect the banner clears and the board resyncs.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>STALE_AFTER_MS = 30 000; REFRESH_INTERVAL_MS = 20 000</code></pre><p><strong>Automated:</strong> <code>NowServingBoard.test.tsx</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-DSP-013">
+<header><span class="tcid"><a href="#TC-DSP-013">TC-DSP-013</a></span><h4>Display resumes after power loss without login</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-DSP-012</dd></div><div><dt>Role</dt><dd>display</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Close the display browser completely and reopen <code>/display/</code>.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>It shows the same Zone and layout immediately. No pairing code is asked for.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>device refresh token (90 days)</code></pre><p><strong>Automated:</strong> <code>DevicePairing.test.tsx</code>, <code>DeviceFleetIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-DSP-014">
+<header><span class="tcid"><a href="#TC-DSP-014">TC-DSP-014</a></span><h4>A revoked display stops showing data</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-DSP-013, ADR-0009</dd></div><div><dt>Role</dt><dd>org_admin, display</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Admin &gt; Devices &gt; <strong>Revoke</strong> the display.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>Its socket is dropped at once; on the next request it is refused and shows the pairing screen. Audit <code>device.revoked</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /devices/{id}/revoke</code></pre><p><strong>Automated:</strong> <code>DeviceFleetIT</code>, <code>RealtimeRevocationIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-DSP-015">
+<header><span class="tcid"><a href="#TC-DSP-015">TC-DSP-015</a></span><h4>Display shows the profile's terminology</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>ticket 69</dd></div><div><dt>Role</dt><dd>display</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Apply Healthcare and open a display.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>Column headings say *Consultation room* rather than *Counter*. See <a href="03-industry-configuration.html">Industry configuration</a>.</p></div>
+<details class="dev"><summary>Dev / API</summary><p><strong>Automated:</strong> <code>NowServingBoard.test.tsx</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<h2 id="notice-board-admin-notice-board-notice-board-manage">Notice board (<code>/admin/notice-board/</code>, <code>notice_board:manage</code>)</h2>
+<p>A zone-scoped playlist of <code>image</code>, <code>video</code> or <code>rich_text</code> notices with per-language content and a start and end window.</p>
+<article class="tc happy" id="TC-DSP-016">
+<header><span class="tcid"><a href="#TC-DSP-016">TC-DSP-016</a></span><h4>Create a notice with a schedule</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-DSP-006</dd></div><div><dt>Role</dt><dd>team_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Admin &gt; Notice board &gt; choose the Zone &gt; <strong>New notice</strong>: type rich text, English content, starts now, ends in one hour.</li><li>Watch a <code>split_media</code> display.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>The notice appears on the panel during its window and disappears after. Audit <code>notice.created</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /notices {zone_id,type,content_i18n,starts_at,ends_at,sort_order}</code></pre><p><strong>Automated:</strong> <code>DeviceFleetIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-DSP-017">
+<header><span class="tcid"><a href="#TC-DSP-017">TC-DSP-017</a></span><h4>Notice validation</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd><code>NoticeRules</code>, ticket 66</dd></div><div><dt>Role</dt><dd>team_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Type <code>pdf</code>; no default-language content; content over 20 000 characters; an end before the start; sort order 1001.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>Inline errors and <code>400 validation_failed</code>: <code>unknown_type</code>, <code>default_language_required</code>, <code>Size</code>, <code>must_be_after_starts_at</code>, <code>out_of_range</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /notices -&gt; 400</code></pre><p><strong>Automated:</strong> <code>NoticeRulesTest</code>, <code>validators.test.ts</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-DSP-018">
+<header><span class="tcid"><a href="#TC-DSP-018">TC-DSP-018</a></span><h4>Deactivate and reactivate a notice</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-DSP-006</dd></div><div><dt>Role</dt><dd>team_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Deactivate the notice, then activate it.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>Soft deactivation only; the display drops and re-adds it. Audit <code>notice.deactivated</code>, <code>notice.activated</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /notices/{id}/deactivate|activate</code></pre><p><strong>Automated:</strong> <code>DeviceFleetIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc edge" id="TC-DSP-019">
+<header><span class="tcid"><a href="#TC-DSP-019">TC-DSP-019</a></span><h4>An empty playlist</h4><span class="badge edge">edge</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-DSP-006</dd></div><div><dt>Role</dt><dd>display</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Show a <code>split_media</code> display with no active notices.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>*No notices are scheduled right now.*</p></div>
+<details class="dev"><summary>Dev / API</summary><p><strong>Automated:</strong> <code>NoticeBoardAdmin.test.tsx</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-DSP-020">
+<header><span class="tcid"><a href="#TC-DSP-020">TC-DSP-020</a></span><h4>Notice permission</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>§5.2</dd></div><div><dt>Role</dt><dd>agent, reception_operator</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Create a notice as an Agent.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>403 forbidden</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /notices -&gt; 403</code></pre><p><strong>Automated:</strong> <code>PermissionMatrixTest</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<h2 id="voice-cases">Voice cases</h2>
+<p>You need a browser with speech synthesis on the display machine (Chrome does). Turn the sound up. Announcements are English by default; enable Bangla per Zone to test the sequence.</p>
+<article class="tc happy" id="TC-DSP-021">
+<header><span class="tcid"><a href="#TC-DSP-021">TC-DSP-021</a></span><h4>Announcement wording and chime</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-DSP-020, FR-DSP-021, FR-DSP-025</dd></div><div><dt>Role</dt><dd>display</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Set Zone chime <code>chime_standard</code>, volume 80, announcement language English.</li><li>Call Ticket <code>A-004</code>.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>The chime plays, then *Attention please. Token A-004, Cash deposit, please proceed to Counter 3, Ground floor.* The Token is read digit by digit in Western Arabic numerals.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>Zone chime, chime_volume, announcement_languages</code></pre><p><strong>Automated:</strong> <code>announcementText.test.ts</code>, <code>announcementQueue.test.ts</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-DSP-022">
+<header><span class="tcid"><a href="#TC-DSP-022">TC-DSP-022</a></span><h4>Two languages in the configured order</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-DSP-023</dd></div><div><dt>Role</dt><dd>org_admin, display</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Set the Zone's announcement languages to <code>en</code>, then <code>bn</code>.</li><li>Call a Ticket.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>The announcement plays in English, then in Bangla, each with the Token number in <strong>Western digits</strong>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>PATCH /zones/{id} {announcement_languages:['en','bn']}</code></pre><p><strong>Automated:</strong> <code>announcementQueue.test.ts</code>; e2e U12</p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc edge" id="TC-DSP-023">
+<header><span class="tcid"><a href="#TC-DSP-023">TC-DSP-023</a></span><h4>Chime volume and type</h4><span class="badge edge">edge</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-DSP-025</dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Try <code>chime_soft</code>, <code>chime_alert</code>, volume 0 and 100.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>The selected chime plays at that level; volume 0 is silent but the announcement still plays.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>PATCH /zones/{id} {chime,chime_volume}</code></pre><p><strong>Automated:</strong> <code>SiteRulesTest</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-DSP-024">
+<header><span class="tcid"><a href="#TC-DSP-024">TC-DSP-024</a></span><h4>Quiet period suppresses audio, not the display</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-DSP-027</dd></div><div><dt>Role</dt><dd>org_admin, display</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Set the Zone quiet period from 5 minutes ago to 5 minutes ahead.</li><li>Call a Ticket.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>No chime or speech; the display still updates and highlights the Token. Outside the period audio resumes.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>PATCH /zones/{id} {quiet_start,quiet_end}</code></pre><p><strong>Automated:</strong> <code>HierarchyAdminIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc edge" id="TC-DSP-025">
+<header><span class="tcid"><a href="#TC-DSP-025">TC-DSP-025</a></span><h4>Announcements queue and never overlap</h4><span class="badge edge">edge</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-DSP-026</dd></div><div><dt>Role</dt><dd>display</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Set queue depth 2.</li><li>Call 5 Tickets at different Counters within a few seconds.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>Announcements play one after another. Beyond the depth only the most recent call per Counter is announced.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>max_announce_queue_depth 1-20 (default 5)</code></pre><p><strong>Automated:</strong> <code>announcementQueue.test.ts</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-DSP-026">
+<header><span class="tcid"><a href="#TC-DSP-026">TC-DSP-026</a></span><h4>Re-announce repeats the call</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-DSP-028</dd></div><div><dt>Role</dt><dd>agent, display</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Call a Ticket then press F3.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>The announcement repeats and the display pulses again. After the announce limit F3 is refused (see <a href="12-counter-sessions.html">Counter sessions</a>).</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>ticket.reannounced</code></pre><p><strong>Automated:</strong> <code>NowServingBoard.test.tsx</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-DSP-027">
+<header><span class="tcid"><a href="#TC-DSP-027">TC-DSP-027</a></span><h4>Visitor name is announced only when both switches are on</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-DSP-022, ticket 68</dd></div><div><dt>Role</dt><dd>display</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Turn the Service's name flag on but the org flag <code>announce_visitor_name</code> off.</li><li>Call a named visitor.</li><li>Turn the org flag on and repeat.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>Only the flag combination is testable in this build: the visitor name is not carried in the display feed, so no name is announced either way. Verify <code>announce_visitor_name</code> in display-state is false unless both switches are on, and never true in the Healthcare profile.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>display-state announce_visitor_name</code></pre><p><strong>Automated:</strong> <code>FeatureFlagsEnforcedIT</code>, <code>DeviceFleetIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc edge" id="TC-DSP-028">
+<header><span class="tcid"><a href="#TC-DSP-028">TC-DSP-028</a></span><h4>Clinically sensitive Site uses a neutral label</h4><span class="badge edge">edge</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-SEC-022</dd></div><div><dt>Role</dt><dd>display</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Mark the Site clinically sensitive.</li><li>Call a named visitor.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>The display and announcement show a neutral label, never the visitor's details.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>PATCH /sites/{id} {clinical_sensitivity:true}</code></pre><p><strong>Automated:</strong> <code>DeviceFleetIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-DSP-029">
+<header><span class="tcid"><a href="#TC-DSP-029">TC-DSP-029</a></span><h4>Spoken form of a prefix</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-DSP-030</dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>By API set the English spoken form of prefix <code>QC</code> to *Q C* and the Bangla form to a phrase.</li><li>Call <code>QC-007</code>.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>The prefix is pronounced as configured in each language; the digits stay <code>007</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>PUT /token-prefixes/QC/spoken-forms/{lang}</code></pre><p><strong>Automated:</strong> <code>CatalogueAdminIT</code>, <code>spokenNumerals.test.ts</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-DSP-030">
+<header><span class="tcid"><a href="#TC-DSP-030">TC-DSP-030</a></span><h4>No speech synthesis in the browser</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-DSP-024, FR-DSP-031, ticket 65</dd></div><div><dt>Role</dt><dd>display</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Open the display in a browser or profile with no speech voices (or block <code>speechSynthesis</code> via DevTools).</li><li>Call a Ticket.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>The call is still announced: the chime plays and the display highlights, and the announcement <strong>falls back to pre-recorded clip assembly</strong> (available offline). It never throws or goes silent without indication.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>speakWithTts resolves false -&gt; clip fallback</code></pre><p><strong>Automated:</strong> <code>speaker.test.ts</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc edge" id="TC-DSP-031">
+<header><span class="tcid"><a href="#TC-DSP-031">TC-DSP-031</a></span><h4>Missing translation falls back to the site default</h4><span class="badge edge">edge</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-I18N-011</dd></div><div><dt>Role</dt><dd>display</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Enable a language for the Zone that has no announcement template.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>The announcement uses the Site default language's text, never a raw key or blank.</p></div>
+<details class="dev"><summary>Dev / API</summary><p><strong>Automated:</strong> <code>announcementText.test.ts</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article><section class="signoff"><h2 id="sign-off-sheet">Sign-off sheet</h2><p class="hint">Print this page range, one sheet per run. Tick Pass or Fail and note the build, date and tester at the top.</p><div class="tablewrap"><table><thead><tr><th>TC</th><th>Title</th><th>Type</th><th>Pass</th><th>Fail</th><th>Notes</th></tr></thead><tbody><tr><td><a href="#TC-DSP-001">TC-DSP-001</a></td><td>Now-serving table updates within 2 seconds</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-DSP-002">TC-DSP-002</a></td><td>Next-token strip shows the next N per queue</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-DSP-003">TC-DSP-003</a></td><td>Configure the column set</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-DSP-004">TC-DSP-004</a></td><td>Column set must keep token and counter</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-DSP-005">TC-DSP-005</a></td><td>Split media layout</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-DSP-006">TC-DSP-006</a></td><td>Layout settings out of range</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-DSP-007">TC-DSP-007</a></td><td>Single-counter layout</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-DSP-008">TC-DSP-008</a></td><td>Summary board for a lobby</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-DSP-009">TC-DSP-009</a></td><td>Assign a display to counters, queues or a whole zone</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-DSP-010">TC-DSP-010</a></td><td>Assignment validation</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-DSP-011">TC-DSP-011</a></td><td>Only displays have display config</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-DSP-012">TC-DSP-012</a></td><td>Stale-data indicator after 30 seconds</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-DSP-013">TC-DSP-013</a></td><td>Display resumes after power loss without login</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-DSP-014">TC-DSP-014</a></td><td>A revoked display stops showing data</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-DSP-015">TC-DSP-015</a></td><td>Display shows the profile's terminology</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-DSP-016">TC-DSP-016</a></td><td>Create a notice with a schedule</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-DSP-017">TC-DSP-017</a></td><td>Notice validation</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-DSP-018">TC-DSP-018</a></td><td>Deactivate and reactivate a notice</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-DSP-019">TC-DSP-019</a></td><td>An empty playlist</td><td><span class="badge edge">edge</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-DSP-020">TC-DSP-020</a></td><td>Notice permission</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-DSP-021">TC-DSP-021</a></td><td>Announcement wording and chime</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-DSP-022">TC-DSP-022</a></td><td>Two languages in the configured order</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-DSP-023">TC-DSP-023</a></td><td>Chime volume and type</td><td><span class="badge edge">edge</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-DSP-024">TC-DSP-024</a></td><td>Quiet period suppresses audio, not the display</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-DSP-025">TC-DSP-025</a></td><td>Announcements queue and never overlap</td><td><span class="badge edge">edge</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-DSP-026">TC-DSP-026</a></td><td>Re-announce repeats the call</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-DSP-027">TC-DSP-027</a></td><td>Visitor name is announced only when both switches are on</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-DSP-028">TC-DSP-028</a></td><td>Clinically sensitive Site uses a neutral label</td><td><span class="badge edge">edge</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-DSP-029">TC-DSP-029</a></td><td>Spoken form of a prefix</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-DSP-030">TC-DSP-030</a></td><td>No speech synthesis in the browser</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-DSP-031">TC-DSP-031</a></td><td>Missing translation falls back to the site default</td><td><span class="badge edge">edge</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr></tbody></table></div></section>
+<div class="pager"><a href="15-mobile-visitor.html">← Mobile visitor</a><a href="17-notifications.html">Notifications →</a></div>
+</main>
+</div>
+</body>
+</html>

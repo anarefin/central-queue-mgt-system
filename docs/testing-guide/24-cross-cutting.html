@@ -1,0 +1,310 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cross-cutting checks — cqms testing guide</title>
+<link rel="stylesheet" href="styles.css">
+<script>
+(function(){try{var t=localStorage.getItem('qms-guide-theme');if(t)document.documentElement.setAttribute('data-theme',t);}catch(e){}
+document.addEventListener('DOMContentLoaded',function(){var b=document.getElementById('theme-toggle');if(!b)return;
+b.addEventListener('click',function(){var cur=document.documentElement.getAttribute('data-theme');
+if(!cur){cur=window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';}
+var n=cur==='dark'?'light':'dark';document.documentElement.setAttribute('data-theme',n);try{localStorage.setItem('qms-guide-theme',n);}catch(e){}});});})();
+</script>
+</head>
+<body>
+<a class="skip" href="#content">Skip to content</a>
+<div class="layout">
+<nav class="side" aria-label="Guide navigation"><a class="brand" href="index.html">cqms testing guide</a><div class="sub">Queue Management System</div><h2>Start here</h2><ul><li><a href="01-getting-started.html">Getting started</a></li><li><a href="02-roles-and-permissions.html">Roles and permissions</a></li><li><a href="03-industry-configuration.html">Industry configuration</a></li><li><a href="04-walkthroughs.html">Industry walkthroughs</a></li><li><a href="05-setup-wizard-and-config.html">Setup wizard and config bundle</a></li></ul><h2>Configuration</h2><ul><li><a href="06-auth-and-users.html">Auth, users and approvals</a></li><li><a href="07-organisation.html">Sites, zones, counters</a></li><li><a href="08-catalogue-numbering-priority.html">Catalogue, numbering, priority</a></li></ul><h2>Serving visitors</h2><ul><li><a href="09-issuance.html">Issuance</a></li><li><a href="10-visitors.html">Visitors</a></li><li><a href="11-queue-engine.html">Queue engine</a></li><li><a href="12-counter-sessions.html">Counter sessions</a></li><li><a href="13-journeys.html">Journeys</a></li><li><a href="14-appointments.html">Appointments</a></li><li><a href="15-mobile-visitor.html">Mobile visitor</a></li></ul><h2>Surfaces and comms</h2><ul><li><a href="16-displays-and-voice.html">Displays and voice</a></li><li><a href="17-notifications.html">Notifications</a></li><li><a href="18-dashboard-and-alerts.html">Dashboard and alerts</a></li></ul><h2>Data and platform</h2><ul><li><a href="19-reports-and-exports.html">Reports and exports</a></li><li><a href="20-integrations.html">Webhooks and service accounts</a></li><li><a href="21-devices-and-realtime.html">Devices and realtime</a></li><li><a href="22-audit-log.html">Audit log</a></li><li><a href="23-operations.html">Operations</a></li></ul><h2>Quality</h2><ul><li><a href="24-cross-cutting.html" aria-current="page">Cross-cutting checks</a></li><li><a href="25-automated-suites.html">Automated suites</a></li><li><a href="26-appendices.html">Appendices</a></li></ul><div class="theme"><button id="theme-toggle" type="button">Toggle light / dark</button></div></nav>
+<main id="content">
+<h1>Cross-cutting checks</h1>
+<p class="lede">Accessibility, dark mode and brand colour, responsive widths, concurrency, offline degradation, rate limits, the generic error codes, and security spot checks.</p>
+<h2 id="how-to-use-this-page">How to use this page</h2>
+<p>These checks apply to <strong>every</strong> app (Admin, Console, Kiosk, Display, Visitor) rather than one feature. Run each on at least Admin, Console and the Kiosk, and the Visitor page on a phone-sized window. Tools: a keyboard, a browser with DevTools (device toolbar, rendering emulation for *prefers-reduced-motion* and *prefers-color-scheme*), and <code>curl</code>.</p>
+<h2 id="accessibility-nfr-usa">Accessibility (NFR-USA)</h2>
+<article class="tc happy" id="TC-XCT-001">
+<header><span class="tcid"><a href="#TC-XCT-001">TC-XCT-001</a></span><h4>Keyboard-only through Admin</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>NFR-USA, ticket 62</dd></div><div><dt>Role</dt><dd>any staff</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Put the mouse away. On <code>/admin/</code> press Tab repeatedly.</li><li>Open a sidebar item with Enter, fill a form and submit with Enter or Space, close a dialog with Escape.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>Every interactive element is reachable in a logical order, each shows a <strong>visible focus ring</strong>, dialogs trap focus and return it on close, and no action needs a mouse.</p></div>
+<details class="dev"><summary>Dev / API</summary><p><strong>Automated:</strong> <code>app-shell.test.tsx</code>, <code>packages/ui</code> tests</p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-XCT-002">
+<header><span class="tcid"><a href="#TC-XCT-002">TC-XCT-002</a></span><h4>Skip link and landmarks</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>NFR-USA, ticket 62</dd></div><div><dt>Role</dt><dd>any</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Load any page and press Tab once.</li><li>Inspect the page with a screen reader or the accessibility tree.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>A <strong>Skip to content</strong> link appears first and jumps to <code>&lt;main id=content&gt;</code>. Pages expose <code>banner</code>/<code>navigation</code>/<code>main</code> landmarks; the sidebar is <code>nav aria-label</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><p><strong>Automated:</strong> <code>app-shell.test.tsx</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-XCT-003">
+<header><span class="tcid"><a href="#TC-XCT-003">TC-XCT-003</a></span><h4>Console works from the keyboard alone</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-AGT, NFR-USA</dd></div><div><dt>Role</dt><dd>agent</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Serve a Ticket using only F2, F4, F5 and Tab to the outcome.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>F-keys act, key repeat is ignored, F5 does not reload and F10 does not open the browser menu. While a panel is open only F7 and F9 act. Each button shows its key hint (<code>aria-keyshortcuts</code>).</p></div>
+<details class="dev"><summary>Dev / API</summary><p><strong>Automated:</strong> <code>CounterConsole.test.tsx</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-XCT-004">
+<header><span class="tcid"><a href="#TC-XCT-004">TC-XCT-004</a></span><h4>Reduced motion</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>NFR-USA, ticket 62</dd></div><div><dt>Role</dt><dd>any</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>In DevTools &gt; Rendering enable *prefers-reduced-motion: reduce*.</li><li>Reload the Display and call a Ticket; open Admin and toggle the theme.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>The call highlight, smooth scrolling and transitions are removed or minimal; nothing flashes. Information is still fully shown.</p></div>
+<details class="dev"><summary>Dev / API</summary><p><strong>Automated:</strong> <code>display</code> and <code>ui</code> style tests</p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-XCT-005">
+<header><span class="tcid"><a href="#TC-XCT-005">TC-XCT-005</a></span><h4>Kiosk high contrast and large text</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>NFR-USA, FR-ISS-014, ticket 65</dd></div><div><dt>Role</dt><dd>kiosk visitor</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>On the Kiosk turn on <strong>High contrast</strong> and <strong>Large text</strong>.</li><li>Walk the whole flow to the printed result and reload.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>Text stays readable at every step (no clipping or overlap), targets stay large, the choices persist, and contrast meets WCAG AA (at least 4.5:1 for body text).</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>localStorage qms-kiosk-accessibility {highContrast,largeText}</code></pre><p><strong>Automated:</strong> <code>KioskFlow.test.tsx</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-XCT-006">
+<header><span class="tcid"><a href="#TC-XCT-006">TC-XCT-006</a></span><h4>Text is never truncated and layouts tolerate expansion</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-I18N-030, FR-I18N-031 (partial)</dd></div><div><dt>Role</dt><dd>any</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Switch a screen to Bangla (longer strings) or zoom the browser to 200%.</li><li>Look for clipped, overlapping or ellipsised text.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>No text is truncated with an ellipsis and no fixed pixel widths break a layout (the repo lint bans <code>text-overflow</code> and physical left/right properties). <strong>Gap:</strong> there is no automated rendered-layout check for 40% string expansion; this manual check is the only one. See <a href="26-appendices.html#e-known-limitations">Appendix E</a>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>pnpm lint:css</code></pre><p><strong>Automated:</strong> <code>pnpm lint:css</code> (structural only)</p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-XCT-007">
+<header><span class="tcid"><a href="#TC-XCT-007">TC-XCT-007</a></span><h4>Bengali script renders, digits stay Western</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-I18N-020, FR-I18N-023, ADR-0011</dd></div><div><dt>Role</dt><dd>any</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Switch to Bangla.</li><li>Read a Token number and a time on the Kiosk, Display and Visitor page.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>Bengali conjuncts render correctly (bundled Noto Sans Bengali). The <strong>Token number is Western Arabic digits</strong> (for example <code>A-042</code>, never <code>A-০৪২</code>). Other numbers follow the pack (Bengali digits in the Bangla pack).</p></div>
+<details class="dev"><summary>Dev / API</summary><p><strong>Automated:</strong> <code>spokenNumerals.test.ts</code>; e2e U12</p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc edge" id="TC-XCT-008">
+<header><span class="tcid"><a href="#TC-XCT-008">TC-XCT-008</a></span><h4>Every error has a translated message</h4><span class="badge edge">edge</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-I18N-011, §20.3</dd></div><div><dt>Role</dt><dd>any</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Send a request with <code>Accept-Language: bn</code> that fails (for example a wrong password).</li><li>Repeat with an unsupported language.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>error.message</code> is in Bangla; <code>message_i18n</code> carries every enabled language; the unsupported language falls back to the Site default, never a raw key.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>curl -H 'Accept-Language: bn' $BASE/auth/login -d '{...}'</code></pre><p><strong>Automated:</strong> <code>MessagesTest</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<h2 id="dark-mode-brand-colour-and-responsive-widths">Dark mode, brand colour and responsive widths</h2>
+<article class="tc happy" id="TC-XCT-009">
+<header><span class="tcid"><a href="#TC-XCT-009">TC-XCT-009</a></span><h4>Light and dark theme</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>NFR-USA, ticket 62</dd></div><div><dt>Role</dt><dd>any</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Use the top-bar theme toggle (System, Light, Dark) on Admin.</li><li>Change the OS to dark and choose *System*.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>Every screen is legible in both themes; the choice persists across reloads; *System* follows the OS. Kiosk and Display also follow the brand palette.</p></div>
+<details class="dev"><summary>Dev / API</summary><p><strong>Automated:</strong> <code>theme-provider.test.tsx</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-XCT-010">
+<header><span class="tcid"><a href="#TC-XCT-010">TC-XCT-010</a></span><h4>Brand colour themes every app</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-CFG-030, ticket 62</dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Set a brand colour <code>#0a7d5a</code> (see <a href="03-industry-configuration.html">Industry configuration</a>).</li><li>Reload Admin, Console, Kiosk, Display and the Visitor page in light and dark.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>The accent colour and logo apply everywhere and remain readable (text on the accent keeps sufficient contrast) in both themes.</p></div>
+<details class="dev"><summary>Dev / API</summary><p><strong>Automated:</strong> <code>BrandingAdminIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-XCT-011">
+<header><span class="tcid"><a href="#TC-XCT-011">TC-XCT-011</a></span><h4>Responsive widths</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>NFR-USA</dd></div><div><dt>Role</dt><dd>any</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>In DevTools test widths 360, 768, 1280 and 1920 px on Admin, Console (serving desk), Kiosk, Display and Visitor.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>No horizontal page scroll at 360 px on Admin, Console and Visitor; the sidebar collapses to a menu; tables scroll inside their own container; Kiosk and Display scale to their target screens.</p></div>
+<details class="dev"><summary>Dev / API</summary><p><strong>Automated:</strong> <code>app-shell.test.tsx</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<h2 id="concurrency-and-consistency">Concurrency and consistency</h2>
+<article class="tc edge" id="TC-XCT-012">
+<header><span class="tcid"><a href="#TC-XCT-012">TC-XCT-012</a></span><h4>Two counters call the same ticket</h4><span class="badge edge">edge</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-QUE-031, ADR-0008</dd></div><div><dt>Role</dt><dd>agent</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>See the case in <a href="12-counter-sessions.html">Counter sessions</a>: two agents press F2 at the same instant with one Ticket waiting.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>Exactly one succeeds; the other is told <code>no_ticket_waiting</code> or gets the next Ticket. A Ticket is never bound to two sessions.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>two concurrent POST /sessions/{id}/next</code></pre><p><strong>Automated:</strong> <code>SessionIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc edge" id="TC-XCT-013">
+<header><span class="tcid"><a href="#TC-XCT-013">TC-XCT-013</a></span><h4>A stale action gives version_mismatch and refreshes</h4><span class="badge edge">edge</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>ADR-0008</dd></div><div><dt>Role</dt><dd>agent, reception_operator</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Open the same Ticket in two windows and act in both.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>The second is refused <code>409 conflict</code> <code>version_mismatch</code>; the screen refreshes to the truth; nothing is applied twice.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>If-Match: &lt;old version&gt; -&gt; 409</code></pre><p><strong>Automated:</strong> <code>IfMatchTest</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc edge" id="TC-XCT-014">
+<header><span class="tcid"><a href="#TC-XCT-014">TC-XCT-014</a></span><h4>Last appointment seat and duplicate requests</h4><span class="badge edge">edge</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-APT-011, API-090</dd></div><div><dt>Role</dt><dd>developer</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Fire two bookings for the last seat and two identical issue requests with one Idempotency-Key.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>One booking wins; one Ticket exists. See <a href="14-appointments.html">Appointments</a> and <a href="09-issuance.html">Issuance</a>.</p></div>
+<details class="dev"><summary>Dev / API</summary><p><strong>Automated:</strong> <code>AppointmentBookingIT</code>, <code>IssuanceIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc edge" id="TC-XCT-015">
+<header><span class="tcid"><a href="#TC-XCT-015">TC-XCT-015</a></span><h4>Optimistic concurrency does not lose configuration edits</h4><span class="badge edge">edge</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-CFG-040</dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Two admins edit the same priority class; both save.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>Both edits are recorded as versions in order (the later one wins) and either can be reverted from the history.</p></div>
+<details class="dev"><summary>Dev / API</summary><p><strong>Automated:</strong> <code>ConfigVersioningIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<h2 id="offline-and-degraded-operation-uat-u7">Offline and degraded operation (UAT U7)</h2>
+<p>The LAN keeps working when the internet is lost (ADR-0001). <strong>Tokens keep issuing and serving; remote join and Web Push are shown as unavailable; there are no duplicate numbers.</strong> Detection is by a connectivity probe (<code>qms.connectivity.probe-targets</code>, <code>failure-threshold</code> 3, <code>timeout</code> 3 s; empty targets means *fail open*, always online).</p>
+<article class="tc unhappy" id="TC-XCT-016">
+<header><span class="tcid"><a href="#TC-XCT-016">TC-XCT-016</a></span><h4>Internet loss degrades gracefully</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-QUE-202, UAT U7</dd></div><div><dt>Role</dt><dd>reception_operator, visitor</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Configure <code>QMS_CONNECTIVITY_PROBE_TARGETS</code> with a host you can block, and <code>check-cron</code> to run every few seconds.</li><li>Block the host from the backend container (firewall or stop the target).</li><li>Issue Tickets at Reception and the Kiosk; call and complete them; try remote join.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>Walk-in issuing, calling, serving and displays continue. Remote join is refused <code>internet_unreachable</code>. Web Push shows unavailable. Token numbers are unique and sequential.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>GET /health/dependencies shows connectivity</code></pre><p><strong>Automated:</strong> <code>InternetLossDegradationIT</code>; e2e U7 is <code>test.fixme</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-XCT-017">
+<header><span class="tcid"><a href="#TC-XCT-017">TC-XCT-017</a></span><h4>Recovery after the internet returns</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-QUE-202</dd></div><div><dt>Role</dt><dd>visitor</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Unblock the probe target and wait for the next probe.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>Remote join works again; queued push messages retry per the delivery rules (see <a href="17-notifications.html">Notifications</a>).</p></div>
+<details class="dev"><summary>Dev / API</summary><p><strong>Automated:</strong> <code>InternetLossDegradationIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-XCT-018">
+<header><span class="tcid"><a href="#TC-XCT-018">TC-XCT-018</a></span><h4>Loss of the backend, seen from each app</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-DSP-011, FR-MOB-050</dd></div><div><dt>Role</dt><dd>any</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Stop the backend container for a minute, then start it.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>Displays show the stale indicator but keep the last data; the Console shows a connection message and recovers by itself and the session survives; the Kiosk shows a clear error and retries with the same idempotency key; the Visitor page reconnects. No screen shows a raw stack trace.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>docker compose stop backend ; docker compose start backend</code></pre><p><strong>Automated:</strong> <code>UpgradeRestartIT</code>; component tests</p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-XCT-019">
+<header><span class="tcid"><a href="#TC-XCT-019">TC-XCT-019</a></span><h4>Client error codes for no network and non-API replies</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>§20.3, ADR-0012</dd></div><div><dt>Role</dt><dd>any</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Turn the network off in DevTools and trigger an API call from any app.</li><li>Put an HTML error page in front of the API (for example stop only the backend so nginx returns 502).</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>The client reports <code>network_error</code> (no response) and <code>unexpected_response</code> (a reply that is not an envelope) and shows a friendly message; it never crashes.</p></div>
+<details class="dev"><summary>Dev / API</summary><p><strong>Automated:</strong> <code>api-client.test.ts</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<h2 id="generic-error-codes-and-rate-limits">Generic error codes and rate limits</h2>
+<p>The closed error-code set is in <a href="26-appendices.html#a-error-codes-and-refusal-reasons">Appendix A</a>. These cases exercise the ones with no feature of their own.</p>
+<article class="tc unhappy" id="TC-XCT-020">
+<header><span class="tcid"><a href="#TC-XCT-020">TC-XCT-020</a></span><h4>Unknown route</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>§20.3</dd></div><div><dt>Role</dt><dd>developer</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li><code>curl -i $BASE/nope</code>.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>401</code> without a token; with a valid token <code>404 not_found</code>. The standard envelope is <code>{error:{code,message,message_i18n,details,trace_id}}</code>; <code>details</code> is omitted when empty.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>GET /api/v1/nope -&gt; 401 (no token) | 404 not_found (with token)</code></pre><p><strong>Automated:</strong> <code>ErrorEnvelopeTest</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-XCT-021">
+<header><span class="tcid"><a href="#TC-XCT-021">TC-XCT-021</a></span><h4>Wrong HTTP method</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>§20.3</dd></div><div><dt>Role</dt><dd>developer</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li><code>curl -i -X DELETE $BASE/health/live</code>.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>405 method_not_allowed</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>DELETE /health/live -&gt; 405</code></pre><p><strong>Automated:</strong> <code>ErrorEnvelopeTest</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-XCT-022">
+<header><span class="tcid"><a href="#TC-XCT-022">TC-XCT-022</a></span><h4>Wrong content type</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>§20.3</dd></div><div><dt>Role</dt><dd>developer</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li><code>curl -i -X POST $BASE/auth/login -H 'Content-Type: text/plain' -d 'x'</code>.</li><li><code>curl -i $BASE/health/live -H 'Accept: application/xml'</code>.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>415 unsupported_media_type</code> for the first; the second is refused the same way (the API only speaks UTF-8 JSON).</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /auth/login (text/plain) -&gt; 415</code></pre><p><strong>Automated:</strong> <code>ErrorEnvelopeTest</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-XCT-023">
+<header><span class="tcid"><a href="#TC-XCT-023">TC-XCT-023</a></span><h4>Malformed JSON</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>§20.3</dd></div><div><dt>Role</dt><dd>developer</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li><code>curl -i -X POST $BASE/auth/login -H 'Content-Type: application/json' -d '{'</code>.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>400 validation_failed</code> and no stack trace.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /auth/login '{' -&gt; 400</code></pre><p><strong>Automated:</strong> <code>ErrorEnvelopeTest</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-XCT-024">
+<header><span class="tcid"><a href="#TC-XCT-024">TC-XCT-024</a></span><h4>An unexpected failure never leaks internals</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>§20.3, NFR-MNT-001</dd></div><div><dt>Role</dt><dd>developer</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Force a server error (for example stop PostgreSQL and call <code>GET /users</code> with a valid token).</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>500 internal_error</code> (or <code>503 unavailable</code> with <code>details.dependency</code>) with a generic message. The message never contains SQL, class names or stack frames; the <code>trace_id</code> finds the detail in the logs.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>GET /users (db down) -&gt; 500|503</code></pre><p><strong>Automated:</strong> <code>ErrorEnvelopeTest</code>, <code>ErrorEnvelopeTest</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-XCT-025">
+<header><span class="tcid"><a href="#TC-XCT-025">TC-XCT-025</a></span><h4>Rate limits on public endpoints</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>API-090, ticket 62/69</dd></div><div><dt>Role</dt><dd>developer</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Call <code>GET /branding/theme</code> 31 times in a minute from one address.</li><li>Repeat with <code>GET /labels/public</code> and, with a device token, <code>POST /kiosk/tickets</code> beyond its limit.</li><li>Request more than 5 visitor OTP codes for one email in an hour.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>429 rate_limited</code> with a <code>Retry-After</code> header. For branding and labels <code>details</code> carries <code>limit</code>, <code>window_seconds</code> and <code>retry_after_seconds</code>; OTP details list only <code>limit</code> and <code>retry_after_seconds</code>. Limits: theme 30/min/IP, public labels 30/min/IP, kiosk 30/min/device (configurable), visitor issuance 5/hour (configurable), OTP 5/hour/email. Staff are never limited.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>for i in $(seq 31); do curl -s -o /dev/null -w '%{http_code}\n' $BASE/branding/theme; done</code></pre><p><strong>Automated:</strong> <code>IssuanceRulesIT</code>, <code>VisitorAuthIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<h2 id="security-spot-checks-owasp">Security spot checks (OWASP)</h2>
+<p>Not a penetration test. These are quick checks that the documented controls are present. <code>OwaspTop10IT</code> covers several automatically.</p>
+<article class="tc unhappy" id="TC-XCT-026">
+<header><span class="tcid"><a href="#TC-XCT-026">TC-XCT-026</a></span><h4>JWT algorithm is pinned and none is rejected</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>API-011, API-012</dd></div><div><dt>Role</dt><dd>developer</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Take a valid access token and rewrite its header to <code>{"alg":"none"}</code> with an empty signature, then to <code>HS256</code> signed with any key.</li><li>Send each to <code>GET /auth/me</code>.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>Both <code>401 token_invalid</code>. Only the pinned asymmetric algorithm (ES256), issuer, audience and expiry are accepted.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>curl -H "Authorization: Bearer &lt;forged&gt;" $BASE/auth/me</code></pre><p><strong>Automated:</strong> <code>JwtValidationTest</code>, <code>OwaspTop10IT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-XCT-027">
+<header><span class="tcid"><a href="#TC-XCT-027">TC-XCT-027</a></span><h4>Refresh cookie flags</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>API-017</dd></div><div><dt>Role</dt><dd>developer</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Sign in and read <code>Set-Cookie</code> in DevTools or <code>curl -i</code>.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>qms_refresh</code> is <code>HttpOnly</code>, <code>SameSite=Strict</code> and <code>Secure</code> (unless you set <code>QMS_REFRESH_COOKIE_SECURE=false</code> for HTTP). The access token is not in any cookie or storage; it lives in memory only.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>curl -si $BASE/auth/login -d '{...}' | grep -i set-cookie</code></pre><p><strong>Automated:</strong> <code>AuthFlowIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-XCT-028">
+<header><span class="tcid"><a href="#TC-XCT-028">TC-XCT-028</a></span><h4>Ticket secret never reaches a server or history</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-SEC-033</dd></div><div><dt>Role</dt><dd>visitor</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Open a visitor ticket link with <code>#s=</code>, then check the address bar, browser history and the network requests.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>The secret is in the fragment (never sent as part of the URL), is stripped with <code>history.replaceState</code>, and is only sent afterwards as an <code>X-Ticket-Secret</code> header on <code>GET /tickets/{id}/visitor</code> (the secret is returned by <code>POST /tickets</code>). <code>referrer: no-referrer</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><p><strong>Automated:</strong> <code>VisitorTicketStatus.test.tsx</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-XCT-029">
+<header><span class="tcid"><a href="#TC-XCT-029">TC-XCT-029</a></span><h4>SSRF on webhooks</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-INT-022</dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Register endpoints pointing at <code>https://127.0.0.1</code>, <code>https://10.x</code>, <code>https://169.254.169.254</code>, and a public host that redirects to a private one.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>All refused at save with <code>400 validation_failed</code> and <code>details.fields[0].code</code> of <code>unsafe_endpoint:private_address</code> (or <code>unsafe_endpoint:scheme</code> for a non-https URL); delivery re-checks and does not follow a redirect into a private range. See <a href="20-integrations.html">Integrations</a>.</p></div>
+<details class="dev"><summary>Dev / API</summary><p><strong>Automated:</strong> <code>WebhookEndpointSecurityTest</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-XCT-030">
+<header><span class="tcid"><a href="#TC-XCT-030">TC-XCT-030</a></span><h4>SSRF on web push subscriptions</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>NFR-SEC</dd></div><div><dt>Role</dt><dd>visitor</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Register a push subscription with an internal or non-HTTPS endpoint.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>Refused; the server never calls it. See <a href="15-mobile-visitor.html">Mobile visitor</a>.</p></div>
+<details class="dev"><summary>Dev / API</summary><p><strong>Automated:</strong> <code>PushEndpointSecurityTest</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-XCT-031">
+<header><span class="tcid"><a href="#TC-XCT-031">TC-XCT-031</a></span><h4>Broken access control and enumeration</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-CFG-103, FR-SEC-033</dd></div><div><dt>Role</dt><dd>any</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Use ids from another Site or another visitor's Ticket in URLs (insecure direct object reference).</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>403</code>/<code>404</code>, never data. An unknown Ticket and a wrong secret are indistinguishable (<code>401</code>).</p></div>
+<details class="dev"><summary>Dev / API</summary><p><strong>Automated:</strong> <code>OwaspTop10IT</code>, <code>ScopeTest</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-XCT-032">
+<header><span class="tcid"><a href="#TC-XCT-032">TC-XCT-032</a></span><h4>Injection and formula injection</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>NFR-SEC-050</dd></div><div><dt>Role</dt><dd>developer</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Send <code>' OR 1=1 --</code> in a search field and as a username.</li><li>Export a CSV that contains <code>=1+1</code> cells (see <a href="22-audit-log.html">Audit log</a> and <a href="19-reports-and-exports.html">Reports</a>).</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>No SQL error or altered result (parameterised queries). Exported spreadsheet cells that could run as formulas are neutralised.</p></div>
+<details class="dev"><summary>Dev / API</summary><p><strong>Automated:</strong> <code>OwaspTop10IT</code>, <code>AuditCsvTest</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-XCT-033">
+<header><span class="tcid"><a href="#TC-XCT-033">TC-XCT-033</a></span><h4>Sensitive data is not logged</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>API-018</dd></div><div><dt>Role</dt><dd>developer</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Sign in and use the app, then read <code>docker compose logs backend</code>.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>No <code>Authorization</code> header, <code>X-Ticket-Secret</code>, refresh token, password or OTP appears in any log line.</p></div>
+<details class="dev"><summary>Dev / API</summary><p><strong>Automated:</strong> <code>LogRedactionTest</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc edge" id="TC-XCT-034">
+<header><span class="tcid"><a href="#TC-XCT-034">TC-XCT-034</a></span><h4>Dependencies are scanned for critical vulnerabilities</h4><span class="badge edge">edge</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>NFR-SEC-051</dd></div><div><dt>Role</dt><dd>developer</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Run <code>./gradlew dependencyCheckAnalyze</code> (needs <code>NVD_API_KEY</code>) and <code>pnpm audit --audit-level=critical</code> in <code>frontend/</code>.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>No unpatched critical vulnerability (CVSS 9.0 or higher fails the build). CI runs both.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>./gradlew dependencyCheckAnalyze ; pnpm audit --audit-level=critical</code></pre><p><strong>Automated:</strong> CI jobs <code>backend</code> and <code>frontend</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article><section class="signoff"><h2 id="sign-off-sheet">Sign-off sheet</h2><p class="hint">Print this page range, one sheet per run. Tick Pass or Fail and note the build, date and tester at the top.</p><div class="tablewrap"><table><thead><tr><th>TC</th><th>Title</th><th>Type</th><th>Pass</th><th>Fail</th><th>Notes</th></tr></thead><tbody><tr><td><a href="#TC-XCT-001">TC-XCT-001</a></td><td>Keyboard-only through Admin</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-XCT-002">TC-XCT-002</a></td><td>Skip link and landmarks</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-XCT-003">TC-XCT-003</a></td><td>Console works from the keyboard alone</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-XCT-004">TC-XCT-004</a></td><td>Reduced motion</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-XCT-005">TC-XCT-005</a></td><td>Kiosk high contrast and large text</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-XCT-006">TC-XCT-006</a></td><td>Text is never truncated and layouts tolerate expansion</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-XCT-007">TC-XCT-007</a></td><td>Bengali script renders, digits stay Western</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-XCT-008">TC-XCT-008</a></td><td>Every error has a translated message</td><td><span class="badge edge">edge</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-XCT-009">TC-XCT-009</a></td><td>Light and dark theme</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-XCT-010">TC-XCT-010</a></td><td>Brand colour themes every app</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-XCT-011">TC-XCT-011</a></td><td>Responsive widths</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-XCT-012">TC-XCT-012</a></td><td>Two counters call the same ticket</td><td><span class="badge edge">edge</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-XCT-013">TC-XCT-013</a></td><td>A stale action gives version_mismatch and refreshes</td><td><span class="badge edge">edge</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-XCT-014">TC-XCT-014</a></td><td>Last appointment seat and duplicate requests</td><td><span class="badge edge">edge</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-XCT-015">TC-XCT-015</a></td><td>Optimistic concurrency does not lose configuration edits</td><td><span class="badge edge">edge</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-XCT-016">TC-XCT-016</a></td><td>Internet loss degrades gracefully</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-XCT-017">TC-XCT-017</a></td><td>Recovery after the internet returns</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-XCT-018">TC-XCT-018</a></td><td>Loss of the backend, seen from each app</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-XCT-019">TC-XCT-019</a></td><td>Client error codes for no network and non-API replies</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-XCT-020">TC-XCT-020</a></td><td>Unknown route</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-XCT-021">TC-XCT-021</a></td><td>Wrong HTTP method</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-XCT-022">TC-XCT-022</a></td><td>Wrong content type</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-XCT-023">TC-XCT-023</a></td><td>Malformed JSON</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-XCT-024">TC-XCT-024</a></td><td>An unexpected failure never leaks internals</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-XCT-025">TC-XCT-025</a></td><td>Rate limits on public endpoints</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-XCT-026">TC-XCT-026</a></td><td>JWT algorithm is pinned and none is rejected</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-XCT-027">TC-XCT-027</a></td><td>Refresh cookie flags</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-XCT-028">TC-XCT-028</a></td><td>Ticket secret never reaches a server or history</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-XCT-029">TC-XCT-029</a></td><td>SSRF on webhooks</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-XCT-030">TC-XCT-030</a></td><td>SSRF on web push subscriptions</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-XCT-031">TC-XCT-031</a></td><td>Broken access control and enumeration</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-XCT-032">TC-XCT-032</a></td><td>Injection and formula injection</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-XCT-033">TC-XCT-033</a></td><td>Sensitive data is not logged</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-XCT-034">TC-XCT-034</a></td><td>Dependencies are scanned for critical vulnerabilities</td><td><span class="badge edge">edge</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr></tbody></table></div></section>
+<div class="pager"><a href="23-operations.html">← Operations</a><a href="25-automated-suites.html">Automated suites →</a></div>
+</main>
+</div>
+</body>
+</html>

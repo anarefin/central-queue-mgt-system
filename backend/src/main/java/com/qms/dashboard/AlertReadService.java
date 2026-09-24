@@ -34,7 +34,12 @@ public class AlertReadService {
     @Transactional(readOnly = true)
     public List<Alert> list(UUID siteId, String state) {
         scope.requireSite(siteId);
-        return repository.forSite(siteId, state);
+        return repository.forSite(siteId, state).stream().filter(this::inGroupScope).toList();
+    }
+
+    private boolean inGroupScope(Alert alert) {
+        UUID group = repository.groupOfService(alert.serviceId());
+        return group == null || !scope.groups(List.of(group)).isEmpty();
     }
 
     /** What a subscriber of {@code site:{id}:alerts} is shown first (§21.1): the Site's own currently-open alerts,

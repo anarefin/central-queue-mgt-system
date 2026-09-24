@@ -122,6 +122,8 @@ public class UserAdminService {
         after.put("display_name", displayName);
         after.put("preferred_language", preferredLanguage);
 
+        if (preferredLanguage == null) preferredLanguage = user.preferredLanguage();
+        after.put("preferred_language", preferredLanguage);
         users.updateProfile(id, displayName, preferredLanguage, clock.instant());
         audit.record(AuditEvent.of("user.updated", "user", id).withBefore(before).withAfter(after));
         return view(id);

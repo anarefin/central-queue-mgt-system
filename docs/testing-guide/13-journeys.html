@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Journeys and multi-stop visits — cqms testing guide</title>
+<link rel="stylesheet" href="styles.css">
+<script>
+(function(){try{var t=localStorage.getItem('qms-guide-theme');if(t)document.documentElement.setAttribute('data-theme',t);}catch(e){}
+document.addEventListener('DOMContentLoaded',function(){var b=document.getElementById('theme-toggle');if(!b)return;
+b.addEventListener('click',function(){var cur=document.documentElement.getAttribute('data-theme');
+if(!cur){cur=window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';}
+var n=cur==='dark'?'light':'dark';document.documentElement.setAttribute('data-theme',n);try{localStorage.setItem('qms-guide-theme',n);}catch(e){}});});})();
+</script>
+</head>
+<body>
+<a class="skip" href="#content">Skip to content</a>
+<div class="layout">
+<nav class="side" aria-label="Guide navigation"><a class="brand" href="index.html">cqms testing guide</a><div class="sub">Queue Management System</div><h2>Start here</h2><ul><li><a href="01-getting-started.html">Getting started</a></li><li><a href="02-roles-and-permissions.html">Roles and permissions</a></li><li><a href="03-industry-configuration.html">Industry configuration</a></li><li><a href="04-walkthroughs.html">Industry walkthroughs</a></li><li><a href="05-setup-wizard-and-config.html">Setup wizard and config bundle</a></li></ul><h2>Configuration</h2><ul><li><a href="06-auth-and-users.html">Auth, users and approvals</a></li><li><a href="07-organisation.html">Sites, zones, counters</a></li><li><a href="08-catalogue-numbering-priority.html">Catalogue, numbering, priority</a></li></ul><h2>Serving visitors</h2><ul><li><a href="09-issuance.html">Issuance</a></li><li><a href="10-visitors.html">Visitors</a></li><li><a href="11-queue-engine.html">Queue engine</a></li><li><a href="12-counter-sessions.html">Counter sessions</a></li><li><a href="13-journeys.html" aria-current="page">Journeys</a></li><li><a href="14-appointments.html">Appointments</a></li><li><a href="15-mobile-visitor.html">Mobile visitor</a></li></ul><h2>Surfaces and comms</h2><ul><li><a href="16-displays-and-voice.html">Displays and voice</a></li><li><a href="17-notifications.html">Notifications</a></li><li><a href="18-dashboard-and-alerts.html">Dashboard and alerts</a></li></ul><h2>Data and platform</h2><ul><li><a href="19-reports-and-exports.html">Reports and exports</a></li><li><a href="20-integrations.html">Webhooks and service accounts</a></li><li><a href="21-devices-and-realtime.html">Devices and realtime</a></li><li><a href="22-audit-log.html">Audit log</a></li><li><a href="23-operations.html">Operations</a></li></ul><h2>Quality</h2><ul><li><a href="24-cross-cutting.html">Cross-cutting checks</a></li><li><a href="25-automated-suites.html">Automated suites</a></li><li><a href="26-appendices.html">Appendices</a></li></ul><div class="theme"><button id="theme-toggle" type="button">Toggle light / dark</button></div></nav>
+<main id="content">
+<h1>Journeys and multi-stop visits</h1>
+<p class="lede">One visitor, several Services: ordered and unordered journeys, templates, the paused state, and the four journey refusals.</p>
+<h2 id="model-adr-0007">Model (ADR-0007)</h2>
+<p>Every Ticket belongs to a <strong>Visit</strong>. A <strong>Journey</strong> is an optional <strong>plan</strong> of stops on a Visit, an ordered or unordered list of Services from a template or ad hoc. A Journey holds Services, and a <strong>Ticket realises a stop</strong>.</p>
+<ul><li><strong>Ordered:</strong> only stop 1 issues a Ticket. When it is completed, the next stop's Ticket is created automatically, inheriting the visitor's Priority class. Stop 2 stays <code>planned</code> until then (FR-QUE-061).</li><li><strong>Unordered:</strong> every stop's Ticket is created up front and all share one <code>visit_id</code> (FR-QUE-062).</li><li><strong>One place at a time (FR-QUE-063):</strong> when one Ticket of a Visit is called, the visitor's other <strong>waiting</strong> Tickets become <code>paused</code> (no wait accrues) and return to <code>waiting</code> when the visitor is free.</li><li>A Journey never crosses Sites.</li></ul>
+<p>Two switches must both be on: the org-wide <strong><code>journey</code> feature flag</strong> (Healthcare and Producer services profiles ship it on) and the <strong>journey setting</strong> <code>enabled</code> (Admin API <code>PUT /journey-settings {"enabled":true}</code>, default off). The flag is checked first: <code>feature_disabled</code> beats <code>journeys_disabled</code>.</p>
+<p>Templates belong to a Service group (<code>POST /service-groups/{id}/journey-templates {name_i18n, ordered, display_order, service_ids}</code>), can be deactivated, and are offered at Reception's *Journey* picker. <strong>Template creation and the <code>journey-settings</code> switch are API only: there is no Admin screen for them.</strong></p>
+<h2 id="cases">Cases</h2>
+<article class="tc happy" id="TC-JRN-001">
+<header><span class="tcid"><a href="#TC-JRN-001">TC-JRN-001</a></span><h4>Enable journeys</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-QUE-060, ticket 68</dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Make sure the <code>journey</code> flag is on (Setup wizard &gt; Feature flags).</li><li>Call <code>PUT /journey-settings {"enabled":true}</code>.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>The Reception desk shows the *Journey* section. Audit <code>journey_settings.changed</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>PUT /journey-settings {enabled:true} ; GET /journey-settings</code></pre><p><strong>Automated:</strong> <code>JourneyIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-JRN-002">
+<header><span class="tcid"><a href="#TC-JRN-002">TC-JRN-002</a></span><h4>Create a Journey template</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-QUE-060</dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Create a template *Registration then Consultation*, ordered, with two Services of the same group (API).</li><li>Reception desk &gt; Journey: the template is offered.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>The template appears in the picker with its stops in order. Audit <code>journey_template.created</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /service-groups/{id}/journey-templates {name_i18n,ordered:true,display_order:0,service_ids:[a,b]}</code></pre><p><strong>Automated:</strong> <code>JourneyTemplateAdminIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-JRN-003">
+<header><span class="tcid"><a href="#TC-JRN-003">TC-JRN-003</a></span><h4>Issue an ordered journey: only the first stop issues</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-QUE-061, ADR-0007, SRS 27.3</dd></div><div><dt>Role</dt><dd>reception_operator</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Admin &gt; Reception desk &gt; <strong>Issue a multi-stop journey instead</strong> &gt; *Journey*: choose the ordered template &gt; <strong>Issue journey</strong>.</li><li>Read *Journey issued*.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>One Ticket exists (stop 1, <code>waiting</code>); stop 2 is <code>planned</code> with no Ticket. Both share one Visit. Audit <code>visit.journey_issued</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /journeys {journey_template_id} -&gt; {visit_id,ordered:true,stops:[{seq:1,ticket},{seq:2,state:'planned'}]}</code></pre><p><strong>Automated:</strong> <code>JourneyIT</code>; e2e healthcare scenario (<code>vertical-specific.spec.ts</code>)</p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-JRN-004">
+<header><span class="tcid"><a href="#TC-JRN-004">TC-JRN-004</a></span><h4>Completing stop 1 issues stop 2 automatically</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-QUE-061</dd></div><div><dt>Role</dt><dd>agent</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Call, start and complete the stop-1 Ticket.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>A second Ticket appears for stop 2 in the same Visit with the <strong>same Priority class</strong> and the same visitor. No second click at Reception.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>continueAfterCompletion in the same transaction as complete</code></pre><p><strong>Automated:</strong> <code>JourneyIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-JRN-005">
+<header><span class="tcid"><a href="#TC-JRN-005">TC-JRN-005</a></span><h4>Issue an unordered journey: all stops issue at once</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-QUE-062, SRS 27.3</dd></div><div><dt>Role</dt><dd>reception_operator</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Reception desk &gt; <strong>Issue a multi-stop journey instead</strong> &gt; *Ad hoc (pick the stops)*: choose three Services, *Unordered: every stop issues now* &gt; <strong>Issue journey</strong>.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>Three Tickets are created immediately, all in one Visit; the response marks which stop is callable soonest (a per-stop boolean <code>soonest</code>). (Producer services scenario: one Visit, three Tickets across two buildings.)</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /journeys {service_ids:[a,b,c],ordered:false}</code></pre><p><strong>Automated:</strong> <code>JourneyIT</code>; e2e producer_services scenario</p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-JRN-006">
+<header><span class="tcid"><a href="#TC-JRN-006">TC-JRN-006</a></span><h4>Ad hoc journey needs two services and an order</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-ISS-022</dd></div><div><dt>Role</dt><dd>reception_operator</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>In the Reception form pick only one stop (*Pick at least two stops.*); by API send two Services but no <code>ordered</code>; and send no body.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>The form blocks one stop client-side. The API answers <code>400 validation_failed</code>: <code>service_ids</code> <code>min_two</code>; <code>ordered</code> <code>required</code>; a missing <code>service_ids</code> (or no body) reports <code>service_ids</code> <code>required</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /journeys -&gt; 400 fields:[...]</code></pre><p><strong>Automated:</strong> <code>JourneyIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-JRN-007">
+<header><span class="tcid"><a href="#TC-JRN-007">TC-JRN-007</a></span><h4>Calling one stop pauses the visitor's other waiting tickets</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-QUE-063</dd></div><div><dt>Role</dt><dd>agent</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Issue an unordered journey (two Services, two Counters).</li><li>Call one Ticket at Counter 1.</li><li>Look at the other Ticket.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>The other Ticket is <code>paused</code> and cannot be called at Counter 2. Its wait stops. Event <code>ticket.paused</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>GET /tickets/{id}</code></pre><p><strong>Automated:</strong> <code>JourneyPauseTest</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-JRN-008">
+<header><span class="tcid"><a href="#TC-JRN-008">TC-JRN-008</a></span><h4>Paused ticket resumes when the visitor is free</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-QUE-063</dd></div><div><dt>Role</dt><dd>agent</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Complete (or Miss) the called Ticket.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>The other Ticket returns to <code>waiting</code> and is callable; its wait resumes from where it stopped. Event <code>ticket.unpaused</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>ticket.unpaused</code></pre><p><strong>Automated:</strong> <code>JourneyPauseTest</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-JRN-009">
+<header><span class="tcid"><a href="#TC-JRN-009">TC-JRN-009</a></span><h4>Cancel a paused ticket</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>§19.1</dd></div><div><dt>Role</dt><dd>reception_operator</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Cancel the paused Ticket from Reception.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>State <code>cancelled</code>. The visitor may also cancel it from their own page while <code>paused</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /tickets/{id}/cancel</code></pre><p><strong>Automated:</strong> <code>JourneyPauseTest</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc edge" id="TC-JRN-010">
+<header><span class="tcid"><a href="#TC-JRN-010">TC-JRN-010</a></span><h4>Only one stop is callable at a time in a healthcare journey</h4><span class="badge edge">edge</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>SRS 27.3</dd></div><div><dt>Role</dt><dd>agent</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Issue the healthcare template *Registration, Consultation, Sample, Pharmacy*.</li><li>Try to call stop 2 before stop 1 completes (out of order by API).</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>Stop 2 has no Ticket yet, so there is nothing to call. Service names may be suppressed on the public display in this profile.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /sessions/{id}/call {ticket_id} -&gt; 409 ticket_not_callable</code></pre><p><strong>Automated:</strong> e2e healthcare scenario</p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-JRN-011">
+<header><span class="tcid"><a href="#TC-JRN-011">TC-JRN-011</a></span><h4>Journeys switched off in the settings</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-ISS-022</dd></div><div><dt>Role</dt><dd>reception_operator</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Set <code>PUT /journey-settings {"enabled":false}</code> while the <code>journey</code> flag is on.</li><li>Try to issue a journey.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>409 conflict</code>, <code>details.reason = journeys_disabled</code>. *Journeys are switched off for this deployment. Ask an administrator to turn them on.*</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /journeys -&gt; 409 {reason:'journeys_disabled'}</code></pre><p><strong>Automated:</strong> <code>JourneyIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-JRN-012">
+<header><span class="tcid"><a href="#TC-JRN-012">TC-JRN-012</a></span><h4>Journeys switched off by the feature flag</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>ticket 68</dd></div><div><dt>Role</dt><dd>reception_operator</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Turn the <code>journey</code> flag off.</li><li>Try <code>POST /journeys</code> and <code>GET /sites/{id}/journey-templates</code>.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>409 conflict</code>, <code>reason = feature_disabled</code>, <code>feature = journey</code>. This is checked <strong>before</strong> <code>journeys_disabled</code>. Reception hides the Journey section.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /journeys -&gt; 409 {reason:'feature_disabled',feature:'journey'}</code></pre><p><strong>Automated:</strong> <code>FeatureFlagsEnforcedIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-JRN-013">
+<header><span class="tcid"><a href="#TC-JRN-013">TC-JRN-013</a></span><h4>Deactivated template</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-QUE-060</dd></div><div><dt>Role</dt><dd>reception_operator</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Deactivate a template.</li><li>Issue from it by id.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>409 conflict</code>, <code>details.reason = journey_template_inactive</code>. It is no longer offered in the picker.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /journeys {journey_template_id} -&gt; 409 {reason:'journey_template_inactive'}</code></pre><p><strong>Automated:</strong> <code>JourneyIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-JRN-014">
+<header><span class="tcid"><a href="#TC-JRN-014">TC-JRN-014</a></span><h4>Template with fewer than two stops</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-QUE-060</dd></div><div><dt>Role</dt><dd>reception_operator</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Use a template whose stops have all been removed or have one Service.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>409 conflict</code>, <code>details.reason = journey_template_empty</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /journeys -&gt; 409 {reason:'journey_template_empty'}</code></pre><p><strong>Automated:</strong> <code>JourneyIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-JRN-015">
+<header><span class="tcid"><a href="#TC-JRN-015">TC-JRN-015</a></span><h4>Journey across two Sites</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>ADR-0002</dd></div><div><dt>Role</dt><dd>reception_operator</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Ad hoc, choose Services from two different Sites.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>409 conflict</code>, <code>details.reason = journey_cross_site</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /journeys {service_ids:[siteA,siteB]} -&gt; 409 {reason:'journey_cross_site'}</code></pre><p><strong>Automated:</strong> <code>JourneyIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-JRN-016">
+<header><span class="tcid"><a href="#TC-JRN-016">TC-JRN-016</a></span><h4>Template creation on an inactive group</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-QUE-060</dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Deactivate the Service group.</li><li>Create a template under it.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>409 conflict</code>, <code>details.reason = parent_inactive</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /service-groups/{id}/journey-templates -&gt; 409</code></pre><p><strong>Automated:</strong> <code>JourneyTemplateAdminIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc edge" id="TC-JRN-017">
+<header><span class="tcid"><a href="#TC-JRN-017">TC-JRN-017</a></span><h4>Journey reporting</h4><span class="badge edge">edge</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-QUE-064</dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Complete a two-stop journey.</li><li>Run the *journey* report for the day.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>It shows journey completion, total duration and per-stop wait.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /reports/journey/run</code></pre><p><strong>Automated:</strong> <code>DomainReportsIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-JRN-018">
+<header><span class="tcid"><a href="#TC-JRN-018">TC-JRN-018</a></span><h4>Only Reception issues a journey</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>§5.2</dd></div><div><dt>Role</dt><dd>agent, org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Call <code>POST /journeys</code> as an Agent or Org Admin.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>403 forbidden</code> (<code>ticket:issue</code>).</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /journeys -&gt; 403</code></pre><p><strong>Automated:</strong> <code>PermissionMatrixTest</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article><section class="signoff"><h2 id="sign-off-sheet">Sign-off sheet</h2><p class="hint">Print this page range, one sheet per run. Tick Pass or Fail and note the build, date and tester at the top.</p><div class="tablewrap"><table><thead><tr><th>TC</th><th>Title</th><th>Type</th><th>Pass</th><th>Fail</th><th>Notes</th></tr></thead><tbody><tr><td><a href="#TC-JRN-001">TC-JRN-001</a></td><td>Enable journeys</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-JRN-002">TC-JRN-002</a></td><td>Create a Journey template</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-JRN-003">TC-JRN-003</a></td><td>Issue an ordered journey: only the first stop issues</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-JRN-004">TC-JRN-004</a></td><td>Completing stop 1 issues stop 2 automatically</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-JRN-005">TC-JRN-005</a></td><td>Issue an unordered journey: all stops issue at once</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-JRN-006">TC-JRN-006</a></td><td>Ad hoc journey needs two services and an order</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-JRN-007">TC-JRN-007</a></td><td>Calling one stop pauses the visitor's other waiting tickets</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-JRN-008">TC-JRN-008</a></td><td>Paused ticket resumes when the visitor is free</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-JRN-009">TC-JRN-009</a></td><td>Cancel a paused ticket</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-JRN-010">TC-JRN-010</a></td><td>Only one stop is callable at a time in a healthcare journey</td><td><span class="badge edge">edge</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-JRN-011">TC-JRN-011</a></td><td>Journeys switched off in the settings</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-JRN-012">TC-JRN-012</a></td><td>Journeys switched off by the feature flag</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-JRN-013">TC-JRN-013</a></td><td>Deactivated template</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-JRN-014">TC-JRN-014</a></td><td>Template with fewer than two stops</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-JRN-015">TC-JRN-015</a></td><td>Journey across two Sites</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-JRN-016">TC-JRN-016</a></td><td>Template creation on an inactive group</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-JRN-017">TC-JRN-017</a></td><td>Journey reporting</td><td><span class="badge edge">edge</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-JRN-018">TC-JRN-018</a></td><td>Only Reception issues a journey</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr></tbody></table></div></section>
+<div class="pager"><a href="12-counter-sessions.html">← Counter sessions</a><a href="14-appointments.html">Appointments →</a></div>
+</main>
+</div>
+</body>
+</html>

@@ -16,6 +16,9 @@ record RoleAssignmentRequest(
         @JsonProperty("group_ids") Set<UUID> groupIds) {
 
     RoleAssignment toAssignment() {
+        if ((siteIds != null && siteIds.contains(null)) || (groupIds != null && groupIds.contains(null))) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, Map.of("field", siteIds != null && siteIds.contains(null) ? "site_ids" : "group_ids"));
+        }
         Role parsed = Role.tryFromWire(role).orElseThrow(() -> new ApiException(ErrorCode.VALIDATION_FAILED, Map.of("field", "role", "value", role)));
         return new RoleAssignment(parsed, siteIds == null ? Set.of() : siteIds, groupIds == null ? Set.of() : groupIds);
     }

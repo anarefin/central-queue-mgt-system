@@ -195,6 +195,15 @@ class CatalogueAdminIT {
     // ---- permissions -------------------------------------------------------------------------------------------
 
     @Test
+    void anActiveDuplicateTokenPrefixAtTheSameSiteIsRefused() throws Exception {
+        String admin = tokenFor(Role.ORG_ADMIN);
+        UUID site = createSite(admin);
+        UUID group = createGroup(admin, site, "DUP");
+        createService(admin, group, "DP");
+        assertThat(status(call(post("/api/v1/service-groups/" + group + "/services"), admin, serviceJson("dp")))).isEqualTo(409);
+    }
+
+    @Test
     void everyEndpointFollowsThePermissionMatrixForEveryRole() throws Exception {
         String admin = tokenFor(Role.ORG_ADMIN);
         UUID site = createSite(admin);
@@ -214,7 +223,7 @@ class CatalogueAdminIT {
             assertThat(status(call(get("/api/v1/service-groups/" + group), token, null))).as(role + " get group").isEqualTo(ok);
             assertThat(status(call(patch("/api/v1/service-groups/" + group), token, "{\"display_order\":2}"))).as(role + " patch group").isEqualTo(ok);
             assertThat(status(call(get("/api/v1/service-groups/" + group + "/services"), token, null))).as(role + " list services").isEqualTo(ok);
-            assertThat(status(call(post("/api/v1/service-groups/" + group + "/services"), token, serviceJson("SVC")))).as(role + " create service").isEqualTo(allowed ? 201 : 403);
+            assertThat(status(call(post("/api/v1/service-groups/" + group + "/services"), token, serviceJson("S" + role.ordinal())))).as(role + " create service").isEqualTo(allowed ? 201 : 403);
             assertThat(status(call(get("/api/v1/service-groups/" + group + "/counters"), token, null))).as(role + " counter options").isEqualTo(ok);
             assertThat(status(call(get("/api/v1/services/" + svc), token, null))).as(role + " get service").isEqualTo(ok);
             assertThat(status(call(patch("/api/v1/services/" + svc), token, "{\"icon\":\"stethoscope\"}"))).as(role + " patch service").isEqualTo(ok);

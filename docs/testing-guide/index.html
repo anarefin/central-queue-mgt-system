@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>cqms testing guide — cqms testing guide</title>
+<link rel="stylesheet" href="styles.css">
+<script>
+(function(){try{var t=localStorage.getItem('qms-guide-theme');if(t)document.documentElement.setAttribute('data-theme',t);}catch(e){}
+document.addEventListener('DOMContentLoaded',function(){var b=document.getElementById('theme-toggle');if(!b)return;
+b.addEventListener('click',function(){var cur=document.documentElement.getAttribute('data-theme');
+if(!cur){cur=window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';}
+var n=cur==='dark'?'light':'dark';document.documentElement.setAttribute('data-theme',n);try{localStorage.setItem('qms-guide-theme',n);}catch(e){}});});})();
+</script>
+</head>
+<body>
+<a class="skip" href="#content">Skip to content</a>
+<div class="layout">
+<nav class="side" aria-label="Guide navigation"><a class="brand" href="index.html">cqms testing guide</a><div class="sub">Queue Management System</div><h2>Start here</h2><ul><li><a href="01-getting-started.html">Getting started</a></li><li><a href="02-roles-and-permissions.html">Roles and permissions</a></li><li><a href="03-industry-configuration.html">Industry configuration</a></li><li><a href="04-walkthroughs.html">Industry walkthroughs</a></li><li><a href="05-setup-wizard-and-config.html">Setup wizard and config bundle</a></li></ul><h2>Configuration</h2><ul><li><a href="06-auth-and-users.html">Auth, users and approvals</a></li><li><a href="07-organisation.html">Sites, zones, counters</a></li><li><a href="08-catalogue-numbering-priority.html">Catalogue, numbering, priority</a></li></ul><h2>Serving visitors</h2><ul><li><a href="09-issuance.html">Issuance</a></li><li><a href="10-visitors.html">Visitors</a></li><li><a href="11-queue-engine.html">Queue engine</a></li><li><a href="12-counter-sessions.html">Counter sessions</a></li><li><a href="13-journeys.html">Journeys</a></li><li><a href="14-appointments.html">Appointments</a></li><li><a href="15-mobile-visitor.html">Mobile visitor</a></li></ul><h2>Surfaces and comms</h2><ul><li><a href="16-displays-and-voice.html">Displays and voice</a></li><li><a href="17-notifications.html">Notifications</a></li><li><a href="18-dashboard-and-alerts.html">Dashboard and alerts</a></li></ul><h2>Data and platform</h2><ul><li><a href="19-reports-and-exports.html">Reports and exports</a></li><li><a href="20-integrations.html">Webhooks and service accounts</a></li><li><a href="21-devices-and-realtime.html">Devices and realtime</a></li><li><a href="22-audit-log.html">Audit log</a></li><li><a href="23-operations.html">Operations</a></li></ul><h2>Quality</h2><ul><li><a href="24-cross-cutting.html">Cross-cutting checks</a></li><li><a href="25-automated-suites.html">Automated suites</a></li><li><a href="26-appendices.html">Appendices</a></li></ul><div class="theme"><button id="theme-toggle" type="button">Toggle light / dark</button></div></nav>
+<main id="content">
+<h1>cqms testing guide</h1>
+<p class="lede">How to use and test every feature of the Queue Management System, for business users and for developers.</p>
+<h2 id="what-this-is">What this is</h2>
+<p>A single guide to using and testing every feature of the <strong>cqms Queue Management System</strong>, written for two readers:</p>
+<ul><li><strong>Business users doing UAT.</strong> Every test case has numbered UI steps in plain words, the result to expect, and a <strong>Pass / Fail / Notes</strong> box. Print the <strong>sign-off sheet</strong> at the foot of each page and tick down it.</li><li><strong>Developers and automation engineers.</strong> Open the *Dev / API* block on a case for the curl request, the HTTP status, the <code>details.reason</code>, the audit event and the automated test that already covers it.</li></ul>
+<p>Everything is static HTML: no build, no network, light and dark mode, and it prints. Open this file straight from disk.</p>
+<h2 id="how-to-run-a-case">How to run a case</h2>
+<ol><li>Bring up a stack and create the test users (<a href="01-getting-started.html">Getting started</a>).</li><li>Pick the page for the feature. Read its short introduction: it states the rules, the bounds and the settings you may need to change.</li><li>Do the <strong>Steps</strong> in order, as the role named on the card, in a private browser window per role.</li><li>Compare with <strong>Expected</strong>. Tick <strong>Pass</strong> or <strong>Fail</strong>; write anything odd in <strong>Notes</strong> with the build, date and your name.</li><li>To see *why* something is refused, open <strong>Dev / API</strong>; the same reason is listed in <a href="26-appendices.html#a-error-codes-and-refusal-reasons">Appendix A</a> with the exact message a user sees.</li></ol>
+<p><strong>Case types:</strong> &lt;span class="badge happy"&gt;happy&lt;/span&gt; the normal path; &lt;span class="badge unhappy"&gt;unhappy&lt;/span&gt; a validation error, refusal, permission denial, conflict, limit or failure; &lt;span class="badge edge"&gt;edge&lt;/span&gt; a boundary, race or unusual state.</p>
+<p><strong>Case ids</strong> look like <code>TC-SES-014</code>: three-letter area, three digits, never renumbered. The area codes are in the table below.</p>
+<h2 id="read-this-before-you-start-honest-limits">Read this before you start: honest limits</h2>
+<p>This guide describes the product <strong>as built</strong>. Where the code and the older documents disagreed, the code was believed. Three things you will meet:</p>
+<ul><li><strong>Some features have an API but no screen</strong> (appointment check-in, issuance rules such as hours and caps, zone voice settings, remote-join rules, users and approvals, and more). Their cases give curl steps. The complete list is in <a href="26-appendices.html#e-known-limitations">Appendix E</a>.</li><li><strong>Five of the twelve SRS UAT scenarios</strong> (U2, U3, U4, U7, U10) need a server clock and <strong>cannot be run from a browser</strong>. Each is covered by a named integration test; see <a href="25-automated-suites.html">Automated suites</a>.</li><li><strong>Only three of the five profiles</strong> (banking, healthcare, producer services) have an automated Playwright scenario. Government and Generic are covered by hand here.</li></ul>
+<h2 id="start-here">Start here</h2>
+<ul><li>New to the system? Follow the <strong><a href="04-walkthroughs.html">industry walkthroughs</a></strong>: one day in the life per profile, with checkpoints.</li><li>Setting the system up for a client? <strong><a href="03-industry-configuration.html">Industry configuration</a></strong> for all five profiles, ending with adapting *generic* into a telecom service centre using configuration only.</li><li>Checking who may do what? <strong><a href="02-roles-and-permissions.html">Roles and permissions</a></strong> has an allow and a deny case for every permission.</li><li>Running the automated suites? <strong><a href="25-automated-suites.html">Automated suites</a></strong>.</li></ul>
+<h2 id="cases-at-a-glance">Cases at a glance</h2>
+<p class="hint">717 cases in total: 279 happy, 319 unhappy, 119 edge.</p>
+<div class="tablewrap"><table><thead><tr><th>Area</th><th>Feature</th><th>Page</th><th>Happy</th><th>Unhappy</th><th>Edge</th><th>Total</th></tr></thead><tbody>
+<tr><td><code>SET</code></td><td>Environment and getting started</td><td><a href="01-getting-started.html">getting started</a></td><td>3</td><td>3</td><td>2</td><td><strong>8</strong></td></tr>
+<tr><td><code>RBP</code></td><td>Roles, permissions, direct-URL access</td><td><a href="02-roles-and-permissions.html">roles and permissions</a></td><td>28</td><td>35</td><td>1</td><td><strong>64</strong></td></tr>
+<tr><td><code>PRF</code></td><td>Vertical profiles and configuration</td><td><a href="03-industry-configuration.html">industry configuration</a></td><td>21</td><td>18</td><td>9</td><td><strong>48</strong></td></tr>
+<tr><td><code>WIZ</code></td><td>Setup wizard, bundle, versioning</td><td><a href="05-setup-wizard-and-config.html">setup wizard and config</a></td><td>11</td><td>8</td><td>4</td><td><strong>23</strong></td></tr>
+<tr><td><code>AUT</code></td><td>Authentication</td><td><a href="06-auth-and-users.html">auth and users</a></td><td>5</td><td>13</td><td>4</td><td><strong>22</strong></td></tr>
+<tr><td><code>USR</code></td><td>Users and approvals</td><td><a href="06-auth-and-users.html">auth and users</a></td><td>8</td><td>5</td><td>2</td><td><strong>15</strong></td></tr>
+<tr><td><code>ORG</code></td><td>Sites, zones, counters</td><td><a href="07-organisation.html">organisation</a></td><td>6</td><td>10</td><td>1</td><td><strong>17</strong></td></tr>
+<tr><td><code>CAT</code></td><td>Catalogue, numbering, priority</td><td><a href="08-catalogue-numbering-priority.html">catalogue numbering priority</a></td><td>16</td><td>14</td><td>3</td><td><strong>33</strong></td></tr>
+<tr><td><code>ISS</code></td><td>Issuance</td><td><a href="09-issuance.html">issuance</a></td><td>10</td><td>26</td><td>8</td><td><strong>44</strong></td></tr>
+<tr><td><code>VIS</code></td><td>Visitors and privacy</td><td><a href="10-visitors.html">visitors</a></td><td>11</td><td>9</td><td>6</td><td><strong>26</strong></td></tr>
+<tr><td><code>QUE</code></td><td>Queue engine</td><td><a href="11-queue-engine.html">queue engine</a></td><td>8</td><td>8</td><td>7</td><td><strong>23</strong></td></tr>
+<tr><td><code>SES</code></td><td>Counter sessions</td><td><a href="12-counter-sessions.html">counter sessions</a></td><td>22</td><td>37</td><td>11</td><td><strong>70</strong></td></tr>
+<tr><td><code>JRN</code></td><td>Journeys</td><td><a href="13-journeys.html">journeys</a></td><td>8</td><td>8</td><td>2</td><td><strong>18</strong></td></tr>
+<tr><td><code>APT</code></td><td>Appointments</td><td><a href="14-appointments.html">appointments</a></td><td>14</td><td>17</td><td>9</td><td><strong>40</strong></td></tr>
+<tr><td><code>MOB</code></td><td>Mobile visitor</td><td><a href="15-mobile-visitor.html">mobile visitor</a></td><td>16</td><td>25</td><td>4</td><td><strong>45</strong></td></tr>
+<tr><td><code>DSP</code></td><td>Displays and voice</td><td><a href="16-displays-and-voice.html">displays and voice</a></td><td>16</td><td>10</td><td>5</td><td><strong>31</strong></td></tr>
+<tr><td><code>NTF</code></td><td>Notifications</td><td><a href="17-notifications.html">notifications</a></td><td>8</td><td>9</td><td>3</td><td><strong>20</strong></td></tr>
+<tr><td><code>MON</code></td><td>Dashboard and alerts</td><td><a href="18-dashboard-and-alerts.html">dashboard and alerts</a></td><td>12</td><td>5</td><td>5</td><td><strong>22</strong></td></tr>
+<tr><td><code>RPT</code></td><td>Reports and exports</td><td><a href="19-reports-and-exports.html">reports and exports</a></td><td>11</td><td>12</td><td>5</td><td><strong>28</strong></td></tr>
+<tr><td><code>INT</code></td><td>Webhooks and service accounts</td><td><a href="20-integrations.html">integrations</a></td><td>10</td><td>8</td><td>2</td><td><strong>20</strong></td></tr>
+<tr><td><code>DEV</code></td><td>Devices fleet</td><td><a href="21-devices-and-realtime.html">devices and realtime</a></td><td>6</td><td>8</td><td>2</td><td><strong>16</strong></td></tr>
+<tr><td><code>RTM</code></td><td>Realtime</td><td><a href="21-devices-and-realtime.html">devices and realtime</a></td><td>4</td><td>5</td><td>8</td><td><strong>17</strong></td></tr>
+<tr><td><code>AUD</code></td><td>Audit log</td><td><a href="22-audit-log.html">audit log</a></td><td>4</td><td>4</td><td>3</td><td><strong>11</strong></td></tr>
+<tr><td><code>OPS</code></td><td>Operations</td><td><a href="23-operations.html">operations</a></td><td>9</td><td>6</td><td>7</td><td><strong>22</strong></td></tr>
+<tr><td><code>XCT</code></td><td>Cross-cutting</td><td><a href="24-cross-cutting.html">cross cutting</a></td><td>12</td><td>16</td><td>6</td><td><strong>34</strong></td></tr>
+</tbody></table></div>
+<h2 id="coverage">Coverage</h2><p>Every refusal reason, every ticket transition and every permission has at least one case. The checklist is computed when the guide is generated: <strong>0 gaps</strong>. See <a href="26-appendices.html#g-coverage-checklist">Appendix G</a>.</p>
+<h2 id="all-pages">All pages</h2>
+<h3>Start here</h3><div class="cards">
+<a href="01-getting-started.html"><strong>Getting started</strong><span>Bring the stack up, create one test user per role, pair a kiosk and a display, and reset between runs. · 8 cases</span></a>
+<a href="02-roles-and-permissions.html"><strong>Roles and permissions</strong><span>What each of the nine roles can and cannot do, one allow case and one deny case per permission, and direct-URL... · 64 cases</span></a>
+<a href="03-industry-configuration.html"><strong>Industry configuration</strong><span>How to apply, reset and adapt each of the five shipped vertical profiles using configuration only, ending with... · 48 cases</span></a>
+<a href="04-walkthroughs.html"><strong>Industry walkthroughs</strong><span>One narrative per shipped profile with numbered checkpoints. Each checkpoint links to the test case that prove...</span></a>
+<a href="05-setup-wizard-and-config.html"><strong>Setup wizard and config bundle</strong><span>The first-run wizard with its real test token, the go-live gate and its ten-item missing list, the signed conf... · 23 cases</span></a>
+</div>
+<h3>Configuration</h3><div class="cards">
+<a href="06-auth-and-users.html"><strong>Auth, users and approvals</strong><span>Sign-in, lockout, password policy, token refresh and revocation, idle timeout, user administration and maker-c... · 37 cases</span></a>
+<a href="07-organisation.html"><strong>Sites, zones, counters</strong><span>The physical hierarchy: a Site owns hours, timezone and a numbering space; a Zone is a waiting area with displ... · 17 cases</span></a>
+<a href="08-catalogue-numbering-priority.html"><strong>Catalogue, numbering, priority</strong><span>Service groups and Services, outcome codes and Teams; how token numbers are built and reset; Priority classes,... · 33 cases</span></a>
+</div>
+<h3>Serving visitors</h3><div class="cards">
+<a href="09-issuance.html"><strong>Issuance</strong><span>Every way a Ticket is created, every reason the gate can refuse it, idempotency, duplicate policy and rate lim... · 44 cases</span></a>
+<a href="10-visitors.html"><strong>Visitors</strong><span>Finding a known visitor, registering a walk-in, importing visitor master data, and the privacy controls that d... · 26 cases</span></a>
+<a href="11-queue-engine.html"><strong>Queue engine</strong><span>How the next Ticket is chosen, how to prove it with numbers a tester can check by hand, and what each strategy... · 23 cases</span></a>
+<a href="12-counter-sessions.html"><strong>Counter sessions</strong><span>Open a session, call, re-announce, start, miss, hold, transfer, break, close and force-close, with every limit... · 70 cases</span></a>
+<a href="13-journeys.html"><strong>Journeys</strong><span>One visitor, several Services: ordered and unordered journeys, templates, the paused state, and the four journ... · 18 cases</span></a>
+<a href="14-appointments.html"><strong>Appointments</strong><span>Availability templates and exceptions, transactional booking, self-service changes, the check-in window, and a... · 40 cases</span></a>
+<a href="15-mobile-visitor.html"><strong>Mobile visitor</strong><span>The phone experience: following a Ticket, signing in with an email code, joining a queue remotely and every re... · 45 cases</span></a>
+</div>
+<h3>Surfaces and comms</h3><div class="cards">
+<a href="16-displays-and-voice.html"><strong>Displays and voice</strong><span>The four layouts, columns and assignments, the stale banner, the notice board, announcements in each language,... · 31 cases</span></a>
+<a href="17-notifications.html"><strong>Notifications</strong><span>How messages are generated from a trigger catalogue, rendered from templates, sent over web push, in-app or em... · 20 cases</span></a>
+<a href="18-dashboard-and-alerts.html"><strong>Dashboard and alerts</strong><span>Where is it going wrong right now: the live tiles and filters, acting from the dashboard, and the six alert th... · 22 cases</span></a>
+</div>
+<h3>Data and platform</h3><div class="cards">
+<a href="19-reports-and-exports.html"><strong>Reports and exports</strong><span>Running each report against the reporting schema, exporting to CSV, XLSX or PDF, scheduling delivery, retentio... · 28 cases</span></a>
+<a href="20-integrations.html"><strong>Webhooks and service accounts</strong><span>Registering an outbound webhook and proving its signature, retries, replay and SSRF refusals; creating a servi... · 20 cases</span></a>
+<a href="21-devices-and-realtime.html"><strong>Devices and realtime</strong><span>Pairing, fleet health, pushing commands and revoking a device; then the WebSocket hub: subscribe, heartbeat, r... · 33 cases</span></a>
+<a href="22-audit-log.html"><strong>Audit log</strong><span>What is recorded, how to search and export it, and the proof that nobody can edit or delete an entry. · 11 cases</span></a>
+<a href="23-operations.html"><strong>Operations</strong><span>Proving the installer refuses to half-install, an upgrade keeps every waiting ticket, a restore works and need... · 22 cases</span></a>
+</div>
+<h3>Quality</h3><div class="cards">
+<a href="24-cross-cutting.html"><strong>Cross-cutting checks</strong><span>Accessibility, dark mode and brand colour, responsive widths, concurrency, offline degradation, rate limits, t... · 34 cases</span></a>
+<a href="25-automated-suites.html"><strong>Automated suites</strong><span>Backend unit and integration tests, frontend tests, the Playwright UAT scenarios per profile, the k6 load test...</span></a>
+<a href="26-appendices.html"><strong>Appendices</strong><span>Error codes and refusal reasons with the message a user sees, the ticket state machine, configurable settings ...</span></a>
+</div>
+<h2 id="printing">Printing</h2>
+<p>Use the browser's <em>Print</em>. The navigation is hidden, cases do not split across pages, and the sign-off sheet at the foot of each feature page starts on a new sheet. Choose <em>Background graphics</em> if you want the coloured case type edge.</p>
+<h2 id="sources">Sources</h2>
+<p>Built from <code>spec/Queue Management System - SRS.md</code>, <code>CONTEXT.md</code>, <code>docs/adr/*</code>, <code>docs/admin-guide.md</code>, <code>docs/api/error-codes.md</code>, <code>docs/traceability-matrix.md</code>, <code>docs/ops/*</code>, the backend permission matrix, ticket transitions and validators, <code>application.yml</code>, the five frontend apps and the language pack, <code>frontend/e2e/</code> and <code>deploy/</code>. Read the administrator guide, <a href="../admin-guide.md">docs/admin-guide.md</a>, for how to configure each area; this guide is how to <em>verify</em> it.</p>
+
+</main>
+</div>
+</body>
+</html>

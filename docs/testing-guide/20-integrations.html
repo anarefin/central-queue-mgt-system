@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Webhooks, service accounts and the host API — cqms testing guide</title>
+<link rel="stylesheet" href="styles.css">
+<script>
+(function(){try{var t=localStorage.getItem('qms-guide-theme');if(t)document.documentElement.setAttribute('data-theme',t);}catch(e){}
+document.addEventListener('DOMContentLoaded',function(){var b=document.getElementById('theme-toggle');if(!b)return;
+b.addEventListener('click',function(){var cur=document.documentElement.getAttribute('data-theme');
+if(!cur){cur=window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';}
+var n=cur==='dark'?'light':'dark';document.documentElement.setAttribute('data-theme',n);try{localStorage.setItem('qms-guide-theme',n);}catch(e){}});});})();
+</script>
+</head>
+<body>
+<a class="skip" href="#content">Skip to content</a>
+<div class="layout">
+<nav class="side" aria-label="Guide navigation"><a class="brand" href="index.html">cqms testing guide</a><div class="sub">Queue Management System</div><h2>Start here</h2><ul><li><a href="01-getting-started.html">Getting started</a></li><li><a href="02-roles-and-permissions.html">Roles and permissions</a></li><li><a href="03-industry-configuration.html">Industry configuration</a></li><li><a href="04-walkthroughs.html">Industry walkthroughs</a></li><li><a href="05-setup-wizard-and-config.html">Setup wizard and config bundle</a></li></ul><h2>Configuration</h2><ul><li><a href="06-auth-and-users.html">Auth, users and approvals</a></li><li><a href="07-organisation.html">Sites, zones, counters</a></li><li><a href="08-catalogue-numbering-priority.html">Catalogue, numbering, priority</a></li></ul><h2>Serving visitors</h2><ul><li><a href="09-issuance.html">Issuance</a></li><li><a href="10-visitors.html">Visitors</a></li><li><a href="11-queue-engine.html">Queue engine</a></li><li><a href="12-counter-sessions.html">Counter sessions</a></li><li><a href="13-journeys.html">Journeys</a></li><li><a href="14-appointments.html">Appointments</a></li><li><a href="15-mobile-visitor.html">Mobile visitor</a></li></ul><h2>Surfaces and comms</h2><ul><li><a href="16-displays-and-voice.html">Displays and voice</a></li><li><a href="17-notifications.html">Notifications</a></li><li><a href="18-dashboard-and-alerts.html">Dashboard and alerts</a></li></ul><h2>Data and platform</h2><ul><li><a href="19-reports-and-exports.html">Reports and exports</a></li><li><a href="20-integrations.html" aria-current="page">Webhooks and service accounts</a></li><li><a href="21-devices-and-realtime.html">Devices and realtime</a></li><li><a href="22-audit-log.html">Audit log</a></li><li><a href="23-operations.html">Operations</a></li></ul><h2>Quality</h2><ul><li><a href="24-cross-cutting.html">Cross-cutting checks</a></li><li><a href="25-automated-suites.html">Automated suites</a></li><li><a href="26-appendices.html">Appendices</a></li></ul><div class="theme"><button id="theme-toggle" type="button">Toggle light / dark</button></div></nav>
+<main id="content">
+<h1>Webhooks, service accounts and the host API</h1>
+<p class="lede">Registering an outbound webhook and proving its signature, retries, replay and SSRF refusals; creating a service account and using its token.</p>
+<h2 id="outbound-webhooks-admin-webhooks-config-org-sites-zones">Outbound webhooks (<code>/admin/webhooks/</code>, <code>config:org_sites_zones</code>)</h2>
+<p>An external system registers an endpoint to receive a subset of the realtime hub's events.</p>
+<ul><li><strong>Endpoint fields:</strong> <code>description</code> (at most 200), <code>url</code> (<strong>HTTPS only</strong>, at most 2000), <code>event_types</code> (at least one from the closed set below), optional <code>secret</code> (generated server-side when blank).</li><li><strong>Closed event set (20):</strong> <code>ticket.issued</code>, <code>ticket.called</code>, <code>ticket.reannounced</code>, <code>ticket.missed</code>, <code>ticket.serving</code>, <code>ticket.held</code>, <code>ticket.completed</code>, <code>ticket.no_show</code>, <code>ticket.cancelled</code>, <code>ticket.transferred</code>, <code>ticket.position_changed</code>, <code>queue.estimate_changed</code>, <code>session.opened</code>, <code>session.break_started</code>, <code>session.break_ended</code>, <code>session.closed</code>, <code>alert.raised</code>, <code>alert.acknowledged</code>, <code>device.command</code>, <code>config.changed</code>. An internal-only event such as <code>ticket.forfeited</code> is <strong>never</strong> delivered, even if named.</li><li><strong>SSRF defence:</strong> a URL that resolves to a private, loopback or link-local address is refused at save with <code>validation_failed</code> and a reason beginning <code>unsafe_endpoint:</code>. Delivery re-applies the same check.</li><li><strong>Signing:</strong> each delivery carries <code>X-QMS-Webhook-Signature</code> (lowercase hex HMAC-SHA256 over <code>"&lt;timestamp&gt;.&lt;body&gt;"</code>), <code>X-QMS-Webhook-Timestamp</code>, <code>X-QMS-Webhook-Id</code> and <code>X-QMS-Webhook-Event</code>. The secret is shown <strong>only</strong> on create or rotate and is never readable back.</li><li><strong>Retries:</strong> exponential backoff <code>30 s x 2^(attempt-1)</code>, up to <strong>6</strong> attempts, then terminally <code>failed</code>. One attempt longer than <strong>5 s</strong> counts as failed.</li><li><strong>Deactivation is soft.</strong> <strong>Rotate</strong> invalidates the old secret at once. <strong>Replay</strong> re-queues a delivery (needs <code>config:org_sites_zones</code>, since it is a real POST to an external system; the log itself needs <code>audit:read</code>).</li></ul>
+<p>A quick local receiver for the cases: <code>python3 -m http.server</code> will not verify signatures. Use any HTTPS request bin you control; because private addresses are refused, a receiver on <code>localhost</code> cannot be used except by setting <code>qms.webhook.allow-insecure-endpoints-for-tests=true</code> on a <strong>throwaway test stack only</strong>.</p>
+<h2 id="cases">Cases</h2>
+<article class="tc happy" id="TC-INT-001">
+<header><span class="tcid"><a href="#TC-INT-001">TC-INT-001</a></span><h4>Create a webhook endpoint</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-INT-020, §22.3</dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Admin &gt; Webhooks &gt; <strong>New endpoint</strong>: description *T-crm*, an HTTPS URL, event types <code>ticket.called</code> and <code>ticket.completed</code>.</li><li>Save and copy the secret shown.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>The endpoint is listed active. The secret is displayed <strong>once</strong> and never again. Audit <code>webhook_endpoint.created</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /webhook-endpoints {description,url,event_types,secret?} -&gt; 201 {secret}</code></pre><p><strong>Automated:</strong> <code>WebhookAdminIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-INT-002">
+<header><span class="tcid"><a href="#TC-INT-002">TC-INT-002</a></span><h4>A delivery is signed and verifiable</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-INT-021</dd></div><div><dt>Role</dt><dd>org_admin, integrator</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Cause a <code>ticket.called</code> (F2).</li><li>On the receiver read <code>X-QMS-Webhook-Signature</code>, <code>-Timestamp</code>, <code>-Id</code>, <code>-Event</code> and the body.</li><li>Compute HMAC-SHA256 of <code>timestamp.body</code> with the secret.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>The computed hex equals the header. The event type header is <code>ticket.called</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>echo -n "$TS.$BODY" | openssl dgst -sha256 -hmac "$SECRET"</code></pre><p><strong>Automated:</strong> <code>WebhookSignerTest</code>, <code>WebhookDeliveryWorkerIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc edge" id="TC-INT-003">
+<header><span class="tcid"><a href="#TC-INT-003">TC-INT-003</a></span><h4>Only subscribed events are delivered</h4><span class="badge edge">edge</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-INT-020</dd></div><div><dt>Role</dt><dd>integrator</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Subscribe only to <code>ticket.completed</code>.</li><li>Issue and call a Ticket, then complete it.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>Only the completion is delivered; <code>ticket.issued</code> and <code>ticket.called</code> are not.</p></div>
+<details class="dev"><summary>Dev / API</summary><p><strong>Automated:</strong> <code>WebhookDeliveryWorkerIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-INT-004">
+<header><span class="tcid"><a href="#TC-INT-004">TC-INT-004</a></span><h4>HTTP and private addresses are refused</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-INT-022, SSRF</dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Save endpoints with <code>http://example.com/hook</code>, <code>https://localhost/hook</code>, <code>https://127.0.0.1/hook</code>, <code>https://10.0.0.5/hook</code>, <code>https://169.254.169.254/latest/</code>.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>Each is <code>400 validation_failed</code> with reason <code>unsafe_endpoint:&lt;detail&gt;</code>. Nothing is stored and the server never contacts the address.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /webhook-endpoints -&gt; 400 {fields:[{field:'url',code:'unsafe_endpoint:...'}]}</code></pre><p><strong>Automated:</strong> <code>WebhookEndpointSecurityTest</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-INT-005">
+<header><span class="tcid"><a href="#TC-INT-005">TC-INT-005</a></span><h4>Endpoint field validation</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd><code>WebhookEndpointRules</code></dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Blank description; description over 200; URL over 2000; no event types; an event type <code>ticket.forfeited</code> or <code>not.real</code>.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>400 validation_failed</code>: <code>NotBlank</code>, <code>Size</code>, <code>Size</code>, <code>NotEmpty</code>, <code>unknown_event_type:&lt;value&gt;</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /webhook-endpoints -&gt; 400</code></pre><p><strong>Automated:</strong> <code>WebhookEndpointRulesTest</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-INT-006">
+<header><span class="tcid"><a href="#TC-INT-006">TC-INT-006</a></span><h4>Edit an endpoint without changing its secret</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-INT-020</dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Edit the description, URL and subscriptions.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>Saved; the secret is unchanged (the <code>PUT</code> never touches it). Audit <code>webhook_endpoint.updated</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>PUT /webhook-endpoints/{id}</code></pre><p><strong>Automated:</strong> <code>WebhookAdminIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-INT-007">
+<header><span class="tcid"><a href="#TC-INT-007">TC-INT-007</a></span><h4>Rotate the secret</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-INT-021</dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Press <strong>Rotate secret</strong> and copy the new one.</li><li>Cause an event.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>The new secret is shown once. The next delivery verifies with the new secret and <strong>not</strong> the old. Audit <code>webhook_endpoint.secret_rotated</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /webhook-endpoints/{id}/rotate-secret</code></pre><p><strong>Automated:</strong> <code>WebhookAdminIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-INT-008">
+<header><span class="tcid"><a href="#TC-INT-008">TC-INT-008</a></span><h4>Deactivate and reactivate</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-INT-020</dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Deactivate the endpoint and cause an event.</li><li>Activate it and cause another.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>No delivery while inactive; delivery resumes when active. Deactivation is soft (the endpoint and its log remain).</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /webhook-endpoints/{id}/deactivate|activate</code></pre><p><strong>Automated:</strong> <code>WebhookAdminIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-INT-009">
+<header><span class="tcid"><a href="#TC-INT-009">TC-INT-009</a></span><h4>A failing receiver is retried with backoff</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-INT-022</dd></div><div><dt>Role</dt><dd>integrator</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Point an endpoint at a receiver that returns 500 (or drops).</li><li>Cause an event and read the delivery log for several minutes.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>Attempts are logged with increasing gaps (30 s, 60 s, 120 s...) up to 6 attempts, then the delivery is <code>failed</code>. A single attempt slower than 5 s counts as failed.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>qms.webhook.max-attempts=6, backoff-base-seconds=30, request-timeout-seconds=5</code></pre><p><strong>Automated:</strong> <code>WebhookDeliveryWorkerIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-INT-010">
+<header><span class="tcid"><a href="#TC-INT-010">TC-INT-010</a></span><h4>Replay a failed delivery</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-INT-022</dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Fix the receiver.</li><li>In the delivery log press <strong>Replay</strong> on the failed delivery.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>It is re-queued and delivered once more regardless of its status. Audit <code>webhook_delivery.replayed</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /webhook-deliveries/{id}/replay</code></pre><p><strong>Automated:</strong> <code>WebhookDeliveryWorkerIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-INT-011">
+<header><span class="tcid"><a href="#TC-INT-011">TC-INT-011</a></span><h4>Delivery log filters</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-INT-022</dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Filter the log by endpoint, event type and status.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>Each filter narrows the list; every row shows its attempts.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>GET /webhook-deliveries?endpoint_id=&amp;event_type=&amp;status=&amp;limit=</code></pre><p><strong>Automated:</strong> <code>WebhookDeliveryWorkerIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-INT-012">
+<header><span class="tcid"><a href="#TC-INT-012">TC-INT-012</a></span><h4>Webhook permissions</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>§5.2</dd></div><div><dt>Role</dt><dd>team_admin, agent</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>As a Team Admin open <code>/admin/webhooks/</code> and call <code>GET /webhook-endpoints</code>.</li><li>As a Team Admin call <code>GET /webhook-deliveries</code>.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>403 forbidden</code> on every webhook endpoint. The delivery log needs <code>audit:read</code>; replay needs <code>config:org_sites_zones</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>GET /webhook-endpoints (team_admin) -&gt; 403</code></pre><p><strong>Automated:</strong> <code>WebhookAdminIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<h2 id="service-accounts-and-the-host-api">Service accounts and the host API</h2>
+<p>A <strong>service account</strong> is a non-human principal (<code>host_system</code>) created by an administrator with <code>user:manage</code> (<code>POST /service-accounts {label, site_ids}</code>). The <strong>client id and secret are shown once</strong>. It exchanges them for a short-lived token at <code>POST /auth/service-accounts/token</code> and then calls <code>POST /host/tickets</code> (see <a href="09-issuance.html">Issuance</a>). Deactivating an account stops it at once. Failures audit <code>service_account.auth_failed</code> with a reason <code>unknown_client_id</code>, <code>inactive</code> or <code>bad_secret</code>, but <strong>the response is identical</strong> in each case.</p>
+<article class="tc happy" id="TC-INT-013">
+<header><span class="tcid"><a href="#TC-INT-013">TC-INT-013</a></span><h4>Create a service account</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-INT-040, FR-INT-041</dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li><code>POST /service-accounts</code> with a label and the Site ids it may reach.</li><li>Copy the client id and secret.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>201</code> with the client id and secret shown once. Audit <code>service_account.created</code>. The secret is not retrievable later.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /service-accounts {label,site_ids}</code></pre><p><strong>Automated:</strong> <code>ServiceAccountIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-INT-014">
+<header><span class="tcid"><a href="#TC-INT-014">TC-INT-014</a></span><h4>Exchange credentials for a token</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>API-010</dd></div><div><dt>Role</dt><dd>host_system</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li><code>POST /auth/service-accounts/token</code> with client id and secret.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>200</code> with an access token carrying role <code>host_system</code> and the account's Site scope.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /auth/service-accounts/token {client_id,client_secret}</code></pre><p><strong>Automated:</strong> <code>ServiceAccountIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-INT-015">
+<header><span class="tcid"><a href="#TC-INT-015">TC-INT-015</a></span><h4>Wrong secret, unknown id or inactive account</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>API-010</dd></div><div><dt>Role</dt><dd>host_system</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Try a wrong secret; an unknown client id; then deactivate the account and use the right secret.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>The <strong>same</strong> <code>401 invalid_credentials</code> every time. The audit log records <code>service_account.auth_failed</code> with <code>bad_secret</code>, <code>unknown_client_id</code> and <code>inactive</code> respectively.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /auth/service-accounts/token -&gt; 401</code></pre><p><strong>Automated:</strong> <code>ServiceAccountIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-INT-016">
+<header><span class="tcid"><a href="#TC-INT-016">TC-INT-016</a></span><h4>Deactivate and reactivate an account</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-INT-041</dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li><code>POST /service-accounts/{id}/deactivate</code>, then <code>.../activate</code>.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>While inactive the token endpoint refuses; an already-issued token expires at its short TTL. Audit <code>service_account.deactivated|activated</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /service-accounts/{id}/deactivate</code></pre><p><strong>Automated:</strong> <code>ServiceAccountIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-INT-017">
+<header><span class="tcid"><a href="#TC-INT-017">TC-INT-017</a></span><h4>A service account is limited to its Sites</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-CFG-106</dd></div><div><dt>Role</dt><dd>host_system</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>With an account scoped to Site A call <code>POST /host/tickets</code> for a Service at Site B.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>403 forbidden</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /host/tickets -&gt; 403</code></pre><p><strong>Automated:</strong> <code>ServiceAccountIT</code>, <code>ScopeTest</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-INT-018">
+<header><span class="tcid"><a href="#TC-INT-018">TC-INT-018</a></span><h4>Service accounts are managed by user administrators only</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>§5.2</dd></div><div><dt>Role</dt><dd>team_admin, agent, reception_operator</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Call <code>POST /service-accounts</code> as a Team Admin.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>403 forbidden</code> (<code>user:manage</code>).</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /service-accounts -&gt; 403</code></pre><p><strong>Automated:</strong> <code>ServiceAccountIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-INT-019">
+<header><span class="tcid"><a href="#TC-INT-019">TC-INT-019</a></span><h4>A host system cannot reach staff or admin endpoints</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>§5.1</dd></div><div><dt>Role</dt><dd>host_system</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>With a <code>host_system</code> token call <code>GET /users</code> and <code>GET /sites</code>.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>403 forbidden</code>. It may only use <code>POST /host/tickets</code> and appointments (<code>POST|PATCH|DELETE /appointments</code>).</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>GET /users (host token) -&gt; 403</code></pre><p><strong>Automated:</strong> <code>ServiceAccountIT</code>, <code>OwaspTop10IT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc edge" id="TC-INT-020">
+<header><span class="tcid"><a href="#TC-INT-020">TC-INT-020</a></span><h4>A BI consumer uses the database view, not the API</h4><span class="badge edge">edge</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>§5.1, FR-INT-060</dd></div><div><dt>Role</dt><dd>reporting consumer</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Read <a href="19-reports-and-exports.html">Reports</a> *Retention and BI*.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>The read-only reporting consumer connects with its own database role to <code>bi.ticket_fact_v1</code>; there is no API role for it.</p></div>
+<details class="dev"><summary>Dev / API</summary><p><strong>Automated:</strong> <code>RetentionIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article><section class="signoff"><h2 id="sign-off-sheet">Sign-off sheet</h2><p class="hint">Print this page range, one sheet per run. Tick Pass or Fail and note the build, date and tester at the top.</p><div class="tablewrap"><table><thead><tr><th>TC</th><th>Title</th><th>Type</th><th>Pass</th><th>Fail</th><th>Notes</th></tr></thead><tbody><tr><td><a href="#TC-INT-001">TC-INT-001</a></td><td>Create a webhook endpoint</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-INT-002">TC-INT-002</a></td><td>A delivery is signed and verifiable</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-INT-003">TC-INT-003</a></td><td>Only subscribed events are delivered</td><td><span class="badge edge">edge</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-INT-004">TC-INT-004</a></td><td>HTTP and private addresses are refused</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-INT-005">TC-INT-005</a></td><td>Endpoint field validation</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-INT-006">TC-INT-006</a></td><td>Edit an endpoint without changing its secret</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-INT-007">TC-INT-007</a></td><td>Rotate the secret</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-INT-008">TC-INT-008</a></td><td>Deactivate and reactivate</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-INT-009">TC-INT-009</a></td><td>A failing receiver is retried with backoff</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-INT-010">TC-INT-010</a></td><td>Replay a failed delivery</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-INT-011">TC-INT-011</a></td><td>Delivery log filters</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-INT-012">TC-INT-012</a></td><td>Webhook permissions</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-INT-013">TC-INT-013</a></td><td>Create a service account</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-INT-014">TC-INT-014</a></td><td>Exchange credentials for a token</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-INT-015">TC-INT-015</a></td><td>Wrong secret, unknown id or inactive account</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-INT-016">TC-INT-016</a></td><td>Deactivate and reactivate an account</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-INT-017">TC-INT-017</a></td><td>A service account is limited to its Sites</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-INT-018">TC-INT-018</a></td><td>Service accounts are managed by user administrators only</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-INT-019">TC-INT-019</a></td><td>A host system cannot reach staff or admin endpoints</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-INT-020">TC-INT-020</a></td><td>A BI consumer uses the database view, not the API</td><td><span class="badge edge">edge</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr></tbody></table></div></section>
+<div class="pager"><a href="19-reports-and-exports.html">← Reports and exports</a><a href="21-devices-and-realtime.html">Devices and realtime →</a></div>
+</main>
+</div>
+</body>
+</html>

@@ -79,6 +79,12 @@ class NotificationDispatcher implements NotificationTrigger {
         Map<String, String> variables = buildVariables(trigger, facts, context, language);
         String firstChannel = effective.channelOrder().get(0);
         Optional<NotificationTemplateService.Rendered> rendered = templates.render(trigger.key(), firstChannel, language, variables);
+        if (rendered.isEmpty() && facts.siteDefaultLanguage() != null && !facts.siteDefaultLanguage().equals(language)) {
+            // no template in the visitor's language: fall back to the Site's default language
+            language = facts.siteDefaultLanguage();
+            variables = buildVariables(trigger, facts, context, language);
+            rendered = templates.render(trigger.key(), firstChannel, language, variables);
+        }
         if (rendered.isEmpty()) {
             messages.insertSuppressed(
                     trigger.key(), effective.channelOrder(), language, essential, context.siteId(), context.serviceId(), context.ticketId(),

@@ -230,6 +230,9 @@ public class CatalogueService {
                 true,
                 now,
                 now);
+        if (repository.activePrefixTaken(group.siteId(), tokenPrefix, null)) {
+            throw new ApiException(ErrorCode.CONFLICT, Map.of("field", "token_prefix", "reason", "duplicate_token_prefix"));
+        }
         repository.insert(service);
         audit.record(AuditEvent.of("service.created", "service", service.id()).withAfter(snapshot(service)));
         return service;
@@ -246,6 +249,9 @@ public class CatalogueService {
                 : CatalogueRules.names("name_i18n", change.nameI18n(), site.defaultLanguage(), site.enabled());
         boolean parallel = change.parallelServing() == null ? before.parallelServing() : change.parallelServing();
         String tokenPrefix = change.tokenPrefix() == null ? before.tokenPrefix() : CatalogueRules.tokenPrefix(change.tokenPrefix());
+        if (change.tokenPrefix() != null && before.active() && repository.activePrefixTaken(before.siteId(), tokenPrefix, id)) {
+            throw new ApiException(ErrorCode.CONFLICT, Map.of("field", "token_prefix", "reason", "duplicate_token_prefix"));
+        }
         ServiceEntry after = new ServiceEntry(
                 id,
                 before.serviceGroupId(),
@@ -306,6 +312,7 @@ public class CatalogueService {
         ServiceEntry service = requireService(id);
         scope.requireSite(service.siteId());
         if (usage.hasTickets(id)) throw new ApiException(ErrorCode.CONFLICT, Map.of("reason", "service_has_tickets"));
+        if (repository.usedInJourneyTemplate(id)) throw new ApiException(ErrorCode.CONFLICT, Map.of("reason", "service_in_journey_template"));
         repository.deleteLinksOfService(id);
         repository.deleteOutcomesOfService(id);
         repository.deleteService(id);

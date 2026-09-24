@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sites, zones and counters — cqms testing guide</title>
+<link rel="stylesheet" href="styles.css">
+<script>
+(function(){try{var t=localStorage.getItem('qms-guide-theme');if(t)document.documentElement.setAttribute('data-theme',t);}catch(e){}
+document.addEventListener('DOMContentLoaded',function(){var b=document.getElementById('theme-toggle');if(!b)return;
+b.addEventListener('click',function(){var cur=document.documentElement.getAttribute('data-theme');
+if(!cur){cur=window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';}
+var n=cur==='dark'?'light':'dark';document.documentElement.setAttribute('data-theme',n);try{localStorage.setItem('qms-guide-theme',n);}catch(e){}});});})();
+</script>
+</head>
+<body>
+<a class="skip" href="#content">Skip to content</a>
+<div class="layout">
+<nav class="side" aria-label="Guide navigation"><a class="brand" href="index.html">cqms testing guide</a><div class="sub">Queue Management System</div><h2>Start here</h2><ul><li><a href="01-getting-started.html">Getting started</a></li><li><a href="02-roles-and-permissions.html">Roles and permissions</a></li><li><a href="03-industry-configuration.html">Industry configuration</a></li><li><a href="04-walkthroughs.html">Industry walkthroughs</a></li><li><a href="05-setup-wizard-and-config.html">Setup wizard and config bundle</a></li></ul><h2>Configuration</h2><ul><li><a href="06-auth-and-users.html">Auth, users and approvals</a></li><li><a href="07-organisation.html" aria-current="page">Sites, zones, counters</a></li><li><a href="08-catalogue-numbering-priority.html">Catalogue, numbering, priority</a></li></ul><h2>Serving visitors</h2><ul><li><a href="09-issuance.html">Issuance</a></li><li><a href="10-visitors.html">Visitors</a></li><li><a href="11-queue-engine.html">Queue engine</a></li><li><a href="12-counter-sessions.html">Counter sessions</a></li><li><a href="13-journeys.html">Journeys</a></li><li><a href="14-appointments.html">Appointments</a></li><li><a href="15-mobile-visitor.html">Mobile visitor</a></li></ul><h2>Surfaces and comms</h2><ul><li><a href="16-displays-and-voice.html">Displays and voice</a></li><li><a href="17-notifications.html">Notifications</a></li><li><a href="18-dashboard-and-alerts.html">Dashboard and alerts</a></li></ul><h2>Data and platform</h2><ul><li><a href="19-reports-and-exports.html">Reports and exports</a></li><li><a href="20-integrations.html">Webhooks and service accounts</a></li><li><a href="21-devices-and-realtime.html">Devices and realtime</a></li><li><a href="22-audit-log.html">Audit log</a></li><li><a href="23-operations.html">Operations</a></li></ul><h2>Quality</h2><ul><li><a href="24-cross-cutting.html">Cross-cutting checks</a></li><li><a href="25-automated-suites.html">Automated suites</a></li><li><a href="26-appendices.html">Appendices</a></li></ul><div class="theme"><button id="theme-toggle" type="button">Toggle light / dark</button></div></nav>
+<main id="content">
+<h1>Sites, zones and counters</h1>
+<p class="lede">The physical hierarchy: a Site owns hours, timezone and a numbering space; a Zone is a waiting area with displays and speakers; a Counter is a serving position.</p>
+<h2 id="model">Model</h2>
+<p><code>Organisation &gt; Site &gt; Zone &gt; Counter</code> (ADR-0002). A <strong>Site is the operational unit</strong>, a branch or a campus that may span several buildings; a building is a Zone attribute (<code>building_label</code>, <code>floor_label</code>). Journeys and Transfers are always <strong>within one Site</strong>.</p>
+<p>Screen: Admin &gt; <strong>Sites, zones and Counters</strong> (<code>/admin/sites/</code>), roles <code>system_admin</code> and <code>org_admin</code> (<code>config:org_sites_zones</code>). Nothing is ever deleted: a Site, Zone or Counter is <strong>deactivated</strong>, and deactivating a parent deactivates its active children, each audited with the reason *parent site deactivated* (or *zone*).</p>
+<div class="tablewrap"><table><thead><tr><th>Field</th><th>Rule</th></tr></thead><tbody><tr><td>Site <code>code</code></td><td>required, at most 32 characters, <code>[A-Za-z0-9_-]+</code>, globally unique</td></tr><tr><td>Site <code>timezone</code></td><td>must be a valid IANA zone, at most 64 characters</td></tr><tr><td>Site languages</td><td>default language must be installed and in the enabled list; no duplicates; enabled list must include the default</td></tr><tr><td>Zone <code>chime</code> (API only)</td><td><code>chime_standard</code>, <code>chime_soft</code> or <code>chime_alert</code></td></tr><tr><td>Zone <code>chime_volume</code></td><td>0-100, default 80</td></tr><tr><td>Zone quiet period</td><td><code>HH:mm</code> start and end, both or neither</td></tr><tr><td>Zone <code>max_announce_queue_depth</code></td><td>1-20, default 5</td></tr><tr><td>Second active Site</td><td>needs the <code>multi_site</code> flag on (the first Site is never blocked)</td></tr></tbody></table></div>
+<p>The Admin form shows these errors <strong>beside the field</strong> before it sends anything (ticket 66); the server stays authoritative and re-checks.</p>
+<article class="tc happy" id="TC-ORG-001">
+<header><span class="tcid"><a href="#TC-ORG-001">TC-ORG-001</a></span><h4>Create a Site</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-CFG-001</dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Admin &gt; Sites, zones and Counters &gt; <strong>New site</strong>.</li><li>Enter name *T-Dhaka*, code <code>T-DHK-1</code>, an address (required), timezone <code>Asia/Dhaka</code>, default language English, enable English and Bangla.</li><li>Save.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>The Site appears active in the list. Audit <code>site.created</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /sites {name,code,timezone,address,default_language,enabled_languages} -&gt; 201</code></pre><p><strong>Automated:</strong> <code>HierarchyAdminIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-ORG-002">
+<header><span class="tcid"><a href="#TC-ORG-002">TC-ORG-002</a></span><h4>Create a Zone with building and floor</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-CFG-002</dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Open the Site &gt; <strong>New zone</strong>.</li><li>Name *Hall*, building *Main*, floor *Ground*.</li><li>Save.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>The Zone is listed under the Site with its building and floor labels. Audit <code>zone.created</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /sites/{id}/zones {name,building_label,floor_label}</code></pre><p><strong>Automated:</strong> <code>HierarchyAdminIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-ORG-003">
+<header><span class="tcid"><a href="#TC-ORG-003">TC-ORG-003</a></span><h4>Create a Counter</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-CFG-003</dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Open the Zone &gt; <strong>New counter</strong>.</li><li>Label *Counter 1*.</li><li>Save.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>The Counter is listed and active. Audit <code>counter.created</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /zones/{id}/counters {label}</code></pre><p><strong>Automated:</strong> <code>HierarchyAdminIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-ORG-004">
+<header><span class="tcid"><a href="#TC-ORG-004">TC-ORG-004</a></span><h4>Duplicate Site code</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-CFG-001</dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Create a second Site with the same code.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>409 conflict</code> with <code>details.field = code</code>. The form marks the code field.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /sites -&gt; 409 {details:{field:'code'}}</code></pre><p><strong>Automated:</strong> <code>HierarchyAdminIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-ORG-005">
+<header><span class="tcid"><a href="#TC-ORG-005">TC-ORG-005</a></span><h4>Site code with a space is refused before it is sent</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>ticket 66, <code>SiteRules</code></dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>In *New site* type code <code>my site</code> and move to the next field.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>An inline error appears at once (*validation.site.code.pattern*). The Save button does not send. If forced by API: <code>400 validation_failed</code> <code>{field:'code',code:'Pattern'}</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /sites {code:'my site'} -&gt; 400</code></pre><p><strong>Automated:</strong> <code>validators.test.ts</code>, <code>SiteRulesTest</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-ORG-006">
+<header><span class="tcid"><a href="#TC-ORG-006">TC-ORG-006</a></span><h4>Unknown timezone is refused</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd><code>SiteRules</code></dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Set timezone <code>Mars/Olympus</code>.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>Inline error (*validation.site.timezone.invalid*); API <code>400</code> with code <code>unknown_timezone</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /sites {timezone:'Mars/Olympus'} -&gt; 400 unknown_timezone</code></pre><p><strong>Automated:</strong> <code>SiteRulesTest</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-ORG-007">
+<header><span class="tcid"><a href="#TC-ORG-007">TC-ORG-007</a></span><h4>Language settings must be consistent</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd><code>SiteRules</code></dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Enable only Bangla but keep English as default.</li><li>Enable English twice.</li><li>Set default language <code>fr</code> when only en, bn are installed.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>Inline errors: default not enabled, duplicate, unknown language. API codes <code>must_include_default_language</code>, <code>duplicate_language</code>, <code>unknown_language</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /sites -&gt; 400 fields:[{field:'enabled_languages',code:'...'}]</code></pre><p><strong>Automated:</strong> <code>SiteRulesTest</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-ORG-008">
+<header><span class="tcid"><a href="#TC-ORG-008">TC-ORG-008</a></span><h4>Second Site is refused while multi_site is off</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>ticket 68, CFG-003</dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>With one active Site and <code>multi_site</code> off, create another Site.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>409 conflict</code>, <code>details.reason = feature_disabled</code>, <code>details.feature = multi_site</code>. Turn the flag on and it succeeds. The very first Site is never blocked.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /sites -&gt; 409 {reason:'feature_disabled', feature:'multi_site'}</code></pre><p><strong>Automated:</strong> <code>FeatureFlagsEnforcedIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-ORG-009">
+<header><span class="tcid"><a href="#TC-ORG-009">TC-ORG-009</a></span><h4>Edit a Site</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-CFG-001</dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Change the address and one enabled language, save.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>The list updates. Audit <code>site.updated</code> with before and after.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>PATCH /sites/{id}</code></pre><p><strong>Automated:</strong> <code>HierarchyAdminIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-ORG-010">
+<header><span class="tcid"><a href="#TC-ORG-010">TC-ORG-010</a></span><h4>Deactivating a Site deactivates its Zones and Counters</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-CFG-004</dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Deactivate the Site with a reason.</li><li>Open its Zone and Counters.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>All show inactive. The audit log has one entry for the Site and one for each child, with reason *parent site deactivated*. Nothing is deleted.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /sites/{id}/deactivate {reason} ; audit site/zone/counter .deactivated</code></pre><p><strong>Automated:</strong> <code>HierarchyAdminIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-ORG-011">
+<header><span class="tcid"><a href="#TC-ORG-011">TC-ORG-011</a></span><h4>Reactivating a child of an inactive parent is refused</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-CFG-004</dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>With the Site inactive, activate one of its Zones.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>409 conflict</code>, <code>details.reason = parent_inactive</code>. Activate the Site first, then the Zone.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /zones/{id}/activate -&gt; 409 {reason:'parent_inactive'}</code></pre><p><strong>Automated:</strong> <code>HierarchyAdminIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-ORG-012">
+<header><span class="tcid"><a href="#TC-ORG-012">TC-ORG-012</a></span><h4>An inactive Counter cannot open a session</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-CFG-004</dd></div><div><dt>Role</dt><dd>agent</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Deactivate a Counter.</li><li>As an agent, try to open a session on it.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>409 conflict</code>, <code>details.reason = counter_inactive</code>. The Counter is no longer offered in the picker.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /sessions -&gt; 409 {reason:'counter_inactive'}</code></pre><p><strong>Automated:</strong> <code>SessionIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-ORG-013">
+<header><span class="tcid"><a href="#TC-ORG-013">TC-ORG-013</a></span><h4>Zone voice settings (API only)</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-DSP-025, <code>SiteRules</code></dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>There is no Admin form for these. Call <code>PATCH /zones/{id}</code> with announcement languages <code>["en"]</code>, chime <code>chime_soft</code>, volume 60, quiet period 22:00 to 06:00, queue depth 3.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>Saved (<code>200</code>). A display in that Zone uses these settings (see <a href="16-displays-and-voice.html">Displays and voice</a>).</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>PATCH /zones/{id}</code></pre><p><strong>Automated:</strong> <code>HierarchyAdminIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-ORG-014">
+<header><span class="tcid"><a href="#TC-ORG-014">TC-ORG-014</a></span><h4>Zone voice settings out of range</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd><code>SiteRules</code>, ticket 66</dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Send chime volume 101; queue depth 0 and 21; quiet start 22:00 without an end; chime <code>chime_loud</code>.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>400 validation_failed</code>: <code>Range</code>, <code>Range</code>, <code>quiet_period_needs_both_ends</code>, <code>unknown_chime</code>. (The shared client validators exist but no form uses them yet.)</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>PATCH /zones/{id} -&gt; 400</code></pre><p><strong>Automated:</strong> <code>SiteRulesTest</code>, <code>validators.test.ts</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-ORG-015">
+<header><span class="tcid"><a href="#TC-ORG-015">TC-ORG-015</a></span><h4>Unknown ids answer not found</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>§20.3</dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li><code>GET /sites/00000000-0000-0000-0000-000000000000</code>.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>404 not_found</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>GET /sites/{unknown} -&gt; 404</code></pre><p><strong>Automated:</strong> <code>HierarchyAdminIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-ORG-016">
+<header><span class="tcid"><a href="#TC-ORG-016">TC-ORG-016</a></span><h4>A Site-scoped admin cannot see another Site</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-CFG-106</dd></div><div><dt>Role</dt><dd>org_admin (scoped)</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Sign in as an Org Admin scoped to Site A.</li><li>List Sites; fetch Site B by id.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>Only Site A is listed; Site B is <code>403</code> or <code>404</code>, never data.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>GET /sites/{B} -&gt; 403|404</code></pre><p><strong>Automated:</strong> <code>ScopeTest</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc edge" id="TC-ORG-017">
+<header><span class="tcid"><a href="#TC-ORG-017">TC-ORG-017</a></span><h4>Site switcher in the Admin top bar</h4><span class="badge edge">edge</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>ticket 63</dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>With two active Sites, use the top-bar <strong>Site</strong> switcher.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>Site-scoped screens follow the selection. With one Site it is plain text, not a dropdown.</p></div>
+<details class="dev"><summary>Dev / API</summary><p><strong>Automated:</strong> <code>AdminChrome.test.tsx</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article><section class="signoff"><h2 id="sign-off-sheet">Sign-off sheet</h2><p class="hint">Print this page range, one sheet per run. Tick Pass or Fail and note the build, date and tester at the top.</p><div class="tablewrap"><table><thead><tr><th>TC</th><th>Title</th><th>Type</th><th>Pass</th><th>Fail</th><th>Notes</th></tr></thead><tbody><tr><td><a href="#TC-ORG-001">TC-ORG-001</a></td><td>Create a Site</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-ORG-002">TC-ORG-002</a></td><td>Create a Zone with building and floor</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-ORG-003">TC-ORG-003</a></td><td>Create a Counter</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-ORG-004">TC-ORG-004</a></td><td>Duplicate Site code</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-ORG-005">TC-ORG-005</a></td><td>Site code with a space is refused before it is sent</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-ORG-006">TC-ORG-006</a></td><td>Unknown timezone is refused</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-ORG-007">TC-ORG-007</a></td><td>Language settings must be consistent</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-ORG-008">TC-ORG-008</a></td><td>Second Site is refused while multi_site is off</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-ORG-009">TC-ORG-009</a></td><td>Edit a Site</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-ORG-010">TC-ORG-010</a></td><td>Deactivating a Site deactivates its Zones and Counters</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-ORG-011">TC-ORG-011</a></td><td>Reactivating a child of an inactive parent is refused</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-ORG-012">TC-ORG-012</a></td><td>An inactive Counter cannot open a session</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-ORG-013">TC-ORG-013</a></td><td>Zone voice settings (API only)</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-ORG-014">TC-ORG-014</a></td><td>Zone voice settings out of range</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-ORG-015">TC-ORG-015</a></td><td>Unknown ids answer not found</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-ORG-016">TC-ORG-016</a></td><td>A Site-scoped admin cannot see another Site</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-ORG-017">TC-ORG-017</a></td><td>Site switcher in the Admin top bar</td><td><span class="badge edge">edge</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr></tbody></table></div></section>
+<div class="pager"><a href="06-auth-and-users.html">← Auth, users and approvals</a><a href="08-catalogue-numbering-priority.html">Catalogue, numbering, priority →</a></div>
+</main>
+</div>
+</body>
+</html>

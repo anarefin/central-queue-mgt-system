@@ -48,7 +48,7 @@ class ThresholdAlertReads {
     long longestWaitSeconds(UUID serviceId, Instant now) {
         Double seconds = jdbc.query(
                 "SELECT max(extract(epoch FROM (?::timestamptz - queued_at))) FROM ticket WHERE service_id = ? AND state IN ('waiting', 'paused', 'remote')",
-                rs -> rs.next() ? rs.getObject(1, Double.class) : null,
+                rs -> rs.next() ? (rs.getBigDecimal(1) == null ? null : rs.getBigDecimal(1).doubleValue()) : null,
                 java.sql.Timestamp.from(now), serviceId);
         return seconds == null ? 0L : seconds.longValue();
     }
@@ -90,7 +90,7 @@ class ThresholdAlertReads {
     long maxDeviceOfflineMinutes(UUID siteId, Instant now) {
         Double seconds = jdbc.query(
                 "SELECT max(extract(epoch FROM (?::timestamptz - coalesce(last_heartbeat_at, paired_at)))) FROM device WHERE site_id = ? AND active = true",
-                rs -> rs.next() ? rs.getObject(1, Double.class) : null,
+                rs -> rs.next() ? (rs.getBigDecimal(1) == null ? null : rs.getBigDecimal(1).doubleValue()) : null,
                 java.sql.Timestamp.from(now), siteId);
         return seconds == null ? 0L : seconds.longValue() / 60;
     }

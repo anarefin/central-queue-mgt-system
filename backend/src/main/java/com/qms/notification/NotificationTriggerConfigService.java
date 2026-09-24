@@ -72,6 +72,7 @@ public class NotificationTriggerConfigService {
         scope.requireSite(siteId);
         requireServiceInSite(serviceId, siteId);
         Map<String, SettingRow> overrides = new LinkedHashMap<>();
+        for (SettingRow row : repository.forSite(siteId)) overrides.put(row.triggerKey(), row); // the Site-wide setting is the Service's fallback
         for (SettingRow row : repository.forService(siteId, serviceId)) overrides.put(row.triggerKey(), row);
         return listAll(overrides, siteId, serviceId);
     }

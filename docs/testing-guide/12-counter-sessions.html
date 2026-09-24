@@ -1,0 +1,610 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Counter sessions and the F2 to F10 serving actions — cqms testing guide</title>
+<link rel="stylesheet" href="styles.css">
+<script>
+(function(){try{var t=localStorage.getItem('qms-guide-theme');if(t)document.documentElement.setAttribute('data-theme',t);}catch(e){}
+document.addEventListener('DOMContentLoaded',function(){var b=document.getElementById('theme-toggle');if(!b)return;
+b.addEventListener('click',function(){var cur=document.documentElement.getAttribute('data-theme');
+if(!cur){cur=window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';}
+var n=cur==='dark'?'light':'dark';document.documentElement.setAttribute('data-theme',n);try{localStorage.setItem('qms-guide-theme',n);}catch(e){}});});})();
+</script>
+</head>
+<body>
+<a class="skip" href="#content">Skip to content</a>
+<div class="layout">
+<nav class="side" aria-label="Guide navigation"><a class="brand" href="index.html">cqms testing guide</a><div class="sub">Queue Management System</div><h2>Start here</h2><ul><li><a href="01-getting-started.html">Getting started</a></li><li><a href="02-roles-and-permissions.html">Roles and permissions</a></li><li><a href="03-industry-configuration.html">Industry configuration</a></li><li><a href="04-walkthroughs.html">Industry walkthroughs</a></li><li><a href="05-setup-wizard-and-config.html">Setup wizard and config bundle</a></li></ul><h2>Configuration</h2><ul><li><a href="06-auth-and-users.html">Auth, users and approvals</a></li><li><a href="07-organisation.html">Sites, zones, counters</a></li><li><a href="08-catalogue-numbering-priority.html">Catalogue, numbering, priority</a></li></ul><h2>Serving visitors</h2><ul><li><a href="09-issuance.html">Issuance</a></li><li><a href="10-visitors.html">Visitors</a></li><li><a href="11-queue-engine.html">Queue engine</a></li><li><a href="12-counter-sessions.html" aria-current="page">Counter sessions</a></li><li><a href="13-journeys.html">Journeys</a></li><li><a href="14-appointments.html">Appointments</a></li><li><a href="15-mobile-visitor.html">Mobile visitor</a></li></ul><h2>Surfaces and comms</h2><ul><li><a href="16-displays-and-voice.html">Displays and voice</a></li><li><a href="17-notifications.html">Notifications</a></li><li><a href="18-dashboard-and-alerts.html">Dashboard and alerts</a></li></ul><h2>Data and platform</h2><ul><li><a href="19-reports-and-exports.html">Reports and exports</a></li><li><a href="20-integrations.html">Webhooks and service accounts</a></li><li><a href="21-devices-and-realtime.html">Devices and realtime</a></li><li><a href="22-audit-log.html">Audit log</a></li><li><a href="23-operations.html">Operations</a></li></ul><h2>Quality</h2><ul><li><a href="24-cross-cutting.html">Cross-cutting checks</a></li><li><a href="25-automated-suites.html">Automated suites</a></li><li><a href="26-appendices.html">Appendices</a></li></ul><div class="theme"><button id="theme-toggle" type="button">Toggle light / dark</button></div></nav>
+<main id="content">
+<h1>Counter sessions and the F2 to F10 serving actions</h1>
+<p class="lede">Open a session, call, re-announce, start, miss, hold, transfer, break, close and force-close, with every limit and every refusal.</p>
+<h2 id="the-serving-desk-console">The serving desk (<code>/console/</code>)</h2>
+<p>Role: <code>agent</code> (own session) or <code>team_admin</code>. One focused, keyboard-first screen with no sidebar. A session belongs to <strong>one Counter and one agent</strong> and is stored on the server, so a refresh, a network loss or a backend restart shows the same Ticket again (<code>GET /sessions/current</code>).</p>
+<div class="tablewrap"><table><thead><tr><th>Key</th><th>Action</th><th>Button</th><th>Enabled when</th></tr></thead><tbody><tr><td><strong>F2</strong></td><td>Call next</td><td>*Call next*</td><td>session open, nothing called or serving (or room for a parallel Service)</td></tr><tr><td><strong>F3</strong></td><td>Re-announce</td><td>*Re-announce*</td><td>Ticket <code>called</code>, under the re-announce limit</td></tr><tr><td><strong>F4</strong></td><td>Start service</td><td>*Start service*</td><td>Ticket <code>called</code></td></tr><tr><td><strong>F5</strong></td><td>Complete</td><td>*Complete*</td><td>Ticket <code>serving</code></td></tr><tr><td><strong>F6</strong></td><td>Miss</td><td>*Miss*</td><td>Ticket <code>called</code> (warns when the next Miss closes it as <code>no_show</code>)</td></tr><tr><td><strong>F7</strong></td><td>Transfer</td><td>*Transfer*</td><td>Ticket <code>serving</code></td></tr><tr><td><strong>F8</strong></td><td>Hold</td><td>*Hold*</td><td>Ticket <code>serving</code>, under the hold limit</td></tr><tr><td><strong>F9</strong></td><td>Break / End break</td><td>*Break*</td><td>nothing in progress (or on a break)</td></tr><tr><td><strong>F10</strong></td><td>Close session</td><td>*Close session*</td><td>nothing called or serving and no held Tickets</td></tr></tbody></table></div>
+<p>Also: <strong>Call a specific Token</strong> (out of order, with a reason), <strong>Return to queue</strong> and <strong>Keep</strong> in the call-timeout card, and *Held by me* with a <strong>Resume</strong> per Ticket. Browsers may steal F5 (reload) and F10 (menu); the console cancels the default on every mapped key, ignores key repeat, and while a panel (Transfer, Break, Call specific) is open <strong>only F7 and F9 act</strong>, so typing a note cannot complete a Ticket.</p>
+<p>Settings you will change to test limits (in your compose override, see <a href="01-getting-started.html">Getting started</a>):</p>
+<div class="tablewrap"><table><thead><tr><th>Setting</th><th>Default</th><th>Effect</th></tr></thead><tbody><tr><td><code>QMS_QUEUE_ANNOUNCE_REPEAT_LIMIT</code></td><td>3</td><td>re-announces allowed per Ticket</td></tr><tr><td><code>QMS_QUEUE_MISS_LIMIT</code></td><td>2</td><td>Misses before a Miss becomes <code>no_show</code></td></tr><tr><td><code>QMS_QUEUE_MISS_REENTRY_POSITION</code> / <code>_AFTER</code></td><td><code>after-n</code> / 3</td><td>where a missed Ticket returns (<code>front</code>, <code>after-n</code>, <code>back</code>)</td></tr><tr><td><code>QMS_QUEUE_HOLD_LIMIT</code></td><td>3 (0 = off)</td><td>Tickets a session may hold</td></tr><tr><td><code>QMS_QUEUE_CALL_TIMEOUT_SECONDS</code></td><td>90 (0 = off)</td><td>unanswered call prompt</td></tr><tr><td><code>QMS_QUEUE_TRANSFER_HEADSTART_MINUTES</code></td><td>empty = predecessor's wait</td><td>head start on a successor</td></tr></tbody></table></div>
+<p>**Wait for the *In service* badge** after F4 before pressing F5 or F7. Both race the in-flight start request and silently do nothing if pressed too early.</p>
+<h2 id="opening-and-closing">Opening and closing</h2>
+<article class="tc happy" id="TC-SES-001">
+<header><span class="tcid"><a href="#TC-SES-001">TC-SES-001</a></span><h4>Open a session</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-AGT-001, §19.3</dd></div><div><dt>Role</dt><dd>agent</dd></div><div class="wide"><dt>Preconditions</dt><dd>A Counter linked to a Service whose group has the agent on its Team.</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Sign in to <code>/console/login/</code> as an agent who is on the Service group's Team.</li><li>*Open session*: pick a Counter and tick the Services you will serve.</li><li>Click <strong>Open session</strong>.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>The top bar shows the Counter, state *open* and a break timer placeholder. F2 becomes available. Audit <code>session.opened</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /sessions {counter_id,service_ids?} -&gt; 201</code></pre><p><strong>Automated:</strong> <code>SessionIT</code>; e2e U1</p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-SES-002">
+<header><span class="tcid"><a href="#TC-SES-002">TC-SES-002</a></span><h4>Counter already occupied</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-AGT-001</dd></div><div><dt>Role</dt><dd>agent</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Agent 1 has a session on Counter 1.</li><li>Agent 2 tries to open Counter 1.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>409 conflict</code>, <code>details.reason = counter_occupied</code>. *Another session is using this Counter.*</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /sessions -&gt; 409 {reason:'counter_occupied'}</code></pre><p><strong>Automated:</strong> <code>SessionIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-SES-003">
+<header><span class="tcid"><a href="#TC-SES-003">TC-SES-003</a></span><h4>Agent already has a session elsewhere</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-AGT-001</dd></div><div><dt>Role</dt><dd>agent</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Agent 1 has a session on Counter 1 and opens another on Counter 2.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>409 conflict</code>, <code>details.reason = agent_has_open_session</code>. *You already have a session open.*</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /sessions -&gt; 409 {reason:'agent_has_open_session'}</code></pre><p><strong>Automated:</strong> <code>SessionIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc edge" id="TC-SES-004">
+<header><span class="tcid"><a href="#TC-SES-004">TC-SES-004</a></span><h4>Only one open session per counter is enforced by the database too</h4><span class="badge edge">edge</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-AGT-001</dd></div><div><dt>Role</dt><dd>developer</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Open two sessions on the same Counter concurrently (two curl calls at once).</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>Exactly one succeeds; the other gets <code>counter_occupied</code>. The database's partial unique index is the final guard.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>parallel POST /sessions</code></pre><p><strong>Automated:</strong> <code>SessionIT#concurrentAttemptsToOpenTheSameCounterLeaveExactlyOneSession</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-SES-005">
+<header><span class="tcid"><a href="#TC-SES-005">TC-SES-005</a></span><h4>Agent not on the team cannot open a Counter</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-CFG-107</dd></div><div><dt>Role</dt><dd>agent</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Use an agent who is <strong>not</strong> a member of the Service group's Team.</li><li>Open a session.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>The Counter is not offered in the picker; the API refuses <code>403 forbidden</code> or <code>409 conflict</code> (no serviceable link).</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>GET /sessions/options ; POST /sessions -&gt; 4xx</code></pre><p><strong>Automated:</strong> <code>SessionIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-SES-006">
+<header><span class="tcid"><a href="#TC-SES-006">TC-SES-006</a></span><h4>Close a session cleanly</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>§19.3</dd></div><div><dt>Role</dt><dd>agent</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>With nothing called, serving or held press <strong>F10</strong>.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>The session becomes <code>closed</code>, the Counter is free, and the console returns to *Open session*. Audit <code>session.closed</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>DELETE /sessions/{id}</code></pre><p><strong>Automated:</strong> <code>SessionIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-SES-007">
+<header><span class="tcid"><a href="#TC-SES-007">TC-SES-007</a></span><h4>Closing with a ticket in progress moves the session to closing</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>§19.3</dd></div><div><dt>Role</dt><dd>agent</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Call a Ticket (F2).</li><li>Press F10.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>409 conflict</code>, <code>details.reason = ticket_in_progress</code>; *Finish the Token in progress first.* The session becomes <code>closing</code> and takes no new calls; completing the Ticket then closes it.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>DELETE /sessions/{id} -&gt; 409 {reason:'ticket_in_progress'}</code></pre><p><strong>Automated:</strong> <code>SessionIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-SES-008">
+<header><span class="tcid"><a href="#TC-SES-008">TC-SES-008</a></span><h4>Closing with only held tickets left</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>ADR-0008</dd></div><div><dt>Role</dt><dd>agent</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Hold a Ticket (F8), with nothing called or serving.</li><li>Press F10.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>409 conflict</code>, <code>details.reason = held_tickets_remaining</code>. *Resume and complete your held Tokens before closing.* Resume and complete each; the last completion closes the session.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>DELETE /sessions/{id} -&gt; 409 {reason:'held_tickets_remaining'}</code></pre><p><strong>Automated:</strong> <code>HoldAndForceCloseTest</code>, <code>SessionIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-SES-009">
+<header><span class="tcid"><a href="#TC-SES-009">TC-SES-009</a></span><h4>A closed or closing session takes no calls</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>§19.3</dd></div><div><dt>Role</dt><dd>agent</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Put the session into <code>closing</code> (previous case).</li><li>Press F2.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>409 conflict</code>, <code>details.reason = session_not_open</code>. *This session is not taking new work.*</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /sessions/{id}/next -&gt; 409 {reason:'session_not_open'}</code></pre><p><strong>Automated:</strong> <code>SessionIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-SES-010">
+<header><span class="tcid"><a href="#TC-SES-010">TC-SES-010</a></span><h4>Refresh, network loss or restart keeps the session</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-AGT-002, FR-OPS-023</dd></div><div><dt>Role</dt><dd>agent</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Call a Ticket.</li><li>Reload the browser (and, in a second run, <code>docker compose restart backend</code>).</li><li>Wait for the console.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>The console reloads with the same Counter and the same called Ticket; nothing is lost. With no session, <code>GET /sessions/current</code> is <code>404 not_found</code> and the console shows *Open session*.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>GET /sessions/current</code></pre><p><strong>Automated:</strong> <code>SessionIT</code>, <code>UpgradeRestartIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<h2 id="call-start-complete-f2-f4-f5">Call, start, complete (F2, F4, F5)</h2>
+<article class="tc happy" id="TC-SES-011">
+<header><span class="tcid"><a href="#TC-SES-011">TC-SES-011</a></span><h4>Call next (F2)</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-AGT-010, FR-QUE-030</dd></div><div><dt>Role</dt><dd>agent</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>With at least one waiting Ticket press <strong>F2</strong>.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>The best Ticket is <code>called</code> and bound to this session. Its token, visitor fields (per role) and purpose note show in the current-Ticket card. The display announces it. Ticket event <code>ticket.called</code> (a <code>ticket_event</code> row, not an audit-log entry).</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /sessions/{id}/next -&gt; 200</code></pre><p><strong>Automated:</strong> <code>CounterCallTest</code>; e2e U1</p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-SES-012">
+<header><span class="tcid"><a href="#TC-SES-012">TC-SES-012</a></span><h4>Call with nothing waiting</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-AGT-010</dd></div><div><dt>Role</dt><dd>agent</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Empty the queue and press F2.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>409 conflict</code>, <code>details.reason = no_ticket_waiting</code>. *Nobody is waiting right now.*</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /sessions/{id}/next -&gt; 409 {reason:'no_ticket_waiting'}</code></pre><p><strong>Automated:</strong> <code>CounterCallTest</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-SES-013">
+<header><span class="tcid"><a href="#TC-SES-013">TC-SES-013</a></span><h4>Cannot call while a ticket is in progress</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-AGT-010</dd></div><div><dt>Role</dt><dd>agent</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>With a Ticket <code>called</code> press F2 again.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>The button is off; by API <code>409 conflict</code>, <code>details.reason = ticket_in_progress</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /sessions/{id}/next -&gt; 409 {reason:'ticket_in_progress'}</code></pre><p><strong>Automated:</strong> <code>CounterCallTest</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-SES-014">
+<header><span class="tcid"><a href="#TC-SES-014">TC-SES-014</a></span><h4>Start service (F4)</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-AGT-011</dd></div><div><dt>Role</dt><dd>agent</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>After F2 press <strong>F4</strong>.</li><li>Wait for the *In service* badge.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>State <code>serving</code>; focus moves to the outcome selector. Ticket event <code>ticket.serving</code> (a <code>ticket_event</code> row, not an audit-log entry).</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /sessions/{id}/serve (If-Match: &lt;version&gt;) -&gt; 200</code></pre><p><strong>Automated:</strong> <code>CounterCallTest</code>; e2e U1</p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-SES-015">
+<header><span class="tcid"><a href="#TC-SES-015">TC-SES-015</a></span><h4>Start or complete with nothing to act on</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-AGT-011</dd></div><div><dt>Role</dt><dd>agent</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Press F4 with nothing called.</li><li>Press F5 with nothing serving.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>409 conflict</code>, <code>no_ticket_called</code> (*There is no called Token.*) and <code>no_ticket_serving</code> (*There is no Token in service to complete.*). Buttons are disabled in the UI; the API is the guard.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /sessions/{id}/serve -&gt; 409 {reason:'no_ticket_called'} ; POST .../complete -&gt; 409 {reason:'no_ticket_serving'}</code></pre><p><strong>Automated:</strong> <code>CounterCallTest</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-SES-016">
+<header><span class="tcid"><a href="#TC-SES-016">TC-SES-016</a></span><h4>Complete with an outcome and a note (F5)</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-AGT-030, FR-AGT-032</dd></div><div><dt>Role</dt><dd>agent</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>After *In service*, choose an outcome (sent as <code>outcome_code_id</code>, a UUID; required when the Service has outcome codes) and add a note.</li><li>Press <strong>F5</strong>.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>State <code>completed</code>; the current-Ticket card clears; the Counter is free. <code>wait_seconds</code> (queue to call) and <code>service_seconds</code> are stored. Ticket event <code>ticket.completed</code> (a <code>ticket_event</code> row, not an audit-log entry).</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /sessions/{id}/complete {outcome_code_id,note} -&gt; 200</code></pre><p><strong>Automated:</strong> <code>CounterCallTest</code>; e2e U1</p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-SES-017">
+<header><span class="tcid"><a href="#TC-SES-017">TC-SES-017</a></span><h4>Complete without a required outcome</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-AGT-032</dd></div><div><dt>Role</dt><dd>agent</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>For a Service that has outcome codes press F5 with no outcome chosen, then with an unknown outcome.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>400 validation_failed</code> naming <code>outcome_code_id</code>. The Ticket stays <code>serving</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /sessions/{id}/complete {} -&gt; 400 ; unknown: {outcome_code_id:&lt;random UUID&gt;} -&gt; 400</code></pre><p><strong>Automated:</strong> <code>CounterCallTest</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-SES-018">
+<header><span class="tcid"><a href="#TC-SES-018">TC-SES-018</a></span><h4>A stale action is refused with version_mismatch</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>ADR-0008</dd></div><div><dt>Role</dt><dd>agent</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Open the same session in two browser tabs.</li><li>Both tabs show the Ticket as *called*. In tab A press the re-announce action (the Ticket stays <code>called</code> but its version changes).</li><li>In tab B (still holding the old version) press F4.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>Tab B is refused <code>409 conflict</code>, <code>details.reason = version_mismatch</code>; *The Token has changed since you last saw it. The screen was refreshed; try again.* and reloads to the truth.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /sessions/{id}/serve (If-Match: &lt;old&gt;) -&gt; 409 {reason:'version_mismatch'}</code></pre><p><strong>Automated:</strong> <code>IfMatchTest</code>, <code>SessionIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-SES-019">
+<header><span class="tcid"><a href="#TC-SES-019">TC-SES-019</a></span><h4>Malformed If-Match</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>API-013</dd></div><div><dt>Role</dt><dd>developer</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Send <code>If-Match: abc</code> to <code>.../serve</code>.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>400 validation_failed</code> naming <code>If-Match</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /sessions/{id}/serve -H 'If-Match: abc' -&gt; 400</code></pre><p><strong>Automated:</strong> <code>IfMatchTest</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc edge" id="TC-SES-020">
+<header><span class="tcid"><a href="#TC-SES-020">TC-SES-020</a></span><h4>Two counters call at the same instant</h4><span class="badge edge">edge</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-QUE-031, ADR-0008</dd></div><div><dt>Role</dt><dd>agent</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Two agents on two Counters serve the same Service; keep exactly <strong>one</strong> Ticket waiting.</li><li>Both press F2 at the same moment (or script two calls).</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>Exactly one gets the Ticket. The other is told <code>no_ticket_waiting</code> or is given the next Ticket; <strong>no Ticket is ever bound to two sessions</strong>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>two concurrent POST /sessions/{id}/next</code></pre><p><strong>Automated:</strong> <code>SessionIT#twoCountersCallingTheSingleWaitingTicketAtOnceGiveItToOneAndTheOtherIsToldNothingIsWaiting</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<h2 id="re-announce-and-miss-f3-f6">Re-announce and Miss (F3, F6)</h2>
+<p>*Re-announce* replays the call and changes no state (<code>announce_count</code> +1, capped). *Miss* declares the visitor absent: <code>miss_count</code> +1, the Ticket returns to <code>waiting</code> and re-enters at the configured position; a Miss that would take <code>miss_count</code> past the limit closes it as <code>no_show</code>. <strong>Agents never choose <code>no_show</code>.</strong> Re-announce does not count towards the Miss limit.</p>
+<article class="tc happy" id="TC-SES-021">
+<header><span class="tcid"><a href="#TC-SES-021">TC-SES-021</a></span><h4>Re-announce a called Ticket (F3)</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-AGT-012, ADR-0005</dd></div><div><dt>Role</dt><dd>agent</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Call a Ticket.</li><li>Press <strong>F3</strong>.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>The Ticket stays <code>called</code> and the display repeats the call. Event <code>ticket.reannounced</code>; <code>announce_count</code> shows one more.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /sessions/{id}/reannounce</code></pre><p><strong>Automated:</strong> <code>ReannounceAndMissTest</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-SES-022">
+<header><span class="tcid"><a href="#TC-SES-022">TC-SES-022</a></span><h4>Re-announce past the limit</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-DSP-028, ADR-0005</dd></div><div><dt>Role</dt><dd>agent</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>With <code>QMS_QUEUE_ANNOUNCE_REPEAT_LIMIT=2</code> call a Ticket.</li><li>Press F3 twice, then a third time.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>The third is refused <code>409 conflict</code>, <code>details.reason = reannounce_limit_reached</code>. *This Token has been re-announced as many times as allowed.* The count belongs to the Ticket and is not reset by a Miss.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /sessions/{id}/reannounce -&gt; 409 {reason:'reannounce_limit_reached'}</code></pre><p><strong>Automated:</strong> <code>ReannounceAndMissTest</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-SES-023">
+<header><span class="tcid"><a href="#TC-SES-023">TC-SES-023</a></span><h4>Re-announce or miss with nothing called</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-AGT-012</dd></div><div><dt>Role</dt><dd>agent</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Press F3 or F6 with no called Ticket.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>409 conflict</code>, <code>no_ticket_called</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /sessions/{id}/reannounce -&gt; 409</code></pre><p><strong>Automated:</strong> <code>ReannounceAndMissTest</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-SES-024">
+<header><span class="tcid"><a href="#TC-SES-024">TC-SES-024</a></span><h4>Miss returns the ticket to the queue</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-QUE-050, FR-QUE-051</dd></div><div><dt>Role</dt><dd>agent</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Keep 5 Tickets waiting, issued at least a minute apart (default re-entry <code>after-n</code> with N = 3; the position is computed from queue time, so Tickets issued in the same minute do not order reliably).</li><li>Call one and press <strong>F6</strong>.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>The Ticket returns to <code>waiting</code>, bound no more, and re-enters behind 3 waiting Tickets. Its original queue time is unchanged. Event <code>ticket.missed</code> with the adjustment applied.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /sessions/{id}/miss</code></pre><p><strong>Automated:</strong> <code>ReannounceAndMissTest</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc edge" id="TC-SES-025">
+<header><span class="tcid"><a href="#TC-SES-025">TC-SES-025</a></span><h4>Miss re-entry positions: front and back</h4><span class="badge edge">edge</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-QUE-051</dd></div><div><dt>Role</dt><dd>agent</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Set <code>QMS_QUEUE_MISS_REENTRY_POSITION=front</code>, miss a Ticket.</li><li>Set <code>back</code> and repeat.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>front</code> puts it ahead of every non-escalated Ticket; <code>back</code> behind all of them. Under <code>fifo</code> and <code>strict_priority</code> the position has no effect.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>qms.queue.miss-reentry-position=front|after-n|back</code></pre><p><strong>Automated:</strong> <code>ReannounceAndMissTest</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-SES-026">
+<header><span class="tcid"><a href="#TC-SES-026">TC-SES-026</a></span><h4>The Miss that exceeds the limit becomes no_show</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-QUE-050, ADR-0005</dd></div><div><dt>Role</dt><dd>agent</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>With the default limit 2 call the same Ticket and press F6 twice (it returns each time).</li><li>Call it a third time and press F6.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>The third Miss is warned in the UI (*this Miss will close the ticket*) and closes it as <code>no_show</code>, terminal. Event <code>ticket.no_show</code>. The Ticket does not return to the queue.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /sessions/{id}/miss -&gt; ticket.state = no_show</code></pre><p><strong>Automated:</strong> <code>ReannounceAndMissTest</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc edge" id="TC-SES-027">
+<header><span class="tcid"><a href="#TC-SES-027">TC-SES-027</a></span><h4>A ticket called again after a Miss stores only its waiting time</h4><span class="badge edge">edge</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>§19.1 invariant 1</dd></div><div><dt>Role</dt><dd>agent</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Call, Miss, call and complete a Ticket.</li><li>Check <code>wait_seconds</code> in the Ticket record.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>wait_seconds</code> counts only time in <code>waiting</code> (and <code>remote</code>), never the time it was <code>called</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>GET /tickets/{id}</code></pre><p><strong>Automated:</strong> <code>ReannounceAndMissTest</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<h2 id="call-timeout-return-and-out-of-order-call">Call timeout, return and out-of-order call</h2>
+<p>A <code>called</code> Ticket that nobody acts on prompts its agent after <code>QMS_QUEUE_CALL_TIMEOUT_SECONDS</code>. The agent then <strong>Keeps</strong> it or <strong>Returns it to the queue</strong>; a return is refused before the timeout, because an absent visitor before that is a Miss.</p>
+<article class="tc happy" id="TC-SES-028">
+<header><span class="tcid"><a href="#TC-SES-028">TC-SES-028</a></span><h4>Call timeout prompts the agent</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-QUE-032, FR-AGT-014</dd></div><div><dt>Role</dt><dd>agent</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>With <code>QMS_QUEUE_CALL_TIMEOUT_SECONDS=20</code> call a Ticket and do nothing for 25 seconds.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>A *call timeout* card appears with <strong>Return to queue</strong> and <strong>Keep</strong>. The Ticket itself is unchanged; the prompt appears once per call however many backend nodes run.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>event ticket.call_timeout on the counter topic</code></pre><p><strong>Automated:</strong> <code>CallTimeoutAndParallelTest</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-SES-029">
+<header><span class="tcid"><a href="#TC-SES-029">TC-SES-029</a></span><h4>Return an unanswered call to the queue</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-QUE-032, ADR-0004</dd></div><div><dt>Role</dt><dd>agent</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>After the prompt press <strong>Return to queue</strong>.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>The Ticket goes back to <code>waiting</code>, binding cleared, <code>queued_at</code> untouched, <strong>no Miss counted</strong>, and lands where it stood (score adjustment restored). Event <code>ticket.position_changed</code> with <code>reason: call_timeout</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /sessions/{id}/return -&gt; 200</code></pre><p><strong>Automated:</strong> <code>CallTimeoutAndParallelTest</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-SES-030">
+<header><span class="tcid"><a href="#TC-SES-030">TC-SES-030</a></span><h4>Return before the timeout is refused</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-QUE-032</dd></div><div><dt>Role</dt><dd>agent</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Call a Ticket and immediately call <code>return</code>.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>409 conflict</code>, <code>details.reason = call_not_timed_out</code>. *This call has not gone unanswered long enough to be returned to the queue.* Use Miss (F6), which counts.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /sessions/{id}/return -&gt; 409 {reason:'call_not_timed_out'}</code></pre><p><strong>Automated:</strong> <code>CallTimeoutAndParallelTest</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc edge" id="TC-SES-031">
+<header><span class="tcid"><a href="#TC-SES-031">TC-SES-031</a></span><h4>Keep the ticket after the prompt</h4><span class="badge edge">edge</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-QUE-032</dd></div><div><dt>Role</dt><dd>agent</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>After the prompt press <strong>Keep</strong>, then F4.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>The prompt clears and service proceeds normally. Re-announcing does <strong>not</strong> reset the timeout.</p></div>
+<details class="dev"><summary>Dev / API</summary><p><strong>Automated:</strong> <code>CallTimeoutAndParallelTest</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc edge" id="TC-SES-032">
+<header><span class="tcid"><a href="#TC-SES-032">TC-SES-032</a></span><h4>Call timeout switched off</h4><span class="badge edge">edge</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-QUE-032</dd></div><div><dt>Role</dt><dd>agent</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Set <code>QMS_QUEUE_CALL_TIMEOUT_SECONDS=0</code>, call a Ticket and wait.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>No prompt ever appears.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>qms.queue.call-timeout-seconds=0</code></pre><p><strong>Automated:</strong> <code>CallTimeoutAndParallelTest</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-SES-033">
+<header><span class="tcid"><a href="#TC-SES-033">TC-SES-033</a></span><h4>Call a specific ticket out of order</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-AGT-012</dd></div><div><dt>Role</dt><dd>agent</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Click <strong>Call a specific Token</strong>.</li><li>Pick a waiting Ticket that is not first, type a reason *VIP by manager*.</li><li>Confirm.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>That Ticket is <code>called</code> and bound to this session; everyone else keeps their place. Audit <code>ticket.called_out_of_order</code> (reason, its former place, the Counter).</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /sessions/{id}/call {ticket_id,reason} -&gt; 200</code></pre><p><strong>Automated:</strong> <code>CallTimeoutAndParallelTest</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-SES-034">
+<header><span class="tcid"><a href="#TC-SES-034">TC-SES-034</a></span><h4>Out-of-order call needs a reason</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-AGT-012</dd></div><div><dt>Role</dt><dd>agent</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Submit with no reason, a blank reason, or 1001 characters; or with no Ticket chosen.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>400 validation_failed</code> naming <code>reason</code> (<code>required</code> / <code>too_long</code>) or <code>ticket_id</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /sessions/{id}/call -&gt; 400</code></pre><p><strong>Automated:</strong> <code>CallTimeoutAndParallelTest</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-SES-035">
+<header><span class="tcid"><a href="#TC-SES-035">TC-SES-035</a></span><h4>Out-of-order call of a ticket that cannot be called</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-AGT-012</dd></div><div><dt>Role</dt><dd>agent</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Try to call a Ticket that is already called, or in a Service this session does not serve, or waiting in another agent's personal queue.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>409 conflict</code>, <code>details.reason = ticket_not_callable</code>. *That Token cannot be called from this Counter. It may have been called already.*</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /sessions/{id}/call -&gt; 409 {reason:'ticket_not_callable'}</code></pre><p><strong>Automated:</strong> <code>CallTimeoutAndParallelTest</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-SES-036">
+<header><span class="tcid"><a href="#TC-SES-036">TC-SES-036</a></span><h4>Parallel serving</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-AGT-013</dd></div><div><dt>Role</dt><dd>agent</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Mark a Service *A counter serves several visitors at once*, limit 3.</li><li>Call three Tickets of that Service in a row without completing.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>Up to 3 are in progress; the desk lists all of them and each action names its Ticket (<code>?ticket_id=</code>). A fourth F2 is refused <code>ticket_in_progress</code>. A busy non-parallel Service takes no second Ticket.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /sessions/{id}/next x4 -&gt; 4th 409 {reason:'ticket_in_progress'}</code></pre><p><strong>Automated:</strong> <code>CallTimeoutAndParallelTest</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-SES-037">
+<header><span class="tcid"><a href="#TC-SES-037">TC-SES-037</a></span><h4>Parallel limit also caps out-of-order calls and resumes</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-AGT-013</dd></div><div><dt>Role</dt><dd>agent</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>With the parallel limit reached try a specific call and a Resume.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>Both refused <code>409 conflict</code>, <code>ticket_in_progress</code> (*the desk has room only up to the limit*).</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /sessions/{id}/call|hold -&gt; 409</code></pre><p><strong>Automated:</strong> <code>CallTimeoutAndParallelTest</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<h2 id="hold-f8">Hold (F8)</h2>
+<p>Hold parks the Ticket in service, <strong>keeping its session binding</strong>, so the Counter can call the next Ticket. Only the holding session can resume it. Held Tickets show in *Held by me*.</p>
+<article class="tc happy" id="TC-SES-038">
+<header><span class="tcid"><a href="#TC-SES-038">TC-SES-038</a></span><h4>Hold and resume a ticket</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-AGT-015, ADR-0008</dd></div><div><dt>Role</dt><dd>agent</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Call and start a Ticket. Press <strong>F8</strong>.</li><li>Call and complete another Ticket.</li><li>In *Held by me* press <strong>Resume</strong> on the first.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>After F8 the Ticket is <code>held</code> and the Counter is free. After Resume it is <code>serving</code> again. Events <code>ticket.held</code>, <code>ticket.serving</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /sessions/{id}/hold ; POST /sessions/{id}/hold {ticket_id} (resume)</code></pre><p><strong>Automated:</strong> <code>HoldAndForceCloseTest</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-SES-039">
+<header><span class="tcid"><a href="#TC-SES-039">TC-SES-039</a></span><h4>Hold limit</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-AGT-015</dd></div><div><dt>Role</dt><dd>agent</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>With the default limit 3 hold three Tickets, then try a fourth.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>409 conflict</code>, <code>details.reason = hold_limit_reached</code>. *This session is already holding as many Tokens as allowed.* Hold is off entirely when <code>QMS_QUEUE_HOLD_LIMIT=0</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /sessions/{id}/hold -&gt; 409 {reason:'hold_limit_reached'}</code></pre><p><strong>Automated:</strong> <code>HoldAndForceCloseTest</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-SES-040">
+<header><span class="tcid"><a href="#TC-SES-040">TC-SES-040</a></span><h4>Resume a ticket this session does not hold</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>ADR-0008</dd></div><div><dt>Role</dt><dd>agent</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Resume a Ticket id held by another session, or one that is not held.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>409 conflict</code>, <code>details.reason = no_ticket_held</code>. *That Token is not held by this session.*</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /sessions/{id}/hold {ticket_id:&lt;other&gt;} -&gt; 409 {reason:'no_ticket_held'}</code></pre><p><strong>Automated:</strong> <code>HoldAndForceCloseTest</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-SES-041">
+<header><span class="tcid"><a href="#TC-SES-041">TC-SES-041</a></span><h4>Resume while another ticket is in progress</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-AGT-015</dd></div><div><dt>Role</dt><dd>agent</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Hold a Ticket, call another and leave it <code>called</code>.</li><li>Resume the held one.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>409 conflict</code>, <code>ticket_in_progress</code> (unless the Service allows parallel serving).</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /sessions/{id}/hold {ticket_id} -&gt; 409</code></pre><p><strong>Automated:</strong> <code>HoldAndForceCloseTest</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc edge" id="TC-SES-042">
+<header><span class="tcid"><a href="#TC-SES-042">TC-SES-042</a></span><h4>Hold is offered only on an open session</h4><span class="badge edge">edge</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-AGT-015</dd></div><div><dt>Role</dt><dd>agent</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Put the session on a break or into closing and look at F8.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>F8 is disabled; by API <code>session_not_open</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /sessions/{id}/hold -&gt; 409 {reason:'session_not_open'}</code></pre><p><strong>Automated:</strong> <code>HoldAndForceCloseTest</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<h2 id="transfer-f7-and-the-successor-ticket">Transfer (F7) and the successor Ticket</h2>
+<p>A transfer closes the Ticket in service as <strong><code>transferred</code></strong> (terminal) and creates a <strong>Successor ticket</strong> for another Service, Counter or agent, in one transaction. The Successor shares the Token number, the Visit, the Priority class, the channel and the ticket secret, and points back with <code>predecessor_ticket_id</code>. The visitor never sees a new number. Wait is attributed to each Ticket's own Service. The Successor gets a <strong>transfer head start</strong>: by default the predecessor's accrued wait, rounded to whole minutes, so the visitor is not sent to the back. A Ticket sent to a Counter or agent waits in <strong>their</strong> personal queue. Transfers are <strong>within one Site</strong>. Reports count <strong>chain heads</strong>, not rows.</p>
+<article class="tc happy" id="TC-SES-043">
+<header><span class="tcid"><a href="#TC-SES-043">TC-SES-043</a></span><h4>Transfer to another Service</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-QUE-052, FR-QUE-053, ADR-0006, UAT U5</dd></div><div><dt>Role</dt><dd>agent</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Call and start a Ticket (wait for *In service*).</li><li>Press <strong>F7</strong>.</li><li>Choose another Service, leave *Anyone*, type the note *Needs loan officer*.</li><li>Confirm.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>The original Ticket is <code>transferred</code>; the Counter is free. A Successor with the <strong>same token number</strong> appears in the target queue with a head start equal to the accrued wait. Audit <code>ticket.transferred</code> with the note as reason.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /tickets/{id}/transfer {service_id,note} (If-Match) -&gt; {predecessor,successor,session}</code></pre><p><strong>Automated:</strong> <code>TransferTest</code>; e2e U5 (<code>u05-transfer.spec.ts</code>)</p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-SES-044">
+<header><span class="tcid"><a href="#TC-SES-044">TC-SES-044</a></span><h4>Transfer to a specific counter or agent</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-QUE-052</dd></div><div><dt>Role</dt><dd>agent</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Repeat with target *a Counter* or *an agent* on the target Service.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>The Successor waits only in that Counter's or agent's queue; F2 at other Counters skips it, and it stays there if later missed.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /tickets/{id}/transfer {service_id,counter_id|agent_id,note}</code></pre><p><strong>Automated:</strong> <code>TransferTest</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc edge" id="TC-SES-045">
+<header><span class="tcid"><a href="#TC-SES-045">TC-SES-045</a></span><h4>A configured transfer head start</h4><span class="badge edge">edge</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-QUE-053</dd></div><div><dt>Role</dt><dd>agent</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Set <code>QMS_QUEUE_TRANSFER_HEADSTART_MINUTES=5</code> (and 0 in a second run).</li><li>Transfer a Ticket that had waited 20 minutes.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>The Successor's head start is 5 minutes (0 means none) instead of 20. It stacks with the class's own head start.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>qms.queue.transfer-headstart-minutes</code></pre><p><strong>Automated:</strong> <code>TransferTest</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-SES-046">
+<header><span class="tcid"><a href="#TC-SES-046">TC-SES-046</a></span><h4>Transfer needs a note and a valid target</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-QUE-052</dd></div><div><dt>Role</dt><dd>agent</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Submit with no note; a 1001-character note; no target; a Counter and an agent together; the ticket's own Service with no Counter or agent; an unknown target.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>400 validation_failed</code> naming <code>note</code> or the target field. Nothing changes.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /tickets/{id}/transfer -&gt; 400</code></pre><p><strong>Automated:</strong> <code>TransferTest</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-SES-047">
+<header><span class="tcid"><a href="#TC-SES-047">TC-SES-047</a></span><h4>Transfer with nothing in service</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-QUE-052</dd></div><div><dt>Role</dt><dd>agent</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Call a Ticket but do not start it, then transfer it.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>409 conflict</code>, <code>details.reason = no_ticket_serving</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /tickets/{id}/transfer -&gt; 409 {reason:'no_ticket_serving'}</code></pre><p><strong>Automated:</strong> <code>TransferTest</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-SES-048">
+<header><span class="tcid"><a href="#TC-SES-048">TC-SES-048</a></span><h4>Transfer to an inactive target</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>ADR-0002</dd></div><div><dt>Role</dt><dd>agent</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Deactivate the target Service (or Counter, or its group, Site, or the agent).</li><li>Transfer to it.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>409 conflict</code>, <code>details.reason = transfer_target_inactive</code>. *That service, Counter or agent is not active.*</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /tickets/{id}/transfer -&gt; 409 {reason:'transfer_target_inactive'}</code></pre><p><strong>Automated:</strong> <code>TransferTest</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-SES-049">
+<header><span class="tcid"><a href="#TC-SES-049">TC-SES-049</a></span><h4>Transfer to another Site</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>ADR-0002</dd></div><div><dt>Role</dt><dd>agent</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Use the id of a Service at a different Site (API).</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>409 conflict</code>, <code>details.reason = transfer_cross_site</code>. *A Token can only be transferred within its own site.* Cross-site transfer is Phase 2.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /tickets/{id}/transfer {service_id:&lt;other site&gt;} -&gt; 409 {reason:'transfer_cross_site'}</code></pre><p><strong>Automated:</strong> <code>TransferTest</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-SES-050">
+<header><span class="tcid"><a href="#TC-SES-050">TC-SES-050</a></span><h4>Counter or agent that does not serve the target Service</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-QUE-052</dd></div><div><dt>Role</dt><dd>agent</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Pick a Counter not linked to the target Service, or an agent not on its Team.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>409 conflict</code>, <code>details.reason = transfer_target_mismatch</code>. *That Counter or agent does not serve this service.*</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /tickets/{id}/transfer -&gt; 409 {reason:'transfer_target_mismatch'}</code></pre><p><strong>Automated:</strong> <code>TransferTest</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-SES-051">
+<header><span class="tcid"><a href="#TC-SES-051">TC-SES-051</a></span><h4>An agent can transfer only their own ticket; an admin any in scope</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-CFG-105</dd></div><div><dt>Role</dt><dd>agent, org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Agent 2 tries to transfer Agent 1's serving Ticket.</li><li>Team Admin (or Org Admin) does the same within scope.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>Agent 2: <code>403 forbidden</code>. The admin succeeds.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /tickets/{id}/transfer -&gt; 403 / 200</code></pre><p><strong>Automated:</strong> <code>TransferTest</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc edge" id="TC-SES-052">
+<header><span class="tcid"><a href="#TC-SES-052">TC-SES-052</a></span><h4>Reports count the chain head once</h4><span class="badge edge">edge</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>ADR-0006</dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Transfer a Ticket, complete the Successor.</li><li>Run *tickets issued* for the day.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>One issued Ticket (the chain head), not two; each wait is attributed to its own Ticket's Service.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /reports/detailed-token/run</code></pre><p><strong>Automated:</strong> <code>ReportingIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<h2 id="break-f9">Break (F9)</h2>
+<p>An agent takes a <strong>break</strong> of a configured type (created at Admin &gt; Break types; none exist on a new install). The session becomes <code>on_break</code>: no new assignments, the Counter stays occupied, the console shows a running clock and warns when the type's maximum passes. A held Ticket does <strong>not</strong> block a break.</p>
+<article class="tc happy" id="TC-SES-053">
+<header><span class="tcid"><a href="#TC-SES-053">TC-SES-053</a></span><h4>Take and end a break</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-AGT-020, FR-AGT-021</dd></div><div><dt>Role</dt><dd>agent</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Create a break type *Lunch* (max 30 min) in Admin.</li><li>In the Console press <strong>F9</strong>, choose *Lunch*.</li><li>Press F9 again.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>Session <code>on_break</code>, timer runs, F2 is off. After the second F9 the session is <code>open</code>. Audit <code>session.break_started</code> / <code>session.break_ended</code> (with duration and whether it overran).</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /sessions/{id}/break {break_type_id} ; POST /sessions/{id}/break (no body)</code></pre><p><strong>Automated:</strong> <code>SessionIT</code>, <code>BreakRulesTest</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-SES-054">
+<header><span class="tcid"><a href="#TC-SES-054">TC-SES-054</a></span><h4>A break cannot start with a ticket in progress</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-AGT-020</dd></div><div><dt>Role</dt><dd>agent</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Call a Ticket, then press F9.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>409 conflict</code>, <code>details.reason = ticket_in_progress</code>. A <strong>held</strong> Ticket does not block it.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /sessions/{id}/break -&gt; 409</code></pre><p><strong>Automated:</strong> <code>BreakRulesTest</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-SES-055">
+<header><span class="tcid"><a href="#TC-SES-055">TC-SES-055</a></span><h4>Already on a break, or not on one</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-AGT-020</dd></div><div><dt>Role</dt><dd>agent</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Start a break and start another.</li><li>End a break when none is running.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>409 conflict</code>: <code>already_on_break</code> (*You are already on a break.*) and <code>not_on_break</code> (*You are not on a break.*).</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /sessions/{id}/break -&gt; 409</code></pre><p><strong>Automated:</strong> <code>BreakRulesTest</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-SES-056">
+<header><span class="tcid"><a href="#TC-SES-056">TC-SES-056</a></span><h4>Calling during a break</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-AGT-020</dd></div><div><dt>Role</dt><dd>agent</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>While <code>on_break</code> call <code>.../next</code>.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>409 conflict</code>, <code>session_not_open</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /sessions/{id}/next -&gt; 409</code></pre><p><strong>Automated:</strong> <code>BreakRulesTest</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-SES-057">
+<header><span class="tcid"><a href="#TC-SES-057">TC-SES-057</a></span><h4>Break type validation</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd><code>BreakTypeRules</code>, ticket 66</dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Create a break type with no English name, <code>max_minutes</code> 0 and 1441, or an unknown language.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>400 validation_failed</code> (<code>default_language_required</code>, <code>Range</code>, <code>unknown_language</code>). A blank maximum is allowed (no limit).</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /break-types -&gt; 400</code></pre><p><strong>Automated:</strong> <code>BreakTypeRulesTest</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-SES-058">
+<header><span class="tcid"><a href="#TC-SES-058">TC-SES-058</a></span><h4>Missing, unknown or deactivated break type</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-AGT-020</dd></div><div><dt>Role</dt><dd>agent</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Start a break with an unknown <code>break_type_id</code> or a deactivated type. (An empty body is not an error: it means end the current break.)</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>400 validation_failed</code> naming <code>break_type_id</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /sessions/{id}/break -&gt; 400</code></pre><p><strong>Automated:</strong> <code>BreakRulesTest</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc edge" id="TC-SES-059">
+<header><span class="tcid"><a href="#TC-SES-059">TC-SES-059</a></span><h4>Closing while on a break ends the break first</h4><span class="badge edge">edge</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-AGT-020</dd></div><div><dt>Role</dt><dd>agent</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Start a break and press F10.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>The break ends (duration recorded) and the session closes.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>DELETE /sessions/{id}</code></pre><p><strong>Automated:</strong> <code>SessionIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-SES-060">
+<header><span class="tcid"><a href="#TC-SES-060">TC-SES-060</a></span><h4>A supervisor forces an agent on or off a break</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-AGT-022, ticket 16</dd></div><div><dt>Role</dt><dd>team_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Admin &gt; <strong>Agent availability</strong> &gt; pick an agent with a live session &gt; set *On break* with a type and a reason.</li><li>Set *Available* later.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>The agent's console updates by itself (break shown, then ended). Audit <code>agent.availability_changed</code> with admin, before, after and reason.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>PUT /agents/{id}/availability {status,break_type_id,reason}</code></pre><p><strong>Automated:</strong> <code>SessionIT</code>, <code>AvailabilityAdmin.test.tsx</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-SES-061">
+<header><span class="tcid"><a href="#TC-SES-061">TC-SES-061</a></span><h4>Availability: no live session, ticket in progress, closing, unknown</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-AGT-022</dd></div><div><dt>Role</dt><dd>team_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Set availability for an agent with no session; one with a Ticket called; one whose session is closing; an unknown agent id.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>no_live_session</code> (*That agent no longer has a session open.*), <code>ticket_in_progress</code>, <code>session_not_open</code>, and <code>404 not_found</code> respectively.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>PUT /agents/{id}/availability -&gt; 409 / 404</code></pre><p><strong>Automated:</strong> <code>SessionIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-SES-062">
+<header><span class="tcid"><a href="#TC-SES-062">TC-SES-062</a></span><h4>Only supervisors set availability</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>§5.2</dd></div><div><dt>Role</dt><dd>agent, reception_operator</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>As an Agent set another agent's availability, or your own.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>403 forbidden</code>. An admin outside the agent's Site or Service groups is also refused.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>PUT /agents/{id}/availability (agent) -&gt; 403</code></pre><p><strong>Automated:</strong> <code>PermissionMatrixTest</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-SES-063">
+<header><span class="tcid"><a href="#TC-SES-063">TC-SES-063</a></span><h4>Break report</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-AGT-024</dd></div><div><dt>Role</dt><dd>team_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Take two breaks (one over its maximum).</li><li><code>GET /break-report?from=&amp;to=</code>.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>Per agent and break type: count, total and average seconds, and how many overran. Only ended breaks count.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>GET /break-report?from=&amp;to=&amp;agent_id=&amp;break_type_id=</code></pre><p><strong>Automated:</strong> <code>BreakOverrunIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<h2 id="force-close-and-the-ticket-returning-to-the-front">Force-close and the Ticket returning to the front</h2>
+<p>An administrator with the open/close permission for <strong>everyone's</strong> sessions (System, Org, Team Admin; <strong>not</strong> an agent, not even for their own) can force-close a stale session. The session becomes <code>force_closed</code>; every Ticket it was calling, serving or holding returns to <code>waiting</code> <strong>at the front</strong> (ahead of every non-escalated Ticket, the earliest-joined first), binding cleared, <code>queued_at</code> and <code>miss_count</code> untouched.</p>
+<article class="tc happy" id="TC-SES-064">
+<header><span class="tcid"><a href="#TC-SES-064">TC-SES-064</a></span><h4>Force-close a stale session</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-AGT-016, ADR-0008</dd></div><div><dt>Role</dt><dd>team_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Agent 1 has one Ticket called, one serving in parallel or held (use parallel serving) and one held.</li><li>As Team Admin call force-close with a reason.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>Session <code>force_closed</code>; the Counter is free at once. Each Ticket returns to <code>waiting</code> at the front with one <code>ticket.position_changed</code> event (<code>reason: session_force_closed</code>). Agent 1's console drops out. Audit <code>session.force_closed</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /sessions/{id}/force-close {reason}</code></pre><p><strong>Automated:</strong> <code>HoldAndForceCloseTest</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-SES-065">
+<header><span class="tcid"><a href="#TC-SES-065">TC-SES-065</a></span><h4>An agent cannot force-close, even their own session</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>§5.2</dd></div><div><dt>Role</dt><dd>agent</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>As the agent call force-close on your own session.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>403 forbidden</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /sessions/{id}/force-close (agent) -&gt; 403</code></pre><p><strong>Automated:</strong> <code>SessionIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-SES-066">
+<header><span class="tcid"><a href="#TC-SES-066">TC-SES-066</a></span><h4>Force-close outside your scope or twice</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-CFG-106</dd></div><div><dt>Role</dt><dd>team_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Force-close a session at a Site the admin cannot reach.</li><li>Force-close an already closed session.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>403 forbidden</code> for the first; <code>409 conflict</code>, <code>session_not_open</code>, for the second.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /sessions/{id}/force-close -&gt; 403 / 409</code></pre><p><strong>Automated:</strong> <code>HoldAndForceCloseTest</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc edge" id="TC-SES-067">
+<header><span class="tcid"><a href="#TC-SES-067">TC-SES-067</a></span><h4>Disabling a user has the same effect on their tickets</h4><span class="badge edge">edge</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-CFG-104</dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Disable the agent while a Ticket is <code>called</code>.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>The Ticket returns to <code>waiting</code> at the front. See <a href="06-auth-and-users.html">Auth and users</a>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /users/{id}/disable</code></pre><p><strong>Automated:</strong> <code>RealtimeRevocationIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<h2 id="cancelling-a-ticket-in-each-active-state">Cancelling a Ticket in each active state</h2>
+<p><code>cancelled</code> is reachable from every active state (<code>remote</code>, <code>waiting</code>, <code>paused</code>, <code>called</code>, <code>serving</code>, <code>held</code>), by staff, or by the visitor while still <code>remote</code>, <code>waiting</code> or <code>paused</code>. An agent may cancel only Tickets bound to their own session.</p>
+<article class="tc happy" id="TC-SES-068">
+<header><span class="tcid"><a href="#TC-SES-068">TC-SES-068</a></span><h4>Cancel a called ticket</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>§19.1</dd></div><div><dt>Role</dt><dd>agent, reception_operator</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Call a Ticket (state <code>called</code>).</li><li>Cancel it with a reason.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>State <code>cancelled</code>, binding cleared. Audit <code>ticket.cancelled</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /tickets/{id}/cancel</code></pre><p><strong>Automated:</strong> <code>ReprioritiseAndCancelTest</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-SES-069">
+<header><span class="tcid"><a href="#TC-SES-069">TC-SES-069</a></span><h4>Cancel a serving ticket</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>§19.1</dd></div><div><dt>Role</dt><dd>reception_operator</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Start service, then cancel from Reception.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>State <code>cancelled</code>; the Counter is free.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /tickets/{id}/cancel</code></pre><p><strong>Automated:</strong> <code>ReprioritiseAndCancelTest</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-SES-070">
+<header><span class="tcid"><a href="#TC-SES-070">TC-SES-070</a></span><h4>Cancel a held ticket</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>§19.1</dd></div><div><dt>Role</dt><dd>reception_operator</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Hold a Ticket, then cancel it from Reception.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>State <code>cancelled</code>; it disappears from *Held by me*.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /tickets/{id}/cancel</code></pre><p><strong>Automated:</strong> <code>ReprioritiseAndCancelTest</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article><section class="signoff"><h2 id="sign-off-sheet">Sign-off sheet</h2><p class="hint">Print this page range, one sheet per run. Tick Pass or Fail and note the build, date and tester at the top.</p><div class="tablewrap"><table><thead><tr><th>TC</th><th>Title</th><th>Type</th><th>Pass</th><th>Fail</th><th>Notes</th></tr></thead><tbody><tr><td><a href="#TC-SES-001">TC-SES-001</a></td><td>Open a session</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-SES-002">TC-SES-002</a></td><td>Counter already occupied</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-SES-003">TC-SES-003</a></td><td>Agent already has a session elsewhere</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-SES-004">TC-SES-004</a></td><td>Only one open session per counter is enforced by the database too</td><td><span class="badge edge">edge</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-SES-005">TC-SES-005</a></td><td>Agent not on the team cannot open a Counter</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-SES-006">TC-SES-006</a></td><td>Close a session cleanly</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-SES-007">TC-SES-007</a></td><td>Closing with a ticket in progress moves the session to closing</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-SES-008">TC-SES-008</a></td><td>Closing with only held tickets left</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-SES-009">TC-SES-009</a></td><td>A closed or closing session takes no calls</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-SES-010">TC-SES-010</a></td><td>Refresh, network loss or restart keeps the session</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-SES-011">TC-SES-011</a></td><td>Call next (F2)</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-SES-012">TC-SES-012</a></td><td>Call with nothing waiting</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-SES-013">TC-SES-013</a></td><td>Cannot call while a ticket is in progress</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-SES-014">TC-SES-014</a></td><td>Start service (F4)</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-SES-015">TC-SES-015</a></td><td>Start or complete with nothing to act on</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-SES-016">TC-SES-016</a></td><td>Complete with an outcome and a note (F5)</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-SES-017">TC-SES-017</a></td><td>Complete without a required outcome</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-SES-018">TC-SES-018</a></td><td>A stale action is refused with version_mismatch</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-SES-019">TC-SES-019</a></td><td>Malformed If-Match</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-SES-020">TC-SES-020</a></td><td>Two counters call at the same instant</td><td><span class="badge edge">edge</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-SES-021">TC-SES-021</a></td><td>Re-announce a called Ticket (F3)</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-SES-022">TC-SES-022</a></td><td>Re-announce past the limit</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-SES-023">TC-SES-023</a></td><td>Re-announce or miss with nothing called</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-SES-024">TC-SES-024</a></td><td>Miss returns the ticket to the queue</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-SES-025">TC-SES-025</a></td><td>Miss re-entry positions: front and back</td><td><span class="badge edge">edge</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-SES-026">TC-SES-026</a></td><td>The Miss that exceeds the limit becomes no_show</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-SES-027">TC-SES-027</a></td><td>A ticket called again after a Miss stores only its waiting time</td><td><span class="badge edge">edge</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-SES-028">TC-SES-028</a></td><td>Call timeout prompts the agent</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-SES-029">TC-SES-029</a></td><td>Return an unanswered call to the queue</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-SES-030">TC-SES-030</a></td><td>Return before the timeout is refused</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-SES-031">TC-SES-031</a></td><td>Keep the ticket after the prompt</td><td><span class="badge edge">edge</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-SES-032">TC-SES-032</a></td><td>Call timeout switched off</td><td><span class="badge edge">edge</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-SES-033">TC-SES-033</a></td><td>Call a specific ticket out of order</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-SES-034">TC-SES-034</a></td><td>Out-of-order call needs a reason</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-SES-035">TC-SES-035</a></td><td>Out-of-order call of a ticket that cannot be called</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-SES-036">TC-SES-036</a></td><td>Parallel serving</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-SES-037">TC-SES-037</a></td><td>Parallel limit also caps out-of-order calls and resumes</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-SES-038">TC-SES-038</a></td><td>Hold and resume a ticket</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-SES-039">TC-SES-039</a></td><td>Hold limit</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-SES-040">TC-SES-040</a></td><td>Resume a ticket this session does not hold</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-SES-041">TC-SES-041</a></td><td>Resume while another ticket is in progress</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-SES-042">TC-SES-042</a></td><td>Hold is offered only on an open session</td><td><span class="badge edge">edge</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-SES-043">TC-SES-043</a></td><td>Transfer to another Service</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-SES-044">TC-SES-044</a></td><td>Transfer to a specific counter or agent</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-SES-045">TC-SES-045</a></td><td>A configured transfer head start</td><td><span class="badge edge">edge</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-SES-046">TC-SES-046</a></td><td>Transfer needs a note and a valid target</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-SES-047">TC-SES-047</a></td><td>Transfer with nothing in service</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-SES-048">TC-SES-048</a></td><td>Transfer to an inactive target</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-SES-049">TC-SES-049</a></td><td>Transfer to another Site</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-SES-050">TC-SES-050</a></td><td>Counter or agent that does not serve the target Service</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-SES-051">TC-SES-051</a></td><td>An agent can transfer only their own ticket; an admin any in scope</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-SES-052">TC-SES-052</a></td><td>Reports count the chain head once</td><td><span class="badge edge">edge</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-SES-053">TC-SES-053</a></td><td>Take and end a break</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-SES-054">TC-SES-054</a></td><td>A break cannot start with a ticket in progress</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-SES-055">TC-SES-055</a></td><td>Already on a break, or not on one</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-SES-056">TC-SES-056</a></td><td>Calling during a break</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-SES-057">TC-SES-057</a></td><td>Break type validation</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-SES-058">TC-SES-058</a></td><td>Missing, unknown or deactivated break type</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-SES-059">TC-SES-059</a></td><td>Closing while on a break ends the break first</td><td><span class="badge edge">edge</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-SES-060">TC-SES-060</a></td><td>A supervisor forces an agent on or off a break</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-SES-061">TC-SES-061</a></td><td>Availability: no live session, ticket in progress, closing, unknown</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-SES-062">TC-SES-062</a></td><td>Only supervisors set availability</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-SES-063">TC-SES-063</a></td><td>Break report</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-SES-064">TC-SES-064</a></td><td>Force-close a stale session</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-SES-065">TC-SES-065</a></td><td>An agent cannot force-close, even their own session</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-SES-066">TC-SES-066</a></td><td>Force-close outside your scope or twice</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-SES-067">TC-SES-067</a></td><td>Disabling a user has the same effect on their tickets</td><td><span class="badge edge">edge</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-SES-068">TC-SES-068</a></td><td>Cancel a called ticket</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-SES-069">TC-SES-069</a></td><td>Cancel a serving ticket</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-SES-070">TC-SES-070</a></td><td>Cancel a held ticket</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr></tbody></table></div></section>
+<div class="pager"><a href="11-queue-engine.html">← Queue engine</a><a href="13-journeys.html">Journeys →</a></div>
+</main>
+</div>
+</body>
+</html>

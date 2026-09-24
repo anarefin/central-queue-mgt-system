@@ -1,0 +1,229 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Queue engine: score, head start, escalation, strategies, dry run and wait estimates — cqms testing guide</title>
+<link rel="stylesheet" href="styles.css">
+<script>
+(function(){try{var t=localStorage.getItem('qms-guide-theme');if(t)document.documentElement.setAttribute('data-theme',t);}catch(e){}
+document.addEventListener('DOMContentLoaded',function(){var b=document.getElementById('theme-toggle');if(!b)return;
+b.addEventListener('click',function(){var cur=document.documentElement.getAttribute('data-theme');
+if(!cur){cur=window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';}
+var n=cur==='dark'?'light':'dark';document.documentElement.setAttribute('data-theme',n);try{localStorage.setItem('qms-guide-theme',n);}catch(e){}});});})();
+</script>
+</head>
+<body>
+<a class="skip" href="#content">Skip to content</a>
+<div class="layout">
+<nav class="side" aria-label="Guide navigation"><a class="brand" href="index.html">cqms testing guide</a><div class="sub">Queue Management System</div><h2>Start here</h2><ul><li><a href="01-getting-started.html">Getting started</a></li><li><a href="02-roles-and-permissions.html">Roles and permissions</a></li><li><a href="03-industry-configuration.html">Industry configuration</a></li><li><a href="04-walkthroughs.html">Industry walkthroughs</a></li><li><a href="05-setup-wizard-and-config.html">Setup wizard and config bundle</a></li></ul><h2>Configuration</h2><ul><li><a href="06-auth-and-users.html">Auth, users and approvals</a></li><li><a href="07-organisation.html">Sites, zones, counters</a></li><li><a href="08-catalogue-numbering-priority.html">Catalogue, numbering, priority</a></li></ul><h2>Serving visitors</h2><ul><li><a href="09-issuance.html">Issuance</a></li><li><a href="10-visitors.html">Visitors</a></li><li><a href="11-queue-engine.html" aria-current="page">Queue engine</a></li><li><a href="12-counter-sessions.html">Counter sessions</a></li><li><a href="13-journeys.html">Journeys</a></li><li><a href="14-appointments.html">Appointments</a></li><li><a href="15-mobile-visitor.html">Mobile visitor</a></li></ul><h2>Surfaces and comms</h2><ul><li><a href="16-displays-and-voice.html">Displays and voice</a></li><li><a href="17-notifications.html">Notifications</a></li><li><a href="18-dashboard-and-alerts.html">Dashboard and alerts</a></li></ul><h2>Data and platform</h2><ul><li><a href="19-reports-and-exports.html">Reports and exports</a></li><li><a href="20-integrations.html">Webhooks and service accounts</a></li><li><a href="21-devices-and-realtime.html">Devices and realtime</a></li><li><a href="22-audit-log.html">Audit log</a></li><li><a href="23-operations.html">Operations</a></li></ul><h2>Quality</h2><ul><li><a href="24-cross-cutting.html">Cross-cutting checks</a></li><li><a href="25-automated-suites.html">Automated suites</a></li><li><a href="26-appendices.html">Appendices</a></li></ul><div class="theme"><button id="theme-toggle" type="button">Toggle light / dark</button></div></nav>
+<main id="content">
+<h1>Queue engine: score, head start, escalation, strategies, dry run and wait estimates</h1>
+<p class="lede">How the next Ticket is chosen, how to prove it with numbers a tester can check by hand, and what each strategy does differently.</p>
+<h2 id="the-ordering-rule-fr-que-020-adr-0003">The ordering rule (FR-QUE-020, ADR-0003)</h2>
+<p>For a waiting Ticket:</p>
+<pre><code>score = effective_wait_minutes + headstart_minutes + appointment_bonus
+        + escalation_bonus + score_adjustment_minutes</code></pre>
+<p>The <strong>highest score is served first</strong>. Ties break by earliest creation time, then lowest ticket id. All terms are minutes, so every waiting Ticket's score grows at the same rate: a class's <strong>head start</strong> takes effect on arrival and never has to be "caught up".</p>
+<div class="tablewrap"><table><thead><tr><th>Term</th><th>Meaning</th></tr></thead><tbody><tr><td><code>effective_wait_minutes</code></td><td>minutes in <code>waiting</code> (and <code>remote</code> before check-in), <strong>excluding</strong> time <code>paused</code></td></tr><tr><td><code>headstart_minutes</code></td><td>the Priority class's head start; Normal = 0</td></tr><tr><td><code>appointment_bonus</code></td><td>default 15, for a checked-in appointment (<code>qms.queue.appointment-bonus-minutes</code>)</td></tr><tr><td><code>escalation_bonus</code></td><td>grows once <strong>real</strong> wait passes the class's maximum wait, so the Ticket is served before any lower-priority Ticket</td></tr><tr><td><code>score_adjustment_minutes</code></td><td>signed, set once by a positional move (delay, forfeit, Miss re-entry, call timeout); never rewrites the real wait (ADR-0004)</td></tr></tbody></table></div>
+<h3 id="worked-numbers-to-check-by-hand">Worked numbers to check by hand</h3>
+<p>Classes: Normal (head start 0), Senior (10), Priority banking (15, max wait 20).</p>
+<div class="tablewrap"><table><thead><tr><th>Ticket</th><th>Class</th><th>Real wait</th><th>Score</th></tr></thead><tbody><tr><td>N1</td><td>Normal</td><td>20 min</td><td>20</td></tr><tr><td>P1</td><td>Priority banking</td><td>3 min</td><td>3 + 15 = <strong>18</strong></td></tr></tbody></table></div>
+<p>N1 (20) is called before P1 (18). Change the numbers: if N1 has waited only 10 minutes, N1 scores 10 against P1's 18, so P1 is called first. The rule of thumb: <strong>a priority Ticket is served ahead of normal Tickets that arrived less than its head start earlier</strong>, and behind any normal Ticket that has waited longer than that (UAT U6).</p>
+<h3 id="strategies-per-service-group">Strategies (per Service group)</h3>
+<div class="tablewrap"><table><thead><tr><th>Strategy</th><th>Order</th></tr></thead><tbody><tr><td><code>weighted_wait</code> (default)</td><td>by score, highest first; escalation applies</td></tr><tr><td><code>strict_priority</code></td><td>class first (higher head start first), then creation order; escalation applies</td></tr><tr><td><code>fifo</code></td><td>creation order only; class ignored, no escalation</td></tr></tbody></table></div>
+<h3 id="assignment">Assignment</h3>
+<ul><li>A Counter draws from all queues it serves, taking the eligible Ticket with the highest score, preferring <strong>primary</strong> (lower weight) links when scores are within <code>qms.queue.primary-link-tolerance-minutes</code> (default 5).</li><li>Assignment <strong>binds</strong> the Ticket to the calling session under optimistic concurrency on <code>ticket.version</code>, so two Counters can never call the same Ticket (ADR-0008).</li><li>A Ticket targeted at a <strong>named agent</strong> waits in that agent's personal queue and cannot be drawn by another Counter.</li></ul>
+<h3 id="wait-estimate-fr-que-040-042">Wait estimate (FR-QUE-040..042)</h3>
+<pre><code>estimate = (tickets_ahead / max(open_counters, 1)) x rolling_average_handling_time</code></pre>
+<p>The rolling average uses the last 20 completed Tickets for that Service at that Site, falling back to the Service's <code>expected_minutes</code> when there are fewer than 5. The estimate is a <strong>rounded range in 5-minute steps</strong> (for example *about 15-20 minutes*), never stored, and recomputed on every queue change.</p>
+<h2 id="cases">Cases</h2>
+<article class="tc happy" id="TC-QUE-001">
+<header><span class="tcid"><a href="#TC-QUE-001">TC-QUE-001</a></span><h4>Priority ticket beats a normal ticket that has waited less than its head start</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-QUE-020, ADR-0003, UAT U6</dd></div><div><dt>Role</dt><dd>reception_operator, agent</dd></div><div class="wide"><dt>Preconditions</dt><dd>A class with head start 15 and a linked Counter.</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Issue Normal ticket <strong>N1</strong> for a Service. Wait about 2 minutes.</li><li>Issue <strong>P1</strong>, set its class to a class with head start 15.</li><li>Open a session and press <strong>F2</strong>.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><strong>P1 is called first</strong> (score about 15 versus N1's about 2). Repeat with N1 waiting more than 15 minutes longer than P1: N1 is called first.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /tickets x2 ; POST /tickets/{id}/priority ; GET /queues/{serviceId} ; POST /sessions/{id}/next</code></pre><p><strong>Automated:</strong> <code>QueueEngineTest</code>; e2e U6 (<code>u06-priority-headstart.spec.ts</code>)</p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc edge" id="TC-QUE-002">
+<header><span class="tcid"><a href="#TC-QUE-002">TC-QUE-002</a></span><h4>Equal scores break by creation time</h4><span class="badge edge">edge</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-QUE-020</dd></div><div><dt>Role</dt><dd>agent</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Issue two Tickets of the same class within the same second (script them).</li><li>Press F2.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>The earlier-created Ticket is called; if creation time is identical, the lower ticket id.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /tickets x2</code></pre><p><strong>Automated:</strong> <code>QueueEngineTest</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-QUE-003">
+<header><span class="tcid"><a href="#TC-QUE-003">TC-QUE-003</a></span><h4>Strict priority serves the class first</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-QUE-021</dd></div><div><dt>Role</dt><dd>org_admin, agent</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Set the group's routing strategy to <code>strict_priority</code>.</li><li>Issue N1 (waited 30 min) and then P1 (class head start 5, waited 1 min).</li><li>Press F2.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>P1 is called first even though N1 has waited far longer, because class comes first (unless N1 is escalated). Under <code>weighted_wait</code> N1 would win.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>PUT /service-groups/{id}/routing-strategy {strategy:'strict_priority'}</code></pre><p><strong>Automated:</strong> <code>QueueEngineTest</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-QUE-004">
+<header><span class="tcid"><a href="#TC-QUE-004">TC-QUE-004</a></span><h4>FIFO ignores the class</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-QUE-021</dd></div><div><dt>Role</dt><dd>org_admin, agent</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Set <code>fifo</code>.</li><li>Issue N1, then P1 (high class).</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>N1 is called first regardless of P1's class. No escalation occurs under <code>fifo</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>PUT /service-groups/{id}/routing-strategy {strategy:'fifo'}</code></pre><p><strong>Automated:</strong> <code>QueueEngineTest</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-QUE-005">
+<header><span class="tcid"><a href="#TC-QUE-005">TC-QUE-005</a></span><h4>Anti-starvation escalation</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-QUE-022</dd></div><div><dt>Role</dt><dd>supervisor, agent</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Give class *Normal* a maximum wait of 5 minutes (or use a class with max wait 5).</li><li>Issue N1, wait past 5 minutes, then issue a high-class ticket P1.</li><li>Watch the dashboard, then press F2.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>Once N1's real wait passes 5 minutes it is escalated, <strong>flagged on the live dashboard</strong>, and served before any lower-priority Ticket, overriding a negative score adjustment.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>GET /dashboard/live shows escalated flag</code></pre><p><strong>Automated:</strong> <code>QueueEngineTest</code>, <code>DashboardIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc edge" id="TC-QUE-006">
+<header><span class="tcid"><a href="#TC-QUE-006">TC-QUE-006</a></span><h4>Score adjustment never touches the real wait</h4><span class="badge edge">edge</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>ADR-0004</dd></div><div><dt>Role</dt><dd>agent</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Call a Ticket, then <strong>Miss</strong> it (F6).</li><li>Inspect the Ticket in the queue view.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>It re-enters at the configured position; its <code>queued_at</code> and <code>wait_seconds</code> are unchanged; a <code>ticket.missed</code> event carries the <code>score_adjustment_minutes</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>GET /queues/{serviceId} ; ticket_event payload</code></pre><p><strong>Automated:</strong> <code>ReannounceAndMissTest</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-QUE-007">
+<header><span class="tcid"><a href="#TC-QUE-007">TC-QUE-007</a></span><h4>Named-agent ticket cannot be drawn by another counter</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-QUE-003</dd></div><div><dt>Role</dt><dd>agent</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>At the kiosk choose a named agent (Agent A).</li><li>As Agent B press F2, then try to call that Ticket specifically.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>F2 for Agent B skips it. Calling it specifically is refused <code>409 conflict</code>, <code>details.reason = ticket_not_callable</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /sessions/{id}/call {ticket_id,reason} -&gt; 409 {reason:'ticket_not_callable'}</code></pre><p><strong>Automated:</strong> <code>CallTimeoutAndParallelTest</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc edge" id="TC-QUE-008">
+<header><span class="tcid"><a href="#TC-QUE-008">TC-QUE-008</a></span><h4>Preferred (primary) Counter link wins within the tolerance</h4><span class="badge edge">edge</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-QUE-030</dd></div><div><dt>Role</dt><dd>agent</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Link a Service to Counter 1 with <code>preference_weight</code> 1 and Counter 2 with <code>preference_weight</code> 5.</li><li>Keep two Tickets whose scores differ by less than 5 minutes.</li><li>Press F2 at both Counters in turn.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>The lower-weight (primary) Counter is preferred for the Service when scores are within the tolerance; outside it, the highest score wins.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>qms.queue.primary-link-tolerance-minutes=5</code></pre><p><strong>Automated:</strong> <code>QueueEngineTest</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-QUE-009">
+<header><span class="tcid"><a href="#TC-QUE-009">TC-QUE-009</a></span><h4>Dry run shows every term</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-QUE-023</dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Admin &gt; Priority and queue ordering &gt; *Dry run* for a Service with several waiting Tickets.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>A table lists the computed order with each term (wait, head start, appointment bonus, escalation, adjustment) and the total, without calling anyone.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>GET /queues/{serviceId}/dry-run</code></pre><p><strong>Automated:</strong> <code>PriorityIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-QUE-010">
+<header><span class="tcid"><a href="#TC-QUE-010">TC-QUE-010</a></span><h4>Dry run needs the priority-routing permission</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>§5.2</dd></div><div><dt>Role</dt><dd>agent, reception_operator</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Call the dry-run endpoint as an Agent.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>403 forbidden</code>. Reception may read the queue but not the dry run.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>GET /queues/{id}/dry-run -&gt; 403</code></pre><p><strong>Automated:</strong> <code>PriorityIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-QUE-011">
+<header><span class="tcid"><a href="#TC-QUE-011">TC-QUE-011</a></span><h4>Live queue view shows position and estimate</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-QUE-042</dd></div><div><dt>Role</dt><dd>reception_operator</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Open the Reception desk queue view for a Service with 5 waiting Tickets and 1 open Counter.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>Each Ticket shows its position and the Service shows an estimate range in 5-minute steps, for example *about 15-20 min*.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>GET /queues/{serviceId}</code></pre><p><strong>Automated:</strong> <code>WaitEstimationIT</code>, <code>WaitEstimatorTest</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc edge" id="TC-QUE-012">
+<header><span class="tcid"><a href="#TC-QUE-012">TC-QUE-012</a></span><h4>Estimate uses the configured handling time until enough samples exist</h4><span class="badge edge">edge</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-QUE-041</dd></div><div><dt>Role</dt><dd>integration only</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Run the estimator tests.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>With fewer than 5 completed Tickets the Service's <code>expected_minutes</code> is used; from 5 up to 20, the rolling average of the last 20.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>./gradlew test --tests '*WaitEstimatorTest'</code></pre><p><strong>Automated:</strong> <code>WaitEstimatorTest</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc edge" id="TC-QUE-013">
+<header><span class="tcid"><a href="#TC-QUE-013">TC-QUE-013</a></span><h4>Estimate falls as Counters open</h4><span class="badge edge">edge</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-QUE-040</dd></div><div><dt>Role</dt><dd>agent</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Note the estimate with one Counter open.</li><li>Open a second session on another Counter that serves the Service.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>The range shrinks (divided by open Counters) and a <code>queue.estimate_changed</code> event is published.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>topic queue:{serviceId} -&gt; queue.estimate_changed</code></pre><p><strong>Automated:</strong> <code>WaitEstimationIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc edge" id="TC-QUE-014">
+<header><span class="tcid"><a href="#TC-QUE-014">TC-QUE-014</a></span><h4>A remote ticket accrues wait but cannot be called</h4><span class="badge edge">edge</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-MOB-011, §19.1</dd></div><div><dt>Role</dt><dd>agent, visitor</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Remote-join a Service from the visitor app (state <code>remote</code>).</li><li>As an agent press F2 with nothing else waiting.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>Nothing to call: <code>409 conflict</code>, <code>no_ticket_waiting</code>. After the visitor checks in, the Ticket becomes <code>waiting</code> with its accrued score and can be called.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /sessions/{id}/next -&gt; 409 {reason:'no_ticket_waiting'}</code></pre><p><strong>Automated:</strong> <code>RemoteJoinQueueIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc edge" id="TC-QUE-015">
+<header><span class="tcid"><a href="#TC-QUE-015">TC-QUE-015</a></span><h4>Paused tickets do not accrue wait</h4><span class="badge edge">edge</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>§19.1 invariant 1, FR-QUE-063</dd></div><div><dt>Role</dt><dd>agent</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Issue a two-service Journey for one visitor (see <a href="13-journeys.html">Journeys</a>).</li><li>Call the first stop; observe the other stop is <code>paused</code>.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>The paused Ticket's score does not grow while paused; it resumes when the visitor is free.</p><p><strong>NOTE - known issue:</strong> the live score currently counts paused time (open defect: the wait shown while paused keeps growing), so this check may fail until fixed.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>ticket state paused</code></pre><p><strong>Automated:</strong> <code>JourneyPauseTest</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-QUE-016">
+<header><span class="tcid"><a href="#TC-QUE-016">TC-QUE-016</a></span><h4>Reprioritising a waiting ticket reorders the queue within 5 seconds</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-QUE-012, UAT U9</dd></div><div><dt>Role</dt><dd>reception_operator</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Have two Normal Tickets waiting.</li><li>As Reception or a supervisor, change the second Ticket's class with a reason.</li><li>Watch the queue/dashboard on another screen.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>The order changes on the other screen <strong>within 5 seconds without a reload</strong>. The reason is in the audit log (<code>ticket.priority_changed</code>).</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /tickets/{id}/priority {priority_class_id,reason}</code></pre><p><strong>Automated:</strong> e2e U9 (<code>u09-supervisor-reprioritise.spec.ts</code>), <code>ReprioritiseAndCancelTest</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-QUE-017">
+<header><span class="tcid"><a href="#TC-QUE-017">TC-QUE-017</a></span><h4>Reprioritise needs a reason and a different class</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-QUE-012</dd></div><div><dt>Role</dt><dd>reception_operator</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Change class with no reason; with a blank reason; with a 1001-character reason; to the class it already has.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>400 validation_failed</code> naming <code>reason</code> (<code>required</code> / <code>too_long</code>); the same class gives <code>409 conflict</code>, <code>details.reason = same_priority_class</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /tickets/{id}/priority -&gt; 400 / 409</code></pre><p><strong>Automated:</strong> <code>ReprioritiseAndCancelTest</code>, <code>TicketActionsIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-QUE-018">
+<header><span class="tcid"><a href="#TC-QUE-018">TC-QUE-018</a></span><h4>Only a waiting ticket can be reprioritised</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-QUE-012</dd></div><div><dt>Role</dt><dd>reception_operator</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Call a Ticket (state <code>called</code>).</li><li>Try to change its class.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>409 conflict</code>, <code>details.reason = ticket_not_waiting</code>. *This Token is no longer waiting, so its class cannot be changed.*</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /tickets/{id}/priority -&gt; 409 {reason:'ticket_not_waiting'}</code></pre><p><strong>Automated:</strong> <code>TicketActionsIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-QUE-019">
+<header><span class="tcid"><a href="#TC-QUE-019">TC-QUE-019</a></span><h4>A stale reprioritise is refused</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>ADR-0008</dd></div><div><dt>Role</dt><dd>reception_operator</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Load a Ticket on two screens.</li><li>On screen 1 change its class.</li><li>On screen 2 (still showing the old version) change it too.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>Screen 2 is refused <code>409 conflict</code>, <code>details.reason = version_mismatch</code>, and refreshes. *The Token changed while you were looking at it. Refresh the queue and try again.*</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /tickets/{id}/priority (If-Match: &lt;old version&gt;) -&gt; 409 {reason:'version_mismatch'}</code></pre><p><strong>Automated:</strong> <code>TicketActionsIT</code>, <code>IfMatchTest</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-QUE-020">
+<header><span class="tcid"><a href="#TC-QUE-020">TC-QUE-020</a></span><h4>Reprioritise permission</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>§5.2</dd></div><div><dt>Role</dt><dd>agent</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>As an Agent try to change a class.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>403 forbidden</code>. Reception, Team Admin, Org Admin and System Admin may.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /tickets/{id}/priority (agent) -&gt; 403</code></pre><p><strong>Automated:</strong> <code>PermissionMatrixTest</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc happy" id="TC-QUE-021">
+<header><span class="tcid"><a href="#TC-QUE-021">TC-QUE-021</a></span><h4>Staff cancel a waiting ticket</h4><span class="badge happy">happy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>FR-QUE, §19.1</dd></div><div><dt>Role</dt><dd>reception_operator</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Cancel a <code>waiting</code> Ticket with a reason.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>State <code>cancelled</code>; it leaves the queue. Audit <code>ticket.cancelled</code>. This is a <strong>cancel from <code>waiting</code></strong>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /tickets/{id}/cancel {reason}</code></pre><p><strong>Automated:</strong> <code>ReprioritiseAndCancelTest</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-QUE-022">
+<header><span class="tcid"><a href="#TC-QUE-022">TC-QUE-022</a></span><h4>Cancelling a closed ticket is refused</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>§19.1</dd></div><div><dt>Role</dt><dd>reception_operator</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Cancel a Ticket that is already <code>completed</code>.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>409 conflict</code>, <code>details.reason = ticket_not_active</code>. *This Token has already closed.*</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /tickets/{id}/cancel -&gt; 409 {reason:'ticket_not_active'}</code></pre><p><strong>Automated:</strong> <code>TicketActionsIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article>
+<article class="tc unhappy" id="TC-QUE-023">
+<header><span class="tcid"><a href="#TC-QUE-023">TC-QUE-023</a></span><h4>Stale cancel is refused</h4><span class="badge unhappy">unhappy</span></header>
+<dl class="meta"><div><dt>SRS</dt><dd>ADR-0008</dd></div><div><dt>Role</dt><dd>reception_operator</dd></div></dl>
+<div class="steps"><strong>Steps</strong><ol><li>Load a Ticket on two screens, call it on one, then cancel from the stale screen.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p><code>409 conflict</code> <code>version_mismatch</code>.</p></div>
+<details class="dev"><summary>Dev / API</summary><pre><code>POST /tickets/{id}/cancel -&gt; 409</code></pre><p><strong>Automated:</strong> <code>TicketActionsIT</code></p></details>
+<footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
+</article><section class="signoff"><h2 id="sign-off-sheet">Sign-off sheet</h2><p class="hint">Print this page range, one sheet per run. Tick Pass or Fail and note the build, date and tester at the top.</p><div class="tablewrap"><table><thead><tr><th>TC</th><th>Title</th><th>Type</th><th>Pass</th><th>Fail</th><th>Notes</th></tr></thead><tbody><tr><td><a href="#TC-QUE-001">TC-QUE-001</a></td><td>Priority ticket beats a normal ticket that has waited less than its head start</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-QUE-002">TC-QUE-002</a></td><td>Equal scores break by creation time</td><td><span class="badge edge">edge</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-QUE-003">TC-QUE-003</a></td><td>Strict priority serves the class first</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-QUE-004">TC-QUE-004</a></td><td>FIFO ignores the class</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-QUE-005">TC-QUE-005</a></td><td>Anti-starvation escalation</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-QUE-006">TC-QUE-006</a></td><td>Score adjustment never touches the real wait</td><td><span class="badge edge">edge</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-QUE-007">TC-QUE-007</a></td><td>Named-agent ticket cannot be drawn by another counter</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-QUE-008">TC-QUE-008</a></td><td>Preferred (primary) Counter link wins within the tolerance</td><td><span class="badge edge">edge</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-QUE-009">TC-QUE-009</a></td><td>Dry run shows every term</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-QUE-010">TC-QUE-010</a></td><td>Dry run needs the priority-routing permission</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-QUE-011">TC-QUE-011</a></td><td>Live queue view shows position and estimate</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-QUE-012">TC-QUE-012</a></td><td>Estimate uses the configured handling time until enough samples exist</td><td><span class="badge edge">edge</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-QUE-013">TC-QUE-013</a></td><td>Estimate falls as Counters open</td><td><span class="badge edge">edge</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-QUE-014">TC-QUE-014</a></td><td>A remote ticket accrues wait but cannot be called</td><td><span class="badge edge">edge</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-QUE-015">TC-QUE-015</a></td><td>Paused tickets do not accrue wait</td><td><span class="badge edge">edge</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-QUE-016">TC-QUE-016</a></td><td>Reprioritising a waiting ticket reorders the queue within 5 seconds</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-QUE-017">TC-QUE-017</a></td><td>Reprioritise needs a reason and a different class</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-QUE-018">TC-QUE-018</a></td><td>Only a waiting ticket can be reprioritised</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-QUE-019">TC-QUE-019</a></td><td>A stale reprioritise is refused</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-QUE-020">TC-QUE-020</a></td><td>Reprioritise permission</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-QUE-021">TC-QUE-021</a></td><td>Staff cancel a waiting ticket</td><td><span class="badge happy">happy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-QUE-022">TC-QUE-022</a></td><td>Cancelling a closed ticket is refused</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr><tr><td><a href="#TC-QUE-023">TC-QUE-023</a></td><td>Stale cancel is refused</td><td><span class="badge unhappy">unhappy</span></td><td class="c"><i class="box"></i></td><td class="c"><i class="box"></i></td><td class="notecell"></td></tr></tbody></table></div></section>
+<div class="pager"><a href="10-visitors.html">← Visitors</a><a href="12-counter-sessions.html">Counter sessions →</a></div>
+</main>
+</div>
+</body>
+</html>

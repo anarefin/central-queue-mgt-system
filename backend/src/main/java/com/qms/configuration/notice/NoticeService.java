@@ -54,7 +54,7 @@ public class NoticeService {
     @PreAuthorize(MANAGE)
     @Transactional(readOnly = true)
     public List<Notice> forZone(UUID zoneId) {
-        scope.requireSite(hierarchy.zone(zoneId).siteId());
+        scope.requireSite(hierarchy.zoneForNoticeBoard(zoneId).siteId());
         return repository.forZone(zoneId);
     }
 
@@ -62,7 +62,7 @@ public class NoticeService {
     @Transactional
     public Notice create(NoticeRequest request) {
         Zone zone = requireZone(request.zoneId());
-        Site site = hierarchy.site(zone.siteId());
+        Site site = hierarchy.siteForNoticeBoard(zone.siteId());
         Instant now = clock.instant();
         Notice created = new Notice(
                 UUID.randomUUID(),
@@ -86,9 +86,9 @@ public class NoticeService {
     @Transactional
     public Notice replace(UUID id, NoticeRequest request) {
         Notice before = require(id);
-        scope.requireSite(hierarchy.zone(before.zoneId()).siteId());
+        scope.requireSite(hierarchy.zoneForNoticeBoard(before.zoneId()).siteId());
         Zone zone = requireZone(request.zoneId());
-        Site site = hierarchy.site(zone.siteId());
+        Site site = hierarchy.siteForNoticeBoard(zone.siteId());
         Notice after = new Notice(
                 id,
                 zone.id(),
@@ -111,7 +111,7 @@ public class NoticeService {
     @Transactional
     public Notice deactivate(UUID id) {
         Notice current = require(id);
-        scope.requireSite(hierarchy.zone(current.zoneId()).siteId());
+        scope.requireSite(hierarchy.zoneForNoticeBoard(current.zoneId()).siteId());
         if (!current.active()) return current;
         repository.setActive(id, false, clock.instant());
         audit.record(activeFlag("notice.deactivated", id, false));
@@ -122,7 +122,7 @@ public class NoticeService {
     @Transactional
     public Notice activate(UUID id) {
         Notice current = require(id);
-        scope.requireSite(hierarchy.zone(current.zoneId()).siteId());
+        scope.requireSite(hierarchy.zoneForNoticeBoard(current.zoneId()).siteId());
         if (current.active()) return current;
         repository.setActive(id, true, clock.instant());
         audit.record(activeFlag("notice.activated", id, true));
@@ -141,7 +141,7 @@ public class NoticeService {
 
     private Zone requireZone(UUID zoneId) {
         if (zoneId == null) throw NoticeRules.invalid("zone_id", "NotNull");
-        Zone zone = hierarchy.zone(zoneId);
+        Zone zone = hierarchy.zoneForNoticeBoard(zoneId);
         scope.requireSite(zone.siteId());
         return zone;
     }
