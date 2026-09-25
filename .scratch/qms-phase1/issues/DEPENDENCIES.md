@@ -188,3 +188,7 @@
 # started; Phase A tickets are frontend-only (admin/console/kiosk/display/visitor apps,
 # packages/ui) and don't touch com.qms.appointment. Treated as pre-existing per the same
 # precedent as 49/58/60 — proceeding rather than blocking the run on it.
+#
+# Post-run fix (2026-09-24): the VisitorAppointmentSelfServiceIT "date flake" was a shared-DB race, not the hardcoded MONDAY itself.
+# Cached contexts kept the default 5s no-show sweep and marked other tests' past-dated appointments no_show. Fixed by
+# backend/src/test/resources/application.properties (qms.appointment.no-show-check-cron=-). Full `./gradlew check` green.
