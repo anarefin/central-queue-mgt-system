@@ -95,7 +95,10 @@ export function TransferPanel({ sessionId, ticket, busy, onSubmit, onCancel }: P
               onChange={(event) => chooseService(event.target.value)}
               options={[
                 { value: "", label: t("console.transfer.serviceChoose") },
-                ...targets.services.map((s) => ({ value: s.id, label: localisedName(s.name_i18n, language) })),
+                ...targets.services.map((s) => ({
+                  value: s.id,
+                  label: `${localisedName(s.name_i18n, language)} · ${localisedName(s.group_name_i18n, language)}`,
+                })),
               ]}
             />
             <fieldset className="flex flex-col gap-2">

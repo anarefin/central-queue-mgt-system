@@ -21,3 +21,4 @@ keys/
 .claude/
 graphify-out/
 .pnpm-store/
+.gstack/

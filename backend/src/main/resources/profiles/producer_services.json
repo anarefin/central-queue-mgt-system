@@ -6,7 +6,7 @@
     "entity.service_group": { "en": "Department", "bn": "বিভাগ" },
     "entity.counter": { "en": "Desk", "bn": "ডেস্ক" },
     "entity.agent": { "en": "Officer", "bn": "কর্মকর্তা" },
-    "entity.category": { "en": "Producer category (e.g. Children Tailoring)", "bn": "প্রডিউসার বিভাগ (যেমন: চিলড্রেন টেইলারিং)" },
+    "entity.category": { "en": "Category", "bn": "শ্রেণি" },
     "entity.ticket": { "en": "Token", "bn": "টোকেন" }
   },
   "starter_services": [

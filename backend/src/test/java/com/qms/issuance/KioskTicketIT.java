@@ -195,18 +195,29 @@ class KioskTicketIT {
     }
 
     /**
-     * A member of the group's one team, on duty right now (a live {@code counter_session}) at a counter of its own —
-     * at most one live session may occupy a counter, so each on-duty agent in a test needs a fresh one.
+     * A member of the group's one team, on duty right now (a live {@code counter_session}) at a counter of its own,
+     * serving the group's services — at most one live session may occupy a counter, so each on-duty agent in a test
+     * needs a fresh one.
      */
     private UUID onDutyAgent(UUID group, UUID zone, String displayName) {
+        return onDutyAgent(group, group, zone, displayName);
+    }
+
+    /**
+     * A member of {@code teamGroup}'s team whose live session serves {@code servedGroup}'s services: with two different
+     * groups, an Agent on duty for another department who cannot draw this group's tickets (FR-QUE-003).
+     */
+    private UUID onDutyAgent(UUID teamGroup, UUID servedGroup, UUID zone, String displayName) {
+        UUID group = teamGroup;
         UUID user = UUID.randomUUID();
         jdbc.update(
                 "INSERT INTO users (id, username, password_hash, display_name, preferred_language, active) VALUES (?, ?, ?, ?, 'en', true)",
                 user, "agent-" + user, new BCryptPasswordEncoder(12).encode(PASSWORD), displayName);
         jdbc.update("INSERT INTO team_member (team_id, user_id) SELECT id, ? FROM team WHERE service_group_id = ?", user, group);
         jdbc.update(
-                "INSERT INTO counter_session (id, counter_id, agent_id, opened_at, services, state) VALUES (?, ?, ?, now(), '{}', 'open')",
-                UUID.randomUUID(), newCounter(zone), user);
+                "INSERT INTO counter_session (id, counter_id, agent_id, opened_at, services, state)"
+                        + " VALUES (?, ?, ?, now(), ARRAY(SELECT id FROM service WHERE service_group_id = ?), 'open')",
+                UUID.randomUUID(), newCounter(zone), user, servedGroup);
         return user;
     }
 
@@ -395,6 +406,8 @@ class KioskTicketIT {
         UUID otherGroup = newGroup(s.site(), "AX");
         newTeam(otherGroup);
         UUID outsider = onDutyAgent(otherGroup, s.zone(), "Elsewhere");
+        newService(otherGroup, "AY", "[\"kiosk\"]", true);
+        UUID servingOtherGroup = onDutyAgent(s.group(), otherGroup, s.zone(), "On the team, serving elsewhere");
         String kiosk = kioskToken(s.site());
 
         MvcResult levelDisabled = issue(kiosk, UUID.randomUUID().toString(), s.service(), null, onDuty, null);
@@ -407,6 +420,9 @@ class KioskTicketIT {
                 .as("a team member who is not on duty").isEqualTo("agent_not_on_duty");
         assertThat((String) field(issue(kiosk, UUID.randomUUID().toString(), s.service(), null, outsider, null), "$.error.details.reason"))
                 .as("on duty, but on another group's team").isEqualTo("agent_not_on_duty");
+        assertThat((String) field(issue(kiosk, UUID.randomUUID().toString(), s.service(), null, servingOtherGroup, null), "$.error.details.reason"))
+                .as("on the team, but its session serves none of this group's services, so it could never call the ticket")
+                .isEqualTo("agent_not_on_duty");
         assertThat(status(issue(kiosk, UUID.randomUUID().toString(), s.service(), null, UUID.randomUUID(), null))).isEqualTo(409);
 
         MvcResult issued = issue(kiosk, UUID.randomUUID().toString(), s.service(), null, onDuty, null);
@@ -422,6 +438,9 @@ class KioskTicketIT {
         UUID busy = onDutyAgent(s.group(), s.zone(), "Busy Agent");
         UUID idle = onDutyAgent(s.group(), s.zone(), "Idle Agent");
         offDutyAgent(s.group(), "Not Here");
+        UUID otherGroup = newGroup(s.site(), "QX");
+        newService(otherGroup, "QY", "[\"kiosk\"]", true);
+        onDutyAgent(s.group(), otherGroup, s.zone(), "Serving Elsewhere");
         configureSelectionTree(s.group(), true, true, null);
         String kiosk = kioskToken(s.site());
 

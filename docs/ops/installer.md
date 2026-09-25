@@ -12,7 +12,7 @@ Covers NFR-POR-001, NFR-POR-004, FR-OPS-001, FR-OPS-002, FR-OPS-020..023, §26.1
 
 ## Offline artefact bundle (NFR-POR-004, ADR-0012)
 
-`deploy/bundle.sh` builds the backend image, saves it alongside the pinned `postgres:14-alpine` image and the proxy
+`deploy/bundle.sh` builds the backend image, saves it alongside the pinned `postgres:18-alpine` image and the proxy
 image into one tarball, and packages `deploy/` (compose file, proxy config, i18n packs, runtime config template),
 the installer/operations scripts and this documentation. Nothing in the bundle needs a package registry at install
 time: `deploy/install.sh` only ever calls `docker load` against the bundled tarball, never `docker pull`.

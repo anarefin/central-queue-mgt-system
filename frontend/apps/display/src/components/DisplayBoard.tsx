@@ -2,6 +2,7 @@
 
 import { useI18n } from "@qms/i18n/react";
 import { ErrorAlert } from "@qms/ui";
+import type { Speaker } from "../lib/announcementQueue";
 import { useZoneFeed } from "../lib/useZoneFeed";
 import { NowServingBoard } from "./NowServingBoard";
 import { SingleCounterBoard } from "./SingleCounterBoard";
@@ -15,9 +16,9 @@ import { SummaryBoard } from "./SummaryBoard";
  * mounted standalone by ticket 28/29's own tests, and keeps its voice-announcement wiring, which stays specific to
  * that one layout -- while the other three layouts reuse this same feed rather than loading it twice.
  */
-export function DisplayBoard({ deviceId }: { deviceId: string }) {
+export function DisplayBoard({ deviceId, speaker }: { deviceId: string; speaker?: Speaker }) {
   const { t } = useI18n();
-  const feed = useZoneFeed(deviceId);
+  const feed = useZoneFeed(deviceId, speaker);
 
   if (feed.error && !feed.state) return <ErrorAlert>{t("nowServing.loadError")}</ErrorAlert>;
   if (!feed.state) return <p className="text-fg-muted">{t("common.loading")}</p>;
@@ -31,6 +32,6 @@ export function DisplayBoard({ deviceId }: { deviceId: string }) {
       return <SummaryBoard feed={feed} />;
     case "now_serving_table":
     default:
-      return <NowServingBoard deviceId={deviceId} />;
+      return <NowServingBoard deviceId={deviceId} speaker={speaker} />;
   }
 }

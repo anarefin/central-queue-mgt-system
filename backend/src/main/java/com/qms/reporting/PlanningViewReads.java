@@ -30,13 +30,15 @@ class PlanningViewReads {
     }
 
     // ---- peak-hours (FR-RPT-011): volume by hour-of-day x ISO day-of-week ----------------------------------------
+    // Every hour and weekday here is the site's own local one (its `timezone`): a planning view reads "11:00 is busy"
+    // on the wall clock the staff work to, not in UTC.
 
     List<Map<String, Object>> peakHours(DetailedTokenReportFilter filter, Set<UUID> allowedSites, Set<UUID> allowedGroups) {
         StringBuilder sql = new StringBuilder(
-                "SELECT EXTRACT(ISODOW FROM tf.issued_at AT TIME ZONE 'UTC')::int AS day_of_week,"
-                        + " EXTRACT(HOUR FROM tf.issued_at AT TIME ZONE 'UTC')::int AS hour_of_day,"
+                "SELECT EXTRACT(ISODOW FROM tf.issued_at AT TIME ZONE st.timezone)::int AS day_of_week,"
+                        + " EXTRACT(HOUR FROM tf.issued_at AT TIME ZONE st.timezone)::int AS hour_of_day,"
                         + " count(*) AS ticket_count"
-                        + " FROM reporting.ticket_fact tf WHERE 1 = 1");
+                        + " FROM reporting.ticket_fact tf JOIN site st ON st.id = tf.site_id WHERE 1 = 1");
         List<Object> args = new ArrayList<>();
         appendTicketFactFilters(sql, args, filter, allowedSites, allowedGroups);
         sql.append(" GROUP BY 1, 2 ORDER BY 1, 2");
@@ -71,8 +73,8 @@ class PlanningViewReads {
 
     private Map<Integer, Long> ticketsOfferedByHour(DetailedTokenReportFilter filter, Set<UUID> allowedSites, Set<UUID> allowedGroups) {
         StringBuilder sql = new StringBuilder(
-                "SELECT EXTRACT(HOUR FROM tf.issued_at AT TIME ZONE 'UTC')::int AS hour_of_day, count(*) FILTER (WHERE tf.is_chain_head) AS tickets_offered"
-                        + " FROM reporting.ticket_fact tf WHERE 1 = 1");
+                "SELECT EXTRACT(HOUR FROM tf.issued_at AT TIME ZONE st.timezone)::int AS hour_of_day, count(*) FILTER (WHERE tf.is_chain_head) AS tickets_offered"
+                        + " FROM reporting.ticket_fact tf JOIN site st ON st.id = tf.site_id WHERE 1 = 1");
         List<Object> args = new ArrayList<>();
         appendTicketFactFilters(sql, args, filter, allowedSites, allowedGroups);
         sql.append(" GROUP BY 1");
@@ -86,9 +88,10 @@ class PlanningViewReads {
      * session or a break belonging to the period it began in). */
     private Map<Integer, Double> counterHoursByHour(DetailedTokenReportFilter filter, Set<UUID> allowedSites, Instant now) {
         StringBuilder sql = new StringBuilder(
-                "SELECT EXTRACT(HOUR FROM cs.opened_at AT TIME ZONE 'UTC')::int AS hour_of_day,"
+                "SELECT EXTRACT(HOUR FROM cs.opened_at AT TIME ZONE st.timezone)::int AS hour_of_day,"
                         + " SUM(EXTRACT(EPOCH FROM (COALESCE(cs.closed_at, ?) - cs.opened_at))) / 3600.0 AS open_hours"
-                        + " FROM counter_session cs JOIN counter c ON c.id = cs.counter_id JOIN zone z ON z.id = c.zone_id WHERE 1 = 1");
+                        + " FROM counter_session cs JOIN counter c ON c.id = cs.counter_id JOIN zone z ON z.id = c.zone_id JOIN site st ON st.id = z.site_id"
+                        + " WHERE 1 = 1");
         List<Object> args = new ArrayList<>();
         args.add(Timestamp.from(now));
         if (filter.from() != null) {
@@ -115,10 +118,10 @@ class PlanningViewReads {
      * uses for SLA attainment, bucketed by hour instead of by grain id. */
     private Map<Integer, long[]> slaByHour(DetailedTokenReportFilter filter, Set<UUID> allowedSites, Set<UUID> allowedGroups) {
         StringBuilder sql = new StringBuilder(
-                "SELECT EXTRACT(HOUR FROM tf.issued_at AT TIME ZONE 'UTC')::int AS hour_of_day,"
+                "SELECT EXTRACT(HOUR FROM tf.issued_at AT TIME ZONE st.timezone)::int AS hour_of_day,"
                         + " count(*) FILTER (WHERE tf.state = 'completed') AS completed,"
                         + " count(*) FILTER (WHERE tf.state = 'completed' AND tf.wait_seconds <= sv.sla_wait_minutes * 60) AS within_sla"
-                        + " FROM reporting.ticket_fact tf JOIN service sv ON sv.id = tf.service_id WHERE 1 = 1");
+                        + " FROM reporting.ticket_fact tf JOIN service sv ON sv.id = tf.service_id JOIN site st ON st.id = tf.site_id WHERE 1 = 1");
         List<Object> args = new ArrayList<>();
         appendTicketFactFilters(sql, args, filter, allowedSites, allowedGroups);
         sql.append(" GROUP BY 1");

@@ -161,6 +161,16 @@ describe("KioskFlow common path (ticket 25, SRS §8.2)", () => {
     expect((init.headers as Record<string, string>)["Idempotency-Key"]).toBeTruthy();
   });
 
+  it("names the group with the site's own term on the confirm screen (SRS §3.2), not a fixed \"Group\"", async () => {
+    const bootstrap: DeviceBootstrap = { ...SINGLE, labels: { "entity.service_group": "Department" } };
+    render(<KioskFlow bootstrap={bootstrap} client={clientWith(vi.fn().mockResolvedValue(json(201, ticketResponse())))} printer={new ResolvingPrinter()} />);
+
+    await userEvent.click(screen.getByRole("button", { name: "Tap to begin" }));
+
+    expect(await screen.findByText("Confirm your token")).toBeInTheDocument();
+    expect(screen.getByText(/Department: Outpatient/)).toBeInTheDocument();
+  });
+
   it("offers a language choice on the idle screen when more than one language is enabled, and the pick carries into later screens", async () => {
     const fetchImpl = vi.fn().mockResolvedValue(json(201, ticketResponse()));
     render(<KioskFlow bootstrap={MULTI_LANGUAGE_SINGLE_GROUP} client={clientWith(fetchImpl)} printer={new ResolvingPrinter()} />);
@@ -463,6 +473,30 @@ describe("KioskFlow identification (ticket 26, FR-ISS-013, FR-ISS-014, FR-CFG-01
 
     await userEvent.click(screen.getByRole("button", { name: "Get my token" }));
     await waitFor(() => expect(issuedBody(fetchImpl)).toMatchObject({ service_id: "svc-1", visitor_id: "vis-1" }));
+  });
+
+  it("prints the code the visitor typed, never the internal visitor id, and no code after a phone lookup", async () => {
+    for (const [tile, label, typed, printed] of [
+      ["Enter code", "Type your code", "0062", "0062"],
+      ["Enter mobile number", "Type your mobile number", "01700000062", null],
+    ] as const) {
+      const fetchImpl = routedFetch({
+        "GET /kiosk/visitors/identify": () => json(200, { visitor_id: "vis-1", name: "Asar Ali", category: "Children Tailoring" }),
+        "POST /kiosk/tickets": () => json(201, ticketResponse()),
+      });
+      const printer = new ResolvingPrinter();
+      const view = render(<KioskFlow bootstrap={OPTIONAL_ID_GROUP} client={clientWith(fetchImpl)} printer={printer} />);
+
+      await userEvent.click(screen.getByRole("button", { name: "Tap to begin" }));
+      await userEvent.click(await screen.findByRole("button", { name: tile }));
+      await userEvent.type(screen.getByLabelText(label), typed);
+      await userEvent.click(screen.getByRole("button", { name: "Look up" }));
+      await userEvent.click(await screen.findByRole("button", { name: "Get my token" }));
+
+      await waitFor(() => expect(printer.calls).toHaveLength(1));
+      expect(printer.calls[0]).toMatchObject({ visitorCode: printed, visitorName: "Asar Ali", visitorCategory: "Children Tailoring" });
+      view.unmount();
+    }
   });
 
   it("lets the visitor skip identification when it is only optional", async () => {

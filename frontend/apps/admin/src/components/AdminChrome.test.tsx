@@ -99,4 +99,41 @@ describe("AdminChrome's sidebar (ticket 63)", () => {
     expect(await screen.findByText("Login form")).toBeInTheDocument();
     expect(screen.queryByRole("navigation")).not.toBeInTheDocument();
   });
+
+  it("names the signed-in user's site in the top bar, never its raw id", async () => {
+    pathname.value = "/";
+    stubApi({
+      "POST /auth/refresh": () => json(200, { access_token: "tok", token_type: "Bearer", expires_in: 900 }),
+      "GET /auth/me": () => json(200, me(["org_admin"])),
+      "GET /sites": () => json(200, { items: [{ id: "s1", code: "AARONG-CS", name: "Aarong Central Services" }] }),
+      ...HEALTH,
+    });
+    renderApp(
+      <AdminChrome>
+        <p>Page content</p>
+      </AdminChrome>,
+    );
+
+    expect(await screen.findByText("Aarong Central Services")).toBeInTheDocument();
+    expect(screen.queryByText("s1")).not.toBeInTheDocument();
+  });
+
+  it("shows no site at all, rather than its id, to a user who may not read the site list", async () => {
+    pathname.value = "/";
+    const calls = stubApi({
+      "POST /auth/refresh": () => json(200, { access_token: "tok", token_type: "Bearer", expires_in: 900 }),
+      "GET /auth/me": () => json(200, me(["reception_operator"])),
+      ...HEALTH,
+    });
+    renderApp(
+      <AdminChrome>
+        <p>Page content</p>
+      </AdminChrome>,
+    );
+
+    expect(await screen.findByText("Page content")).toBeInTheDocument();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(screen.queryByText("s1")).not.toBeInTheDocument();
+    expect(calls.some((call) => call.path === "/sites"), "not even asked: the API would refuse").toBe(false);
+  });
 });

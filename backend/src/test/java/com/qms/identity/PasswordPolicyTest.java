@@ -69,6 +69,14 @@ class PasswordPolicyTest {
     }
 
     @Test
+    void productionDefaultsAcceptAnyFivePlusCharacterPassword() {
+        var production = policy(5, 1, 5, 0);
+        assertThat(production.violations("abcde", List.of(), FAST)).isEmpty();
+        assertThat(production.violations("12345", List.of(), FAST)).isEmpty();
+        assertThat(production.violations("abcd", List.of(), FAST)).containsExactly("too_short");
+    }
+
+    @Test
     void expiryIsOffByDefaultAndOtherwiseCountsDays() {
         Instant changed = Instant.parse("2026-01-01T00:00:00Z");
         assertThat(policy(12, 3, 5, 0).isExpired(changed, changed.plus(Duration.ofDays(3650)))).isFalse();

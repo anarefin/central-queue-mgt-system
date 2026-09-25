@@ -1,0 +1,18 @@
+{
+  "kiosks": [
+    { "label": "Kiosk CS-1 Lobby A" },
+    { "label": "Kiosk CS-1 Lobby B" },
+    { "label": "Kiosk CS-2 Lobby" }
+  ],
+  "displays": [
+    { "label": "TV CS-1 1st floor", "zone": "cs1-1" },
+    { "label": "TV CS-1 3rd floor", "zone": "cs1-3" },
+    { "label": "TV CS-1 4th floor", "zone": "cs1-4" },
+    { "label": "TV CS-1 5th floor", "zone": "cs1-5" },
+    { "label": "TV CS-1 Ground lobby", "zone": "cs1-1" },
+    { "label": "TV CS-2 1st floor", "zone": "cs2-1" },
+    { "label": "TV CS-2 5th floor", "zone": "cs2-5" },
+    { "label": "TV CS-2 6th floor", "zone": "cs2-6" },
+    { "label": "TV Haque Centre 1st floor", "zone": "hq-1" }
+  ]
+}

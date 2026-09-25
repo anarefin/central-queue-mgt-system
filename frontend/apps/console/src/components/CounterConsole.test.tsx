@@ -494,8 +494,8 @@ describe("transfer to a successor ticket (FR-QUE-052, FR-QUE-053, ADR-0006, UAT 
   const serving = (over: Partial<SessionTicket> = {}) => ticket({ state: "serving", version: 2, served_at: STAMP, ...over });
   const TARGETS: TransferTargets = {
     services: [
-      { id: "v1", name_i18n: { en: "Consultation", bn: "পরামর্শ" } },
-      { id: "v2", name_i18n: { en: "Laboratory", bn: "ল্যাব" } },
+      { id: "v1", name_i18n: { en: "Consultation", bn: "পরামর্শ" }, group_name_i18n: { en: "Outpatient" } },
+      { id: "v2", name_i18n: { en: "Laboratory", bn: "ল্যাব" }, group_name_i18n: { en: "Diagnostics" } },
     ],
     counters: [
       { id: "c2", label: "Desk 2", zone_name: "Hall", service_ids: ["v2"] },
@@ -536,6 +536,8 @@ describe("transfer to a successor ticket (FR-QUE-052, FR-QUE-053, ADR-0006, UAT 
     expect(screen.queryByLabelText("Send to service")).not.toBeInTheDocument();
 
     await user.keyboard("{F7}");
+    // Each option names its group too, so two groups' same-named Services (a "Pre-QC" in each QC department) differ.
+    expect(screen.getByRole("option", { name: "Laboratory · Diagnostics" })).toBeInTheDocument();
     await user.selectOptions(await screen.findByLabelText("Send to service"), "v2");
     expect(screen.getByRole("button", { name: "Transfer" }), "the note is required").toBeDisabled();
     await user.type(screen.getByLabelText("Note for the next agent (required)"), "  Needs a blood test ");

@@ -428,7 +428,7 @@ class AuthFlowIT {
 
         MvcResult tooShort = mvc.perform(post("/api/v1/auth/password").header("Authorization", "Bearer " + access)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"current_password\":\"" + PASSWORD + "\",\"new_password\":\"short\"}"))
+                        .content("{\"current_password\":\"" + PASSWORD + "\",\"new_password\":\"shrt\"}"))
                 .andReturn();
         assertThat(tooShort.getResponse().getStatus()).isEqualTo(400);
         assertThat(errorCode(tooShort)).isEqualTo("validation_failed");

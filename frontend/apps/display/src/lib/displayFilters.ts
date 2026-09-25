@@ -18,12 +18,29 @@ export function filterServing(state: DisplayState): DisplayServingEntry[] {
   return state.serving;
 }
 
+/** The next-token strip's groups for this display, leaving out queues with nothing waiting (a heading with no tokens). */
 export function filterNext(state: DisplayState): DisplayNextGroup[] {
+  const waiting = state.next.filter((group) => group.tokens.length > 0);
   if (state.assignment.scope === "queues") {
     const ids = new Set(state.assignment.ids);
-    return state.next.filter((group) => ids.has(group.service_id));
+    return waiting.filter((group) => ids.has(group.service_id));
   }
-  return state.next;
+  return waiting;
+}
+
+/**
+ * {@code prev} with each serving row that still shows the same token as {@code fresh} replaced by fresh's copy: fills
+ * in the Service and staff names a live `ticket.called` event does not carry, leaving any row whose token has moved on
+ * since that read as it is.
+ */
+export function fillCalledRows(prev: DisplayState, fresh: DisplayState): DisplayState {
+  return {
+    ...prev,
+    serving: prev.serving.map((row) => {
+      const match = fresh.serving.find((candidate) => candidate.counter_id === row.counter_id);
+      return match && match.token_number === row.token_number ? match : row;
+    }),
+  };
 }
 
 /** A name in one language, falling back to English, then to whatever exists, never to nothing. */

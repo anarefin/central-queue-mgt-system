@@ -11,7 +11,8 @@ import java.util.UUID;
  */
 public record TransferTargets(List<Service> services, List<CounterTarget> counters, List<AgentTarget> agents) {
 
-    public record Service(UUID id, @JsonProperty("name_i18n") Map<String, String> nameI18n) {}
+    /** {@code group_name_i18n}: the Service group it belongs to, so two groups' same-named Services can be told apart. */
+    public record Service(UUID id, @JsonProperty("name_i18n") Map<String, String> nameI18n, @JsonProperty("group_name_i18n") Map<String, String> groupNameI18n) {}
 
     public record CounterTarget(UUID id, String label, @JsonProperty("zone_name") String zoneName, @JsonProperty("service_ids") List<UUID> serviceIds) {}
 

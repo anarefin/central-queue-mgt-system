@@ -1,0 +1,34 @@
+{
+  "site": {
+    "name": "Aarong Central Services",
+    "code": "AARONG-CS",
+    "timezone": "Asia/Dhaka",
+    "address": "Aarong Central Services, Tejgaon, Dhaka",
+    "default_language": "en",
+    "enabled_languages": ["en", "bn"]
+  },
+  "zones": [
+    { "key": "cs1-1", "name": "CS-1 · 1st floor", "building_label": "CS-1", "floor_label": "1st", "display_order": 1 },
+    { "key": "cs1-3", "name": "CS-1 · 3rd floor", "building_label": "CS-1", "floor_label": "3rd", "display_order": 2 },
+    { "key": "cs1-4", "name": "CS-1 · 4th floor", "building_label": "CS-1", "floor_label": "4th", "display_order": 3 },
+    { "key": "cs1-5", "name": "CS-1 · 5th floor", "building_label": "CS-1", "floor_label": "5th", "display_order": 4 },
+    { "key": "cs2-1", "name": "CS-2 · 1st floor", "building_label": "CS-2", "floor_label": "1st", "display_order": 5 },
+    { "key": "cs2-5", "name": "CS-2 · 5th floor", "building_label": "CS-2", "floor_label": "5th", "display_order": 6 },
+    { "key": "cs2-6", "name": "CS-2 · 6th floor", "building_label": "CS-2", "floor_label": "6th", "display_order": 7 },
+    { "key": "hq-1", "name": "Haque Centre · 1st floor", "building_label": "Haque Centre", "floor_label": "1st", "display_order": 8 }
+  ],
+  "break_types": [
+    { "name_i18n": { "en": "Prayer", "bn": "নামাজ" }, "max_minutes": 20 },
+    { "name_i18n": { "en": "Lunch", "bn": "দুপুরের খাবার" }, "max_minutes": 45 },
+    { "name_i18n": { "en": "Tea", "bn": "চা বিরতি" }, "max_minutes": 15 }
+  ],
+  "notice": {
+    "en": "Notice Board to be uploaded by Producer Communication Team. Please keep your producer code ready and wait for your token to be called.",
+    "bn": "নোটিশ বোর্ড প্রডিউসার কমিউনিকেশন টিম কর্তৃক আপলোড করা হবে। অনুগ্রহ করে আপনার প্রডিউসার কোড প্রস্তুত রাখুন এবং টোকেন ডাকার অপেক্ষা করুন।"
+  },
+  "branding": { "org_name": "Aarong", "primary_color": "#F26522" },
+  "print_template": {
+    "fields": ["token_number", "building", "floor", "service_group", "visitor_code", "visitor_name", "service", "visitor_category", "issue_time"],
+    "notice_line": "Aarong Central Services · Please wait for your token to be called"
+  }
+}

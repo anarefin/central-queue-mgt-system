@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import { applyBrand, DEFAULT_ACCENT, deriveBrandColors } from "./apply-brand";
 import { contrastRatio, relativeLuminance } from "./color-contrast";
 
@@ -76,5 +78,19 @@ describe("applyBrand", () => {
     const result = applyBrand({ org_name: "   ", logo_url: "  " });
     expect(result.orgName).toBeNull();
     expect(result.logoUrl).toBeNull();
+  });
+});
+
+describe("applyBrand against theme.css", () => {
+  it("sets every raw token theme.css's `@theme inline` maps a --color-primary* utility to, so the brand actually shows", () => {
+    const css = readFileSync(path.resolve(__dirname, "theme.css"), "utf8");
+    const mapped = [...css.matchAll(/--color-primary[\w-]*:\s*var\((--qms-raw-primary[\w-]*)\)/g)].map((m) => m[1]!);
+    expect(mapped.length).toBeGreaterThan(0);
+
+    applyBrand({ primary_color: "#f26522" });
+
+    const style = document.documentElement.style;
+    for (const token of mapped) expect(style.getPropertyValue(token), token).not.toBe("");
+    expect(style.getPropertyValue("--qms-raw-primary")).toBe("#f26522");
   });
 });

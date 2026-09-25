@@ -147,7 +147,7 @@ var n=cur==='dark'?'light':'dark';document.documentElement.setAttribute('data-th
 <article class="tc unhappy" id="TC-AUT-016">
 <header><span class="tcid"><a href="#TC-AUT-016">TC-AUT-016</a></span><h4>Password policy violation: too_short</h4><span class="badge unhappy">unhappy</span></header>
 <dl class="meta"><div><dt>SRS</dt><dd>NFR-SEC-001</dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
-<div class="steps"><strong>Steps</strong><ol><li>Create a user (or change a password) with <code>Short1!</code>.</li></ol></div>
+<div class="steps"><strong>Steps</strong><ol><li>Create a user (or change a password) with <code>Sh1!</code> (4 characters).</li></ol></div>
 <div class="expect"><strong>Expected</strong><p><code>400 validation_failed</code> and <code>details.field</code> is <code>password</code> (<code>new_password</code> when changing a password) and <code>details.rules[]</code> contains <code>too_short</code>. No account is created or changed.</p></div>
 <details class="dev"><summary>Dev / API</summary><pre><code>POST /users {password:'...'} -&gt; 400</code></pre><p><strong>Automated:</strong> <code>PasswordPolicyTest</code></p></details>
 <footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
@@ -155,8 +155,8 @@ var n=cur==='dark'?'light':'dark';document.documentElement.setAttribute('data-th
 <article class="tc unhappy" id="TC-AUT-017">
 <header><span class="tcid"><a href="#TC-AUT-017">TC-AUT-017</a></span><h4>Password policy violation: too_few_character_classes</h4><span class="badge unhappy">unhappy</span></header>
 <dl class="meta"><div><dt>SRS</dt><dd>NFR-SEC-001</dd></div><div><dt>Role</dt><dd>org_admin</dd></div></dl>
-<div class="steps"><strong>Steps</strong><ol><li>Create a user (or change a password) with <code>alllowercaseletters</code>.</li></ol></div>
-<div class="expect"><strong>Expected</strong><p><code>400 validation_failed</code> and <code>details.field</code> is <code>password</code> (<code>new_password</code> when changing a password) and <code>details.rules[]</code> contains <code>too_few_character_classes</code>. No account is created or changed.</p></div>
+<div class="steps"><strong>Steps</strong><ol><li>The default <code>qms.security.password.min-character-classes</code> is <code>1</code>, which every non-empty password already satisfies, so this rule cannot fire on a default install. To exercise it, an operator must raise the setting first (for example <code>QMS_SECURITY_PASSWORD_MIN_CHARACTER_CLASSES=3</code>), then create a user (or change a password) with <code>alllowercaseletters</code>.</li></ol></div>
+<div class="expect"><strong>Expected</strong><p>With the setting raised: <code>400 validation_failed</code> and <code>details.field</code> is <code>password</code> (<code>new_password</code> when changing a password) and <code>details.rules[]</code> contains <code>too_few_character_classes</code>. No account is created or changed. On a default install this case is not reachable.</p></div>
 <details class="dev"><summary>Dev / API</summary><pre><code>POST /users {password:'...'} -&gt; 400</code></pre><p><strong>Automated:</strong> <code>PasswordPolicyTest</code></p></details>
 <footer class="result"><span>Pass <i class="box"></i></span><span>Fail <i class="box"></i></span><span class="notes">Notes <i class="line"></i></span></footer>
 </article>

@@ -266,7 +266,7 @@
   "kiosk.custom.skip": "Skip this step",
   "kiosk.confirm.title": "Confirm your {ticket}",
   "kiosk.confirm.serviceLabel": "Service",
-  "kiosk.confirm.groupLabel": "Group",
+  "kiosk.confirm.groupLabel": "{Service_group}",
   "kiosk.confirm.visitorLabel": "Identified as",
   "kiosk.confirm.agentLabel": "{Agent}",
   "kiosk.confirm.print": "Get my {ticket}",

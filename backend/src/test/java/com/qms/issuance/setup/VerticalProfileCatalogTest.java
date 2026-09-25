@@ -45,6 +45,16 @@ class VerticalProfileCatalogTest {
     }
 
     @Test
+    void producerCategoryLabelIsABareNounNotTheSrsExample() {
+        // The SRS §3.2 table's "(e.g. Children Tailoring)" illustrates a value. Screens compose "{Visitor} {category}"
+        // ("Producer category"), so the term itself carries neither the example nor the entity's own name; in Bangla
+        // it must not be বিভাগ either, which is already this profile's word for Department.
+        assertThat(catalog.get(VerticalProfileId.PRODUCER_SERVICES).labels().get("entity.category"))
+                .containsEntry("en", "Category")
+                .containsEntry("bn", "শ্রেণি");
+    }
+
+    @Test
     void genericProfileTurnsEveryOptionalFlagOffPerSrs34() {
         assertThat(catalog.get(VerticalProfileId.GENERIC).featureFlags().values()).allMatch(enabled -> !enabled);
     }

@@ -17,8 +17,8 @@ trap 'rm -rf "$WORK"' EXIT
 echo "Building images (backend, proxy)..."
 docker compose -f deploy/compose.yaml build backend proxy migrate
 
-echo "Pulling pinned third-party images (postgres:14-alpine) so the bundle needs no registry access at install..."
-docker pull postgres:14-alpine
+echo "Pulling pinned third-party images (postgres:18-alpine) so the bundle needs no registry access at install..."
+docker pull postgres:18-alpine
 
 echo "Saving images to $WORK/images.tar..."
 IMAGES="$(QMS_DB_PASSWORD=bundling docker compose -f deploy/compose.yaml config --images)"

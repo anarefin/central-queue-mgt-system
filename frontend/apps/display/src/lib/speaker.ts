@@ -73,7 +73,8 @@ function playClip(url: string): Promise<void> {
  * session) rather than once per announcement.
  */
 export function createSpeaker(options: { clipBaseUrl?: string; voices?: VoicePreferences } = {}): Speaker {
-  const soundsBaseUrl = options.clipBaseUrl ?? "/sounds";
+  // Under the app's own base path (the proxy serves this app at /display/), not the site root.
+  const soundsBaseUrl = options.clipBaseUrl ?? `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/sounds`;
   let warnedThisSession = false;
   return {
     async speak(text, language) {
@@ -93,7 +94,7 @@ export function createSpeaker(options: { clipBaseUrl?: string; voices?: VoicePre
           return;
         }
         try {
-          const audio = new Audio(`/sounds/chimes/${chime}.mp3`);
+          const audio = new Audio(`${soundsBaseUrl}/chimes/${chime}.wav`);
           audio.volume = Math.min(1, Math.max(0, volumePercent / 100));
           audio.onended = () => resolve();
           audio.onerror = () => resolve();

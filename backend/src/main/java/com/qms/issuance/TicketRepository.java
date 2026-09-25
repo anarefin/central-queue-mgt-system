@@ -174,14 +174,23 @@ class TicketRepository {
         return count == null ? 0 : count;
     }
 
-    /** Active members of a group's team who are on duty right now: a live (open, on-break or closing) counter session. */
+    /**
+     * The live session {@code cs} serves at least one of team {@code tm}'s group's services. A team member on duty at a
+     * desk for another department could never call a ticket targeted at them for this one (FR-QUE-003), so they are
+     * not on duty for it (FR-ISS-012).
+     */
+    private static final String SERVES_THE_GROUP =
+            " AND EXISTS (SELECT 1 FROM service s WHERE s.service_group_id = tm.service_group_id AND s.id = ANY (cs.services))";
+
+    /** Active members of a group's team who are on duty right now: a live (open, on-break or closing) counter session serving the group. */
     List<AgentQueueRow> onDutyTeamAgents(UUID groupId) {
         return jdbc.query(
                 "SELECT u.id, u.display_name,"
                         + " (SELECT count(*) FROM ticket t WHERE t.target_agent_id = u.id AND t.state IN ('waiting', 'paused')) AS queue_length"
                         + " FROM team tm JOIN team_member m ON m.team_id = tm.id JOIN users u ON u.id = m.user_id"
                         + " WHERE tm.service_group_id = ? AND u.active"
-                        + " AND EXISTS (SELECT 1 FROM counter_session cs WHERE cs.agent_id = u.id AND cs.state IN ('open', 'on_break', 'closing'))"
+                        + " AND EXISTS (SELECT 1 FROM counter_session cs WHERE cs.agent_id = u.id AND cs.state IN ('open', 'on_break', 'closing')"
+                        + SERVES_THE_GROUP + ")"
                         + " ORDER BY u.display_name, u.id",
                 (rs, i) -> new AgentQueueRow(rs.getObject("id", UUID.class), rs.getString("display_name"), rs.getInt("queue_length")),
                 groupId);
@@ -192,7 +201,8 @@ class TicketRepository {
         return Boolean.TRUE.equals(jdbc.queryForObject(
                 "SELECT EXISTS (SELECT 1 FROM team tm JOIN team_member m ON m.team_id = tm.id JOIN users u ON u.id = m.user_id"
                         + " JOIN counter_session cs ON cs.agent_id = u.id"
-                        + " WHERE tm.service_group_id = ? AND m.user_id = ? AND u.active AND cs.state IN ('open', 'on_break', 'closing'))",
+                        + " WHERE tm.service_group_id = ? AND m.user_id = ? AND u.active AND cs.state IN ('open', 'on_break', 'closing')"
+                        + SERVES_THE_GROUP + ")",
                 Boolean.class, groupId, agentId));
     }
 

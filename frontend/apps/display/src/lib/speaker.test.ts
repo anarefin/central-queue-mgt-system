@@ -1,3 +1,6 @@
+import { existsSync } from "node:fs";
+import path from "node:path";
+import type { ZoneChime } from "@qms/api-client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createSpeaker } from "./speaker";
 
@@ -125,6 +128,22 @@ describe("createSpeaker (ticket 29/65, FR-DSP-031)", () => {
 
     await speaker.playChime("chime_soft", 55);
 
-    expect(urls).toEqual(["/sounds/chimes/chime_soft.mp3"]);
+    expect(urls).toEqual(["/sounds/chimes/chime_soft.wav"]);
+  });
+
+  it("loads its sounds from under the app's own base path, where the proxy serves them, not the site root", async () => {
+    vi.stubEnv("NEXT_PUBLIC_BASE_PATH", "/display");
+    const urls = stubAudio("succeed");
+    const speaker = createSpeaker();
+
+    await speaker.playChime("chime_standard", 80);
+
+    expect(urls).toEqual(["/display/sounds/chimes/chime_standard.wav"]);
+    vi.unstubAllEnvs();
+  });
+
+  it("ships a clip for every chime a zone can be configured with", () => {
+    const chimes: ZoneChime[] = ["chime_standard", "chime_soft", "chime_alert"];
+    for (const chime of chimes) expect(existsSync(path.resolve(__dirname, "../../public/sounds/chimes", `${chime}.wav`)), chime).toBe(true);
   });
 });

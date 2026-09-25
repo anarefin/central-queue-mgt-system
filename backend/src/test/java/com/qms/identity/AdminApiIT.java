@@ -225,7 +225,7 @@ class AdminApiIT {
         assertThat(status(again)).isEqualTo(409);
         assertThat(errorCode(again)).isEqualTo("conflict");
 
-        MvcResult weak = call(post("/api/v1/users"), token, createUserBody("weak-" + UUID.randomUUID(), "short", "[]"));
+        MvcResult weak = call(post("/api/v1/users"), token, createUserBody("weak-" + UUID.randomUUID(), "shrt", "[]"));
         assertThat(status(weak)).isEqualTo(400);
         assertThat(weak.getResponse().getContentAsString()).contains("too_short");
     }

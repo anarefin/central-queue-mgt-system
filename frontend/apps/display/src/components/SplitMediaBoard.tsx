@@ -14,7 +14,7 @@ const DEFAULT_SPLIT_PERCENT = 60;
  * a fixed ratio. `feed` is the shared zone feed {@link DisplayBoard} already loaded, so a display with several
  * possible layouts fetches and subscribes exactly once.
  */
-export function SplitMediaBoard({ feed: { state, stale } }: { feed: ZoneFeed }) {
+export function SplitMediaBoard({ feed: { state, stale, now, highlightUntil } }: { feed: ZoneFeed }) {
   const { t, formatToken } = useI18n();
   const cycle = useLanguageCycle(state?.language_cycle ?? ["en"], state?.language_cycle_seconds ?? 10);
 
@@ -49,7 +49,10 @@ export function SplitMediaBoard({ feed: { state, stale } }: { feed: ZoneFeed }) 
             </thead>
             <tbody>
               {serving.map((row) => (
-                <tr key={row.counter_id}>
+                <tr
+                  key={row.counter_id}
+                  className={(highlightUntil[row.counter_id] ?? 0) > now ? "bg-primary/15 motion-safe:animate-highlight-pulse" : undefined}
+                >
                   {state.columns.includes("token") && (
                     <td className="border-b border-border px-4 py-3 text-[clamp(1.75rem,4vw,60px)] font-bold tabular-nums">{formatToken(row.token_number ?? "—")}</td>
                   )}

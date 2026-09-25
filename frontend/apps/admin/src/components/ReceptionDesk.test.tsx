@@ -680,8 +680,8 @@ describe("issuing a multi-stop journey in one action (FR-ISS-022, FR-QUE-060, ti
     renderApp(<ReceptionDesk />);
 
     await userEvent.click(await screen.findByRole("checkbox", { name: "Issue a multi-stop journey instead" }));
-    await userEvent.click(await screen.findByRole("checkbox", { name: "Consultation" }));
-    await userEvent.click(screen.getByRole("checkbox", { name: "ল্যাব" }));
+    await userEvent.click(await screen.findByRole("checkbox", { name: "Consultation · Outpatient" }));
+    await userEvent.click(screen.getByRole("checkbox", { name: "ল্যাব · Outpatient" }));
     await userEvent.click(screen.getByRole("radio", { name: /Unordered/ }));
     await userEvent.click(screen.getByRole("button", { name: "Issue journey" }));
 
@@ -696,7 +696,7 @@ describe("issuing a multi-stop journey in one action (FR-ISS-022, FR-QUE-060, ti
     renderApp(<ReceptionDesk />);
 
     await userEvent.click(await screen.findByRole("checkbox", { name: "Issue a multi-stop journey instead" }));
-    await userEvent.click(await screen.findByRole("checkbox", { name: "Consultation" }));
+    await userEvent.click(await screen.findByRole("checkbox", { name: "Consultation · Outpatient" }));
 
     expect(screen.getByRole("button", { name: "Issue journey" })).toBeDisabled();
   });
@@ -709,8 +709,8 @@ describe("issuing a multi-stop journey in one action (FR-ISS-022, FR-QUE-060, ti
     renderApp(<ReceptionDesk />);
 
     await userEvent.click(await screen.findByRole("checkbox", { name: "Issue a multi-stop journey instead" }));
-    await userEvent.click(await screen.findByRole("checkbox", { name: "Consultation" }));
-    await userEvent.click(screen.getByRole("checkbox", { name: "ল্যাব" }));
+    await userEvent.click(await screen.findByRole("checkbox", { name: "Consultation · Outpatient" }));
+    await userEvent.click(screen.getByRole("checkbox", { name: "ল্যাব · Outpatient" }));
     await userEvent.click(screen.getByRole("button", { name: "Issue journey" }));
 
     expect(await screen.findByText(/Journeys are switched off for this deployment/)).toBeInTheDocument();
@@ -788,7 +788,7 @@ describe("staff appointment booking (ticket 33, SRS §9.2, FR-APT-011..016)", ()
     });
     const section = await openBookingSection();
 
-    await userEvent.selectOptions(section.getByLabelText("Service"), "Consultation");
+    await userEvent.selectOptions(section.getByLabelText("Service"), "Consultation · Outpatient");
     fireEvent.change(section.getByLabelText("Date"), { target: { value: "2026-09-21" } });
     await userEvent.click(section.getByRole("button", { name: "Search availability" }));
     await userEvent.click(await section.findByRole("radio", { name: "09:00–09:30 (2 left)" }));
@@ -824,7 +824,7 @@ describe("staff appointment booking (ticket 33, SRS §9.2, FR-APT-011..016)", ()
     });
     const section = await openBookingSection();
 
-    await userEvent.selectOptions(section.getByLabelText("Service"), "Consultation");
+    await userEvent.selectOptions(section.getByLabelText("Service"), "Consultation · Outpatient");
     fireEvent.change(section.getByLabelText("Date"), { target: { value: "2026-09-21" } });
     await userEvent.click(section.getByRole("button", { name: "Search availability" }));
     await userEvent.click(await section.findByRole("radio", { name: "09:00–09:30 (1 left)" }));

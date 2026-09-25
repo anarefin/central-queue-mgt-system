@@ -1927,6 +1927,7 @@ class SessionIT {
 
         assertThat(status(result)).as(body(result)).isEqualTo(200);
         assertThat((List<String>) field(result, "$.services[*].id")).containsExactlyInAnyOrder(w.a().toString(), w.b().toString());
+        assertThat((List<String>) field(result, "$.services[*].group_name_i18n.en")).as("each Service names its group").containsOnly("Outpatient");
         assertThat((List<String>) field(result, "$.counters[*].id")).as("not its own counter, nor another site's").containsExactly(deskB.toString());
         assertThat((List<String>) field(result, "$.counters[0].service_ids")).containsExactly(w.b().toString());
         assertThat((List<String>) field(result, "$.agents[*].id")).as("active colleagues of the site, not the agent themselves").containsExactly(colleague.id().toString());

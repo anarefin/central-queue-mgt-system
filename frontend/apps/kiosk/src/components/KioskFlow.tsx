@@ -61,6 +61,8 @@ interface Selection {
   serviceId: string;
   serviceName: string;
   visitorId?: string;
+  /** The code the visitor typed to identify (FR-ISS-013), for the printed slip; identify itself never returns one. */
+  visitorCode?: string | null;
   visitorName?: string;
   visitorCategory?: string | null;
   agentId?: string;
@@ -188,7 +190,7 @@ function printPayloadFor(ticket: Ticket, selection: Selection, bootstrap: Device
     groupName: selection.groupName,
     building: ticket.zone?.building_label ?? null,
     floor: ticket.zone?.floor_label ?? null,
-    visitorCode: selection.visitorId ?? null,
+    visitorCode: selection.visitorCode ?? null,
     visitorName: selection.visitorName ?? null,
     visitorCategory: selection.visitorCategory ?? null,
     // A kiosk-issued ticket is never pre-assigned a counter; the field still prints when the admin enables it, blank.
@@ -530,8 +532,14 @@ function KioskFlowInner({ bootstrap, client, printer, inactivityTimeoutMs, langu
     void afterIdentify(current.selection);
   }
 
-  function identified(current: { selection: Selection; mandatory: boolean }, identity: { visitorId: string; name: string; category: string | null }) {
-    void afterIdentify({ ...current.selection, visitorId: identity.visitorId, visitorName: identity.name, visitorCategory: identity.category });
+  function identified(current: { selection: Selection; mandatory: boolean }, identity: IdentifiedVisitor) {
+    void afterIdentify({
+      ...current.selection,
+      visitorId: identity.visitorId,
+      visitorCode: identity.code,
+      visitorName: identity.name,
+      visitorCategory: identity.category,
+    });
   }
 
   function afterIndividual(current: Extract<Step, { kind: "individual" }>, agent: KioskAgentOption | null) {
@@ -807,6 +815,8 @@ function IdentifyScreen({
 
 interface IdentifiedVisitor {
   visitorId: string;
+  /** The visitor's own code when they identified by typing it; null for a phone number or a scanned QR. */
+  code: string | null;
   name: string;
   category: string | null;
 }
@@ -835,7 +845,7 @@ function IdentifyEnterScreen({
     setError(null);
     try {
       const identity = await client.kiosk.identify(value.trim());
-      onFound({ visitorId: identity.visitor_id, name: identity.name, category: identity.category });
+      onFound({ visitorId: identity.visitor_id, code: method === "code" ? value.trim() : null, name: identity.name, category: identity.category });
     } catch {
       setError(t("kiosk.identify.notFound"));
     } finally {
@@ -916,7 +926,7 @@ function IdentifyScanScreen({
               lookingUp.current = true;
               try {
                 const identity = await client.kiosk.identify(code.rawValue);
-                if (!cancelled) onFound({ visitorId: identity.visitor_id, name: identity.name, category: identity.category });
+                if (!cancelled) onFound({ visitorId: identity.visitor_id, code: null, name: identity.name, category: identity.category });
               } catch {
                 if (!cancelled) setError(t("kiosk.identify.notFound"));
               } finally {

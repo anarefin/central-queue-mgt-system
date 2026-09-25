@@ -164,7 +164,8 @@ export interface TransferResult {
 
 /** Where the ticket in service may go: the active Services of the session's site, and the counters and agents that can take them. */
 export interface TransferTargets {
-  services: Array<{ id: string; name_i18n: LocalisedText }>;
+  /** `group_name_i18n` is the Service group each belongs to, to tell apart two groups' same-named Services. */
+  services: Array<{ id: string; name_i18n: LocalisedText; group_name_i18n: LocalisedText }>;
   counters: Array<{ id: string; label: string; zone_name: string; service_ids: string[] }>;
   agents: Array<{ id: string; name: string; service_ids: string[] }>;
 }

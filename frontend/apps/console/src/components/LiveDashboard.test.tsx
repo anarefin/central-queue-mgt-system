@@ -1,7 +1,7 @@
 import type { Alert, DashboardSnapshot } from "@qms/api-client";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import DashboardPage from "../app/dashboard/page";
 import { json, renderApp, stubApi, type Recorded, type Routes } from "../test-utils";
 
@@ -179,6 +179,46 @@ describe("the live dashboard (SRS §15.1, ticket 46)", () => {
 // ---- ticket 64: pickers instead of raw ids, the URL round trip, and the client-side permission gate -----------
 
 describe("permission gate (ticket 64, SRS §5.2 dashboard:view_all / dashboard:view_own_groups)", () => {
+  it("starts an org-wide admin (an empty sites claim) on the first site they can list, not on an empty site prompt", async () => {
+    searchParams.delete("site_id"); // opened from the menu: no site in the URL
+    onTestFinished(() => searchParams.set("site_id", "s1"));
+    stubApi({
+      ...AUTH,
+      "GET /auth/me": () => json(200, { ...ME, sites: [] }),
+      "GET /sites": () => json(200, { items: [{ id: "s1", code: "AARONG-CS", name: "Aarong Central Services" }] }),
+      "GET /dashboard/live?site_id=s1": () => json(200, snapshot()),
+    });
+
+    renderApp(<DashboardPage />);
+
+    expect(await screen.findByText("Open: 2")).toBeInTheDocument();
+    expect(screen.queryByText("Choose a Site to see its live dashboard.")).not.toBeInTheDocument();
+  });
+
+  it("lists desks in reading order (2 before 10) and names officer statuses in words, not wire values", async () => {
+    stubApi({
+      ...AUTH,
+      "GET /dashboard/live?site_id=s1": () =>
+        json(
+          200,
+          snapshot({
+            served_per_open_counter: [
+              { counter_id: "c10", label: "10", session_id: null, served_count: 1 },
+              { counter_id: "c2", label: "2", session_id: null, served_count: 3 },
+            ],
+          }),
+        ),
+    });
+
+    renderApp(<DashboardPage />);
+
+    const two = await screen.findByText("2: 3");
+    const ten = screen.getByText("10: 1");
+    expect(two.compareDocumentPosition(ten) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.getByRole("option", { name: "On break" })).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: "on_break" })).not.toBeInTheDocument();
+  });
+
   it("shows the dashboard to an agent, scoped to their own groups", async () => {
     stubApi({ ...AUTH, "GET /auth/me": () => json(200, { ...ME, roles: ["agent"] }), "GET /dashboard/live?site_id=s1": () => json(200, snapshot()) });
 

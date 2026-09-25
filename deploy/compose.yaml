@@ -1,16 +1,19 @@
 # Single-node stack: PostgreSQL, backend, reverse proxy serving all apps and the API on one origin.
-# Usage:  QMS_DB_PASSWORD=... docker compose -f deploy/compose.yaml up --build
+# Usage:  docker compose -f deploy/compose.yaml up --build       (reads deploy/.env if present, see .env.example)
+#     or: QMS_DB_PASSWORD=... docker compose -f deploy/compose.yaml up --build   (a shell var always wins over .env)
 name: qms
 
 services:
   postgres:
-    image: postgres:14-alpine
+    image: postgres:18-alpine
     environment:
       POSTGRES_DB: qms
       POSTGRES_USER: qms
       POSTGRES_PASSWORD: ${QMS_DB_PASSWORD:?set QMS_DB_PASSWORD}
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      # postgres:18+ images refuse to start with anything mounted directly at .../data (even empty);
+      # mount the parent so initdb creates its own versioned subdirectory.
+      - pgdata:/var/lib/postgresql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U qms -d qms"]
       interval: 5s

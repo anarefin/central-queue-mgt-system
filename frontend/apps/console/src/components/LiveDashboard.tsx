@@ -50,7 +50,24 @@ export function LiveDashboard() {
   const searchParams = useSearchParams();
   const paramsKey = searchParams.toString();
 
-  const filter = useMemo(() => filterFrom(searchParams, user?.sites[0] ?? null), [paramsKey, user]);
+  // An empty `sites` claim is org-wide scope (every site), not no site: such a user starts on the first site they can
+  // list, rather than on a prompt to choose a site with nothing to choose from.
+  const [orgWideSite, setOrgWideSite] = useState<string | null>(null);
+  useEffect(() => {
+    if (!client || !user || user.sites.length > 0 || searchParams.get("site_id")) return;
+    let cancelled = false;
+    client.sites.list().then(
+      (sites) => {
+        if (!cancelled) setOrgWideSite(sites.items[0]?.id ?? null);
+      },
+      () => undefined,
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [client, user, paramsKey]);
+
+  const filter = useMemo(() => filterFrom(searchParams, user?.sites[0] ?? orgWideSite), [paramsKey, user, orgWideSite]);
 
   const [snapshot, setSnapshot] = useState<DashboardSnapshot | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -178,8 +195,11 @@ function FilterSidebar({ filter, onChange }: { filter: DashboardFilter; onChange
   const services = useOnDemandList(() => client!.catalogue.services(filter.service_group_id ?? ""), [client, filter.service_group_id]);
   const classes = useOnDemandList(() => client!.priority.classes(), [client]);
 
+  // An empty claim is org-wide scope: every site the API lists is the user's.
   const mySiteIds = new Set(user?.sites ?? []);
-  const siteOptions = (sites.items ?? []).filter((site) => mySiteIds.has(site.id)).map((site) => ({ value: site.id, label: site.name }));
+  const siteOptions = (sites.items ?? [])
+    .filter((site) => mySiteIds.size === 0 || mySiteIds.has(site.id))
+    .map((site) => ({ value: site.id, label: site.name }));
   const zoneOptions = (zones.items ?? []).map((zone: Zone) => ({ value: zone.id, label: zone.name }));
   const groupOptions = (groups.items ?? []).map((group: ServiceGroup) => ({ value: group.id, label: localisedName(group.name_i18n, language) }));
   const serviceOptions = (services.items ?? []).map((service) => ({ value: service.id, label: localisedName(service.name_i18n, language) }));
@@ -473,16 +493,19 @@ function ServedPerCounterCard({ snapshot, client, onChanged }: { snapshot: Dashb
     <Card>
       <h3 className="text-sm font-semibold text-fg">{t("dashboard.tiles.servedPerCounter")}</h3>
       <ul className="m-0 flex list-none flex-col gap-2 p-0 text-sm text-fg">
-        {snapshot.served_per_open_counter.map((row) => (
-          <li key={row.counter_id} className="flex flex-wrap items-center justify-between gap-2">
-            {t("dashboard.servedPerCounter.row", { counter: row.label, count: formatNumber(row.served_count) })}
-            {row.session_id && (
-              <Button type="button" variant="secondary" size="sm" disabled={busyId === row.session_id} onClick={() => forceClose(row.session_id as string)}>
-                {t("dashboard.actions.forceClose")}
-              </Button>
-            )}
-          </li>
-        ))}
+        {/* Desk 2 before Desk 10: labels are compared as people read them, numbers by value. */}
+        {[...snapshot.served_per_open_counter]
+          .sort((a, b) => a.label.localeCompare(b.label, undefined, { numeric: true }))
+          .map((row) => (
+            <li key={row.counter_id} className="flex flex-wrap items-center justify-between gap-2">
+              {t("dashboard.servedPerCounter.row", { counter: row.label, count: formatNumber(row.served_count) })}
+              {row.session_id && (
+                <Button type="button" variant="secondary" size="sm" disabled={busyId === row.session_id} onClick={() => forceClose(row.session_id as string)}>
+                  {t("dashboard.actions.forceClose")}
+                </Button>
+              )}
+            </li>
+          ))}
       </ul>
       {error && <ErrorAlert>{error}</ErrorAlert>}
     </Card>
@@ -524,8 +547,8 @@ function AgentStatusCard({ client, onChanged }: { client: ActionApiLike | null; 
           onChange={(e) => setStatus(e.target.value as "available" | "on_break")}
           aria-label={t("dashboard.actions.setAvailability")}
         >
-          <option value="available">available</option>
-          <option value="on_break">on_break</option>
+          <option value="available">{t("availability.status.available")}</option>
+          <option value="on_break">{t("availability.status.on_break")}</option>
         </select>
         {status === "on_break" && (
           <Picker

@@ -56,7 +56,7 @@ public record SecurityProperties(
                 Duration.ofSeconds(30),
                 new Lockout(5, Duration.ofMinutes(15)),
                 new Idle(Duration.ofMinutes(30), Duration.ofHours(12)),
-                new PasswordRules(12, 3, 5, 0, 12),
+                new PasswordRules(5, 1, 5, 0, 12),
                 new Cookie("qms_refresh", true),
                 new Bootstrap(null, null));
     }
@@ -84,8 +84,8 @@ public record SecurityProperties(
      * The SRS gives no defaults for these; the values below are this build's choice.
      */
     public record PasswordRules(
-            @DefaultValue("12") int minLength,
-            @DefaultValue("3") int minCharacterClasses,
+            @DefaultValue("5") int minLength,
+            @DefaultValue("1") int minCharacterClasses,
             @DefaultValue("5") int historyCount,
             @DefaultValue("0") int maxAgeDays,
             @DefaultValue("12") int bcryptCost) {}

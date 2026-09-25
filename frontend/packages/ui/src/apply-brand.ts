@@ -54,19 +54,23 @@ export function deriveBrandColors(primaryColor: string | null | undefined): {
 }
 
 /**
- * Applies the org's brand at runtime: sets `--color-primary` (and its hover/active/fg companions) as an inline style
- * on `<html>`, which every `bg-primary`/`text-primary` utility and `.qms-color-primary` alias already reads, so it
- * overrides theme.css's default regardless of light/dark mode (ticket 62). Every app calls this on start.
+ * Applies the org's brand at runtime as inline styles on `<html>`, overriding theme.css's default regardless of
+ * light/dark mode (ticket 62). Every app calls this on start. theme.css declares its colours with `@theme inline`, so
+ * the compiled `bg-primary`/`text-primary` utilities read the raw `--qms-raw-primary*` tokens directly, never
+ * `--color-primary*`; both are set, the raw ones being what actually recolours the screens. The kiosk's high-contrast
+ * palette still wins inside its own `[data-contrast="high"]` subtree, which redefines the raw tokens closer in.
  */
 export function applyBrand(brand: BrandConfig): AppliedBrand {
   const { primary, primaryHover, primaryActive, primaryFg } = deriveBrandColors(brand.primary_color);
 
   if (typeof document !== "undefined") {
     const root = document.documentElement.style;
-    root.setProperty("--color-primary", primary);
-    root.setProperty("--color-primary-hover", primaryHover);
-    root.setProperty("--color-primary-active", primaryActive);
-    root.setProperty("--color-primary-fg", primaryFg);
+    for (const prefix of ["--color-primary", "--qms-raw-primary"]) {
+      root.setProperty(prefix, primary);
+      root.setProperty(`${prefix}-hover`, primaryHover);
+      root.setProperty(`${prefix}-active`, primaryActive);
+      root.setProperty(`${prefix}-fg`, primaryFg);
+    }
   }
 
   return {

@@ -137,8 +137,10 @@ function PairedView({
   // reload. Safe before bootstrap has loaded too — `labels={undefined}` just falls back to the pack's own default.
   return (
     <LabelsProvider labels={bootstrap?.labels}>
-      <Page>
-        <div className="flex flex-col gap-4">
+      {/* The whole screen, not Page's reading-width column: this is a wall TV, and the serving table and notice panel
+          share its width (a narrow column clipped the staff column). */}
+      <main className="flex min-h-screen w-full flex-col px-6 py-6">
+        <div className="flex flex-1 flex-col gap-4">
           {bootstrapError && (
             <Card>
               <ErrorAlert>{t("devicePairing.configError")}</ErrorAlert>
@@ -164,7 +166,7 @@ function PairedView({
           {/* FR-DSP-001: only a display is paired to a zone; a kiosk's bootstrap.layout is null and has no board to show. */}
           {bootstrap?.layout && deviceId && <DisplayBoard deviceId={deviceId} />}
         </div>
-      </Page>
+      </main>
     </LabelsProvider>
   );
 }

@@ -102,10 +102,14 @@ class PlanningViewsIT {
     private record Staff(UUID id, String token) {}
 
     private World world() {
+        return world("UTC");
+    }
+
+    private World world(String timezone) {
         UUID site = UUID.randomUUID();
         jdbc.update(
-                "INSERT INTO site (id, name, code, timezone, address, default_language, enabled_languages) VALUES (?, 'Main campus', ?, 'UTC', '1 Campus Road', 'en', '[\"en\",\"bn\"]'::jsonb)",
-                site, "R-" + site.toString().substring(0, 8));
+                "INSERT INTO site (id, name, code, timezone, address, default_language, enabled_languages) VALUES (?, 'Main campus', ?, ?, '1 Campus Road', 'en', '[\"en\",\"bn\"]'::jsonb)",
+                site, "R-" + site.toString().substring(0, 8), timezone);
         UUID zone = UUID.randomUUID();
         jdbc.update("INSERT INTO zone (id, site_id, name, floor_label) VALUES (?, ?, 'Hall', '1st')", zone, site);
         UUID group = UUID.randomUUID();
@@ -241,6 +245,32 @@ class PlanningViewsIT {
                 .filter(c -> ((Number) c.get("day_of_week")).intValue() == 4 && ((Number) c.get("hour_of_day")).intValue() == 14)
                 .findFirst().orElseThrow();
         assertThat(((Number) thursdayFourteen.get("ticket_count")).longValue()).isEqualTo(1);
+    }
+
+    @Test
+    void peakHoursAndStaffingGapBucketBySitesOwnLocalTimeNotUtc() throws Exception {
+        World w = world("Asia/Dhaka"); // UTC+6, no daylight saving
+        Staff admin = staff(Role.ORG_ADMIN, w.site(), null);
+
+        // Wednesday 20:00 UTC is Thursday (ISO 4) 02:00 in Dhaka.
+        clock.set(Instant.parse("2026-09-23T20:00:00Z"));
+        issue(w.service(), Channels.RECEPTION);
+
+        scheduler.tick();
+
+        MvcResult peak = run(admin, "peak-hours", range(w.site(), BASE.minusSeconds(3600), BASE.plusSeconds(3 * 24 * 3600)));
+        assertThat(status(peak)).as(body(peak)).isEqualTo(200);
+        List<Map<String, Object>> cells = field(peak, "$.cells");
+        assertThat(cells).singleElement().satisfies(cell -> {
+            assertThat(((Number) cell.get("day_of_week")).intValue()).isEqualTo(4);
+            assertThat(((Number) cell.get("hour_of_day")).intValue()).isEqualTo(2);
+        });
+
+        MvcResult gap = run(admin, "staffing-gap", range(w.site(), BASE.minusSeconds(3600), BASE.plusSeconds(3 * 24 * 3600)));
+        assertThat(status(gap)).as(body(gap)).isEqualTo(200);
+        List<Map<String, Object>> rows = field(gap, "$.rows");
+        Map<String, Object> hourTwo = rows.stream().filter(r -> ((Number) r.get("hour_of_day")).intValue() == 2).findFirst().orElseThrow();
+        assertThat(((Number) hourTwo.get("tickets_offered")).longValue()).isEqualTo(1);
     }
 
     // ---- staffing-gap: tickets offered vs counter-hours available vs SLA attainment per hour band (FR-RPT-012) ------

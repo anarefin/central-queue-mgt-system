@@ -1,0 +1,220 @@
+[
+  {
+    "key": "scpd", "prefix": "S", "zone": "cs1-1", "hourly_volume": 3, "counters": 3, "individual_selectable": false,
+    "name_i18n": { "en": "SCPD", "bn": "এসসিপিডি" },
+    "services": [
+      { "prefix": "S1", "name_i18n": { "en": "Helpdesk Query", "bn": "হেল্পডেস্ক জিজ্ঞাসা" }, "expected_minutes": 8, "sla_wait_minutes": 20 },
+      { "prefix": "S2", "name_i18n": { "en": "Producer Registration", "bn": "প্রডিউসার নিবন্ধন" }, "expected_minutes": 15, "sla_wait_minutes": 30 },
+      { "prefix": "S3", "name_i18n": { "en": "Complaint", "bn": "অভিযোগ" }, "expected_minutes": 10, "sla_wait_minutes": 30 }
+    ],
+    "team_admin": { "username": "scpd.lead", "display_name": "Farhana Haque (SCPD lead)" },
+    "agents": [
+      { "username": "scpd.karim", "display_name": "Mr. Karim" },
+      { "username": "scpd.nasrin", "display_name": "Mrs. Nasrin" },
+      { "username": "scpd.hasan", "display_name": "Mr. Hasan" }
+    ]
+  },
+  {
+    "key": "procurement", "prefix": "P", "zone": "cs1-1", "hourly_volume": 1, "counters": 2, "individual_selectable": false,
+    "name_i18n": { "en": "Procurement and Supply Chain", "bn": "ক্রয় ও সাপ্লাই চেইন" },
+    "services": [
+      { "prefix": "P1", "name_i18n": { "en": "Supplier Query", "bn": "সরবরাহকারী জিজ্ঞাসা" }, "expected_minutes": 10, "sla_wait_minutes": 30 },
+      { "prefix": "P2", "name_i18n": { "en": "PO Follow-up", "bn": "পারচেজ অর্ডার ফলো-আপ" }, "expected_minutes": 10, "sla_wait_minutes": 30 }
+    ],
+    "team_admin": { "username": "procurement.lead", "display_name": "Tanvir Ahmed (Procurement lead)" },
+    "agents": [ { "username": "procurement.rafiq", "display_name": "Mr. Rafiq" } ]
+  },
+  {
+    "key": "security", "prefix": "SE", "zone": "cs1-1", "hourly_volume": 1, "counters": 1, "individual_selectable": false,
+    "name_i18n": { "en": "Security", "bn": "নিরাপত্তা" },
+    "services": [
+      { "prefix": "SE1", "name_i18n": { "en": "Visitor Gate Pass", "bn": "ভিজিটর গেট পাস" }, "expected_minutes": 3, "sla_wait_minutes": 10 }
+    ],
+    "team_admin": { "username": "security.lead", "display_name": "Abdul Malek (Security lead)" },
+    "agents": [ { "username": "security.jamal", "display_name": "Mr. Jamal" } ]
+  },
+  {
+    "key": "finance", "prefix": "F", "zone": "cs1-3", "hourly_volume": 7, "counters": 3, "individual_selectable": false,
+    "name_i18n": { "en": "Finance and Accounts", "bn": "ফাইন্যান্স ও অ্যাকাউন্টস" },
+    "services": [
+      { "prefix": "F1", "name_i18n": { "en": "Voucher", "bn": "ভাউচার" }, "expected_minutes": 6, "sla_wait_minutes": 20 },
+      { "prefix": "F2", "name_i18n": { "en": "Bill and Voucher", "bn": "বিল ও ভাউচার" }, "expected_minutes": 8, "sla_wait_minutes": 20 },
+      { "prefix": "F3", "name_i18n": { "en": "Payment Query", "bn": "পেমেন্ট জিজ্ঞাসা" }, "expected_minutes": 5, "sla_wait_minutes": 20 }
+    ],
+    "team_admin": { "username": "finance.lead", "display_name": "Shirin Akter (Finance lead)" },
+    "agents": [
+      { "username": "finance.mahmud", "display_name": "Mr. Mahmud" },
+      { "username": "finance.sultana", "display_name": "Mrs. Sultana" },
+      { "username": "finance.kabir", "display_name": "Mr. Kabir" }
+    ]
+  },
+  {
+    "key": "processing", "prefix": "PS", "zone": "cs1-3", "hourly_volume": 5, "counters": 2, "individual_selectable": false,
+    "name_i18n": { "en": "Processing Store", "bn": "প্রসেসিং স্টোর" },
+    "services": [
+      { "prefix": "PS1", "name_i18n": { "en": "Material Issue", "bn": "মালামাল ইস্যু" }, "expected_minutes": 7, "sla_wait_minutes": 25 },
+      { "prefix": "PS2", "name_i18n": { "en": "Material Return", "bn": "মালামাল ফেরত" }, "expected_minutes": 7, "sla_wait_minutes": 25 }
+    ],
+    "team_admin": { "username": "processing.lead", "display_name": "Rezaul Karim (Processing Store lead)" },
+    "agents": [
+      { "username": "processing.babul", "display_name": "Mr. Babul" },
+      { "username": "processing.rina", "display_name": "Mrs. Rina" }
+    ]
+  },
+  {
+    "key": "merchandising", "prefix": "M", "zone": "cs1-4", "hourly_volume": 12, "counters": 6, "individual_selectable": true, "appointments": true,
+    "name_i18n": { "en": "Merchandising", "bn": "মার্চেন্ডাইজিং" },
+    "services": [
+      { "prefix": "M1", "name_i18n": { "en": "Order and costing", "bn": "অর্ডার ও কস্টিং" }, "expected_minutes": 12, "sla_wait_minutes": 30 },
+      { "prefix": "M2", "name_i18n": { "en": "Order follow-up", "bn": "অর্ডার ফলো-আপ" }, "expected_minutes": 8, "sla_wait_minutes": 30 }
+    ],
+    "team_admin": { "username": "merchandising.lead", "display_name": "Nusrat Jahan (Merchandising lead)" },
+    "agents": [
+      { "username": "merch.bushra", "display_name": "Mrs. Bushra" },
+      { "username": "merch.anwar", "display_name": "Mr. Anwar" },
+      { "username": "merch.shila", "display_name": "Mrs. Shila" },
+      { "username": "merch.imran", "display_name": "Mr. Imran" }
+    ]
+  },
+  {
+    "key": "nontextile", "prefix": "N", "zone": "cs1-4", "hourly_volume": 2, "counters": 1, "individual_selectable": false,
+    "name_i18n": { "en": "Non-Textile Order Team", "bn": "নন-টেক্সটাইল অর্ডার টিম" },
+    "services": [
+      { "prefix": "N1", "name_i18n": { "en": "Non-Textile Order Query", "bn": "নন-টেক্সটাইল অর্ডার জিজ্ঞাসা" }, "expected_minutes": 10, "sla_wait_minutes": 30 }
+    ],
+    "team_admin": { "username": "nontextile.lead", "display_name": "Mahbub Alam (Non-Textile lead)" },
+    "agents": [ { "username": "nontextile.sumon", "display_name": "Mr. Sumon" } ]
+  },
+  {
+    "key": "textile", "prefix": "T", "zone": "cs1-4", "hourly_volume": 2, "counters": 1, "individual_selectable": false,
+    "name_i18n": { "en": "Textile Division", "bn": "টেক্সটাইল ডিভিশন" },
+    "services": [
+      { "prefix": "T1", "name_i18n": { "en": "Fabric and Yarn Query", "bn": "কাপড় ও সুতা জিজ্ঞাসা" }, "expected_minutes": 10, "sla_wait_minutes": 30 }
+    ],
+    "team_admin": { "username": "textile.lead", "display_name": "Salma Begum (Textile lead)" },
+    "agents": [ { "username": "textile.monir", "display_name": "Mr. Monir" } ]
+  },
+  {
+    "key": "warehouse", "prefix": "W", "zone": "cs1-4", "hourly_volume": 1, "counters": 1, "individual_selectable": false,
+    "name_i18n": { "en": "Warehouse", "bn": "ওয়্যারহাউস" },
+    "services": [
+      { "prefix": "W1", "name_i18n": { "en": "Goods Receipt", "bn": "পণ্য গ্রহণ" }, "expected_minutes": 10, "sla_wait_minutes": 30 }
+    ],
+    "team_admin": { "username": "warehouse.lead", "display_name": "Harun Rashid (Warehouse lead)" },
+    "agents": [ { "username": "warehouse.selim", "display_name": "Mr. Selim" } ]
+  },
+  {
+    "key": "sericulture", "prefix": "SR", "zone": "cs1-4", "hourly_volume": 1, "counters": 1, "individual_selectable": false,
+    "name_i18n": { "en": "Sericulture", "bn": "রেশম চাষ" },
+    "services": [
+      { "prefix": "SR1", "name_i18n": { "en": "Silk Query", "bn": "রেশম জিজ্ঞাসা" }, "expected_minutes": 10, "sla_wait_minutes": 30 }
+    ],
+    "team_admin": { "username": "sericulture.lead", "display_name": "Ayesha Siddiqua (Sericulture lead)" },
+    "agents": [ { "username": "sericulture.rokeya", "display_name": "Mrs. Rokeya" } ]
+  },
+  {
+    "key": "design", "prefix": "D", "zone": "cs1-5", "hourly_volume": 5, "counters": 6, "individual_selectable": true, "appointments": true,
+    "name_i18n": { "en": "Design", "bn": "ডিজাইন" },
+    "services": [
+      { "prefix": "D1", "name_i18n": { "en": "Sample", "bn": "নমুনা" }, "expected_minutes": 15, "sla_wait_minutes": 30 },
+      { "prefix": "D2", "name_i18n": { "en": "Design Approval", "bn": "ডিজাইন অনুমোদন" }, "expected_minutes": 12, "sla_wait_minutes": 30 }
+    ],
+    "team_admin": { "username": "design.lead", "display_name": "Tahmina Rahman (Design lead)" },
+    "agents": [
+      { "username": "design.rahman", "display_name": "Mr. Rahman" },
+      { "username": "design.akter", "display_name": "Mrs. Akter" },
+      { "username": "design.chowdhury", "display_name": "Mr. Chowdhury" },
+      { "username": "design.parvin", "display_name": "Mrs. Parvin" }
+    ]
+  },
+  {
+    "key": "inventory", "prefix": "I", "zone": "cs1-5", "hourly_volume": 1, "counters": 1, "individual_selectable": false,
+    "name_i18n": { "en": "Inventory Control Management", "bn": "ইনভেন্টরি কন্ট্রোল ম্যানেজমেন্ট" },
+    "services": [
+      { "prefix": "I1", "name_i18n": { "en": "Stock Query", "bn": "স্টক জিজ্ঞাসা" }, "expected_minutes": 8, "sla_wait_minutes": 30 }
+    ],
+    "team_admin": { "username": "inventory.lead", "display_name": "Kamrul Islam (Inventory lead)" },
+    "agents": [ { "username": "inventory.faruk", "display_name": "Mr. Faruk" } ]
+  },
+  {
+    "key": "cad", "prefix": "C", "zone": "cs1-5", "hourly_volume": 3, "counters": 2, "individual_selectable": false,
+    "name_i18n": { "en": "CAD and Pattern Room", "bn": "ক্যাড ও প্যাটার্ন রুম" },
+    "services": [
+      { "prefix": "C1", "name_i18n": { "en": "Pattern and Consumption", "bn": "প্যাটার্ন ও কনজাম্পশন" }, "expected_minutes": 12, "sla_wait_minutes": 30 }
+    ],
+    "team_admin": { "username": "cad.lead", "display_name": "Mizanur Rahman (CAD lead)" },
+    "agents": [
+      { "username": "cad.liton", "display_name": "Mr. Liton" },
+      { "username": "cad.jesmin", "display_name": "Mrs. Jesmin" }
+    ]
+  },
+  {
+    "key": "qc-ftj", "prefix": "Q", "zone": "cs2-1", "hourly_volume": 8, "counters": 5, "individual_selectable": false,
+    "name_i18n": { "en": "QC (Finished Textile and Jewellery)", "bn": "কিউসি (ফিনিশড টেক্সটাইল ও জুয়েলারি)" },
+    "services": [
+      { "prefix": "Q1", "name_i18n": { "en": "Pre-QC", "bn": "প্রি-কিউসি" }, "expected_minutes": 10, "sla_wait_minutes": 30 },
+      { "prefix": "Q2", "name_i18n": { "en": "Final QC", "bn": "ফাইনাল কিউসি" }, "expected_minutes": 15, "sla_wait_minutes": 40 }
+    ],
+    "team_admin": { "username": "qc.lead", "display_name": "Shahidul Islam (QC lead)" },
+    "agents": [
+      { "username": "qc.alam", "display_name": "Mr. Alam" },
+      { "username": "qc.munni", "display_name": "Mrs. Munni" },
+      { "username": "qc.rubel", "display_name": "Mr. Rubel" }
+    ]
+  },
+  {
+    "key": "centralstore", "prefix": "ST", "zone": "cs2-1", "hourly_volume": 1, "counters": 1, "individual_selectable": false,
+    "name_i18n": { "en": "Central Store", "bn": "সেন্ট্রাল স্টোর" },
+    "services": [
+      { "prefix": "ST1", "name_i18n": { "en": "Store Delivery", "bn": "স্টোর ডেলিভারি" }, "expected_minutes": 10, "sla_wait_minutes": 30 }
+    ],
+    "team_admin": { "username": "store.lead", "display_name": "Nazmul Hoque (Central Store lead)" },
+    "agents": [ { "username": "store.polash", "display_name": "Mr. Polash" } ]
+  },
+  {
+    "key": "documentation", "prefix": "DO", "zone": "cs2-1", "hourly_volume": 4, "counters": 2, "individual_selectable": false,
+    "name_i18n": { "en": "Documentation", "bn": "ডকুমেন্টেশন" },
+    "services": [
+      { "prefix": "DO1", "name_i18n": { "en": "Documentation", "bn": "ডকুমেন্টেশন" }, "expected_minutes": 6, "sla_wait_minutes": 20 }
+    ],
+    "team_admin": { "username": "documentation.lead", "display_name": "Rabeya Khatun (Documentation lead)" },
+    "agents": [
+      { "username": "documentation.tania", "display_name": "Mrs. Tania" },
+      { "username": "documentation.biplob", "display_name": "Mr. Biplob" }
+    ]
+  },
+  {
+    "key": "qc-nt", "prefix": "QN", "zone": "cs2-5", "hourly_volume": 5, "counters": 4, "individual_selectable": false,
+    "name_i18n": { "en": "QC (Non-Textile, Leather and Aarong Earth)", "bn": "কিউসি (নন-টেক্সটাইল, লেদার ও আড়ং আর্থ)" },
+    "services": [
+      { "prefix": "QN1", "name_i18n": { "en": "Pre-QC", "bn": "প্রি-কিউসি" }, "expected_minutes": 10, "sla_wait_minutes": 30 },
+      { "prefix": "QN2", "name_i18n": { "en": "Final QC", "bn": "ফাইনাল কিউসি" }, "expected_minutes": 15, "sla_wait_minutes": 40 }
+    ],
+    "team_admin": { "username": "qcnt.lead", "display_name": "Anisur Rahman (QC Non-Textile lead)" },
+    "agents": [
+      { "username": "qcnt.sabbir", "display_name": "Mr. Sabbir" },
+      { "username": "qcnt.lucky", "display_name": "Mrs. Lucky" }
+    ]
+  },
+  {
+    "key": "wms", "prefix": "WM", "zone": "cs2-6", "hourly_volume": 1, "counters": 1, "individual_selectable": false,
+    "name_i18n": { "en": "Warehouse Management System", "bn": "ওয়্যারহাউস ম্যানেজমেন্ট সিস্টেম" },
+    "services": [
+      { "prefix": "WM1", "name_i18n": { "en": "WMS Query", "bn": "ডব্লিউএমএস জিজ্ঞাসা" }, "expected_minutes": 8, "sla_wait_minutes": 30 }
+    ],
+    "team_admin": { "username": "wms.lead", "display_name": "Golam Mostafa (WMS lead)" },
+    "agents": [ { "username": "wms.shafiq", "display_name": "Mr. Shafiq" } ]
+  },
+  {
+    "key": "qc-pf", "prefix": "QP", "zone": "hq-1", "hourly_volume": 3, "counters": 2, "individual_selectable": false,
+    "name_i18n": { "en": "QC (Processing Fabric)", "bn": "কিউসি (প্রসেসিং ফ্যাব্রিক)" },
+    "services": [
+      { "prefix": "QP1", "name_i18n": { "en": "Fabric QC", "bn": "ফ্যাব্রিক কিউসি" }, "expected_minutes": 12, "sla_wait_minutes": 30 }
+    ],
+    "team_admin": { "username": "qcpf.lead", "display_name": "Delwar Hossain (QC Processing Fabric lead)" },
+    "agents": [
+      { "username": "qcpf.masud", "display_name": "Mr. Masud" },
+      { "username": "qcpf.shapla", "display_name": "Mrs. Shapla" }
+    ]
+  }
+]

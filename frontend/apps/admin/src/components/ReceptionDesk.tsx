@@ -653,7 +653,7 @@ function JourneySection({
                 return (
                   <div key={s.id} className="flex flex-wrap items-center justify-between gap-3">
                     <label>
-                      <input type="checkbox" checked={index !== -1} onChange={() => togglePicked(s.id)} /> {nameOf(s.name_i18n)}
+                      <input type="checkbox" checked={index !== -1} onChange={() => togglePicked(s.id)} /> {nameOf(s.name_i18n)} · {nameOf(s.service_group.name_i18n)}
                     </label>
                     {index !== -1 && <span className="text-fg-muted">{t("reception.journey.stopNumber", { seq: index + 1 })}</span>}
                   </div>
@@ -821,7 +821,7 @@ function AppointmentBookingSection({ services, nameOf }: { services: SiteService
               setAvailability(null);
               setSlotKey("");
             }}
-            options={[{ value: "", label: t("reception.appointment.service.placeholder") }, ...services.map((s) => ({ value: s.id, label: nameOf(s.name_i18n) }))]}
+            options={[{ value: "", label: t("reception.appointment.service.placeholder") }, ...services.map((s) => ({ value: s.id, label: `${nameOf(s.name_i18n)} · ${nameOf(s.service_group.name_i18n)}` }))]}
           />
           <div className="flex flex-wrap items-center justify-between gap-3">
             <TextField id="appointment-date" type="date" label={t("reception.appointment.date.label")} value={date} onChange={(event) => setDate(event.target.value)} />

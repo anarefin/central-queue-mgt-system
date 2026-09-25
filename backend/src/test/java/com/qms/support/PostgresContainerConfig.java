@@ -9,7 +9,7 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
 @TestConfiguration(proxyBeanMethods = false)
 public class PostgresContainerConfig {
 
-    public static final String IMAGE = "postgres:14-alpine";
+    public static final String IMAGE = "postgres:18-alpine";
 
     @Bean
     @ServiceConnection

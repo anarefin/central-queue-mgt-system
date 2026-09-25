@@ -3,6 +3,7 @@ import { I18nProvider } from "@qms/i18n/react";
 import { act, render, screen, waitFor, within } from "@testing-library/react";
 import { useEffect, useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { Speaker } from "../lib/announcementQueue";
 import { useApi, RuntimeProvider } from "../lib/runtime";
 import { DisplayBoard } from "./DisplayBoard";
 
@@ -12,14 +13,47 @@ function json(status: number, body: unknown): Response {
 
 type Route = (init: RequestInit) => Response | Promise<Response>;
 
-/** A no-op WebSocket stand-in: these tests only exercise the initial `display-state` read, not live updates. */
+/** A WebSocket the test drives by hand: open it, then push snapshot/event frames, the same shape the hub sends. */
 class FakeWebSocket {
+  static all: FakeWebSocket[] = [];
   onopen: (() => void) | null = null;
   onmessage: ((event: { data: unknown }) => void) | null = null;
   onclose: ((event: { code?: number }) => void) | null = null;
   onerror: (() => void) | null = null;
+
+  constructor() {
+    FakeWebSocket.all.push(this);
+  }
+
   send() {}
   close() {}
+
+  open() {
+    this.onopen?.();
+  }
+
+  say(frame: Record<string, unknown>) {
+    this.onmessage?.({ data: JSON.stringify(frame) });
+  }
+
+  static last(): FakeWebSocket {
+    return FakeWebSocket.all[FakeWebSocket.all.length - 1] as FakeWebSocket;
+  }
+}
+
+/** A speaker the test can inspect, standing in for the browser's real TTS/clip speaker (ticket 29). */
+function fakeSpeaker() {
+  const chimes: string[] = [];
+  const spoken: string[] = [];
+  const speaker: Speaker = {
+    playChime: async (chime) => {
+      chimes.push(chime);
+    },
+    speak: async (text) => {
+      spoken.push(text);
+    },
+  };
+  return { speaker, chimes, spoken };
 }
 
 function stubApi(routes: Record<string, Route>) {
@@ -34,21 +68,21 @@ function stubApi(routes: Record<string, Route>) {
   vi.stubGlobal("WebSocket", FakeWebSocket as unknown as typeof WebSocket);
 }
 
-function Harness({ deviceId }: { deviceId: string }) {
+function Harness({ deviceId, speaker }: { deviceId: string; speaker?: Speaker }) {
   const { session } = useApi();
   const [ready, setReady] = useState(false);
   useEffect(() => {
     if (!session || ready) return;
     void session.pair("CODE1234").then(() => setReady(true));
   }, [session, ready]);
-  return ready ? <DisplayBoard deviceId={deviceId} /> : null;
+  return ready ? <DisplayBoard deviceId={deviceId} speaker={speaker} /> : null;
 }
 
-function renderBoard() {
+function renderBoard(speaker?: Speaker) {
   return render(
     <I18nProvider loadExtra={false}>
       <RuntimeProvider>
-        <Harness deviceId="d1" />
+        <Harness deviceId="d1" speaker={speaker} />
       </RuntimeProvider>
     </I18nProvider>,
   );
@@ -109,8 +143,28 @@ function baseState(overrides: Partial<DisplayState> = {}): DisplayState {
 }
 
 beforeEach(() => {
-  // no-op
+  FakeWebSocket.all = [];
 });
+
+/** Opens the fake socket, answers the board's `zone:` subscription with a snapshot, then pushes one live call. */
+async function pushCall(state: DisplayState) {
+  await act(async () => {
+    FakeWebSocket.last().open();
+  });
+  await act(async () => {
+    FakeWebSocket.last().say({ frame: "snapshot", topic: "zone:z1", seq: 0, epoch: "e1", resync: false, data: { serving: state.serving, next: state.next } });
+  });
+  await act(async () => {
+    FakeWebSocket.last().say({
+      frame: "event",
+      topic: "zone:z1",
+      seq: 1,
+      type: "ticket.called",
+      occurred_at: "2026-09-20T10:00:00Z",
+      data: { ticket_id: "t1", counter_id: "c1", token_number: "A-003", state: "called", service_id: "s1", announce_count: 0 },
+    });
+  });
+}
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -221,5 +275,100 @@ describe("DisplayBoard (ticket 30, FR-DSP-003)", () => {
     renderBoard();
 
     await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("Could not load the now-serving board."));
+  });
+});
+
+describe("DisplayBoard live calls", () => {
+  it("split_media announces and highlights a live call, so a TV with a notice panel still speaks it (FR-DSP-007, FR-DSP-020)", async () => {
+    const { speaker, chimes, spoken } = fakeSpeaker();
+    const state = baseState({ layout: "split_media" });
+    stubApi({
+      "POST /devices/pair": () => json(201, PAIR_RESPONSE),
+      "GET /devices/d1/display-state": () => json(200, state),
+    });
+    renderBoard(speaker);
+    await screen.findByText("A-001");
+
+    await pushCall(state);
+
+    expect(await screen.findByText("A-003")).toBeInTheDocument();
+    expect(screen.getByText("Desk 1").closest("tr")).toHaveClass("motion-safe:animate-highlight-pulse");
+    await waitFor(() => expect(chimes).toHaveLength(1));
+    await waitFor(() => expect(spoken).toHaveLength(1));
+  });
+
+  it("re-reads the zone on a live call, so the called row shows its Service and staff at once, not after the periodic refresh", async () => {
+    const before = baseState({ layout: "split_media", columns: ["token", "counter", "service", "staff"] });
+    const after = baseState({
+      layout: "split_media",
+      columns: ["token", "counter", "service", "staff"],
+      serving: [{ ...before.serving[0]!, token_number: "A-003", service_names: { en: "Sample" }, staff_name: "Mr. Rahman" }],
+    });
+    let reads = 0;
+    stubApi({
+      "POST /devices/pair": () => json(201, PAIR_RESPONSE),
+      "GET /devices/d1/display-state": () => json(200, reads++ === 0 ? before : after),
+    });
+    renderBoard(fakeSpeaker().speaker);
+    await screen.findByText("A-001");
+
+    await pushCall(before);
+
+    expect(await screen.findByText("Mr. Rahman")).toBeInTheDocument();
+    expect(screen.getByText("Sample")).toBeInTheDocument();
+  });
+
+  it("now_serving_table announces a call once, not once per board and once per feed", async () => {
+    const { speaker, chimes } = fakeSpeaker();
+    const state = baseState({ layout: "now_serving_table" });
+    stubApi({
+      "POST /devices/pair": () => json(201, PAIR_RESPONSE),
+      "GET /devices/d1/display-state": () => json(200, state),
+    });
+    renderBoard(speaker);
+    await screen.findByText("A-001");
+
+    // Both the dispatcher's feed and the table's own board subscribe; each socket gets the same call.
+    for (const socket of [...FakeWebSocket.all]) {
+      await act(async () => {
+        socket.open();
+        socket.say({ frame: "snapshot", topic: "zone:z1", seq: 0, epoch: "e1", resync: false, data: { serving: state.serving, next: state.next } });
+        socket.say({
+          frame: "event",
+          topic: "zone:z1",
+          seq: 1,
+          type: "ticket.called",
+          occurred_at: "2026-09-20T10:00:00Z",
+          data: { ticket_id: "t1", counter_id: "c1", token_number: "A-003", state: "called", service_id: "s1", announce_count: 0 },
+        });
+      });
+    }
+
+    await waitFor(() => expect(chimes).toHaveLength(1));
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
+    expect(chimes).toHaveLength(1);
+  });
+
+  it("leaves queues with nothing waiting out of the next-token strip", async () => {
+    stubApi({
+      "POST /devices/pair": () => json(201, PAIR_RESPONSE),
+      "GET /devices/d1/display-state": () =>
+        json(
+          200,
+          baseState({
+            layout: "split_media",
+            next: [
+              { service_id: "s1", service_names: { en: "Consultation" }, tokens: [{ token_number: "A-002", position: 1 }] },
+              { service_id: "s2", service_names: { en: "Pharmacy" }, tokens: [] },
+            ],
+          }),
+        ),
+    });
+    renderBoard();
+
+    expect(await screen.findByText("A-002")).toBeInTheDocument();
+    expect(screen.queryByText("Pharmacy")).not.toBeInTheDocument();
   });
 });

@@ -95,7 +95,7 @@ class SessionRepository {
             Instant servedAt) {}
 
     /** A Service a ticket may be transferred to. {@code active} means the Service, its group and its site are all active. */
-    record TransferService(UUID id, Map<String, String> names, UUID groupId, UUID siteId, boolean active) {}
+    record TransferService(UUID id, Map<String, String> names, UUID groupId, Map<String, String> groupNames, UUID siteId, boolean active) {}
 
     /** An Agent a ticket may be targeted at: {@code activeAtSite} is false when the account is disabled or not allowed at the site. */
     record TransferAgent(UUID id, String name, boolean active, boolean atSite) {}
@@ -648,10 +648,11 @@ class SessionRepository {
 
     Optional<TransferService> transferService(UUID serviceId) {
         return jdbc.query(
-                        "SELECT v.id, v.name_i18n, g.id AS group_id, g.site_id, (v.active AND g.active AND s.active) AS active"
+                        "SELECT v.id, v.name_i18n, g.id AS group_id, g.name_i18n AS group_name_i18n, g.site_id, (v.active AND g.active AND s.active) AS active"
                                 + " FROM service v JOIN service_group g ON g.id = v.service_group_id JOIN site s ON s.id = g.site_id WHERE v.id = ?",
                         (rs, i) -> new TransferService(
-                                rs.getObject("id", UUID.class), names(rs.getString("name_i18n")), rs.getObject("group_id", UUID.class), rs.getObject("site_id", UUID.class), rs.getBoolean("active")),
+                                rs.getObject("id", UUID.class), names(rs.getString("name_i18n")), rs.getObject("group_id", UUID.class), names(rs.getString("group_name_i18n")),
+                                rs.getObject("site_id", UUID.class), rs.getBoolean("active")),
                         serviceId)
                 .stream().findFirst();
     }
@@ -676,10 +677,11 @@ class SessionRepository {
     /** Services a ticket of a site may be transferred to: active Services of active groups, in display order. */
     List<TransferService> transferServices(UUID siteId) {
         return jdbc.query(
-                "SELECT v.id, v.name_i18n, g.id AS group_id, g.site_id, true AS active FROM service v JOIN service_group g ON g.id = v.service_group_id"
+                "SELECT v.id, v.name_i18n, g.id AS group_id, g.name_i18n AS group_name_i18n, g.site_id, true AS active FROM service v JOIN service_group g ON g.id = v.service_group_id"
                         + " WHERE g.site_id = ? AND v.active AND g.active ORDER BY g.display_order, g.token_prefix, v.display_order, v.token_prefix, v.id",
                 (rs, i) -> new TransferService(
-                        rs.getObject("id", UUID.class), names(rs.getString("name_i18n")), rs.getObject("group_id", UUID.class), rs.getObject("site_id", UUID.class), true),
+                        rs.getObject("id", UUID.class), names(rs.getString("name_i18n")), rs.getObject("group_id", UUID.class), names(rs.getString("group_name_i18n")),
+                        rs.getObject("site_id", UUID.class), true),
                 siteId);
     }
 

@@ -7,7 +7,16 @@ through the API (`/api/v1`).
 
 ## 1. Run the system
 
-One command on one machine (Docker required):
+One command on one machine (Docker required). Copy the example env file and fill in
+`QMS_DB_PASSWORD` and the bootstrap admin credentials, then run compose — a real shell-exported
+env var always overrides `deploy/.env` if you need a one-off change:
+
+```
+cp deploy/.env.example deploy/.env   # edit QMS_DB_PASSWORD, QMS_BOOTSTRAP_ADMIN_USERNAME/PASSWORD
+docker compose -f deploy/compose.yaml up --build
+```
+
+Or pass everything inline without a `.env` file:
 
 ```
 QMS_DB_PASSWORD=<choose one> \
@@ -78,8 +87,8 @@ Everything is an environment variable (or a Spring property). Secrets are never 
 | `QMS_KEY_DIR` | `./keys` | Where the signing keys live. Keep it out of backups you share and out of source control |
 | `QMS_SECURITY_LOCKOUT_MAX_ATTEMPTS` / `_DURATION` | `5` / `PT15M` | Failed sign-ins before a lock, and how long it lasts |
 | `QMS_SECURITY_IDLE_ADMIN` / `_AGENT` | `PT30M` / `PT12H` | Idle timeout for admin roles and for agent consoles |
-| `QMS_SECURITY_PASSWORD_MIN_LENGTH` | `12` | Password policy: minimum length |
-| `QMS_SECURITY_PASSWORD_MIN_CHARACTER_CLASSES` | `3` | Of lower case, upper case, digit, other |
+| `QMS_SECURITY_PASSWORD_MIN_LENGTH` | `5` | Password policy: minimum length |
+| `QMS_SECURITY_PASSWORD_MIN_CHARACTER_CLASSES` | `1` | Of lower case, upper case, digit, other. `1` means no complexity mix is required |
 | `QMS_SECURITY_PASSWORD_HISTORY_COUNT` | `5` | A new password may not repeat one of the last N |
 | `QMS_SECURITY_PASSWORD_MAX_AGE_DAYS` | `0` (never) | When set, sign-in reports `password_expired` after that many days |
 | `QMS_SECURITY_KEY_ROTATION_OVERLAP` | `P1D` | How long a retired key still validates tokens |

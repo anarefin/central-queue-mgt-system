@@ -1,0 +1,702 @@
+<title>Aarong CQMS Walkthrough</title>
+<meta name="description" content="Step-by-step guide to running the Aarong Central Queue Management demo on this project, from starting the stack to reading the reports.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Urbanist:wght@600;700;800&family=Source+Sans+3:ital,wght@0,400;0,600;0,700;1,400&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+:root {
+  --bg: #faf9f7;
+  --surface: #ffffff;
+  --sunk: #f3f0ec;
+  --ink: #1d1b1a;
+  --muted: #655e59;
+  --rule: #e4ded8;
+  --accent: #d9531a;
+  --accent-strong: #b8430f;
+  --accent-soft: #fcebe1;
+  --ok: #1d7a4b;
+  --ok-soft: #e3f3ea;
+  --warn: #8a5a00;
+  --warn-soft: #fbf0d9;
+  --code-bg: #25211f;
+  --code-ink: #f4ede7;
+  --display: "Urbanist", "Avenir Next", "Segoe UI", system-ui, sans-serif;
+  --body: "Source Sans 3", "Segoe UI", system-ui, -apple-system, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --radius: 10px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg: #141211;
+    --surface: #1c1a18;
+    --sunk: #221f1d;
+    --ink: #efeae6;
+    --muted: #a69d96;
+    --rule: #332e2b;
+    --accent: #f27a3e;
+    --accent-strong: #ff9460;
+    --accent-soft: #3a2218;
+    --ok: #52c38d;
+    --ok-soft: #173326;
+    --warn: #e5b85c;
+    --warn-soft: #33290f;
+    --code-bg: #0e0c0b;
+    --code-ink: #f0e8e1;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #141211;
+  --surface: #1c1a18;
+  --sunk: #221f1d;
+  --ink: #efeae6;
+  --muted: #a69d96;
+  --rule: #332e2b;
+  --accent: #f27a3e;
+  --accent-strong: #ff9460;
+  --accent-soft: #3a2218;
+  --ok: #52c38d;
+  --ok-soft: #173326;
+  --warn: #e5b85c;
+  --warn-soft: #33290f;
+  --code-bg: #0e0c0b;
+  --code-ink: #f0e8e1;
+}
+
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; scroll-padding-top: 16px; }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font: 400 17px/1.6 var(--body);
+  -webkit-font-smoothing: antialiased;
+}
+a { color: var(--accent-strong); text-underline-offset: 2px; }
+a:focus-visible, button:focus-visible, input:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+h1, h2, h3 { font-family: var(--display); line-height: 1.15; text-wrap: balance; letter-spacing: -0.01em; }
+h2 { font-size: 1.75rem; font-weight: 800; margin: 0; }
+h3 { font-size: 1.15rem; font-weight: 700; margin: 1.6em 0 0.4em; }
+p { margin: 0 0 0.9em; }
+code, kbd, .mono { font-family: var(--mono); font-size: 0.86em; }
+:not(pre) > code { background: var(--sunk); border: 1px solid var(--rule); padding: 0.05em 0.35em; border-radius: 5px; overflow-wrap: anywhere; }
+kbd { background: var(--surface); border: 1px solid var(--rule); border-bottom-width: 2px; padding: 0.05em 0.4em; border-radius: 5px; }
+.num, td.num { font-variant-numeric: tabular-nums; }
+
+.page { max-width: 1180px; margin: 0 auto; padding-inline: 24px; padding-block: 0 80px; display: grid; grid-template-columns: 250px minmax(0, 1fr); gap: 56px; }
+@media (max-width: 900px) { .page { grid-template-columns: minmax(0, 1fr); gap: 0; padding-inline: 16px; } }
+
+/* header */
+.masthead { grid-column: 1 / -1; padding-block: 56px 40px; border-bottom: 1px solid var(--rule); display: grid; gap: 18px; }
+.eyebrow { font: 600 0.78rem/1 var(--body); letter-spacing: 0.12em; text-transform: uppercase; color: var(--accent-strong); }
+.masthead h1 { font-size: clamp(2.2rem, 5vw, 3.6rem); font-weight: 800; margin: 0; max-width: 18ch; }
+.masthead .lede { font-size: 1.15rem; color: var(--muted); max-width: 62ch; margin: 0; }
+.facts { display: flex; flex-wrap: wrap; gap: 8px 28px; margin: 8px 0 0; padding: 0; list-style: none; }
+.facts li { display: flex; align-items: baseline; gap: 8px; }
+.facts b { font: 800 1.6rem/1 var(--display); color: var(--ink); font-variant-numeric: tabular-nums; }
+.facts span { color: var(--muted); font-size: 0.95rem; }
+
+/* sidebar */
+.toc { position: sticky; top: env(safe-area-inset-top, 0px); align-self: start; padding-top: 32px; max-height: 100vh; overflow-y: auto; }
+.toc h2 { font: 600 0.78rem/1 var(--body); letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); margin: 0 0 12px; }
+.toc ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; counter-reset: toc; }
+.toc a { display: grid; grid-template-columns: 28px 1fr 16px; gap: 6px; align-items: baseline; padding: 5px 8px; border-radius: 6px; color: var(--ink); text-decoration: none; font-size: 0.95rem; line-height: 1.3; }
+.toc a:hover { background: var(--sunk); }
+.toc a .n { font: 600 0.8rem/1 var(--mono); color: var(--muted); }
+.toc a .tick { color: var(--ok); font-weight: 700; visibility: hidden; }
+.toc a.done .tick { visibility: visible; }
+.toc a.done .t { color: var(--muted); }
+.progress { margin-top: 16px; font-size: 0.9rem; color: var(--muted); }
+.bar { height: 6px; background: var(--sunk); border-radius: 99px; overflow: hidden; margin-top: 6px; }
+.bar i { display: block; height: 100%; width: 0; background: var(--ok); transition: width 0.3s; }
+.theme-btn { margin-top: 18px; font: 600 0.85rem var(--body); background: none; border: 1px solid var(--rule); color: var(--ink); padding: 6px 12px; border-radius: 99px; cursor: pointer; }
+.toc-mobile { display: none; }
+@media (max-width: 900px) {
+  .toc { display: none; }
+  .toc-mobile { display: block; margin: 20px 0 0; border: 1px solid var(--rule); border-radius: var(--radius); background: var(--surface); }
+  .toc-mobile summary { padding: 12px 16px; font-weight: 600; cursor: pointer; }
+  .toc-mobile ol { margin: 0; padding: 0 16px 14px 36px; display: grid; gap: 4px; }
+}
+
+main { min-width: 0; }
+.step { padding-block: 48px 8px; border-bottom: 1px solid var(--rule); }
+.step:last-of-type { border-bottom: 0; }
+.step-head { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; margin-bottom: 16px; }
+.step-no { font: 700 0.95rem/1 var(--mono); color: var(--accent-strong); background: var(--accent-soft); border-radius: 8px; padding: 8px 10px; min-width: 44px; text-align: center; }
+.step-head h2 { flex: 1 1 260px; }
+.done-toggle { display: inline-flex; align-items: center; gap: 8px; font-size: 0.92rem; color: var(--muted); cursor: pointer; user-select: none; }
+.done-toggle input { width: 18px; height: 18px; accent-color: var(--ok); cursor: pointer; }
+.prose { max-width: 70ch; }
+.slides { font-size: 0.9rem; color: var(--muted); margin: -6px 0 14px; }
+.slides b { color: var(--ink); font-weight: 600; }
+
+ol.do { margin: 0 0 1em; padding-left: 1.4em; max-width: 70ch; display: grid; gap: 8px; }
+ol.do > li { min-width: 0; }
+ol.do li::marker { font-family: var(--mono); font-weight: 600; color: var(--muted); }
+.see { border-left: 3px solid var(--ok); background: var(--ok-soft); padding: 12px 16px; border-radius: 0 var(--radius) var(--radius) 0; margin: 12px 0 18px; max-width: 70ch; }
+.see::before { content: "You should see"; display: block; font: 600 0.74rem/1 var(--body); letter-spacing: 0.1em; text-transform: uppercase; color: var(--ok); margin-bottom: 6px; }
+.see p:last-child, .note p:last-child { margin-bottom: 0; }
+.note { border-left: 3px solid var(--warn); background: var(--warn-soft); padding: 12px 16px; border-radius: 0 var(--radius) var(--radius) 0; margin: 12px 0 18px; max-width: 70ch; }
+.note::before { content: attr(data-label); display: block; font: 600 0.74rem/1 var(--body); letter-spacing: 0.1em; text-transform: uppercase; color: var(--warn); margin-bottom: 6px; }
+
+/* code */
+.code { position: relative; margin: 10px 0 18px; max-width: min(78ch, 100%); min-width: 0; }
+.code pre { margin: 0; background: var(--code-bg); color: var(--code-ink); padding: 14px 16px; padding-right: 76px; border-radius: var(--radius); overflow-x: auto; font: 400 0.84rem/1.6 var(--mono); }
+.code pre .c { color: #a8998c; }
+.copy { position: absolute; top: 8px; right: 8px; font: 600 0.75rem var(--body); background: #3a3431; color: #f4ede7; border: 0; border-radius: 6px; padding: 5px 10px; cursor: pointer; }
+.copy:hover { background: #4b4340; }
+
+/* tables */
+.table-wrap { overflow-x: auto; margin: 12px 0 20px; border: 1px solid var(--rule); border-radius: var(--radius); background: var(--surface); }
+table { border-collapse: collapse; width: 100%; font-size: 0.92rem; }
+th { text-align: left; font: 600 0.74rem/1.2 var(--body); letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); background: var(--sunk); padding: 10px 12px; border-bottom: 1px solid var(--rule); white-space: nowrap; }
+td { padding: 9px 12px; border-bottom: 1px solid var(--rule); vertical-align: top; }
+tr:last-child td { border-bottom: 0; }
+td .sub { color: var(--muted); font-size: 0.86rem; margin-top: 2px; }
+.tok { font: 600 0.9rem var(--mono); color: var(--accent-strong); }
+.chip { display: inline-block; font: 600 0.7rem/1 var(--body); letter-spacing: 0.04em; color: var(--ok); background: var(--ok-soft); padding: 3px 7px; border-radius: 99px; margin-left: 6px; vertical-align: 2px; white-space: nowrap; }
+details.more { margin: 8px 0 20px; }
+details.more summary { cursor: pointer; font-weight: 600; color: var(--accent-strong); }
+
+/* token slip + TV */
+.duo { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 20px; margin: 16px 0 20px; align-items: start; }
+.slip { background: var(--surface); border: 1px dashed var(--muted); border-radius: 4px; padding: 18px 20px; font: 400 0.86rem/1.7 var(--mono); max-width: 340px; }
+.slip .big { font: 800 2.4rem/1 var(--display); letter-spacing: 0.02em; color: var(--ink); margin: 4px 0 10px; }
+.slip .org { font: 700 0.8rem var(--body); letter-spacing: 0.14em; text-transform: uppercase; color: var(--accent-strong); }
+.slip dl { display: grid; grid-template-columns: auto 1fr; gap: 0 12px; margin: 0; }
+.slip dt { color: var(--muted); }
+.slip dd { margin: 0; }
+.cap { font-size: 0.85rem; color: var(--muted); margin-top: 8px; }
+.tv { background: #111; color: #f5f5f5; border-radius: 8px; padding: 14px; border: 6px solid #2a2a2a; font-family: var(--body); display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 12px; }
+.tv table { font-size: 0.8rem; color: #f5f5f5; }
+.tv th { background: transparent; color: #bbb; border-color: #333; padding: 4px 6px; }
+.tv td { border-color: #333; padding: 5px 6px; }
+.tv td:first-child { font: 800 1.1rem var(--display); }
+.tv .board { background: #1d1d1d; border-radius: 6px; padding: 10px; font-size: 0.75rem; color: #ddd; display: flex; align-items: center; text-align: center; }
+.tv .next { grid-column: 1 / -1; font-size: 0.78rem; color: #bbb; border-top: 1px solid #333; padding-top: 8px; }
+.tv .next b { color: #fff; font-family: var(--mono); }
+
+.map { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; margin: 16px 0 22px; }
+.bldg { border: 1px solid var(--rule); border-radius: var(--radius); background: var(--surface); padding: 14px 16px; }
+.bldg h3 { margin: 0 0 8px; font-size: 1rem; }
+.bldg ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; font-size: 0.9rem; }
+.bldg li b { font-family: var(--mono); font-size: 0.8rem; color: var(--muted); font-weight: 600; margin-right: 6px; }
+
+footer { grid-column: 1 / -1; border-top: 1px solid var(--rule); padding-top: 20px; color: var(--muted); font-size: 0.9rem; }
+</style>
+
+<div class="page">
+  <header class="masthead">
+    <div class="eyebrow">BRAC IT · CQMS demo</div>
+    <h1>Aarong Central Queue Management, running</h1>
+    <p class="lede">This guide walks through the pitch deck on the real system: start the stack, load the Aarong demo data, then follow a producer from the kiosk to the desk, the TV and the reports. Each step says what to do and what you should see. Allow about 45 minutes the first time.</p>
+    <ul class="facts">
+      <li><b>3</b><span>buildings</span></li>
+      <li><b>8</b><span>floors</span></li>
+      <li><b><!--DEPT_COUNT--></b><span>departments</span></li>
+      <li><b><!--DESK_COUNT--></b><span>desks</span></li>
+      <li><b><!--USER_COUNT--></b><span>staff logins</span></li>
+      <li><b>40</b><span>producers</span></li>
+      <li><b>14</b><span>days of history</span></li>
+    </ul>
+    <details class="toc-mobile">
+      <summary>Steps in this guide</summary>
+      <ol id="toc-mobile-list"></ol>
+    </details>
+  </header>
+
+  <nav class="toc" aria-label="Steps">
+    <h2>Steps</h2>
+    <ol id="toc-list"></ol>
+    <div class="progress"><span id="progress-text">0 of 0 done</span><div class="bar"><i id="progress-bar"></i></div></div>
+    <button class="theme-btn" id="theme-btn" type="button">Switch light / dark</button>
+  </nav>
+
+  <main>
+
+<!-- 1 -->
+<section class="step" id="overview" data-title="What you'll see">
+  <div class="step-head"><span class="step-no">01</span><h2>What you'll see</h2></div>
+  <div class="prose">
+    <p>The deck asks for one central queue for every producer touchpoint in three buildings. In this system that is one <b>Site</b>, <i>Aarong Central Services</i>, and the deck's words map onto the system's like this:</p>
+  </div>
+  <div class="table-wrap"><table>
+    <thead><tr><th>In the deck</th><th>In the system</th><th>Where you manage it</th></tr></thead>
+    <tbody>
+      <tr><td>CS-1, CS-2, Haque Centre and their floors</td><td>Zones, each with a building and floor label</td><td>Admin › Sites, zones and Desks</td></tr>
+      <tr><td>Department (SCPD, Finance, QC…)</td><td>Department, with its own token letter</td><td>Admin › Service catalogue</td></tr>
+      <tr><td>Service (Helpdesk Query, Voucher, Pre-QC…)</td><td>Service inside a department</td><td>Admin › Service catalogue</td></tr>
+      <tr><td>Counter / table</td><td>Desk, numbered across the site</td><td>Admin › Sites, zones and Desks</td></tr>
+      <tr><td>Team and individual staff</td><td>The department's team of Officers</td><td>Admin › Service catalogue › Team</td></tr>
+      <tr><td>Producer and producer code</td><td>Producer, looked up by 4-digit code or phone</td><td>Admin › Visitor CSV import</td></tr>
+      <tr><td>Super Admin / Team Admin / user</td><td>System + Organisation Admin / Team Admin / Officer</td><td>Created by the seed script</td></tr>
+      <tr><td>Kiosk, TV monitor, IVR speaker</td><td>Paired kiosk and display devices; the display speaks each call</td><td>Admin › Device pairing and fleet</td></tr>
+    </tbody>
+  </table></div>
+  <div class="map" aria-label="Buildings and floors">
+    <div class="bldg"><h3>CS-1 (Building 1)</h3><ul>
+      <li><b>1st</b>SCPD, Procurement and Supply Chain, Security</li>
+      <li><b>3rd</b>Finance and Accounts, Processing Store</li>
+      <li><b>4th</b>Merchandising, Non-Textile Order Team, Textile Division, Warehouse, Sericulture</li>
+      <li><b>5th</b>Design, Inventory Control Management, CAD and Pattern Room</li>
+    </ul></div>
+    <div class="bldg"><h3>CS-2 (Building 2)</h3><ul>
+      <li><b>1st</b>QC (Finished Textile and Jewellery), Central Store, Documentation</li>
+      <li><b>5th</b>QC (Non-Textile, Leather and Aarong Earth)</li>
+      <li><b>6th</b>Warehouse Management System</li>
+    </ul></div>
+    <div class="bldg"><h3>Haque Centre (Building 3)</h3><ul>
+      <li><b>1st</b>QC (Processing Fabric)</li>
+    </ul></div>
+  </div>
+  <div class="prose">
+    <p>Every department has its own token series that starts at 100 each morning, exactly as on the deck's sample tokens: <span class="tok">S100</span> for SCPD, <span class="tok">F100</span> for Finance, <span class="tok">M100</span> for Merchandising, <span class="tok">D100</span> for Design, <span class="tok">Q100</span> for QC. Where two departments would share a letter, the second gets two letters (<span class="tok">SE</span> Security, <span class="tok">SR</span> Sericulture, <span class="tok">PS</span> Processing Store, <span class="tok">QN</span> and <span class="tok">QP</span> for the other QC floors).</p>
+    <p>The hourly volumes below come from the deck (slide 3) and drive the two weeks of history. The deck's 207 staff are represented by a smaller set of named Officers so the demo stays easy to follow.</p>
+  </div>
+  <div class="table-wrap"><table>
+    <thead><tr><th>First token</th><th>Department and services</th><th>Where</th><th>Desks</th><th>Per hour</th><th>Officers</th></tr></thead>
+    <tbody>
+<!--DEPARTMENTS-->
+    </tbody>
+  </table></div>
+</section>
+
+<!-- 2 -->
+<section class="step" id="prerequisites" data-title="Before you start">
+  <div class="step-head"><span class="step-no">02</span><h2>Before you start</h2></div>
+  <div class="prose">
+    <p>You need a machine that can run this repository's Docker stack.</p>
+  </div>
+  <ol class="do">
+    <li><b>Docker</b> with Compose v2 (Docker Desktop or OrbStack on a Mac).</li>
+    <li><b>curl</b> and <b>jq</b> on the command line. On a Mac: <code>brew install jq</code>.</li>
+    <li>A browser. To show a kiosk and a TV at the same time on one computer, you also need a <b>second browser profile</b> (see step 6).</li>
+    <li>A terminal open at the root of the <code>cqms</code> repository. Every command below runs from there.</li>
+  </ol>
+  <div class="note" data-label="Use a separate demo stack">
+    <p>The seed script applies the <i>Producer services</i> profile, which renames screen labels, turns on features and sets the branding. Don't run it against an installation you care about. The commands below start a separate stack called <code>aarong-demo</code> on port 8091, with its own database, next to anything already on port 8080.</p>
+  </div>
+</section>
+
+<!-- 3 -->
+<section class="step" id="start" data-title="Start the stack">
+  <div class="step-head"><span class="step-no">03</span><h2>Start the stack</h2></div>
+  <ol class="do">
+    <li>Set the demo stack's settings. The first administrator is created from these on the first start.
+      <div class="code"><pre>export QMS_DB_PASSWORD=aarongdemo
+export QMS_HTTP_PORT=8091
+export QMS_BOOTSTRAP_ADMIN_USERNAME=admin
+export QMS_BOOTSTRAP_ADMIN_PASSWORD='Admin@2026'
+export COMPOSE_PROJECT_NAME=aarong-demo
+export BASE_URL=http://localhost:8091</pre></div>
+    </li>
+    <li>Build and start PostgreSQL, the backend and the web apps. The first build takes several minutes.
+      <div class="code"><pre>docker compose -f deploy/compose.yaml up -d --build --wait</pre></div>
+    </li>
+    <li>Check the backend is ready.
+      <div class="code"><pre>curl -s $BASE_URL/api/v1/health/ready</pre></div>
+    </li>
+  </ol>
+  <div class="see"><p><code>{"status":"up"}</code>, and <a href="http://localhost:8091/admin/">localhost:8091/admin/</a> shows the <b>Sign in</b> page.</p></div>
+  <div class="note" data-label="If it fails"><p>If port 8091 is taken, pick another number for <code>QMS_HTTP_PORT</code> and <code>BASE_URL</code>. If the backend refuses to start, the bootstrap password was probably rejected by the password policy; choose a longer one and start again with a fresh database (see step 17).</p></div>
+</section>
+
+<!-- 4 -->
+<section class="step" id="seed" data-title="Load the Aarong demo">
+  <div class="step-head"><span class="step-no">04</span><h2>Load the Aarong demo</h2></div>
+  <ol class="do">
+    <li>Run the seed script in the same terminal. It takes about a minute.
+      <div class="code"><pre>./deploy/demo/aarong/seed.sh all</pre></div>
+    </li>
+  </ol>
+  <div class="see">
+    <p>A line for each part as it is created: the profile, the site and its 8 floors, the <!--DEPT_COUNT--> departments with their desks, the users, <i>40 rows: 40 new</i> for the producers, 8 phone bookings, about 5,600 historical tokens over 10 working days, and today's tokens being issued and served. It ends with the table of logins below.</p>
+  </div>
+  <p class="prose">The script is safe to run again: it looks up what already exists and only adds what is missing. You can also run one part at a time, for example <code>seed.sh live</code> to open the desks again the next morning. <code>seed.sh --help</code> lists them.</p>
+  <h3>Logins</h3>
+  <p class="prose">Every account uses the password <code>Aarong@2026</code>. The bootstrap <code>admin</code> account from step 3 also still works.</p>
+  <details class="more" open>
+    <summary>All <!--USER_COUNT--> demo logins</summary>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Role</th><th>Username</th><th>Name</th><th>Department</th><th>Opens</th></tr></thead>
+      <tbody>
+<!--LOGINS-->
+      </tbody>
+    </table></div>
+  </details>
+</section>
+
+<!-- 5 -->
+<section class="step" id="admin-tour" data-title="Tour as Super Admin">
+  <div class="step-head"><span class="step-no">05</span><h2>Tour the setup as Super Admin</h2></div>
+  <p class="slides">Deck slides <b>6, 7, 17, 21</b></p>
+  <ol class="do">
+    <li>Open <a href="http://localhost:8091/admin/">localhost:8091/admin/</a> and sign in as <code>aarong.admin</code>.</li>
+    <li><b>Sites, zones and Desks</b>: open <i>Aarong Central Services</i> › <b>Zones</b>. The 8 floors are listed with their building labels. Open <b>Desks</b> on <i>CS-1 · 5th</i> to see desks 22 to 30 with their department in the location note.</li>
+    <li><b>Service catalogue</b>: choose the site. The <!--DEPT_COUNT--> departments are listed in floor order. Open Design › <b>Services</b> (Sample, Design Approval) and Design › <b>Team</b> (four Officers).</li>
+    <li><b>Token numbering</b>: each department has a department-wide rule. Press <b>Preview next number</b> on an SCPD service.</li>
+    <li><b>Priority and queue ordering</b>: the profile added <i>Distant-district producer</i> (20 minutes head start) and <i>Scheduled visit</i> (10 minutes).</li>
+    <li><b>Break types</b>: Prayer (20 min), Lunch (45 min), Tea (15 min).</li>
+    <li><b>Branding and printed token</b>: the organisation name is Aarong and the printed-token template has the deck's fields.</li>
+    <li><b>Notice board</b>: pick a zone. Each floor has the notice <i>"Notice Board to be uploaded by Producer Communication Team…"</i>, which is what shows on the TVs.</li>
+    <li><b>Setup wizard</b>: the <i>Producer services</i> profile is active, and the feature flags show Appointments, Journeys and <i>Visitor lookup by code</i> switched on.</li>
+  </ol>
+  <div class="see"><p>The preview says <b>Next Token number for Helpdesk Query: S1xx</b>. It starts at S100 each morning; the number is higher if tokens were already issued today. Across the admin screens, the system's words are replaced by the profile's: Department, Desk, Producer, Officer.</p></div>
+  <div class="note" data-label="No screen for this yet"><p>Users and roles have no admin screen in this version; the seed script creates them through the API. The logins table in step 4 is the full list.</p></div>
+</section>
+
+<!-- 6 -->
+<section class="step" id="devices" data-title="Pair kiosks and TVs">
+  <div class="step-head"><span class="step-no">06</span><h2>Pair a kiosk and a TV</h2></div>
+  <p class="slides">Deck slides <b>18, 19</b>: 3 kiosks and 9 TV monitors</p>
+  <div class="prose"><p>Kiosks and TVs are browsers that have been paired with the system once. A kiosk serves the whole site, so a producer can take a token for any building from any kiosk. A TV belongs to one floor and shows only that floor's desks.</p></div>
+  <ol class="do">
+    <li>Print pairing codes for the 3 kiosks and 9 TVs, and keep the script waiting so it can set up each TV as soon as it is paired:
+      <div class="code"><pre>./deploy/demo/aarong/seed.sh devices --wait</pre></div>
+      Codes are valid for 10 minutes and each works once. Run the command again for fresh codes.</li>
+    <li>In your main browser open <a href="http://localhost:8091/kiosk/">localhost:8091/kiosk/</a>, type the code for <i>Kiosk CS-1 Lobby A</i> into <b>Pairing code</b> and press <b>Pair</b>.</li>
+    <li>In a <b>second browser profile</b> (or a different browser) open <a href="http://localhost:8091/display/">localhost:8091/display/</a> and pair it with the code for <i>TV CS-1 5th floor</i>.</li>
+    <li>When the script prints <i>newly paired</i> and <i>TV CS-1 5th floor</i>, reload the TV page. Then press Ctrl-C to stop the script.</li>
+  </ol>
+  <div class="see"><p>The kiosk shows <b>Welcome</b> with a language choice (English, বাংলা). The TV shows a table of the 5th-floor desks with a notice board beside it.</p></div>
+  <div class="note" data-label="One device per browser profile"><p>A browser profile remembers one paired device for the whole site. If you pair a TV in the same profile as the kiosk, it replaces the kiosk's pairing and both pages misbehave. Use a separate profile, a different browser, or a private window for each device.</p></div>
+  <p class="prose">Without <code>--wait</code>, run <code>./deploy/demo/aarong/seed.sh displays</code> after pairing TVs, then reload them. This applies the TV layout: serving table plus notice board, the next-token strip, and English and Bangla shown in turn.</p>
+</section>
+
+<!-- 7 -->
+<section class="step" id="console" data-title="Officers open their desks">
+  <div class="step-head"><span class="step-no">07</span><h2>Officers are at their desks</h2></div>
+  <p class="slides">Deck slide <b>23</b>: staff log in, call and serve, take breaks</p>
+  <div class="prose"><p>The seed script has already opened a desk for every Officer, as if everyone had arrived for the day. You now take over one of them.</p></div>
+  <ol class="do">
+    <li>In the browser profile you are <b>not</b> using for the TV, open <a href="http://localhost:8091/console/">localhost:8091/console/</a> in a new tab and sign in as <code>design.rahman</code>.</li>
+    <li>Look at the <b>Desk console</b>: it names Mr. Rahman's desk on the 5th floor, the services he serves (Sample, Design Approval), how many producers are waiting for each, and <b>Your day so far</b>.</li>
+  </ol>
+  <div class="see"><p>The header reads <b>Officer console · Desk 22 · Open</b>. The keyboard strip at the bottom lists F2 call next, F3 re-announce, F4 start service, F5 complete, F6 miss, F7 transfer, F8 hold, F9 break, F10 close session.</p></div>
+  <p class="prose">A new Officer signing in would see <b>Open a counter session</b> and choose a free desk and the services to serve; only desks linked to their department are offered.</p>
+</section>
+
+<!-- 8 -->
+<section class="step" id="kiosk" data-title="A producer at the kiosk">
+  <div class="step-head"><span class="step-no">08</span><h2>A producer takes a token at the kiosk</h2></div>
+  <p class="slides">Deck slides <b>8, 10–13, 15, 20</b>: the demo token and the kiosk flowchart</p>
+  <div class="prose"><p>Asar Ali, producer 0062 (Children Tailoring), has come for a sample review with Design and wants to see Mr. Rahman.</p></div>
+  <ol class="do">
+    <li>On the kiosk tab, choose <b>English</b>.</li>
+    <li><b>Choose a department</b>: all <!--DEPT_COUNT--> departments from all three buildings are listed. Tap <b>Design</b>.</li>
+    <li><b>Choose a service</b>: tap <b>Sample</b>.</li>
+    <li><b>Identify yourself</b>: tap <b>Enter code</b>, type <code>0062</code> and press <b>Look up</b>. A producer without a code can use <b>Enter mobile number</b> or <b>Continue without identification</b>.</li>
+    <li><b>Choose who you'd like to see</b>: the Officers at a desk serving Design right now are listed, plus <b>Anyone available</b>. Tap <b>Mr. Rahman</b>. Only Design and Merchandising offer this step.</li>
+    <li><b>Confirm your token</b> shows Design, Sample, <i>Asar Ali (Children Tailoring)</i> and Mr. Rahman. Tap <b>Get my token</b>.</li>
+  </ol>
+  <div class="duo">
+    <div>
+      <div class="slip" aria-label="Example printed token">
+        <div class="org">Aarong</div>
+        <div class="big">D103</div>
+        <dl>
+          <dt>Building</dt><dd>CS-1</dd>
+          <dt>Floor</dt><dd>5th</dd>
+          <dt>Department</dt><dd>Design</dd>
+          <dt>Producer code</dt><dd>0062</dd>
+          <dt>Name</dt><dd>Asar Ali</dd>
+          <dt>Service</dt><dd>Sample</dd>
+          <dt>Category</dt><dd>Children Tailoring</dd>
+          <dt>Issued</dt><dd>25 Sep 2026, 10:50</dd>
+        </dl>
+      </div>
+      <div class="cap">What the kiosk printed in our test run. Your number depends on how many Design tokens were issued before yours.</div>
+    </div>
+    <div class="see" style="margin:0"><p><b>Take your token from the printer</b> and <b>Your token is D1xx</b>. The on-screen slip carries the deck's fields: token number, building, floor, department, producer code and name, service, category and issue time. A producer who identified by mobile number gets no code line, since only the code they typed is printed.</p><p>The token waits in Mr. Rahman's own queue, not the whole Design queue.</p></div>
+  </div>
+</section>
+
+<!-- 9 -->
+<section class="step" id="serve" data-title="Call and serve">
+  <div class="step-head"><span class="step-no">09</span><h2>Mr. Rahman calls and serves Asar Ali</h2></div>
+  <p class="slides">Deck slides <b>16, 23</b></p>
+  <ol class="do">
+    <li>Back on the console tab, press <kbd>F2</kbd> (or <b>Call next</b>).</li>
+    <li>Look at the TV: the 5th-floor table updates within a few seconds, and the display announces the token.</li>
+    <li>When the producer sits down, press <kbd>F4</kbd> (<b>Start service</b>), then <kbd>F5</kbd> (<b>Complete</b>).</li>
+  </ol>
+  <div class="duo">
+    <div class="see" style="margin:0"><p>The console shows <b>Called, waiting for the producer</b> with your token, <i>Arrived via Kiosk</i>, and Asar Ali's name, code <b>0062</b> and category. After completing, <b>Your day so far</b> counts one more served.</p></div>
+    <div>
+      <div class="tv" aria-label="Example of the 5th-floor TV">
+        <table><thead><tr><th>Token</th><th>Desk</th><th>Service</th><th>Staff</th></tr></thead>
+          <tbody>
+            <tr><td>D103</td><td>22</td><td>Sample</td><td>Mr. Rahman</td></tr>
+            <tr><td>D100</td><td>24</td><td>Sample</td><td>Mr. Chowdhury</td></tr>
+            <tr><td>D102</td><td>25</td><td>Sample</td><td>Mrs. Parvin</td></tr>
+            <tr><td>C101</td><td>30</td><td>Pattern…</td><td>Mrs. Jesmin</td></tr>
+          </tbody></table>
+        <div class="board">Notice Board to be uploaded by Producer Communication Team.</div>
+        <div class="next">Next tokens <b>I100</b></div>
+      </div>
+      <div class="cap">The 5th-floor TV: the deck's slide 16 layout, with the notice board on the right.</div>
+    </div>
+  </div>
+  <div class="note" data-label="TV not updating?"><p>Reload the TV page. A TV also needs a click or key press before the browser lets it play the chime and the spoken call.</p></div>
+  <div class="note" data-label="One TV per floor"><p>The deck's TV sample mixes S, M, D and F tokens from four floors on one screen. Here a TV shows one floor. A lobby screen for the whole building would need a change to how displays are assigned.</p></div>
+</section>
+
+<!-- 10 -->
+<section class="step" id="desk-actions" data-title="Transfer, miss and breaks">
+  <div class="step-head"><span class="step-no">10</span><h2>Transfer, miss and take a break</h2></div>
+  <p class="slides">Deck slides <b>4, 23</b>: no more walking between floors to queue again</p>
+  <ol class="do">
+    <li><b>Transfer.</b> Press <kbd>F2</kbd> to call the next Design token, <kbd>F4</kbd> to start, then <kbd>F7</kbd> <b>Transfer</b>. Under <b>Send to service</b> choose <i>Voucher</i> (Finance, 3rd floor), write a note such as <i>Sample approved, voucher needed</i>, and press <b>Transfer</b>.</li>
+    <li>Sign in to the console as <code>finance.mahmud</code> in a private window. The transferred producer is in Finance's queue with the <b>same token number</b> and the note.</li>
+    <li><b>Miss.</b> Call a token and press <kbd>F6</kbd> when nobody comes. The token goes back into the queue to be called again; once it has been missed too often it closes as a no-show. <kbd>F3</kbd> re-announces a call on the TV without counting a miss.</li>
+    <li><b>Break.</b> Press <kbd>F9</kbd>, choose <b>Prayer</b> and <b>Start break</b>. New tokens go to the other Officers while you are away. Press <kbd>F9</kbd> again to end the break.</li>
+    <li><b>Close.</b> At the end of the day, <kbd>F10</kbd> closes the session.</li>
+  </ol>
+  <div class="see"><p>The console shows <b>On break: Prayer</b> and <i>You are on a break, so no new tokens are assigned. Press F9 to end it.</i> Breaks show up later in the Agent report's average break time.</p></div>
+</section>
+
+<!-- 11 -->
+<section class="step" id="reception" data-title="Reception and producer lookup">
+  <div class="step-head"><span class="step-no">11</span><h2>Reception issues a token</h2></div>
+  <p class="slides">Deck slides <b>4, 5</b>: producers and suppliers in one system, no manual IDs</p>
+  <ol class="do">
+    <li>In a private window, sign in to <a href="http://localhost:8091/admin/">localhost:8091/admin/</a> as <code>aarong.reception</code> and choose <b>Reception desk</b>. The admin app and the console share one sign-in per browser profile, so signing in here in Mr. Rahman's window would sign him out of the console.</li>
+    <li>Under <b>Producer</b>, type <code>0084</code> (or the phone number <code>01700000084</code>) into <b>Producer code, phone or QR</b> and press <b>Search</b>, then <b>Use this producer</b>.</li>
+    <li><b>Choose a service</b>: pick <i>Pre-QC</i> under QC (Non-Textile, Leather and Aarong Earth). Mofizul Islam makes leather goods.</li>
+    <li>He travelled from outside Dhaka: set <b>Priority class</b> to <i>Distant-district producer</i>, then press <b>Issue token</b>.</li>
+    <li>For a first-time visitor with no code, use <b>Register a walk-in</b>.</li>
+  </ol>
+  <div class="see"><p><b>Token issued</b> with a <span class="tok">QN1xx</span> number, the waiting area on CS-2's 5th floor, the position in the queue and an estimated wait. The priority class moves him ahead of producers who arrived less than 20 minutes before him.</p></div>
+</section>
+
+<!-- 12 -->
+<section class="step" id="appointments" data-title="Phone appointments">
+  <div class="step-head"><span class="step-no">12</span><h2>Phone appointments</h2></div>
+  <p class="slides">Deck slides <b>4, 5</b>: prior booking and phone-call booking for a time slot</p>
+  <div class="prose"><p>Merchandising and Design take bookings in 30-minute slots from 10:00 to 16:00, two producers per slot. The seed script booked 8 phone appointments for today and printed their reference codes.</p></div>
+  <ol class="do">
+    <li>As <code>aarong.reception</code>, open <b>Book an appointment</b>. Choose <i>Order and costing</i>, today's date, and press <b>Search availability</b>.</li>
+    <li>Look up producer <code>0152</code>, pick a slot, set <b>Booking source</b> to <i>Phone call</i> and press <b>Book appointment</b>.</li>
+    <li>When the producer arrives, check them in with the reference code. There is no check-in screen yet, so use the script:
+      <div class="code"><pre>./deploy/demo/aarong/seed.sh bookings            <span class="c"># today's demo bookings and their codes</span>
+./deploy/demo/aarong/seed.sh checkin A-XXXXXXXX  <span class="c"># turns the booking into a token</span></pre></div>
+    </li>
+  </ol>
+  <div class="see"><p><b>Appointment booked</b> with a reference code such as <i>A-8N59SW2V</i> and a QR code. <code>checkin</code> prints <i>converted: token D1xx</i>: the booking became a token in the department's normal series, marked as an appointment check-in, and it queues with a head start.</p></div>
+  <div class="note" data-label="Timing"><p>Check-in opens 30 minutes before the slot and closes 15 minutes after it starts. A producer who arrives earlier gets an ordinary walk-in token instead.</p></div>
+</section>
+
+<!-- 13 -->
+<section class="step" id="team-admin" data-title="Team Admin view">
+  <div class="step-head"><span class="step-no">13</span><h2>The Team Admin's view</h2></div>
+  <p class="slides">Deck slide <b>22</b></p>
+  <ol class="do">
+    <li>Sign in to the admin app as <code>design.lead</code> (Tahmina Rahman, Design). The menu is shorter: <b>Officer availability</b>, <b>Producer feedback</b>, <b>Notice board</b> and <b>Reports</b>.</li>
+    <li><b>Officer availability</b> lists the Design Officers at their desks and whether each is available or on a break. Put one on a <b>Tea</b> break with <b>Put on break</b>, then <b>Return to service</b>.</li>
+    <li>Ask for extra help: request that Mr. Anwar from Merchandising joins the Design team. A Team Admin's team change needs the Super Admin's approval. The request has no screen yet, so use the script:
+      <div class="code"><pre>./deploy/demo/aarong/seed.sh team-request        <span class="c"># as design.lead: ask for merch.anwar</span>
+./deploy/demo/aarong/seed.sh approvals           <span class="c"># as aarong.admin: list pending requests</span>
+./deploy/demo/aarong/seed.sh approvals --approve <span class="c"># approve them</span></pre></div>
+    </li>
+    <li>As <code>aarong.admin</code>, open <b>Service catalogue</b> › Design › <b>Team</b>.</li>
+  </ol>
+  <div class="see"><p>The request is listed as <i>pending</i>, then <i>approved</i>, and Mr. Anwar appears in the Design team. He can now open a desk for Design services as well as Merchandising.</p></div>
+</section>
+
+<!-- 14 -->
+<section class="step" id="dashboard" data-title="Live dashboard">
+  <div class="step-head"><span class="step-no">14</span><h2>The live dashboard</h2></div>
+  <p class="slides">Deck slides <b>21, 25</b>: the whole queue at a glance</p>
+  <ol class="do">
+    <li>In the console (any staff login, for example <code>aarong.admin</code>) open <b>Live dashboard</b>, or go to <a href="http://localhost:8091/console/dashboard/">localhost:8091/console/dashboard/</a>.</li>
+    <li>Filter by zone or department to look at one floor or one team.</li>
+  </ol>
+  <div class="see"><p><b>Waiting now</b> by department with the longest wait, <b>Serving now</b>, <b>Counters</b> split into open, on break (Mr. Kabir in Finance is on tea) and closed, <b>Longest waits</b>, <b>Throughput today</b>, <b>Appointments today</b> and <b>Device health</b> for the paired kiosk and TV.</p></div>
+  <div class="note" data-label="Today only"><p>The dashboard shows today. The two weeks of history appear in the Reports (next step).</p></div>
+</section>
+
+<!-- 15 -->
+<section class="step" id="reports" data-title="Reports and KPIs">
+  <div class="step-head"><span class="step-no">15</span><h2>Reports and KPIs</h2></div>
+  <p class="slides">Deck slides <b>2, 3, 24, 26</b></p>
+  <ol class="do">
+    <li>As <code>aarong.admin</code>, open <b>Reports</b> and choose the site.</li>
+    <li>Under <b>Operational reports</b> pick <i>Agent report</i>, set <b>From</b> to two weeks ago and <b>To</b> to today, and press <b>Run operational report</b>.</li>
+    <li>Repeat with <i>Department report</i>, <i>Counter report</i> and <i>Visitor flow report</i> (set <b>Grain</b> to Hour, Day, Month or Year).</li>
+    <li>Run the <b>Detailed token report</b> for one department and <b>Export</b> it as CSV, XLSX or PDF.</li>
+    <li>Under <b>Staffing planning views</b>, run the <b>Peak-hours view</b>: the 11:00 and 14:00 peaks and the lunch dip are built into the history.</li>
+  </ol>
+  <div class="table-wrap"><table>
+    <thead><tr><th>In the deck</th><th>Where to find it</th></tr></thead>
+    <tbody>
+      <tr><td>Services served, services cancelled</td><td>Agent report: <i>services served</i>, <i>services cancelled</i></td></tr>
+      <tr><td>Avg. waiting time, avg. service time, total service time</td><td>Agent report, also per department and desk</td></tr>
+      <tr><td>Avg. break time</td><td>Agent report: <i>average break</i>, from the Prayer, Lunch and Tea breaks</td></tr>
+      <tr><td>% of successful tokens</td><td>Agent report: <i>successful token rate</i> (about 95% in the history)</td></tr>
+      <tr><td>Details token report</td><td>Detailed token report, with export</td></tr>
+      <tr><td>Customer flow (hourly, daily, monthly, annual)</td><td>Visitor flow report with its Grain setting</td></tr>
+      <tr><td>Counter report / User-wise report</td><td>Counter report / Agent report</td></tr>
+      <tr><td>Department-wise report / Unit-wise report</td><td>Department report / Site report and Zone filter</td></tr>
+      <tr><td>Break report</td><td>Agent report (average break per Officer) and Counter report (break time per desk)</td></tr>
+      <tr><td>Daily and hourly visitors per department (slides 2, 3)</td><td>Department report and Visitor flow report by hour</td></tr>
+    </tbody>
+  </table></div>
+  <div class="see"><p>About 5,600 tokens over the last 10 working days (Sunday to Thursday, 09:00 to 17:00), roughly matching the deck's hourly volumes: QC and Merchandising busiest, Sericulture and Security quietest. Each Officer has served a few hundred producers with about 95% successful tokens.</p></div>
+  <div class="note" data-label="Login adherence"><p>The Agent report's login adherence is measured against the site's business hours. The demo opens the site all day, every day, so the kiosk works whenever you try it; adherence therefore looks low. Load with <code>HOURS=realistic</code> for Sunday to Thursday, 09:00 to 17:00 (the kiosk then refuses tokens outside those hours).</p></div>
+</section>
+
+<!-- 16 -->
+<section class="step" id="audit" data-title="Audit trail">
+  <div class="step-head"><span class="step-no">16</span><h2>The audit trail</h2></div>
+  <ol class="do">
+    <li>In <b>Reports</b> › <b>Domain reports</b>, choose <i>Audit report</i> and run it for today.</li>
+  </ol>
+  <div class="see"><p>The configuration changes made today, each with who made it and when: the seed script's setup, every desk opened and closed, the transfer to Finance, the breaks, the TV layout and the approved team request.</p></div>
+</section>
+
+<!-- 17 -->
+<section class="step" id="finish" data-title="Finish and reset">
+  <div class="step-head"><span class="step-no">17</span><h2>Finish, or start again</h2></div>
+  <ol class="do">
+    <li>Close the Officers' desks from their consoles with <kbd>F10</kbd>, or leave them open for the next demo.</li>
+    <li>Stop the stack but keep the data:
+      <div class="code"><pre>docker compose -f deploy/compose.yaml stop</pre></div>
+    </li>
+    <li>Next morning, start it with <code>up -d --wait</code> and run <code>./deploy/demo/aarong/seed.sh live</code> to open the desks and issue a fresh morning's tokens. Run <code>seed.sh history</code> as well to fill in the working days since the last run.</li>
+    <li>Remove everything, including the database, and start from step 3 again:
+      <div class="code"><pre>docker compose -f deploy/compose.yaml down -v</pre></div>
+    </li>
+  </ol>
+  <div class="note" data-label="Why a full reset"><p>The ticket history is append-only by design, so individual tokens cannot be deleted. A fresh database is the only way to reset the demo. This only affects the <code>aarong-demo</code> stack as long as <code>COMPOSE_PROJECT_NAME</code> is set.</p></div>
+  <h3>Troubleshooting</h3>
+  <div class="table-wrap"><table>
+    <thead><tr><th>What you see</th><th>What to do</th></tr></thead>
+    <tbody>
+      <tr><td><code>cannot sign in as admin</code> from the seed script</td><td>Export <code>QMS_BOOTSTRAP_ADMIN_USERNAME</code> and <code>QMS_BOOTSTRAP_ADMIN_PASSWORD</code> as in step 3, or rely on <code>aarong.admin</code> after the first run.</td></tr>
+      <tr><td>The pairing code is refused</td><td>It expired after 10 minutes or was already used. Run <code>seed.sh devices</code> for new codes.</td></tr>
+      <tr><td>Kiosk and TV both stop working</td><td>They were paired in the same browser profile. Use a separate profile per device and pair again.</td></tr>
+      <tr><td>The kiosk says it is outside opening hours</td><td>The site was loaded with <code>HOURS=realistic</code>. Run <code>seed.sh config</code> without it.</td></tr>
+      <tr><td>Reports are empty straight after loading</td><td>Reports refresh every 15 seconds. Wait a moment and run the report again.</td></tr>
+      <tr><td>The kiosk offers no Officer to pick</td><td>Only Officers with an open desk are offered. Run <code>seed.sh live</code>.</td></tr>
+      <tr><td><code>seed.sh history</code> cannot reach the database</td><td>It uses <code>docker compose exec</code>. Keep <code>COMPOSE_PROJECT_NAME=aarong-demo</code> set, or set <code>PSQL</code> to your own psql command.</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<!-- 18 -->
+<section class="step" id="appendix" data-title="Deck to system map">
+  <div class="step-head"><span class="step-no">18</span><h2>Deck slide by slide</h2></div>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Slide</th><th>Deck</th><th>In the demo</th><th>Step</th></tr></thead>
+    <tbody>
+      <tr><td class="num">2–3</td><td>Daily and hourly visitors per department</td><td>Hourly volumes drive the 14-day history</td><td><a href="#reports">15</a></td></tr>
+      <tr><td class="num">4</td><td>Six separate queue systems, manual visitor passes, no tracking</td><td>One site, one kiosk flow for all departments, producer lookup by code, transfers keep the token</td><td><a href="#kiosk">8</a>, <a href="#desk-actions">10</a></td></tr>
+      <tr><td class="num">5</td><td>Central hub, connected dashboards, appointment and phone booking</td><td>Live dashboard, phone appointments</td><td><a href="#dashboard">14</a>, <a href="#appointments">12</a></td></tr>
+      <tr><td class="num">6–7</td><td>Touchpoints in CS-1, CS-2 and Haque Centre</td><td>8 floors, <!--DEPT_COUNT--> departments</td><td><a href="#overview">1</a>, <a href="#admin-tour">5</a></td></tr>
+      <tr><td class="num">8, 10–15</td><td>Demo tokens S100, F100, M100, D100, Q100</td><td>Department-wide numbering from 100, printed slip with the same fields</td><td><a href="#kiosk">8</a></td></tr>
+      <tr><td class="num">16</td><td>TV: serving token, counter, department, staff, next tokens, notice board</td><td>TV layout with notice board, per floor</td><td><a href="#serve">9</a></td></tr>
+      <tr><td class="num">17</td><td>User list, 207 users</td><td>A Team Admin and 1–4 named Officers per department</td><td><a href="#seed">4</a></td></tr>
+      <tr><td class="num">18–19</td><td>Kiosks, TVs, IVR speakers per building</td><td>3 kiosks and 9 TVs to pair; the TV announces each call</td><td><a href="#devices">6</a></td></tr>
+      <tr><td class="num">20</td><td>Kiosk: department, service, team, individual</td><td>Department, service, producer code, Officer</td><td><a href="#kiosk">8</a></td></tr>
+      <tr><td class="num">21</td><td>Super Admin</td><td><code>aarong.admin</code>: setup, priorities, approvals, dashboard, reports</td><td><a href="#admin-tour">5</a>, <a href="#team-admin">13</a></td></tr>
+      <tr><td class="num">22</td><td>Team Admin</td><td><code>design.lead</code> and the other leads: availability, breaks, requests, reports</td><td><a href="#team-admin">13</a></td></tr>
+      <tr><td class="num">23</td><td>Staff</td><td>Officer console</td><td><a href="#console">7</a>, <a href="#serve">9</a>, <a href="#desk-actions">10</a></td></tr>
+      <tr><td class="num">24</td><td>User KPIs</td><td>Agent report</td><td><a href="#reports">15</a></td></tr>
+      <tr><td class="num">25</td><td>Dashboard sample</td><td>Live dashboard</td><td><a href="#dashboard">14</a></td></tr>
+      <tr><td class="num">26</td><td>Necessary reports</td><td>Operational, detailed token and planning reports</td><td><a href="#reports">15</a></td></tr>
+    </tbody>
+  </table></div>
+  <details class="more">
+    <summary>All 40 demo producers</summary>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Code</th><th>Name</th><th>Category</th><th>Phone</th></tr></thead>
+      <tbody>
+<!--PRODUCERS-->
+      </tbody>
+    </table></div>
+  </details>
+  <p class="prose">The demo data lives in <code>deploy/demo/aarong/data/</code>: <code>departments.json</code> (departments, services, desks, hourly volumes, staff), <code>site.json</code> (floors, breaks, notice, branding), <code>producers.csv</code> and <code>devices.json</code>. Edit them and run the seed again to change the demo.</p>
+</section>
+
+  </main>
+  <footer>Aarong CQMS demo guide · generated from <code>deploy/demo/aarong</code> · the names, phone numbers and producer codes in the demo data are made up.</footer>
+</div>
+
+<script>
+(function () {
+  var KEY = "aarong-cqms-guide-done";
+  var THEME_KEY = "aarong-cqms-guide-theme";
+  var root = document.documentElement;
+  var done = {};
+  try { done = JSON.parse(localStorage.getItem(KEY) || "{}") || {}; } catch (e) { done = {}; }
+  try { var t = localStorage.getItem(THEME_KEY); if (t) root.setAttribute("data-theme", t); } catch (e) {}
+
+  var steps = Array.prototype.slice.call(document.querySelectorAll("section.step"));
+  var list = document.getElementById("toc-list");
+  var mobile = document.getElementById("toc-mobile-list");
+
+  steps.forEach(function (s, i) {
+    var id = s.id, title = s.getAttribute("data-title");
+    var a = document.createElement("a");
+    a.href = "#" + id;
+    a.innerHTML = '<span class="n">' + String(i + 1).padStart(2, "0") + '</span><span class="t"></span><span class="tick" aria-hidden="true">✓</span>';
+    a.querySelector(".t").textContent = title;
+    a.dataset.step = id;
+    var li = document.createElement("li"); li.appendChild(a); list.appendChild(li);
+    var mli = document.createElement("li"); var ma = document.createElement("a"); ma.href = "#" + id; ma.textContent = title; mli.appendChild(ma); mobile.appendChild(mli);
+
+    var label = document.createElement("label");
+    label.className = "done-toggle";
+    var box = document.createElement("input");
+    box.type = "checkbox"; box.id = "done-" + id; box.checked = !!done[id];
+    label.appendChild(box);
+    label.appendChild(document.createTextNode("Done"));
+    s.querySelector(".step-head").appendChild(label);
+    box.addEventListener("change", function () {
+      done[id] = box.checked;
+      try { localStorage.setItem(KEY, JSON.stringify(done)); } catch (e) {}
+      render();
+    });
+  });
+
+  function render() {
+    var n = 0;
+    steps.forEach(function (s) {
+      var on = !!done[s.id];
+      if (on) n++;
+      var a = list.querySelector('a[data-step="' + s.id + '"]');
+      if (a) a.classList.toggle("done", on);
+    });
+    document.getElementById("progress-text").textContent = n + " of " + steps.length + " done";
+    document.getElementById("progress-bar").style.width = (100 * n / steps.length) + "%";
+  }
+  render();
+
+  document.getElementById("theme-btn").addEventListener("click", function () {
+    var cur = root.getAttribute("data-theme");
+    if (!cur) cur = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+    var next = cur === "dark" ? "light" : "dark";
+    root.setAttribute("data-theme", next);
+    try { localStorage.setItem(THEME_KEY, next); } catch (e) {}
+  });
+
+  document.querySelectorAll(".code").forEach(function (block) {
+    var btn = document.createElement("button");
+    btn.type = "button"; btn.className = "copy"; btn.textContent = "Copy";
+    block.appendChild(btn);
+    btn.addEventListener("click", function () {
+      var text = block.querySelector("pre").innerText.split("\n").map(function (l) { return l.replace(/\s+#.*$/, ""); }).join("\n").trim();
+      function ok() { btn.textContent = "Copied"; setTimeout(function () { btn.textContent = "Copy"; }, 1500); }
+      function fallback() {
+        var r = document.createRange(); r.selectNodeContents(block.querySelector("pre"));
+        var sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(r);
+        btn.textContent = "Press Ctrl+C";
+      }
+      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(ok, fallback);
+      else fallback();
+    });
+  });
+})();
+</script>

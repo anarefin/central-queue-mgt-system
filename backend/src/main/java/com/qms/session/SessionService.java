@@ -637,7 +637,7 @@ public class SessionService {
         scope.requireSite(own.siteId());
         if (!authz.has(Permission.TICKET_TRANSFER) && !session.agentId().equals(currentUser.require().userId())) throw new ApiException(ErrorCode.FORBIDDEN);
         return new TransferTargets(
-                sessions.transferServices(own.siteId()).stream().map(s -> new TransferTargets.Service(s.id(), s.names())).toList(),
+                sessions.transferServices(own.siteId()).stream().map(s -> new TransferTargets.Service(s.id(), s.names(), s.groupNames())).toList(),
                 sessions.targetCounters(own.siteId()).stream()
                         .filter(c -> !c.id().equals(own.id()))
                         .map(c -> new TransferTargets.CounterTarget(c.id(), c.label(), c.zoneName(), c.serviceIds()))
